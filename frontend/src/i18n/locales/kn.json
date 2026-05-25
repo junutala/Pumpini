@@ -1,0 +1,16 @@
+{
+  "app_name": "ಪೆಟ್ರೋಲ್ DMS",
+  "login": "ಲಾಗಿನ್",
+  "logout": "ಲಾಗ್ ಔಟ್",
+  "phone": "ಫೋನ್",
+  "password": "ಪಾಸ್‌ವರ್ಡ್",
+  "submit": "ಸಲ್ಲಿಸಿ",
+  "cancel": "ರದ್ದುಮಾಡಿ",
+  "save": "ಉಳಿಸಿ",
+  "loading": "ಲೋಡ್ ಆಗುತ್ತಿದೆ...",
+  "nav": { "dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್", "shifts": "ಶಿಫ್ಟ್‌ಗಳು", "dispense": "ವಿತರಣೆ", "corporate": "ಕಾರ್ಪೊರೇಟ್", "attendance": "ಹಾಜರಾತಿ", "dipstick": "ಡಿಪ್‌ಸ್ಟಿಕ್", "users": "ಬಳಕೆದಾರರು", "alerts": "ಎಚ್ಚರಿಕೆಗಳು", "reports": "ವರದಿಗಳು", "settings": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು" },
+  "shift": { "open": "ಶಿಫ್ಟ್ ತೆರೆಯಿರಿ", "close": "ಶಿಫ್ಟ್ ಮುಚ್ಚಿರಿ", "shift": "ಶಿಫ್ಟ್", "total_sales": "ಒಟ್ಟು ಮಾರಾಟ" },
+  "dispense": { "quantity": "ಪ್ರಮಾಣ (ಲೀಟರ್)", "amount": "ಮೊತ್ತ", "cash": "ನಗದು", "upi": "UPI", "credit": "ಕ್ರೆಡಿಟ್" },
+  "dashboard": { "today_sales": "ಇಂದಿನ ಮಾರಾಟ", "total_litres": "ಒಟ್ಟು ಲೀಟರ್", "tank_levels": "ಟ್ಯಾಂಕ್ ಮಟ್ಟಗಳು", "live_events": "ನೇರ ವಿತರಣೆ" },
+  "fuel_types": { "petrol": "ಪೆಟ್ರೋಲ್", "diesel": "ಡೀಸೆಲ್", "cng": "CNG" }
+}

@@ -1,0 +1,16 @@
+{
+  "app_name": "பெட்ரோல் DMS",
+  "login": "உள்நுழைவு",
+  "logout": "வெளியேறு",
+  "phone": "தொலைபேசி",
+  "password": "கடவுச்சொல்",
+  "submit": "சமர்ப்பி",
+  "cancel": "ரத்து செய்",
+  "save": "சேமி",
+  "loading": "ஏற்றுகிறது...",
+  "nav": { "dashboard": "டாஷ்போர்டு", "shifts": "ஷிப்டுகள்", "dispense": "வழங்கல்", "corporate": "கார்பரேட்", "attendance": "வருகை", "dipstick": "டிப்ஸ்டிக்", "users": "பயனர்கள்", "alerts": "எச்சரிக்கைகள்", "reports": "அறிக்கைகள்", "settings": "அமைப்புகள்" },
+  "shift": { "open": "ஷிப்ட் திற", "close": "ஷிப்ட் மூடு", "shift": "ஷிப்ட்", "total_sales": "மொத்த விற்பனை" },
+  "dispense": { "quantity": "அளவு (லிட்டர்)", "amount": "தொகை", "cash": "பணம்", "upi": "UPI", "credit": "கடன்" },
+  "dashboard": { "today_sales": "இன்றைய விற்பனை", "total_litres": "மொத்த லிட்டர்", "tank_levels": "தொட்டி அளவுகள்", "live_events": "நேரடி வழங்கல்" },
+  "fuel_types": { "petrol": "பெட்ரோல்", "diesel": "டீசல்", "cng": "CNG" }
+}

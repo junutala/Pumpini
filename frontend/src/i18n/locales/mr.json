@@ -1,0 +1,16 @@
+{
+  "app_name": "पेट्रोल DMS",
+  "login": "लॉगिन",
+  "logout": "लॉगआउट",
+  "phone": "फोन",
+  "password": "पासवर्ड",
+  "submit": "सबमिट करा",
+  "cancel": "रद्द करा",
+  "save": "जतन करा",
+  "loading": "लोड होत आहे...",
+  "nav": { "dashboard": "डॅशबोर्ड", "shifts": "शिफ्ट", "dispense": "वितरण", "corporate": "कॉर्पोरेट", "attendance": "हजेरी", "dipstick": "डिपस्टिक", "users": "वापरकर्ते", "alerts": "सूचना", "reports": "अहवाल", "settings": "सेटिंग्ज" },
+  "shift": { "open": "शिफ्ट उघडा", "close": "शिफ्ट बंद करा", "shift": "शिफ्ट", "total_sales": "एकूण विक्री" },
+  "dispense": { "quantity": "प्रमाण (लिटर)", "amount": "रक्कम", "cash": "रोख", "upi": "UPI", "credit": "क्रेडिट" },
+  "dashboard": { "today_sales": "आजची विक्री", "total_litres": "एकूण लिटर", "tank_levels": "टाकी पातळी", "live_events": "थेट वितरण" },
+  "fuel_types": { "petrol": "पेट्रोल", "diesel": "डिझेल", "cng": "CNG" }
+}

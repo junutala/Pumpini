@@ -1,0 +1,16 @@
+{
+  "app_name": "పెట్రోల్ DMS",
+  "login": "లాగిన్",
+  "logout": "లాగ్ అవుట్",
+  "phone": "ఫోన్",
+  "password": "పాస్‌వర్డ్",
+  "submit": "సమర్పించు",
+  "cancel": "రద్దు",
+  "save": "సేవ్",
+  "loading": "లోడ్ అవుతోంది...",
+  "nav": { "dashboard": "డాష్‌బోర్డ్", "shifts": "షిఫ్ట్‌లు", "dispense": "పంపిణీ", "corporate": "కార్పొరేట్", "attendance": "హాజరు", "dipstick": "డిప్‌స్టిక్", "users": "వినియోగదారులు", "alerts": "హెచ్చరికలు", "reports": "నివేదికలు", "settings": "సెట్టింగ్‌లు" },
+  "shift": { "open": "షిఫ్ట్ తెరవండి", "close": "షిఫ్ట్ మూసివేయండి", "shift": "షిఫ్ట్", "total_sales": "మొత్తం అమ్మకాలు" },
+  "dispense": { "quantity": "పరిమాణం (లీటర్లు)", "amount": "మొత్తం", "cash": "నగదు", "upi": "UPI", "credit": "క్రెడిట్" },
+  "dashboard": { "today_sales": "నేటి అమ్మకాలు", "total_litres": "మొత్తం లీటర్లు", "tank_levels": "ట్యాంక్ స్థాయిలు", "live_events": "లైవ్ పంపిణీ" },
+  "fuel_types": { "petrol": "పెట్రోల్", "diesel": "డీజిల్", "cng": "CNG" }
+}

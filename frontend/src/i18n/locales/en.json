@@ -1,0 +1,175 @@
+{
+  "app_name": "Petrol DMS",
+  "login": "Login",
+  "logout": "Logout",
+  "phone": "Phone",
+  "password": "Password",
+  "submit": "Submit",
+  "cancel": "Cancel",
+  "save": "Save",
+  "confirm": "Confirm",
+  "loading": "Loading...",
+  "error": "Error",
+  "success": "Success",
+  "no_data": "No data available",
+  "search": "Search",
+  "filter": "Filter",
+  "export": "Export",
+  "print": "Print",
+
+  "nav": {
+    "dashboard": "Dashboard",
+    "shifts": "Shifts",
+    "dispense": "Dispense",
+    "corporate": "Corporate",
+    "attendance": "Attendance",
+    "dipstick": "Dipstick",
+    "users": "Users",
+    "alerts": "Alerts",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+
+  "roles": {
+    "owner": "Owner",
+    "manager": "Manager",
+    "attendant": "Attendant",
+    "rsa": "Retail Sales Agent",
+    "corporate": "Corporate"
+  },
+
+  "shift": {
+    "open": "Open Shift",
+    "close": "Close Shift",
+    "shift": "Shift",
+    "shift_number": "Shift Number",
+    "date": "Date",
+    "start_time": "Start Time",
+    "end_time": "End Time",
+    "status": "Status",
+    "manager": "Manager",
+    "attendants": "Attendants",
+    "assign_rfid": "Assign RFID",
+    "opening_reading": "Opening Reading",
+    "nozzle": "Nozzle",
+    "total_sales": "Total Sales",
+    "status_open": "Open",
+    "status_closed": "Closed",
+    "status_reconciled": "Reconciled"
+  },
+
+  "dispense": {
+    "event": "Dispense Event",
+    "events": "Dispense Events",
+    "nozzle": "Nozzle",
+    "quantity": "Quantity (Ltrs)",
+    "rate": "Rate/Ltr",
+    "amount": "Amount",
+    "payment_mode": "Payment Mode",
+    "cash": "Cash",
+    "upi": "UPI",
+    "credit": "Credit",
+    "card": "Card",
+    "vehicle": "Vehicle Number",
+    "rfid": "RFID Tag",
+    "time": "Time",
+    "event_seq": "Event #"
+  },
+
+  "reconcile": {
+    "title": "Shift Reconciliation",
+    "blind_drop": "Blind Drop",
+    "cash_expected": "Cash Expected",
+    "cash_actual": "Cash Received",
+    "upi_total": "UPI Total",
+    "credit_total": "Credit Total",
+    "variance": "Variance",
+    "remarks": "Remarks",
+    "submit_reco": "Submit Reconciliation",
+    "reco_slip": "Reconciliation Slip",
+    "alert_sent": "Alert Sent",
+    "total_sales": "Total Sales"
+  },
+
+  "corporate": {
+    "title": "Corporate Accounts",
+    "company": "Company",
+    "gst": "GST Number",
+    "contact": "Contact Person",
+    "credit_limit": "Credit Limit",
+    "outstanding": "Outstanding",
+    "available": "Available Credit",
+    "drivers": "Drivers",
+    "add_driver": "Add Driver",
+    "verify_biometric": "Verify Biometric",
+    "vehicle": "Vehicle Number",
+    "fasttag": "FASTag ID",
+    "per_fill_limit": "Per Fill Limit",
+    "statement": "Statement",
+    "daily_summary": "Daily Summary",
+    "monthly_summary": "Monthly Summary"
+  },
+
+  "attendance": {
+    "title": "Attendance",
+    "check_in": "Check In",
+    "check_out": "Check Out",
+    "present": "Present",
+    "absent": "Absent",
+    "half_day": "Half Day",
+    "leave": "Leave",
+    "date": "Date",
+    "employee": "Employee",
+    "shift": "Shift"
+  },
+
+  "dipstick": {
+    "title": "Dipstick Readings",
+    "tank": "Tank",
+    "fuel_type": "Fuel Type",
+    "dip_cm": "Dip (cm)",
+    "volume": "Volume (Ltrs)",
+    "density": "Density (kg/L)",
+    "temperature": "Temperature (°C)",
+    "reading_type": "Reading Type",
+    "opening": "Opening",
+    "mid_shift": "Mid Shift",
+    "closing": "Closing",
+    "record": "Record Reading",
+    "current_stock": "Current Stock"
+  },
+
+  "dashboard": {
+    "today_sales": "Today's Sales",
+    "total_litres": "Total Litres",
+    "open_shifts": "Open Shifts",
+    "alerts": "Alerts",
+    "tank_levels": "Tank Levels",
+    "attendance": "Attendance",
+    "variances": "Variances",
+    "live_events": "Live Dispense Events",
+    "fuel_petrol": "Petrol",
+    "fuel_diesel": "Diesel",
+    "fuel_cng": "CNG",
+    "by_payment": "By Payment Mode"
+  },
+
+  "alert": {
+    "title": "Alerts",
+    "type_variance": "Cash Variance",
+    "type_low_stock": "Low Stock",
+    "type_credit": "Credit Limit",
+    "severity_info": "Info",
+    "severity_warning": "Warning",
+    "severity_critical": "Critical",
+    "acknowledge": "Acknowledge",
+    "unread": "Unread"
+  },
+
+  "fuel_types": {
+    "petrol": "Petrol",
+    "diesel": "Diesel",
+    "cng": "CNG",
+    "premium_petrol": "Premium Petrol"
+  }
+}

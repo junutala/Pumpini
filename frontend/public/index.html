@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pumpini — Control Every Drop. Track Every Rupee.</title>
+<meta name="description" content="India's smartest petrol station management platform. Real-time RFID tracking, cash reconciliation, corporate billing and live dashboards — all in one."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Nunito+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset & tokens ─────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --orange:#FF6B00;
+  --orange-light:#FF8C33;
+  --orange-pale:#FFF3E8;
+  --teal:#1A5F7A;
+  --teal-light:#2A7FA0;
+  --teal-pale:#E8F4F8;
+  --dark:#0F1923;
+  --dark-2:#1C2B38;
+  --mid:#4A6070;
+  --light:#F4F7FA;
+  --white:#FFFFFF;
+  --border:#DDE5EA;
+  --font-display:'Nunito',sans-serif;
+  --font-body:'Nunito Sans',sans-serif;
+  --radius:14px;
+  --shadow:0 4px 24px rgba(15,25,35,.10);
+  --shadow-lg:0 12px 48px rgba(15,25,35,.18);
+}
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--font-body);color:var(--dark);background:var(--white);overflow-x:hidden;line-height:1.6}
+img{max-width:100%;display:block}
+a{text-decoration:none;color:inherit}
+
+/* ── Utility ────────────────────────────────── */
+.container{max-width:1160px;margin:0 auto;padding:0 2rem}
+.tag{display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:99px;font-size:13px;font-weight:700;font-family:var(--font-display);letter-spacing:.03em}
+.tag-orange{background:var(--orange-pale);color:var(--orange)}
+.tag-teal{background:var(--teal-pale);color:var(--teal)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:0 24px;height:48px;border-radius:10px;font-size:15px;font-weight:700;font-family:var(--font-display);cursor:pointer;border:none;transition:all .2s;white-space:nowrap}
+.btn-orange{background:var(--orange);color:#fff}
+.btn-orange:hover{background:var(--orange-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,107,0,.35)}
+.btn-teal{background:var(--teal);color:#fff}
+.btn-teal:hover{background:var(--teal-light);transform:translateY(-1px)}
+.btn-outline{background:transparent;border:2px solid var(--orange);color:var(--orange)}
+.btn-outline:hover{background:var(--orange);color:#fff}
+.btn-white{background:#fff;color:var(--teal)}
+.btn-white:hover{background:var(--teal-pale)}
+.btn-lg{height:56px;padding:0 32px;font-size:16px;border-radius:12px}
+
+/* ── Nav ────────────────────────────────────── */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;transition:all .3s}
+nav.scrolled{background:rgba(255,255,255,.96);backdrop-filter:blur(12px);box-shadow:0 1px 20px rgba(0,0,0,.08)}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;height:68px}
+.nav-logo{display:flex;flex-direction:column;line-height:1}
+.logo-text{font-family:var(--font-display);font-size:28px;font-weight:900;line-height:1}
+.logo-pump{color:var(--orange)}
+.logo-ini{color:var(--teal)}
+.logo-dot{display:inline-block;width:7px;height:7px;background:var(--orange);border-radius:50%;vertical-align:super;margin-left:1px}
+.logo-dot2{background:var(--teal)}
+.logo-tagline{font-size:10px;color:var(--mid);letter-spacing:.05em;margin-top:1px}
+.nav-links{display:flex;align-items:center;gap:2rem;list-style:none}
+.nav-links a{font-size:14px;font-weight:600;color:var(--mid);transition:color .2s}
+.nav-links a:hover{color:var(--orange)}
+.nav-cta{display:flex;gap:10px;align-items:center}
+.hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;padding:4px}
+.hamburger span{width:24px;height:2px;background:var(--dark);border-radius:2px;transition:all .3s}
+
+/* ── Hero ───────────────────────────────────── */
+.hero{min-height:100vh;display:flex;align-items:center;padding-top:68px;position:relative;overflow:hidden}
+.hero-bg{position:absolute;inset:0;background:linear-gradient(135deg,var(--dark) 0%,var(--dark-2) 50%,#0D3347 100%)}
+.hero-orb-1{position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(255,107,0,.25) 0%,transparent 70%);top:-100px;right:-100px;pointer-events:none}
+.hero-orb-2{position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(26,95,122,.4) 0%,transparent 70%);bottom:-80px;left:10%;pointer-events:none}
+.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);background-size:60px 60px;pointer-events:none}
+.hero-inner{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;gap:4rem;align-items:center;padding:5rem 0}
+.hero-badge{margin-bottom:1.5rem}
+.hero-h1{font-family:var(--font-display);font-size:clamp(2.2rem,4.5vw,3.6rem);font-weight:900;color:#fff;line-height:1.1;margin-bottom:1.5rem}
+.hero-h1 .accent{color:var(--orange)}
+.hero-h1 .accent-teal{color:#4DC3E8}
+.hero-sub{font-size:1.1rem;color:rgba(255,255,255,.7);margin-bottom:2.5rem;line-height:1.7;max-width:480px}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:2.5rem}
+.hero-stats{display:flex;gap:2rem;flex-wrap:wrap}
+.stat-item{text-align:left}
+.stat-num{font-family:var(--font-display);font-size:1.6rem;font-weight:900;color:#fff}
+.stat-label{font-size:12px;color:rgba(255,255,255,.5);margin-top:2px}
+
+/* Dashboard mockup */
+.hero-visual{position:relative}
+.mockup-wrap{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:1.5rem;backdrop-filter:blur(10px)}
+.mockup-bar{display:flex;gap:6px;margin-bottom:1rem}
+.mockup-dot{width:10px;height:10px;border-radius:50%}
+.mockup-screen{background:var(--light);border-radius:12px;padding:1rem;min-height:360px}
+.mockup-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.mockup-kpi{background:#fff;border-radius:8px;padding:10px;border-left:3px solid var(--orange)}
+.mockup-kpi.teal{border-left-color:var(--teal)}
+.mockup-kpi.green{border-left-color:#16a34a}
+.mockup-kpi-label{font-size:9px;color:var(--mid);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.mockup-kpi-val{font-size:16px;font-weight:800;font-family:var(--font-display);color:var(--dark);margin-top:2px}
+.mockup-chart{background:#fff;border-radius:8px;padding:10px;margin-bottom:10px}
+.mockup-chart-label{font-size:9px;color:var(--mid);font-weight:600;margin-bottom:8px;text-transform:uppercase}
+.bar-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.bar-name{font-size:8px;color:var(--mid);width:38px}
+.bar-track{flex:1;height:8px;background:var(--light);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px}
+.bar-val{font-size:8px;color:var(--dark);font-weight:700;width:28px;text-align:right}
+.mockup-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mockup-tank{background:#fff;border-radius:8px;padding:8px}
+.mockup-tank-label{font-size:8px;color:var(--mid);font-weight:600;text-transform:uppercase}
+.tank-visual{display:flex;align-items:flex-end;gap:4px;margin-top:6px;height:40px}
+.tank-bar-m{width:100%;background:var(--light);border-radius:3px;overflow:hidden;height:100%;display:flex;flex-direction:column;justify-content:flex-end}
+.tank-fill-m{border-radius:3px}
+.live-box{background:#fff;border-radius:8px;padding:8px}
+.live-label{font-size:8px;color:var(--mid);font-weight:600;display:flex;align-items:center;gap:4px}
+.live-dot-m{width:5px;height:5px;border-radius:50%;background:#16a34a;animation:pulse-m 1.5s infinite}
+@keyframes pulse-m{0%,100%{opacity:1}50%{opacity:.3}}
+.live-event{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--light);font-size:7.5px}
+.live-event:last-child{border:none}
+
+/* ── Section commons ────────────────────────── */
+section{padding:6rem 0}
+.section-header{text-align:center;max-width:640px;margin:0 auto 4rem}
+.section-title{font-family:var(--font-display);font-size:clamp(1.7rem,3vw,2.6rem);font-weight:900;color:var(--dark);line-height:1.2;margin-bottom:1rem}
+.section-sub{font-size:1rem;color:var(--mid);line-height:1.7}
+
+/* ── Features ───────────────────────────────── */
+.features{background:var(--white)}
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+.feature-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--radius);padding:1.75rem;transition:all .25s;position:relative;overflow:hidden}
+.feature-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--orange);transform:scaleX(0);transform-origin:left;transition:transform .3s}
+.feature-card:hover{border-color:transparent;box-shadow:var(--shadow-lg);transform:translateY(-4px)}
+.feature-card:hover::before{transform:scaleX(1)}
+.feature-card.teal-accent::before{background:var(--teal)}
+.feature-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:1.25rem}
+.feature-icon.orange{background:var(--orange-pale)}
+.feature-icon.teal{background:var(--teal-pale)}
+.feature-title{font-family:var(--font-display);font-size:1.05rem;font-weight:800;margin-bottom:.5rem;color:var(--dark)}
+.feature-desc{font-size:14px;color:var(--mid);line-height:1.6}
+
+/* ── How it works ───────────────────────────── */
+.how{background:var(--dark);position:relative;overflow:hidden}
+.how::before{content:'';position:absolute;top:0;right:0;width:50%;height:100%;background:linear-gradient(135deg,transparent,rgba(255,107,0,.06));pointer-events:none}
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem;position:relative}
+.steps-grid::before{content:'';position:absolute;top:36px;left:calc(12.5% + 36px);right:calc(12.5% + 36px);height:2px;background:linear-gradient(90deg,var(--orange),var(--teal));z-index:0}
+.step-card{text-align:center;position:relative;z-index:1}
+.step-num{width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;font-family:var(--font-display);font-size:1.4rem;font-weight:900;border:2px solid}
+.step-num.s1,.step-num.s3{background:var(--orange-pale);color:var(--orange);border-color:var(--orange)}
+.step-num.s2,.step-num.s4{background:var(--teal-pale);color:var(--teal);border-color:var(--teal)}
+.step-title{font-family:var(--font-display);font-size:.95rem;font-weight:800;color:#fff;margin-bottom:.5rem}
+.step-desc{font-size:13px;color:rgba(255,255,255,.5);line-height:1.6}
+
+/* ── Who it's for ───────────────────────────── */
+.personas{background:var(--light)}
+.personas-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem}
+.persona-card{background:var(--white);border-radius:var(--radius);padding:2rem;display:flex;gap:1.5rem;align-items:flex-start;border:1.5px solid var(--border);transition:all .25s}
+.persona-card:hover{box-shadow:var(--shadow);border-color:var(--orange);transform:translateY(-2px)}
+.persona-emoji{font-size:2.5rem;flex-shrink:0;width:64px;height:64px;display:flex;align-items:center;justify-content:center;background:var(--orange-pale);border-radius:14px}
+.persona-title{font-family:var(--font-display);font-size:1.1rem;font-weight:800;margin-bottom:.4rem;color:var(--dark)}
+.persona-role{font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem}
+.persona-list{list-style:none;font-size:14px;color:var(--mid)}
+.persona-list li{padding:3px 0;padding-left:16px;position:relative}
+.persona-list li::before{content:'✓';position:absolute;left:0;color:var(--orange);font-weight:700}
+
+/* ── Testimonials ───────────────────────────── */
+.testimonials{background:var(--white)}
+.testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+.testi-card{background:var(--light);border-radius:var(--radius);padding:1.75rem;position:relative}
+.testi-card::before{content:'"';font-size:5rem;font-family:var(--font-display);font-weight:900;color:var(--orange);opacity:.15;position:absolute;top:0;left:1rem;line-height:1}
+.testi-text{font-size:14.5px;color:var(--mid);line-height:1.7;margin-bottom:1.25rem;position:relative;z-index:1}
+.testi-author{display:flex;align-items:center;gap:10px}
+.testi-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:700;font-family:var(--font-display);color:#fff}
+.testi-name{font-weight:700;font-size:14px;color:var(--dark)}
+.testi-station{font-size:12px;color:var(--mid)}
+.stars{color:var(--orange);font-size:13px;margin-bottom:.75rem}
+
+/* ── CTA banner ─────────────────────────────── */
+.cta-banner{background:linear-gradient(135deg,var(--orange) 0%,#FF8C33 50%,#FFB347 100%);padding:5rem 0;position:relative;overflow:hidden}
+.cta-banner::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.06'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");pointer-events:none}
+.cta-inner{text-align:center;position:relative;z-index:1}
+.cta-title{font-family:var(--font-display);font-size:clamp(1.8rem,3vw,2.8rem);font-weight:900;color:#fff;margin-bottom:1rem}
+.cta-sub{font-size:1.05rem;color:rgba(255,255,255,.85);margin-bottom:2rem}
+.cta-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* ── Contact ────────────────────────────────── */
+.contact{background:var(--light)}
+.contact-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:4rem;align-items:start}
+.contact-info h2{font-family:var(--font-display);font-size:2rem;font-weight:900;color:var(--dark);margin-bottom:1rem}
+.contact-info p{color:var(--mid);line-height:1.7;margin-bottom:2rem}
+.contact-item{display:flex;gap:12px;align-items:flex-start;margin-bottom:1.25rem}
+.contact-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.contact-icon.orange{background:var(--orange-pale)}
+.contact-icon.teal{background:var(--teal-pale)}
+.contact-label{font-size:12px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.05em}
+.contact-val{font-size:15px;font-weight:600;color:var(--dark);margin-top:2px}
+.contact-form{background:var(--white);border-radius:20px;padding:2.5rem;box-shadow:var(--shadow)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.form-group{margin-bottom:1.25rem}
+.form-group label{display:block;font-size:13px;font-weight:700;color:var(--dark);margin-bottom:6px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:14px;font-family:var(--font-body);color:var(--dark);background:var(--white);transition:border-color .2s;outline:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--orange)}
+.form-group textarea{resize:vertical;min-height:100px}
+.form-submit{width:100%;height:52px;background:var(--orange);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;font-family:var(--font-display);cursor:pointer;transition:all .2s}
+.form-submit:hover{background:var(--orange-light);transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,107,0,.35)}
+.form-success{display:none;text-align:center;padding:2rem}
+.form-success .check{font-size:3rem;margin-bottom:1rem}
+.form-success h3{font-family:var(--font-display);font-weight:800;color:var(--dark);margin-bottom:.5rem}
+.form-success p{color:var(--mid);font-size:14px}
+
+/* ── Footer ─────────────────────────────────── */
+footer{background:var(--dark);padding:4rem 0 2rem;color:rgba(255,255,255,.6)}
+.footer-top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:3rem;margin-bottom:3rem}
+.footer-brand p{font-size:14px;line-height:1.7;color:rgba(255,255,255,.5);margin-top:.75rem;max-width:260px}
+.footer-col h4{font-family:var(--font-display);font-weight:800;color:#fff;margin-bottom:1rem;font-size:14px}
+.footer-col ul{list-style:none}
+.footer-col li{margin-bottom:.5rem}
+.footer-col a{font-size:14px;color:rgba(255,255,255,.5);transition:color .2s}
+.footer-col a:hover{color:var(--orange)}
+.footer-bottom{border-top:1px solid rgba(255,255,255,.08);padding-top:1.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+.footer-bottom p{font-size:13px}
+.footer-langs{display:flex;gap:8px;flex-wrap:wrap}
+.lang-pill{font-size:11px;padding:3px 10px;border-radius:99px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)}
+
+/* ── Login modal ────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,25,35,.7);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s;backdrop-filter:blur(4px)}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:#fff;border-radius:20px;padding:2.5rem;width:100%;max-width:420px;box-shadow:var(--shadow-lg);transform:translateY(20px);transition:transform .3s}
+.modal-overlay.open .modal{transform:translateY(0)}
+.modal-logo{text-align:center;margin-bottom:1.75rem}
+.modal-title{font-family:var(--font-display);font-size:1.5rem;font-weight:900;color:var(--dark);margin-bottom:.4rem}
+.modal-sub{font-size:13px;color:var(--mid)}
+.modal-close{position:absolute;top:1rem;right:1rem;width:32px;height:32px;border-radius:50%;background:var(--light);border:none;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:background .2s}
+.modal-close:hover{background:var(--border)}
+.modal-wrap{position:relative}
+.modal-footer{text-align:center;margin-top:1.25rem;font-size:13px;color:var(--mid)}
+.modal-footer a{color:var(--orange);font-weight:700}
+
+/* ── Animations ─────────────────────────────── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+.fade-up{opacity:0;animation:fadeUp .7s forwards}
+.fade-up-1{animation-delay:.1s}
+.fade-up-2{animation-delay:.2s}
+.fade-up-3{animation-delay:.3s}
+.float{animation:float 4s ease-in-out infinite}
+
+/* ── Mobile nav ─────────────────────────────── */
+.mobile-nav{position:fixed;top:68px;left:0;right:0;background:#fff;padding:1rem 2rem;box-shadow:var(--shadow);transform:translateY(-120%);transition:transform .3s;z-index:199}
+.mobile-nav.open{transform:translateY(0)}
+.mobile-nav ul{list-style:none;display:flex;flex-direction:column;gap:.5rem}
+.mobile-nav a{display:block;padding:.75rem;font-weight:600;color:var(--dark);border-radius:8px;transition:background .2s}
+.mobile-nav a:hover{background:var(--light)}
+.mobile-nav .btn{width:100%;justify-content:center;margin-top:.5rem}
+
+/* ── Responsive ─────────────────────────────── */
+@media(max-width:1024px){
+  .features-grid{grid-template-columns:repeat(2,1fr)}
+  .steps-grid{grid-template-columns:repeat(2,1fr)}
+  .steps-grid::before{display:none}
+  .footer-top{grid-template-columns:1fr 1fr}
+}
+@media(max-width:768px){
+  .hero-inner{grid-template-columns:1fr;text-align:center;padding:3rem 0}
+  .hero-sub{margin:0 auto 2rem}
+  .hero-actions{justify-content:center}
+  .hero-stats{justify-content:center}
+  .hero-visual{display:none}
+  .features-grid{grid-template-columns:1fr}
+  .personas-grid{grid-template-columns:1fr}
+  .testi-grid{grid-template-columns:1fr}
+  .contact-grid{grid-template-columns:1fr}
+  .form-row{grid-template-columns:1fr}
+  .footer-top{grid-template-columns:1fr}
+  .footer-bottom{flex-direction:column;text-align:center}
+  .nav-links,.nav-cta{display:none}
+  .hamburger{display:flex}
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav id="navbar">
+  <div class="container">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <div class="logo-text">
+          <span class="logo-pump">pump</span><span class="logo-ini">ini</span>
+        </div>
+        <div class="logo-tagline">control every drop. track every rupee.</div>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how">How It Works</a></li>
+        <li><a href="#for-whom">Who It's For</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+      <div class="nav-cta">
+        <button class="btn btn-outline" onclick="openLogin()">Login</button>
+        <a href="#contact" class="btn btn-orange">Get Demo</a>
+      </div>
+      <div class="hamburger" id="hamburger" onclick="toggleMobileNav()">
+        <span></span><span></span><span></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Mobile nav -->
+<div class="mobile-nav" id="mobileNav">
+  <ul>
+    <li><a href="#features" onclick="toggleMobileNav()">Features</a></li>
+    <li><a href="#how" onclick="toggleMobileNav()">How It Works</a></li>
+    <li><a href="#for-whom" onclick="toggleMobileNav()">Who It's For</a></li>
+    <li><a href="#contact" onclick="toggleMobileNav()">Contact</a></li>
+  </ul>
+  <button class="btn btn-outline" onclick="openLogin();toggleMobileNav()">Login</button>
+  <a href="#contact" class="btn btn-orange" onclick="toggleMobileNav()">Get Demo</a>
+</div>
+
+<!-- ── HERO ── -->
+<section class="hero" id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-orb-1"></div>
+  <div class="hero-orb-2"></div>
+  <div class="hero-grid"></div>
+  <div class="container">
+    <div class="hero-inner">
+      <div class="hero-content">
+        <div class="hero-badge fade-up fade-up-1">
+          <span class="tag tag-orange">🇮🇳 Made for India</span>
+        </div>
+        <h1 class="hero-h1 fade-up fade-up-2">
+          The Smartest Way to<br/>
+          Run a <span class="accent">Petrol Station</span><br/>
+          in <span class="accent-teal">India</span>
+        </h1>
+        <p class="hero-sub fade-up fade-up-3">
+          RFID shift tracking, live cash reconciliation, corporate credit billing, 
+          dipstick stock management — all in one platform. In 6 languages.
+        </p>
+        <div class="hero-actions fade-up fade-up-3">
+          <a href="#contact" class="btn btn-orange btn-lg">🚀 Get Free Demo</a>
+          <button class="btn btn-white btn-lg" onclick="openLogin()">Login to Dashboard</button>
+        </div>
+        <div class="hero-stats fade-up fade-up-3">
+          <div class="stat-item">
+            <div class="stat-num">6</div>
+            <div class="stat-label">Languages</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num">₹50</div>
+            <div class="stat-label">Variance Alert</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-num">Real‑time</div>
+            <div class="stat-label">RFID Tracking</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard mockup -->
+      <div class="hero-visual float">
+        <div class="mockup-wrap">
+          <div class="mockup-bar">
+            <div class="mockup-dot" style="background:#ff5f57"></div>
+            <div class="mockup-dot" style="background:#ffbd2e"></div>
+            <div class="mockup-dot" style="background:#28c840"></div>
+          </div>
+          <div class="mockup-screen">
+            <div class="mockup-kpi-row">
+              <div class="mockup-kpi">
+                <div class="mockup-kpi-label">Today's Sales</div>
+                <div class="mockup-kpi-val">₹1.24L</div>
+              </div>
+              <div class="mockup-kpi teal">
+                <div class="mockup-kpi-label">Total Litres</div>
+                <div class="mockup-kpi-val">1,182L</div>
+              </div>
+              <div class="mockup-kpi green">
+                <div class="mockup-kpi-label">Open Shifts</div>
+                <div class="mockup-kpi-val">2</div>
+              </div>
+            </div>
+            <div class="mockup-chart">
+              <div class="mockup-chart-label">Sales by Fuel</div>
+              <div class="bar-row">
+                <div class="bar-name">Petrol</div>
+                <div class="bar-track"><div class="bar-fill" style="width:78%;background:#FF6B00;height:100%"></div></div>
+                <div class="bar-val">₹96K</div>
+              </div>
+              <div class="bar-row">
+                <div class="bar-name">Diesel</div>
+                <div class="bar-track"><div class="bar-fill" style="width:45%;background:#1A5F7A;height:100%"></div></div>
+                <div class="bar-val">₹28K</div>
+              </div>
+              <div class="bar-row">
+                <div class="bar-name">Premium</div>
+                <div class="bar-track"><div class="bar-fill" style="width:20%;background:#8b5cf6;height:100%"></div></div>
+                <div class="bar-val">₹8K</div>
+              </div>
+            </div>
+            <div class="mockup-row">
+              <div class="mockup-tank">
+                <div class="mockup-tank-label">Tank Levels</div>
+                <div class="tank-visual">
+                  <div style="flex:1"><div class="tank-bar-m"><div class="tank-fill-m" style="height:68%;background:#FF6B00"></div></div><div style="font-size:7px;text-align:center;margin-top:2px;color:#4A6070">68%</div></div>
+                  <div style="flex:1"><div class="tank-bar-m"><div class="tank-fill-m" style="height:45%;background:#1A5F7A"></div></div><div style="font-size:7px;text-align:center;margin-top:2px;color:#4A6070">45%</div></div>
+                  <div style="flex:1"><div class="tank-bar-m"><div class="tank-fill-m" style="height:82%;background:#8b5cf6"></div></div><div style="font-size:7px;text-align:center;margin-top:2px;color:#4A6070">82%</div></div>
+                </div>
+              </div>
+              <div class="live-box">
+                <div class="live-label"><div class="live-dot-m"></div> Live Events</div>
+                <div style="margin-top:6px">
+                  <div class="live-event"><span>Arjun · N3</span><span style="color:#FF6B00;font-weight:700">₹824</span></div>
+                  <div class="live-event"><span>Muthu · N1</span><span style="color:#FF6B00;font-weight:700">₹1,250</span></div>
+                  <div class="live-event"><span>Selvam · N2</span><span style="color:#FF6B00;font-weight:700">₹540</span></div>
+                  <div class="live-event"><span>Arjun · N3</span><span style="color:#FF6B00;font-weight:700">₹980</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-header">
+      <div class="tag tag-orange" style="margin-bottom:1rem">Everything You Need</div>
+      <h2 class="section-title">Built for the Real Challenges of Running a Petrol Station</h2>
+      <p class="section-sub">From the nozzle to the owner's phone — every rupee tracked, every litre accounted for.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon orange">⚡</div>
+        <div class="feature-title">RFID Shift Tracking</div>
+        <div class="feature-desc">Each attendant taps their RFID card to activate their nozzle. Every dispense event is captured automatically — no manual entry, no leakage.</div>
+      </div>
+      <div class="feature-card teal-accent">
+        <div class="feature-icon teal">💰</div>
+        <div class="feature-title">Blind-Drop Reconciliation</div>
+        <div class="feature-desc">Attendants submit cash without seeing expected totals. Variances over ₹50 trigger instant WhatsApp/SMS alerts to the owner and manager.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">🏢</div>
+        <div class="feature-title">Corporate Credit Sales</div>
+        <div class="feature-desc">Manage company accounts with credit limits. Biometric driver verification, FASTag reading, per-fill limits, and automated monthly statements.</div>
+      </div>
+      <div class="feature-card teal-accent">
+        <div class="feature-icon teal">📊</div>
+        <div class="feature-title">Live Owner Dashboard</div>
+        <div class="feature-desc">Real-time sales by fuel type, payment mode, tank levels, attendance, and shift variances — all visible from your phone, anywhere.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">⛽</div>
+        <div class="feature-title">Dipstick & Stock Management</div>
+        <div class="feature-desc">Record opening/closing dip readings with density and temperature. Track shrinkage, deliveries, and get alerts when tank levels fall low.</div>
+      </div>
+      <div class="feature-card teal-accent">
+        <div class="feature-icon teal">👥</div>
+        <div class="feature-title">Attendance & HR</div>
+        <div class="feature-desc">Mark daily check-in/out per shift, manage leave, and get a complete attendance roster. Quick-mark for managers right from the dashboard.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">🌐</div>
+        <div class="feature-title">6 Indian Languages</div>
+        <div class="feature-desc">Full support for English, हिन्दी, தமிழ், తెలుగు, ಕನ್ನಡ, and मराठी. Attendants use the app in their own language.</div>
+      </div>
+      <div class="feature-card teal-accent">
+        <div class="feature-icon teal">📱</div>
+        <div class="feature-title">WhatsApp Alerts</div>
+        <div class="feature-desc">Instant notifications for cash variance, low stock, credit limit breach — delivered to the owner's WhatsApp and SMS in real time.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon orange">📈</div>
+        <div class="feature-title">Reports & CSV Export</div>
+        <div class="feature-desc">Date-range reports with fuel-wise, payment-wise breakdowns. Export to CSV for your accountant or oil company audits.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="how" id="how">
+  <div class="container">
+    <div class="section-header">
+      <div class="tag tag-orange" style="margin-bottom:1rem">Simple to Deploy</div>
+      <h2 class="section-title" style="color:#fff">Up and Running in One Day</h2>
+      <p class="section-sub" style="color:rgba(255,255,255,.55)">No complex hardware. No long IT projects. Pumpini works with your existing setup.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-num s1">1</div>
+        <div class="step-title">Register Your Station</div>
+        <div class="step-desc">Add your station, tanks, nozzles, fuel prices, and staff users in minutes from the settings page.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num s2">2</div>
+        <div class="step-title">Issue RFID Tags</div>
+        <div class="step-desc">Assign one RFID card to each attendant. Tap to assign to a nozzle at shift start — that's it.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num s3">3</div>
+        <div class="step-title">Track in Real Time</div>
+        <div class="step-desc">Every sale, every litre, every rupee appears live on the manager dashboard and your phone.</div>
+      </div>
+      <div class="step-card">
+        <div class="step-num s4">4</div>
+        <div class="step-title">Close & Reconcile</div>
+        <div class="step-desc">Attendant submits blind cash drop. System computes variance and alerts you instantly if anything's off.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOR WHOM ── -->
+<section class="personas" id="for-whom">
+  <div class="container">
+    <div class="section-header">
+      <div class="tag tag-teal" style="margin-bottom:1rem">Role-Based Access</div>
+      <h2 class="section-title">Built for Everyone at the Station</h2>
+      <p class="section-sub">Every role gets a tailored view — only what they need, nothing they don't.</p>
+    </div>
+    <div class="personas-grid">
+      <div class="persona-card">
+        <div class="persona-emoji">👑</div>
+        <div>
+          <div class="persona-role">Owner</div>
+          <div class="persona-title">Full Visibility, Anywhere</div>
+          <ul class="persona-list">
+            <li>Real-time sales & tank levels from your phone</li>
+            <li>Instant alerts for cash variance or credit breach</li>
+            <li>Manage all stations from one account</li>
+            <li>Monthly P&L reports and CSV exports</li>
+          </ul>
+        </div>
+      </div>
+      <div class="persona-card">
+        <div class="persona-emoji">🧑‍💼</div>
+        <div>
+          <div class="persona-role">Manager</div>
+          <div class="persona-title">Run the Shift Smoothly</div>
+          <ul class="persona-list">
+            <li>Open/close shifts and assign RFID tags</li>
+            <li>Live nozzle-by-nozzle dispense feed</li>
+            <li>Review and close reconciliation slips</li>
+            <li>Attendance marking for the whole team</li>
+          </ul>
+        </div>
+      </div>
+      <div class="persona-card">
+        <div class="persona-emoji">⛽</div>
+        <div>
+          <div class="persona-role">Attendant</div>
+          <div class="persona-title">Simple, In Your Language</div>
+          <ul class="persona-list">
+            <li>Tap RFID to start shift — no app login needed</li>
+            <li>Submit blind cash drop at end of shift</li>
+            <li>View own dispense summary any time</li>
+            <li>Full UI in Tamil, Hindi, Telugu and more</li>
+          </ul>
+        </div>
+      </div>
+      <div class="persona-card">
+        <div class="persona-emoji">🏢</div>
+        <div>
+          <div class="persona-role">Corporate Client</div>
+          <div class="persona-title">Fuel Your Fleet Hassle-Free</div>
+          <ul class="persona-list">
+            <li>Biometric driver verification at the nozzle</li>
+            <li>Per-driver and per-fill limits enforced automatically</li>
+            <li>Automated monthly statement by email</li>
+            <li>Real-time credit usage dashboard</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TESTIMONIALS ── -->
+<section class="testimonials">
+  <div class="container">
+    <div class="section-header">
+      <div class="tag tag-orange" style="margin-bottom:1rem">Early Adopters</div>
+      <h2 class="section-title">What Station Owners Are Saying</h2>
+    </div>
+    <div class="testi-grid">
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <div class="testi-text">Before Pumpini, cash shortages were a daily headache. Now I get a WhatsApp the moment there's a variance. My manager loves the shift dashboard.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:var(--orange)">R</div>
+          <div>
+            <div class="testi-name">Rajesh Venkataraman</div>
+            <div class="testi-station">HPCL Station, Coimbatore</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <div class="testi-text">Corporate billing used to take 3 days every month. Now it's automatic. Drivers tap their biometric and the system handles the rest.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:var(--teal)">S</div>
+          <div>
+            <div class="testi-name">Suresh Patel</div>
+            <div class="testi-station">BPCL Dealer, Surat</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <div class="testi-text">My attendants use it in Tamil. The blind-drop feature has completely eliminated disputes. The dipstick stock feature saves us hours every week.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#8b5cf6">M</div>
+          <div>
+            <div class="testi-name">Murugesan K</div>
+            <div class="testi-station">IOC Outlet, Chennai</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA BANNER ── -->
+<div class="cta-banner">
+  <div class="container">
+    <div class="cta-inner">
+      <h2 class="cta-title">Ready to Control Every Drop?</h2>
+      <p class="cta-sub">Join petrol station owners across India who trust Pumpini to run tighter operations.</p>
+      <div class="cta-actions">
+        <a href="#contact" class="btn btn-white btn-lg">📅 Book a Free Demo</a>
+        <button class="btn btn-lg" style="background:rgba(255,255,255,.15);color:#fff;border:2px solid rgba(255,255,255,.4)" onclick="openLogin()">Login to Dashboard</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONTACT ── -->
+<section class="contact" id="contact">
+  <div class="container">
+    <div class="contact-grid">
+      <div class="contact-info">
+        <div class="tag tag-teal" style="margin-bottom:1rem">Get in Touch</div>
+        <h2>Let's Get Your Station Live</h2>
+        <p>Book a free 30-minute demo and we'll show you exactly how Pumpini works for your station setup — HPCL, BPCL, or IOC.</p>
+        <div class="contact-item">
+          <div class="contact-icon orange">📧</div>
+          <div>
+            <div class="contact-label">Email</div>
+            <div class="contact-val">hello@pumpini.in</div>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon teal">💬</div>
+          <div>
+            <div class="contact-label">WhatsApp</div>
+            <div class="contact-val">+91 98765 43210</div>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon orange">🕐</div>
+          <div>
+            <div class="contact-label">Support Hours</div>
+            <div class="contact-val">Mon–Sat, 8 AM – 8 PM IST</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="contact-form">
+        <div id="contactForm">
+          <h3 style="font-family:var(--font-display);font-weight:900;font-size:1.3rem;margin-bottom:.25rem">Book a Free Demo</h3>
+          <p style="font-size:13px;color:var(--mid);margin-bottom:1.5rem">We'll set up a personalized demo for your station within 24 hours.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Your Name *</label>
+              <input type="text" placeholder="Rajesh Kumar" required id="fname"/>
+            </div>
+            <div class="form-group">
+              <label>Phone *</label>
+              <input type="tel" placeholder="+91 98765 43210" required id="fphone"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" placeholder="you@example.com" id="femail"/>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Oil Company</label>
+              <select id="foil">
+                <option value="">Select...</option>
+                <option>HPCL</option><option>BPCL</option><option>IOC</option><option>Other</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Number of Nozzles</label>
+              <select id="fnozzles">
+                <option value="">Select...</option>
+                <option>1–4</option><option>5–8</option><option>9–12</option><option>12+</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Tell us about your station</label>
+            <textarea placeholder="City, current challenges, anything you'd like us to know..." id="fmsg"></textarea>
+          </div>
+          <button class="form-submit" onclick="submitForm()">🚀 Book My Free Demo</button>
+        </div>
+        <div class="form-success" id="formSuccess">
+          <div class="check">✅</div>
+          <h3>We've received your request!</h3>
+          <p>Our team will WhatsApp you within a few hours to schedule your personalized demo.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="logo-text" style="font-size:24px">
+          <span class="logo-pump">pump</span><span class="logo-ini">ini</span>
+        </div>
+        <p>India's smartest petrol station management platform. Control every drop. Track every rupee.</p>
+        <div class="footer-langs" style="margin-top:1rem">
+          <span class="lang-pill">English</span>
+          <span class="lang-pill">हिन्दी</span>
+          <span class="lang-pill">தமிழ்</span>
+          <span class="lang-pill">తెలుగు</span>
+          <span class="lang-pill">ಕನ್ನಡ</span>
+          <span class="lang-pill">मराठी</span>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how">How It Works</a></li>
+          <li><a href="#for-whom">Who It's For</a></li>
+          <li><a href="#contact">Pricing</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Platform</h4>
+        <ul>
+          <li><a href="#">Dashboard Login</a></li>
+          <li><a href="#">Documentation</a></li>
+          <li><a href="#">API Reference</a></li>
+          <li><a href="#">Release Notes</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#">About Us</a></li>
+          <li><a href="#contact">Contact</a></li>
+          <li><a href="#">Privacy Policy</a></li>
+          <li><a href="#">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 Pumpini. All rights reserved. Made with ❤️ in India.</p>
+      <p style="font-size:12px">HPCL · BPCL · IOC compatible</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ── LOGIN MODAL ── -->
+<div class="modal-overlay" id="loginModal" onclick="handleOverlayClick(event)">
+  <div class="modal modal-wrap">
+    <button class="modal-close" onclick="closeLogin()">✕</button>
+    <div class="modal-logo">
+      <div class="logo-text" style="font-size:26px;justify-content:center;display:flex">
+        <span class="logo-pump">pump</span><span class="logo-ini">ini</span>
+      </div>
+    </div>
+    <div style="text-align:center;margin-bottom:1.5rem">
+      <div class="modal-title">Welcome back</div>
+      <div class="modal-sub">Sign in to your station dashboard</div>
+    </div>
+    <div class="form-group">
+      <label>Phone Number</label>
+      <input type="tel" placeholder="+91 98765 43210" id="loginPhone" style="font-size:15px"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" placeholder="••••••••" id="loginPass" style="font-size:15px"/>
+    </div>
+    <div style="margin-bottom:1.25rem;text-align:right">
+      <a href="#" style="font-size:13px;color:var(--orange);font-weight:700">Forgot password?</a>
+    </div>
+    <button class="form-submit" id="loginBtn" onclick="handleLogin()">Login to Dashboard</button>
+    <div class="modal-footer">
+      Don't have an account? <a href="#contact">Request access →</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// Nav scroll
+window.addEventListener('scroll',()=>{
+  document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>40);
+});
+
+// Mobile nav
+function toggleMobileNav(){
+  document.getElementById('mobileNav').classList.toggle('open');
+}
+
+// Login modal
+function openLogin(){document.getElementById('loginModal').classList.add('open')}
+function closeLogin(){document.getElementById('loginModal').classList.remove('open')}
+function handleOverlayClick(e){if(e.target===e.currentTarget)closeLogin()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLogin()});
+
+function handleLogin(){
+  const phone=document.getElementById('loginPhone').value;
+  const pass=document.getElementById('loginPass').value;
+  if(!phone||!pass){alert('Please enter your phone and password');return}
+  const btn=document.getElementById('loginBtn');
+  btn.textContent='Signing in...';btn.disabled=true;
+  // Redirect to dashboard app
+  setTimeout(()=>{window.location.href='/dashboard'},800);
+}
+
+// Contact form
+function submitForm(){
+  const name=document.getElementById('fname').value;
+  const phone=document.getElementById('fphone').value;
+  if(!name||!phone){alert('Please fill in Name and Phone');return}
+  document.getElementById('contactForm').style.display='none';
+  document.getElementById('formSuccess').style.display='block';
+  // In production: POST to /api/contact or a form service
+}
+
+// Intersection observer for fade-up on feature cards
+const observer=new IntersectionObserver(entries=>{
+  entries.forEach(e=>{if(e.isIntersecting){e.target.style.animation='fadeUp .6s forwards';e.target.style.opacity='0'}});
+},{threshold:.1});
+document.querySelectorAll('.feature-card,.persona-card,.testi-card,.step-card').forEach(el=>{
+  el.style.opacity='0';
+  observer.observe(el);
+});
+</script>
+</body>
+</html>
