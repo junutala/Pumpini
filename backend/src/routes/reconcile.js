@@ -78,3 +78,19 @@ router.get('/:shift_id', authenticate, async (req, res, next) => {
 });
 
 module.exports = router;
+
+// POST /api/reconcile/denomination
+router.post('/denomination', authenticate, async (req, res, next) => {
+  try {
+    const { shift_id, attendant_id, note_500=0, note_200=0, note_100=0, note_50=0, note_20=0, note_10=0, note_5=0, note_2=0, note_1=0 } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO cash_denominations(shift_id,attendant_id,note_500,note_200,note_100,note_50,note_20,note_10,note_5,note_2,note_1)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
+         note_500=$3,note_200=$4,note_100=$5,note_50=$6,note_20=$7,note_10=$8,note_5=$9,note_2=$10,note_1=$11,recorded_at=NOW()
+       RETURNING *`,
+      [shift_id,attendant_id,note_500,note_200,note_100,note_50,note_20,note_10,note_5,note_2,note_1]
+    );
+    res.status(201).json(rows[0]);
+  } catch(err) { next(err); }
+});

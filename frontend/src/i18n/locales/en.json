@@ -16,7 +16,6 @@
   "filter": "Filter",
   "export": "Export",
   "print": "Print",
-
   "nav": {
     "dashboard": "Dashboard",
     "shifts": "Shifts",
@@ -29,7 +28,6 @@
     "reports": "Reports",
     "settings": "Settings"
   },
-
   "roles": {
     "owner": "Owner",
     "manager": "Manager",
@@ -37,7 +35,6 @@
     "rsa": "Retail Sales Agent",
     "corporate": "Corporate"
   },
-
   "shift": {
     "open": "Open Shift",
     "close": "Close Shift",
@@ -57,7 +54,6 @@
     "status_closed": "Closed",
     "status_reconciled": "Reconciled"
   },
-
   "dispense": {
     "event": "Dispense Event",
     "events": "Dispense Events",
@@ -75,7 +71,6 @@
     "time": "Time",
     "event_seq": "Event #"
   },
-
   "reconcile": {
     "title": "Shift Reconciliation",
     "blind_drop": "Blind Drop",
@@ -90,7 +85,6 @@
     "alert_sent": "Alert Sent",
     "total_sales": "Total Sales"
   },
-
   "corporate": {
     "title": "Corporate Accounts",
     "company": "Company",
@@ -109,7 +103,6 @@
     "daily_summary": "Daily Summary",
     "monthly_summary": "Monthly Summary"
   },
-
   "attendance": {
     "title": "Attendance",
     "check_in": "Check In",
@@ -122,7 +115,6 @@
     "employee": "Employee",
     "shift": "Shift"
   },
-
   "dipstick": {
     "title": "Dipstick Readings",
     "tank": "Tank",
@@ -138,7 +130,6 @@
     "record": "Record Reading",
     "current_stock": "Current Stock"
   },
-
   "dashboard": {
     "today_sales": "Today's Sales",
     "total_litres": "Total Litres",
@@ -153,7 +144,6 @@
     "fuel_cng": "CNG",
     "by_payment": "By Payment Mode"
   },
-
   "alert": {
     "title": "Alerts",
     "type_variance": "Cash Variance",
@@ -165,11 +155,11 @@
     "acknowledge": "Acknowledge",
     "unread": "Unread"
   },
-
   "fuel_types": {
     "petrol": "Petrol",
     "diesel": "Diesel",
     "cng": "CNG",
-    "premium_petrol": "Premium Petrol"
+    "premium_petrol": "Premium Petrol",
+    "lubes": "Lubes"
   }
 }

@@ -1,75 +1,145 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, CheckCircle, X } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getAttendance, markAttendance, getUsers } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
-const STATUS_COLORS = { present: 'badge-success', absent: 'badge-danger', half_day: 'badge-warning', leave: 'badge-gray' };
+const STATUS_COLORS = { present:'badge-success', absent:'badge-danger', half_day:'badge-warning', leave:'badge-gray' };
+const DENOMS = [500,200,100,50,20,10,5,2,1];
+
+// IST helpers
+const nowIST = () => {
+  const now = new Date();
+  const ist = new Date(now.getTime() + (5.5*60*60*1000));
+  return ist.toISOString().slice(0,16);
+};
+const toIST = (ts) => {
+  if(!ts) return '—';
+  return new Date(ts).toLocaleString('en-IN',{
+    timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true
+  });
+};
+const todayIST = () => {
+  return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+};
 
 export default function AttendancePage() {
   const { t } = useTranslation();
   const { user, station } = useAuth();
-  const stationId = typeof station === 'object' ? station?.id : station;
-  const today = new Date().toISOString().slice(0, 10);
+  const stationId = typeof station==='object'?station?.id:station;
 
-  const [date, setDate]         = useState(today);
-  const [records, setRecords]   = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [showMark, setShowMark] = useState(false);
-  const [form, setForm]         = useState({ date: today, shift_number: 1, status: 'present' });
-  const [loading, setLoading]   = useState(false);
+  const [date,setDate]           = useState(todayIST());
+  const [records,setRecords]     = useState([]);
+  const [employees,setEmployees] = useState([]);
+  const [saving,setSaving]       = useState({});
+  const [shiftFilter,setShiftFilter] = useState(1);
 
-  const load = async () => {
-    if (!stationId) return;
-    const rows = await getAttendance({ station_id: stationId, date });
-    setRecords(rows);
+  // Bulk quick-mark state
+  const [bulkStatus,setBulkStatus] = useState({});
+  const [bulkCheckin,setBulkCheckin] = useState({});
+  const [bulkCheckout,setBulkCheckout] = useState({});
+
+  const load = async() => {
+    if(!stationId) return;
+    const [r,e] = await Promise.all([
+      getAttendance({station_id:stationId,date}),
+      getUsers({station_id:stationId}),
+    ]);
+    setRecords(r); setEmployees(e);
+    // Pre-fill bulk state
+    const statusMap={}, cinMap={}, coutMap={};
+    e.forEach(emp=>{
+      const rec = r.find(x=>x.user_id===emp.id && x.shift_number===shiftFilter);
+      statusMap[emp.id] = rec?.status||'present';
+      cinMap[emp.id]    = rec?.check_in ? new Date(rec.check_in).toLocaleString('en-CA',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).replace(', ','\T') : '';
+      coutMap[emp.id]   = rec?.check_out? new Date(rec.check_out).toLocaleString('en-CA',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:false}).replace(', ','\T') : '';
+    });
+    setBulkStatus(statusMap);
   };
 
-  useEffect(() => { load(); }, [stationId, date]);
-  useEffect(() => {
-    if (stationId) getUsers({ station_id: stationId }).then(setEmployees);
-  }, [stationId]);
+  useEffect(()=>{load();},[stationId,date,shiftFilter]);
 
-  const handleMark = async (e) => {
-    e.preventDefault(); setLoading(true);
+  const saveOne = async(empId) => {
+    setSaving(p=>({...p,[empId]:true}));
     try {
-      await markAttendance({ ...form, station_id: stationId });
-      setShowMark(false); load();
-    } catch (err) { alert(err.error || 'Failed'); }
-    finally { setLoading(false); }
+      const checkIn  = bulkCheckin[empId]  ? new Date(bulkCheckin[empId]).toISOString()  : null;
+      const checkOut = bulkCheckout[empId] ? new Date(bulkCheckout[empId]).toISOString() : null;
+      await markAttendance({
+        user_id:empId, station_id:stationId, date,
+        shift_number:shiftFilter,
+        status:bulkStatus[empId]||'present',
+        check_in:checkIn, check_out:checkOut,
+      });
+      await load();
+    } catch(e){ alert(e.error||'Failed'); }
+    finally{ setSaving(p=>({...p,[empId]:false})); }
   };
 
-  const quickMark = async (userId, status) => {
-    await markAttendance({ user_id: userId, station_id: stationId, date, shift_number: 1, status });
+  const saveAll = async() => {
+    for(const emp of employees) {
+      await saveOne(emp.id);
+    }
+  };
+
+  const quickCheckIn = async(empId) => {
+    const nowStr = nowIST();
+    setBulkCheckin(p=>({...p,[empId]:nowStr}));
+    setBulkStatus(p=>({...p,[empId]:'present'}));
+    await markAttendance({
+      user_id:empId, station_id:stationId, date,
+      shift_number:shiftFilter, status:'present',
+      check_in:new Date().toISOString(),
+    });
     load();
   };
 
-  // Summary
-  const summary = ['present','absent','half_day','leave'].map(s => ({
-    status: s, count: records.filter(r => r.status === s).length
+  const quickCheckOut = async(empId) => {
+    const nowStr = nowIST();
+    setBulkCheckout(p=>({...p,[empId]:nowStr}));
+    await markAttendance({
+      user_id:empId, station_id:stationId, date,
+      shift_number:shiftFilter,
+      status:bulkStatus[empId]||'present',
+      check_out:new Date().toISOString(),
+    });
+    load();
+  };
+
+  const summary = ['present','absent','half_day','leave'].map(s=>({
+    status:s, count:records.filter(r=>r.status===s && r.shift_number===shiftFilter).length
   }));
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">{t('attendance.title')}</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: 160 }} />
-          <button className="btn btn-primary" onClick={() => setShowMark(true)}><Plus size={16} />Mark</button>
+        <h1 className="page-title">Attendance</h1>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:160}}/>
+          <select className="input" style={{width:130}} value={shiftFilter} onChange={e=>setShiftFilter(parseInt(e.target.value))}>
+            <option value={1}>Shift 1</option>
+            <option value={2}>Shift 2</option>
+            <option value={3}>Shift 3</option>
+          </select>
+          <button className="btn btn-primary" onClick={saveAll}>Save All</button>
+          <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={14}/></button>
         </div>
       </div>
 
       {/* Summary pills */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        {summary.map(s => (
-          <div key={s.status} className={`badge ${STATUS_COLORS[s.status]}`} style={{ padding: '6px 12px', fontSize: 13 }}>
+      <div style={{display:'flex',gap:10,marginBottom:'1.5rem',flexWrap:'wrap'}}>
+        {summary.map(s=>(
+          <div key={s.status} className={`badge ${STATUS_COLORS[s.status]}`} style={{padding:'6px 12px',fontSize:13}}>
             {t(`attendance.${s.status}`)}: {s.count}
           </div>
         ))}
+        <div style={{marginLeft:'auto',fontSize:13,color:'var(--text-3)',alignSelf:'center'}}>
+          All times in IST (GMT+5:30)
+        </div>
       </div>
 
+      {/* Bulk entry table */}
       <div className="card">
         <div className="table-wrap">
           <table className="dms-table">
@@ -77,118 +147,81 @@ export default function AttendancePage() {
               <tr>
                 <th>Employee</th>
                 <th>Role</th>
-                <th>Shift</th>
-                <th>Check In</th>
-                <th>Check Out</th>
                 <th>Status</th>
-                {['owner','manager'].includes(user?.role) && <th>Quick Action</th>}
+                <th>Check In (IST)</th>
+                <th>Check Out (IST)</th>
+                <th>Quick Actions</th>
+                <th>Save</th>
               </tr>
             </thead>
             <tbody>
-              {records.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>No attendance records for {date}</td></tr>
-              )}
-              {records.map(rec => (
-                <tr key={rec.id}>
-                  <td style={{ fontWeight: 500 }}>{rec.name}</td>
-                  <td><span className="badge badge-gray" style={{ textTransform: 'capitalize' }}>{rec.role}</span></td>
-                  <td>Shift {rec.shift_number}</td>
-                  <td style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>
-                    {rec.check_in ? new Date(rec.check_in).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </td>
-                  <td style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>
-                    {rec.check_out ? new Date(rec.check_out).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </td>
-                  <td><span className={`badge ${STATUS_COLORS[rec.status]}`}>{t(`attendance.${rec.status}`)}</span></td>
-                  {['owner','manager'].includes(user?.role) && (
+              {employees.filter(e=>e.role!=='owner').map(emp=>{
+                const rec = records.find(r=>r.user_id===emp.id && r.shift_number===shiftFilter);
+                return (
+                  <tr key={emp.id} style={{background:rec?'transparent':'var(--surface-2)'}}>
                     <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {rec.status !== 'present' && (
-                          <button className="btn btn-secondary btn-sm" onClick={() => quickMark(rec.user_id, 'present')}>✓</button>
-                        )}
-                        {rec.status !== 'absent' && (
-                          <button className="btn btn-danger btn-sm" onClick={() => quickMark(rec.user_id, 'absent')}>✗</button>
-                        )}
+                      <div style={{fontWeight:500}}>{emp.name}</div>
+                      <div style={{fontSize:12,color:'var(--text-3)'}}>{emp.phone}</div>
+                    </td>
+                    <td><span className="badge badge-gray" style={{textTransform:'capitalize'}}>{emp.role}</span></td>
+                    <td>
+                      <select className="input" style={{width:110,height:32,fontSize:13}}
+                        value={bulkStatus[emp.id]||'present'}
+                        onChange={e=>setBulkStatus(p=>({...p,[emp.id]:e.target.value}))}>
+                        <option value="present">Present</option>
+                        <option value="absent">Absent</option>
+                        <option value="half_day">Half Day</option>
+                        <option value="leave">Leave</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="time" className="input" style={{width:110,height:32,fontSize:13}}
+                        value={bulkCheckin[emp.id]||''}
+                        onChange={e=>setBulkCheckin(p=>({...p,[emp.id]:e.target.value}))}/>
+                      {rec?.check_in && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>Saved: {toIST(rec.check_in)}</div>}
+                    </td>
+                    <td>
+                      <input type="time" className="input" style={{width:110,height:32,fontSize:13}}
+                        value={bulkCheckout[emp.id]||''}
+                        onChange={e=>setBulkCheckout(p=>({...p,[emp.id]:e.target.value}))}/>
+                      {rec?.check_out && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>Saved: {toIST(rec.check_out)}</div>}
+                    </td>
+                    <td>
+                      <div style={{display:'flex',gap:4}}>
+                        <button className="btn btn-secondary btn-sm" title="Check In Now"
+                          onClick={()=>quickCheckIn(emp.id)}
+                          style={{padding:'0 8px',fontSize:11}}>
+                          <Clock size={12}/> In
+                        </button>
+                        <button className="btn btn-secondary btn-sm" title="Check Out Now"
+                          onClick={()=>quickCheckOut(emp.id)}
+                          style={{padding:'0 8px',fontSize:11}}>
+                          <Clock size={12}/> Out
+                        </button>
                       </div>
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td>
+                      <button className="btn btn-primary btn-sm"
+                        onClick={()=>saveOne(emp.id)}
+                        disabled={saving[emp.id]}
+                        style={{padding:'0 12px'}}>
+                        {saving[emp.id]?'..':'Save'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {employees.filter(e=>e.role!=='owner').length===0 && (
+                <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>No employees found</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Employees not yet marked */}
-      {['owner','manager'].includes(user?.role) && (
-        <div className="card" style={{ marginTop: '1.5rem' }}>
-          <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>Quick Mark — Unmarked Employees</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {employees
-              .filter(e => !records.find(r => r.user_id === e.id))
-              .map(e => (
-                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)', borderRadius: 7, padding: '6px 10px', fontSize: 13 }}>
-                  <span>{e.name}</span>
-                  <button className="btn btn-secondary btn-sm" style={{ padding: '0 8px', height: 26, fontSize: 12 }} onClick={() => quickMark(e.id, 'present')}>P</button>
-                  <button className="btn btn-danger btn-sm" style={{ padding: '0 8px', height: 26, fontSize: 12 }} onClick={() => quickMark(e.id, 'absent')}>A</button>
-                </div>
-              ))}
-            {employees.filter(e => !records.find(r => r.user_id === e.id)).length === 0 && (
-              <span style={{ color: 'var(--text-3)', fontSize: 13 }}>All employees marked for today ✓</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Mark attendance */}
-      {showMark && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card" style={{ width: 380 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <span style={{ fontWeight: 600 }}>Mark Attendance</span>
-              <button onClick={() => setShowMark(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
-            </div>
-            <form onSubmit={handleMark}>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Employee</label>
-                <select className="input" onChange={e => setForm(p => ({ ...p, user_id: e.target.value }))} required>
-                  <option value="">Select employee...</option>
-                  {employees.map(e => <option key={e.id} value={e.id}>{e.name} ({e.role})</option>)}
-                </select>
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Date</label>
-                <input className="input" type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} required />
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Shift</label>
-                <select className="input" value={form.shift_number} onChange={e => setForm(p => ({ ...p, shift_number: parseInt(e.target.value) }))}>
-                  <option value={1}>Shift 1</option><option value={2}>Shift 2</option><option value={3}>Shift 3</option>
-                </select>
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Status</label>
-                <select className="input" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-                  {['present','absent','half_day','leave'].map(s => <option key={s} value={s}>{t(`attendance.${s}`)}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: '1.25rem' }}>
-                <div>
-                  <label className="label">Check In</label>
-                  <input className="input" type="time" onChange={e => setForm(p => ({ ...p, check_in: e.target.value ? `${form.date}T${e.target.value}` : null }))} />
-                </div>
-                <div>
-                  <label className="label">Check Out</label>
-                  <input className="input" type="time" onChange={e => setForm(p => ({ ...p, check_out: e.target.value ? `${form.date}T${e.target.value}` : null }))} />
-                </div>
-              </div>
-              <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <div style={{marginTop:'1rem',fontSize:12,color:'var(--text-3)'}}>
+        💡 Tip: Use <strong>In</strong> / <strong>Out</strong> buttons to stamp the current IST time instantly. Or manually type the time and click Save. Click <strong>Save All</strong> to save all rows at once.
+      </div>
     </AppShell>
   );
 }

@@ -1,179 +1,232 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle, AlertTriangle, Printer } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getShifts, getAttendantDashboard, submitReco, getReco } from '../../lib/api';
+import { getShifts, getManagerDashboard, submitReco, getReco } from '../../lib/api';
+import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
-const fmt = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const DENOMS = [500,200,100,50,20,10,5,2,1];
+const fmt = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
+const toIST = ts => ts ? new Date(ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
 
 export default function ReconcilePage() {
-  const { t }             = useTranslation();
   const { user, station } = useAuth();
-  const stationId         = typeof station === 'object' ? station?.id : station;
-  const today             = new Date().toISOString().slice(0, 10);
+  const stationId = typeof station==='object'?station?.id:station;
+  const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 
-  const [shifts, setShifts]     = useState([]);
-  const [selectedShift, setSelectedShift] = useState('');
-  const [summary, setSummary]   = useState(null);
-  const [existingReco, setExistingReco] = useState(null);
-  const [cashActual, setCashActual] = useState('');
-  const [remarks, setRemarks]   = useState('');
-  const [result, setResult]     = useState(null);
-  const [loading, setLoading]   = useState(false);
+  const [shifts,setShifts]         = useState([]);
+  const [selectedShift,setSelectedShift] = useState(null);
+  const [attendants,setAttendants] = useState([]);
+  const [expanded,setExpanded]     = useState(null);
+  const [denoms,setDenoms]         = useState({});   // {attendantId: {500:0,200:0,...}}
+  const [recos,setRecos]           = useState({});   // {attendantId: reco result}
+  const [loading,setLoading]       = useState(false);
+  const [dispute,setDispute]       = useState({});   // {attendantId: {type,notes}}
 
-  useEffect(() => {
-    if (stationId) getShifts({ station_id: stationId, date: today }).then(setShifts);
-  }, [stationId]);
+  useEffect(()=>{
+    if(stationId) getShifts({station_id:stationId,date:today}).then(setShifts);
+  },[stationId]);
 
-  const loadSummary = async (shiftId) => {
-    setSelectedShift(shiftId);
-    setResult(null);
-    const s = await getAttendantDashboard(user.id, shiftId);
-    setSummary(s.summary);
-    const reco = await getReco(shiftId);
-    setExistingReco(reco?.[0] || null);
+  const loadShift = async(shift) => {
+    setSelectedShift(shift);
+    setExpanded(null);
+    const mgr = await getManagerDashboard(stationId,shift.id);
+    setAttendants(mgr.attendant_summary||[]);
+    // load existing recos
+    const r = await getReco(shift.id);
+    const recoMap={};
+    (r||[]).forEach(x=>{ recoMap[x.attendant_id]=x; });
+    setRecos(recoMap);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setLoading(true);
+  const getDenomTotal = (attId) => {
+    const d = denoms[attId]||{};
+    return DENOMS.reduce((s,n)=>s+(parseInt(d[n]||0)*n),0);
+  };
+
+  const handleEndShift = async(att) => {
+    const cashActual = getDenomTotal(att.attendant_id);
+    if(cashActual===0 && !window.confirm('Cash total is ₹0. Continue?')) return;
+    setLoading(true);
     try {
-      const res = await submitReco({
-        shift_id: selectedShift,
-        attendant_id: user.id,
-        cash_actual: parseFloat(cashActual),
-        remarks,
+      // Save denomination
+      await api.post('/reconcile/denomination',{
+        shift_id:selectedShift.id,
+        attendant_id:att.attendant_id,
+        ...Object.fromEntries(DENOMS.map(n=>[`note_${n}`,denoms[att.attendant_id]?.[n]||0])),
       });
-      setResult(res);
-      setExistingReco(res);
-    } catch (err) { alert(err.error || 'Failed to submit'); }
-    finally { setLoading(false); }
+      // Submit reconciliation
+      const res = await submitReco({
+        shift_id:selectedShift.id,
+        attendant_id:att.attendant_id,
+        cash_actual:cashActual,
+        remarks:dispute[att.attendant_id]?.notes||'',
+      });
+      setRecos(p=>({...p,[att.attendant_id]:res}));
+      setExpanded(null);
+      alert(`Shift ended for ${att.name}. Variance: ₹${fmt(res.variance)}`);
+    } catch(e){ alert(e.error||'Failed'); }
+    finally{ setLoading(false); }
   };
-
-  const reco = existingReco || result;
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">{t('reconcile.title')}</h1>
+        <h1 className="page-title">Shift Reconciliation</h1>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '1.5rem' }}>
-        {/* Form */}
-        <div className="card">
-          <div style={{ marginBottom: '1rem' }}>
-            <label className="label">Select Shift</label>
-            <select className="input" value={selectedShift} onChange={e => loadSummary(e.target.value)}>
-              <option value="">Select shift...</option>
-              {shifts.map(s => (
-                <option key={s.id} value={s.id}>Shift {s.shift_number} – {s.status}</option>
-              ))}
-            </select>
+      {/* Shift selector */}
+      <div className="card" style={{marginBottom:'1.5rem'}}>
+        <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>Select Shift to Close</div>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+          {shifts.filter(s=>s.status==='open'||s.status==='closed').map(s=>(
+            <button key={s.id}
+              className={`btn ${selectedShift?.id===s.id?'btn-primary':'btn-secondary'}`}
+              onClick={()=>loadShift(s)}>
+              Shift {s.shift_number} — {s.status}
+            </button>
+          ))}
+          {shifts.length===0 && <div style={{color:'var(--text-3)',fontSize:13}}>No shifts today</div>}
+        </div>
+      </div>
+
+      {/* Attendant reconciliation cards */}
+      {selectedShift && (
+        <div>
+          <div style={{fontWeight:600,fontSize:14,marginBottom:'1rem',color:'var(--text-2)'}}>
+            Shift {selectedShift.shift_number} — Attendant End-of-Shift · Last updated: {toIST(new Date())}
           </div>
 
-          {summary && !reco && (
-            <form onSubmit={handleSubmit}>
-              <div style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 8 }}>Your sales summary</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
-                  <span>Total Sales</span><strong>₹{fmt(summary.total_sales)}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
-                  <span>UPI</span><span>₹{fmt(summary.upi)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 4 }}>
-                  <span>Credit</span><span>₹{fmt(summary.credit)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 6 }}>
-                  <span>Cash expected</span><strong>₹{fmt(summary.cash)}</strong>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="label" style={{ fontSize: 14, fontWeight: 600 }}>{t('reconcile.blind_drop')}</label>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 6 }}>Enter the cash you've counted — without looking at the expected amount above</div>
-                <input className="input input-lg" type="number" step="0.01" placeholder="₹ 0.00"
-                  value={cashActual} onChange={e => setCashActual(e.target.value)} required />
-              </div>
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="label">Remarks (optional)</label>
-                <textarea className="input" rows={2} value={remarks} onChange={e => setRemarks(e.target.value)} />
-              </div>
-              <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                {loading ? 'Submitting...' : t('reconcile.submit_reco')}
-              </button>
-            </form>
+          {attendants.length===0 && (
+            <div className="card" style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>No attendants assigned to this shift</div>
           )}
 
-          {!selectedShift && <div style={{ color: 'var(--text-3)', fontSize: 13, marginTop: 8 }}>Select a shift to begin reconciliation</div>}
+          {attendants.map(att=>{
+            const reco   = recos[att.attendant_id];
+            const isOpen = !reco;
+            const dTotal = getDenomTotal(att.attendant_id);
+
+            return (
+              <div key={att.attendant_id} className="card" style={{marginBottom:'1rem',borderColor:reco?'var(--success)':'var(--border)'}}>
+                {/* Header */}
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:15}}>{att.name}</div>
+                    <div style={{fontSize:12,color:'var(--text-3)'}}>
+                      Nozzle {att.nozzle_number} · {att.fuel_type} · {att.txn_count} transactions
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:16}}>₹{fmt(att.sales)}</div>
+                      <div style={{fontSize:11,color:'var(--text-3)'}}>{Number(att.litres).toFixed(2)} L dispensed</div>
+                    </div>
+                    {reco
+                      ? <span className={`badge ${Math.abs(reco.variance)<=50?'badge-success':'badge-danger'}`}>
+                          {Math.abs(reco.variance)<=50?'✓ Closed':'⚠ Variance'}
+                        </span>
+                      : <button className="btn btn-secondary btn-sm"
+                          onClick={()=>setExpanded(expanded===att.attendant_id?null:att.attendant_id)}>
+                          End Shift {expanded===att.attendant_id?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
+                        </button>
+                    }
+                  </div>
+                </div>
+
+                {/* Reco summary if done */}
+                {reco && (
+                  <div style={{marginTop:'1rem',padding:'0.75rem',background:'var(--surface-2)',borderRadius:8}}>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,fontSize:13}}>
+                      {[['Total Sales',reco.total_sales],['Cash Expected',reco.cash_expected],['Cash Received',reco.cash_actual],['Variance',reco.variance]].map(([l,v])=>(
+                        <div key={l}>
+                          <div style={{color:'var(--text-3)',fontSize:11}}>{l}</div>
+                          <div style={{fontFamily:'var(--font-mono)',fontWeight:600,color:l==='Variance'?(Math.abs(reco.variance)<=50?'var(--success)':'var(--danger)'):'inherit'}}>
+                            {l==='Variance'&&parseFloat(reco.variance)>=0?'+':''}₹{fmt(v)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={()=>window.print()}>
+                      <Printer size={13}/> Print Slip
+                    </button>
+                  </div>
+                )}
+
+                {/* Denomination entry */}
+                {expanded===att.attendant_id && isOpen && (
+                  <div style={{marginTop:'1.25rem',borderTop:'1px solid var(--border)',paddingTop:'1.25rem'}}>
+                    {/* Sales summary — shown to manager */}
+                    <div style={{background:'var(--surface-2)',borderRadius:8,padding:'0.75rem',marginBottom:'1rem'}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'var(--text-2)',marginBottom:8}}>Sales Summary (as of now)</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,fontSize:13}}>
+                        <div><div style={{color:'var(--text-3)',fontSize:11}}>Total Sales</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.sales)}</div></div>
+                        <div><div style={{color:'var(--text-3)',fontSize:11}}>Cash Sales</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.cash||0)}</div></div>
+                        <div><div style={{color:'var(--text-3)',fontSize:11}}>UPI</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.upi||0)}</div></div>
+                        <div><div style={{color:'var(--text-3)',fontSize:11}}>Credit</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.credit||0)}</div></div>
+                      </div>
+                    </div>
+
+                    {/* Denomination entry */}
+                    <div style={{fontWeight:600,fontSize:13,marginBottom:'0.75rem'}}>Cash Count — Enter number of notes/coins</div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:'1rem'}}>
+                      {DENOMS.map(denom=>{
+                        const count = denoms[att.attendant_id]?.[denom]||0;
+                        const subtotal = count * denom;
+                        return (
+                          <div key={denom} style={{background:'var(--surface-2)',borderRadius:8,padding:'8px 10px',display:'flex',alignItems:'center',gap:8}}>
+                            <div style={{width:44,fontSize:13,fontWeight:600,color:'var(--text-2)'}}>₹{denom}</div>
+                            <input type="number" min="0" className="input" style={{flex:1,height:32,fontSize:13,textAlign:'center'}}
+                              value={count||''}
+                              placeholder="0"
+                              onChange={e=>setDenoms(p=>({
+                                ...p,
+                                [att.attendant_id]:{...(p[att.attendant_id]||{}),[denom]:parseInt(e.target.value)||0}
+                              }))}/>
+                            <div style={{width:60,fontSize:12,fontFamily:'var(--font-mono)',color:'var(--text-3)',textAlign:'right'}}>
+                              {subtotal>0?`₹${fmt(subtotal)}`:''}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Total */}
+                    <div style={{background:dTotal>0?'#dcfce7':'var(--surface-2)',borderRadius:8,padding:'0.75rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+                      <span style={{fontWeight:600}}>Total Cash Counted</span>
+                      <span style={{fontFamily:'var(--font-mono)',fontWeight:800,fontSize:20,color:dTotal>0?'var(--success)':'var(--text-3)'}}>₹{fmt(dTotal)}</span>
+                    </div>
+
+                    {/* Dispute notes */}
+                    <div style={{marginBottom:'1rem'}}>
+                      <label className="label">Notes / Remarks (optional)</label>
+                      <textarea className="input" rows={2} placeholder="Any discrepancy notes, reason for variance..."
+                        onChange={e=>setDispute(p=>({...p,[att.attendant_id]:{...(p[att.attendant_id]||{}),notes:e.target.value}}))}/>
+                    </div>
+
+                    {/* Dispute resolution */}
+                    <div style={{marginBottom:'1.25rem'}}>
+                      <label className="label">If variance: resolution method</label>
+                      <select className="input" onChange={e=>setDispute(p=>({...p,[att.attendant_id]:{...(p[att.attendant_id]||{}),type:e.target.value}}))}>
+                        <option value="">Select if needed...</option>
+                        <option value="cash_collected">Collect cash from attendant now</option>
+                        <option value="salary_deduction">Deduct from salary</option>
+                        <option value="waived">Waive (management decision)</option>
+                      </select>
+                    </div>
+
+                    <button className="btn btn-primary btn-lg" style={{width:'100%',justifyContent:'center'}}
+                      onClick={()=>handleEndShift(att)} disabled={loading}>
+                      {loading?'Processing...':'✓ End Shift & Submit'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-
-        {/* Reco slip */}
-        {reco && (
-          <div className="card" id="reco-slip">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {Math.abs(reco.variance) <= 50
-                  ? <CheckCircle size={20} color="var(--success)" />
-                  : <AlertTriangle size={20} color="var(--danger)" />}
-                <span style={{ fontWeight: 600, fontSize: 16 }}>{t('reconcile.reco_slip')}</span>
-              </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => window.print()}>
-                <Printer size={14} /> Print
-              </button>
-            </div>
-
-            {Math.abs(parseFloat(reco.variance)) > 50 && (
-              <div className="alert-banner danger" style={{ marginBottom: '1rem' }}>
-                <AlertTriangle size={16} />
-                <div>
-                  <strong>Cash Variance Detected</strong>
-                  <div style={{ fontSize: 12, marginTop: 2 }}>Alert sent to Owner and Manager</div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
-              {[
-                ['Total Sales',    reco.total_sales],
-                ['Cash Expected',  reco.cash_expected],
-                ['Cash Received',  reco.cash_actual],
-                ['UPI',            reco.upi_total],
-                ['Credit',         reco.credit_total],
-                ['Card',           reco.card_total],
-              ].map(([label, val]) => (
-                <div key={label} style={{ background: 'var(--surface-2)', borderRadius: 8, padding: '0.75rem' }}>
-                  <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-                  <div className="num" style={{ fontSize: 18, fontWeight: 600, marginTop: 3 }}>₹{fmt(val)}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{
-              padding: '1rem', borderRadius: 8, border: '2px solid',
-              borderColor: Math.abs(reco.variance) <= 50 ? 'var(--success)' : 'var(--danger)',
-              background: Math.abs(reco.variance) <= 50 ? '#dcfce7' : '#fee2e2',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ fontWeight: 600, fontSize: 15 }}>Variance</span>
-              <span className="num" style={{ fontSize: 22, fontWeight: 700, color: Math.abs(reco.variance) <= 50 ? 'var(--success)' : 'var(--danger)' }}>
-                {parseFloat(reco.variance) >= 0 ? '+' : ''}₹{fmt(reco.variance)}
-              </span>
-            </div>
-
-            {reco.remarks && (
-              <div style={{ marginTop: '1rem', fontSize: 13, color: 'var(--text-2)' }}>
-                <strong>Remarks:</strong> {reco.remarks}
-              </div>
-            )}
-
-            <div style={{ marginTop: '1rem', fontSize: 12, color: 'var(--text-3)' }}>
-              Reconciled at {new Date(reco.reconciled_at).toLocaleString('en-IN')}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </AppShell>
   );
 }
