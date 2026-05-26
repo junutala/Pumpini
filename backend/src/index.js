@@ -21,6 +21,9 @@ const dashboardRoutes  = require('./routes/dashboard');
 const alertRoutes      = require('./routes/alerts');
 const priceRoutes      = require('./routes/prices');
 const rfidRoutes       = require('./routes/rfid');
+const templateRoutes   = require('./routes/templates');
+const groupRoutes      = require('./routes/groups');
+const { router: superadminRoutes } = require('./routes/superadmin');
 
 const { startRfidListener } = require('./services/rfidService');
 const { sendDailySummaries }  = require('./services/reportService');
@@ -57,6 +60,9 @@ app.use('/api/dashboard',  dashboardRoutes);
 app.use('/api/alerts',     alertRoutes);
 app.use('/api/prices',     priceRoutes);
 app.use('/api/rfid',       rfidRoutes);
+app.use('/api/templates',  templateRoutes);
+app.use('/api/groups',     groupRoutes);
+app.use('/api/superadmin', superadminRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
