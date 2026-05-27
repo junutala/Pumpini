@@ -1,7 +1,7 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShoppingCart, Camera, QrCode, CheckCircle, X } from 'lucide-react';
+import { ShoppingCart, CheckCircle, X } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getShifts, getNozzles, getCurrentPrices, recordDispense } from '../../lib/api';
 import { useAuth } from '../../lib/auth';

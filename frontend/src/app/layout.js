@@ -1,6 +1,5 @@
 import './globals.css';
-import { AuthProvider } from '../lib/auth';
-import { PermissionProvider } from '../hooks/usePermissions';
+import Providers from '../components/shared/Providers';
 
 export const metadata = {
   title: 'Pumpini — Control Every Drop',
@@ -19,11 +18,9 @@ export default function RootLayout({ children }) {
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
       </head>
       <body>
-        <AuthProvider>
-          <PermissionProvider>
-            {children}
-          </PermissionProvider>
-        </AuthProvider>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import { Zap, Loader2 } from 'lucide-react';
-import '../../i18n';
 import { LANGUAGES } from '../../i18n';
 
 export default function LoginPage() {

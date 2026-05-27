@@ -5,7 +5,6 @@ import { Menu, Bell } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
-import '../../i18n';
 
 export default function AppShell({ children }) {
   const { user, loading } = useAuth();

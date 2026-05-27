@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Globe, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Globe, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';

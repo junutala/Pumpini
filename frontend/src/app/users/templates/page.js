@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Plus, X, Shield, Check, Users } from 'lucide-react';
-import AppShell from '../../components/shared/AppShell';
-import api from '../../lib/api';
-import { useAuth } from '../../lib/auth';
+import AppShell from '../../../components/shared/AppShell';
+import api from '../../../lib/api';
+import { useAuth } from '../../../lib/auth';
 
 const CATEGORY_ORDER = ['Dashboard','Shifts','Dispense','Reconciliation','Corporate','Attendance','Stock','Reports','Alerts','Admin'];
 

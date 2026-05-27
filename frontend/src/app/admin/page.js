@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, LogOut, ChevronRight, Settings } from 'lucide-react';
+import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, LogOut } from 'lucide-react';
 import api from '../../lib/api';
 import Cookies from 'js-cookie';
 
