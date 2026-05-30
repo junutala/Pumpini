@@ -55,26 +55,21 @@ body {
 
 /* ── App shell ─────────────────────────── */
 .app-shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
+  display: flex;
   min-height: 100dvh;
 }
-@media (max-width: 768px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-}
 
-/* ── Sidebar ───────────────────────────── */
+/* ── Sidebar (dark) ────────────────────── */
 .sidebar {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  width: 220px;
+  background: #0F1923;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
   height: 100dvh;
   overflow-y: auto;
+  flex-shrink: 0;
 }
 
 /* ── Card ──────────────────────────────── */
@@ -173,13 +168,14 @@ table.dms-table td { padding: 10px 14px; color: var(--text-1); }
 
 /* ── Nav link ──────────────────────────── */
 .nav-link {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 16px; border-radius: 7px; margin: 2px 8px;
-  font-size: 14px; font-weight: 500; color: var(--text-2);
-  cursor: pointer; transition: all 0.12s; text-decoration: none;
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 16px;
+  font-size: 13px; font-weight: 400; color: rgba(255,255,255,.6);
+  cursor: pointer; transition: all 0.15s; text-decoration: none;
+  border-left: 3px solid transparent;
 }
-.nav-link:hover { background: var(--bg); color: var(--text-1); }
-.nav-link.active { background: var(--brand-light); color: var(--brand); }
+.nav-link:hover { background: rgba(255,255,255,.05); color: rgba(255,255,255,.85); }
+.nav-link.active { background: rgba(255,107,0,.15); color: #FF6B00; border-left-color: #FF6B00; font-weight: 600; }
 
 /* ── Fuel chip ─────────────────────────── */
 .fuel-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500; padding: 3px 8px; border-radius: 5px; }
