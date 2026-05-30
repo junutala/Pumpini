@@ -19,6 +19,7 @@ const attendanceRoutes = require('./routes/attendance');
 const dipstickRoutes   = require('./routes/dipstick');
 const dashboardRoutes  = require('./routes/dashboard');
 const alertRoutes      = require('./routes/alerts');
+const receiptRoutes    = require('./routes/receipts');
 const priceRoutes      = require('./routes/prices');
 const rfidRoutes       = require('./routes/rfid');
 const templateRoutes   = require('./routes/templates');
@@ -58,11 +59,15 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/dipstick',   dipstickRoutes);
 app.use('/api/dashboard',  dashboardRoutes);
 app.use('/api/alerts',     alertRoutes);
+app.use('/api/receipts',   receiptRoutes);
 app.use('/api/prices',     priceRoutes);
 app.use('/api/rfid',       rfidRoutes);
 app.use('/api/templates',  templateRoutes);
 app.use('/api/groups',     groupRoutes);
 app.use('/api/superadmin', superadminRoutes);
+app.use('/api/invoices',   require('./routes/invoices'));
+app.use('/api/deliveries', require('./routes/deliveries'));
+app.use('/api/whatsapp',   require('./routes/whatsapp'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
