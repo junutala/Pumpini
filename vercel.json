@@ -1,7 +1,7 @@
 {
-  "buildCommand": "npm install && npm run build",
-  "outputDirectory": ".next",
-  "installCommand": "npm install",
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/.next",
+  "installCommand": "echo 'skipping root install'",
   "framework": "nextjs",
   "rewrites": [
     {
