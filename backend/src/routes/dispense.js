@@ -4,7 +4,7 @@ const pool    = require('../db/pool');
 const multer  = require('multer');
 const path    = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -14,58 +14,129 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-// POST /api/dispense  (called by RFID agent or manual entry)
+// POST /api/dispense  
 router.post('/', authenticate, async (req, res, next) => {
   try {
     const {
       station_id, shift_id, rfid_tag_uid, nozzle_id,
       quantity_ltrs, payment_mode, upi_ref,
-      vehicle_number, latitude, longitude,
+      vehicle_number, latitude, longitude, corporate_id,
     } = req.body;
 
-    // Resolve RFID tag → attendant
-    const { rows: tagRows } = await pool.query(
-      `SELECT rt.id AS rfid_id, sa.attendant_id, sa.shift_id AS sa_shift_id
-       FROM rfid_tags rt
-       LEFT JOIN shift_attendants sa ON sa.rfid_tag_id = rt.id AND sa.shift_id = $2
-       WHERE rt.tag_uid = $1 AND rt.is_active = TRUE`, [rfid_tag_uid, shift_id]
-    );
-    if (!tagRows.length) return res.status(400).json({ error: 'Unknown or inactive RFID tag' });
-
-    // Get current fuel price
+    // Get current fuel price for this nozzle
     const { rows: priceRows } = await pool.query(
       `SELECT fp.price, n.fuel_type FROM nozzles n
        JOIN fuel_prices fp ON fp.station_id = $1 AND fp.fuel_type = n.fuel_type
        WHERE n.id = $2
-       ORDER BY fp.effective_from DESC LIMIT 1`, [station_id, nozzle_id]
+       ORDER BY fp.effective_from DESC LIMIT 1`,
+      [station_id, nozzle_id]
     );
-    if (!priceRows.length) return res.status(400).json({ error: 'Fuel price not configured' });
+    if (!priceRows.length) {
+      return res.status(400).json({ error: 'Fuel price not configured for this nozzle. Please set price in Settings first.' });
+    }
 
     const { price, fuel_type } = priceRows[0];
-    const { rfid_id, attendant_id } = tagRows[0];
+
+    // ── Credit limit enforcement ───────────────────────────────────
+    // For credit sales, ensure the new amount does not push the corporate's
+    // station-wise outstanding past its credit limit. Outstanding is the sum
+    // of uninvoiced credit dispense events for this corporate at this station.
+    if (payment_mode === 'credit') {
+      if (!corporate_id) {
+        return res.status(400).json({ error: 'Credit sale requires a credit customer.' });
+      }
+      const saleAmount = Number(quantity_ltrs) * Number(price);
+
+      const { rows: limitRows } = await pool.query(
+        `SELECT credit_limit FROM corporate_station_links
+         WHERE corporate_id = $1 AND station_id = $2 AND is_active = TRUE
+         LIMIT 1`,
+        [corporate_id, station_id]
+      );
+      if (!limitRows.length) {
+        return res.status(400).json({ error: 'This credit customer is not linked to this station.' });
+      }
+      const creditLimit = Number(limitRows[0].credit_limit) || 0;
+
+      const { rows: outRows } = await pool.query(
+        `SELECT COALESCE(SUM(amount),0) AS outstanding
+         FROM dispense_events
+         WHERE corporate_id = $1 AND station_id = $2
+           AND payment_mode = 'credit'
+           AND (is_invoiced IS NULL OR is_invoiced = FALSE)`,
+        [corporate_id, station_id]
+      );
+      const outstanding = Number(outRows[0].outstanding) || 0;
+      const available   = creditLimit - outstanding;
+
+      if (saleAmount > available) {
+        return res.status(400).json({
+          error: `Credit limit exceeded. Available credit is ₹${available.toFixed(2)} but this sale is ₹${saleAmount.toFixed(2)}.`,
+          credit_limit: creditLimit,
+          outstanding,
+          available,
+          sale_amount: saleAmount,
+        });
+      }
+    }
+
+    // Resolve attendant from shift assignment (by nozzle — no RFID needed for manual POS)
+    let attendant_id = req.user.id; // default to logged-in user
+    let rfid_id      = null;
+
+    if (rfid_tag_uid && rfid_tag_uid !== 'MANUAL') {
+      // RFID mode — resolve tag
+      const { rows: tagRows } = await pool.query(
+        `SELECT rt.id AS rfid_id, sa.attendant_id
+         FROM rfid_tags rt
+         LEFT JOIN shift_attendants sa ON sa.rfid_tag_id = rt.id 
+           AND sa.shift_id = $2
+         WHERE rt.tag_uid = $1`,
+        [rfid_tag_uid, shift_id]
+      );
+      if (tagRows.length) {
+        rfid_id      = tagRows[0].rfid_id;
+        if (tagRows[0].attendant_id) attendant_id = tagRows[0].attendant_id;
+      }
+    } else if (shift_id) {
+      // Manual POS — resolve attendant from nozzle assignment in shift
+      const { rows: saRows } = await pool.query(
+        `SELECT sa.attendant_id, sa.rfid_tag_id
+         FROM shift_attendants sa
+         WHERE sa.shift_id = $1 AND sa.nozzle_id = $2
+         LIMIT 1`,
+        [shift_id, nozzle_id]
+      );
+      if (saRows.length) {
+        attendant_id = saRows[0].attendant_id;
+        rfid_id      = saRows[0].rfid_tag_id;
+      }
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO dispense_events(
          station_id, shift_id, rfid_tag_id, nozzle_id, attendant_id,
          fuel_type, quantity_ltrs, rate_per_ltr, payment_mode, upi_ref,
-         vehicle_number, latitude, longitude
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [station_id, shift_id, rfid_id, nozzle_id, attendant_id,
-       fuel_type, quantity_ltrs, price, payment_mode || 'cash', upi_ref || null,
-       vehicle_number || null, latitude || null, longitude || null]
+         vehicle_number, latitude, longitude, corporate_id
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [
+        station_id, shift_id || null, rfid_id, nozzle_id, attendant_id,
+        fuel_type, quantity_ltrs, price,
+        payment_mode || 'cash', upi_ref || null,
+        vehicle_number || null, latitude || null, longitude || null,
+        (payment_mode === 'credit' && corporate_id) ? corporate_id : null,
+      ]
     );
 
     const event = rows[0];
-
-    // Emit real-time update
     req.io.to(`station:${station_id}`).emit('dispense:new', event);
-    req.io.to(`shift:${shift_id}`).emit('dispense:new', event);
+    if (shift_id) req.io.to(`shift:${shift_id}`).emit('dispense:new', event);
 
     res.status(201).json(event);
   } catch (err) { next(err); }
 });
 
-// POST /api/dispense/:id/photo  (geo-tagged photo upload)
+// POST /api/dispense/:id/photo
 router.post('/:id/photo', authenticate, upload.single('photo'), async (req, res, next) => {
   try {
     const { latitude, longitude } = req.body;
@@ -79,16 +150,15 @@ router.post('/:id/photo', authenticate, upload.single('photo'), async (req, res,
   } catch (err) { next(err); }
 });
 
-// GET /api/dispense?shift_id=&attendant_id=&date_from=&date_to=
+// GET /api/dispense
 router.get('/', authenticate, async (req, res, next) => {
   try {
-    const { shift_id, attendant_id, date_from, date_to, station_id, limit = 100 } = req.query;
+    const { shift_id, attendant_id, date_from, date_to, station_id, limit = 200 } = req.query;
     let q = `
-      SELECT de.*, u.name AS attendant_name, n.nozzle_number, r.tag_uid
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
-      LEFT JOIN rfid_tags r ON r.id = de.rfid_tag_id
       WHERE 1=1
     `;
     const p = [];
@@ -97,9 +167,9 @@ router.get('/', authenticate, async (req, res, next) => {
     if (attendant_id) { p.push(attendant_id);q += ` AND de.attendant_id=$${p.length}`; }
     if (date_from)    { p.push(date_from);   q += ` AND de.occurred_at>=$${p.length}`; }
     if (date_to)      { p.push(date_to);     q += ` AND de.occurred_at<=$${p.length}`; }
+    if (req.query.uninvoiced === 'true') { q += ` AND (de.is_invoiced = FALSE OR de.is_invoiced IS NULL)`; }
     p.push(parseInt(limit));
     q += ` ORDER BY de.event_seq DESC LIMIT $${p.length}`;
-
     const { rows } = await pool.query(q, p);
     res.json(rows);
   } catch (err) { next(err); }

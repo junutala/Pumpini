@@ -3,27 +3,370 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 
-// GET /api/corporate
+// ── Duplicate check helper ──────────────────────────────────
+const checkDuplicates = async (gstn, phone, excludeId = null) => {
+  const warnings = [];
+  if (gstn) {
+    const { rows } = await pool.query(
+      `SELECT ca.id, ca.company_name, s.name AS station_name
+       FROM corporate_accounts ca
+       JOIN corporate_station_links csl ON csl.corporate_id = ca.id
+       JOIN stations s ON s.id = csl.station_id
+       WHERE ca.gst_number = $1 AND ca.merged_into_id IS NULL
+       ${excludeId ? 'AND ca.id != $2' : ''}
+       LIMIT 3`,
+      excludeId ? [gstn, excludeId] : [gstn]
+    );
+    if (rows.length) {
+      warnings.push({
+        type:    'gstn',
+        level:   'error',
+        message: `GSTN ${gstn} already exists`,
+        matches: rows,
+      });
+    }
+  }
+  if (phone) {
+    const { rows } = await pool.query(
+      `SELECT ca.id, ca.company_name, s.name AS station_name
+       FROM corporate_accounts ca
+       JOIN corporate_station_links csl ON csl.corporate_id = ca.id
+       JOIN stations s ON s.id = csl.station_id
+       WHERE ca.contact_phone = $1 AND ca.merged_into_id IS NULL
+       ${excludeId ? 'AND ca.id != $2' : ''}
+       LIMIT 3`,
+      excludeId ? [phone, excludeId] : [phone]
+    );
+    if (rows.length) {
+      warnings.push({
+        type:    'phone',
+        level:   'warning',
+        message: `Phone ${phone} already used by another account`,
+        matches: rows,
+      });
+    }
+  }
+  return warnings;
+};
+
+// GET /api/corporate — list for a station
 router.get('/', authenticate, async (req, res, next) => {
   try {
+    const { station_id } = req.query;
+    let q = `
+      SELECT 
+        ca.id, ca.company_name, ca.contact_person, ca.contact_phone,
+        ca.email, ca.gst_number, ca.gstn, ca.address, ca.is_active,
+        ca.merged_into_id,
+        csl.credit_limit, csl.payment_terms, csl.is_active AS link_active,
+        csl.id AS link_id, csl.station_id,
+        COALESCE((
+          SELECT SUM(de.amount) FROM dispense_events de
+          WHERE de.corporate_id=ca.id AND de.station_id=csl.station_id
+            AND de.payment_mode='credit' AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+        ),0) AS current_outstanding
+      FROM corporate_accounts ca
+      JOIN corporate_station_links csl ON csl.corporate_id = ca.id
+      WHERE ca.merged_into_id IS NULL AND ca.is_active = TRUE
+    `;
+    const p = [];
+    if (station_id) { p.push(station_id); q += ` AND csl.station_id=$${p.length}`; }
+    q += ' ORDER BY ca.company_name';
+    const { rows } = await pool.query(q, p);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// GET /api/corporate/all — all corps across all stations (for superadmin/merge)
+router.get('/all', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT ca.*,
+        array_agg(DISTINCT s.name) AS stations,
+        COUNT(DISTINCT csl.station_id)::int AS station_count,
+        COUNT(DISTINCT de.id)::int AS total_transactions
+      FROM corporate_accounts ca
+      LEFT JOIN corporate_station_links csl ON csl.corporate_id = ca.id
+      LEFT JOIN stations s ON s.id = csl.station_id
+      LEFT JOIN dispense_events de ON de.corporate_id = ca.id
+      WHERE ca.merged_into_id IS NULL
+      GROUP BY ca.id ORDER BY ca.company_name`);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// POST /api/corporate/check-duplicate — real-time duplicate check
+router.post('/check-duplicate', authenticate, async (req, res, next) => {
+  try {
+    const { gstn, phone, exclude_id } = req.body;
+    const warnings = await checkDuplicates(gstn, phone, exclude_id);
+    res.json({ warnings });
+  } catch (err) { next(err); }
+});
+
+// POST /api/corporate — create new
+router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const {
+      company_name, contact_person, contact_phone, email,
+      gst_number, gstn, pan, address,
+      station_id, credit_limit, payment_terms = 30,
+      force_create = false, // skip duplicate warning
+    } = req.body;
+
+    const effectiveGstn = gstn || gst_number;
+
+    // Duplicate check — block on GSTN match unless force_create
+    if (!force_create) {
+      const warnings = await checkDuplicates(effectiveGstn, contact_phone);
+      const errors = warnings.filter(w => w.level === 'error');
+      if (errors.length) {
+        return res.status(409).json({
+          error:    'Potential duplicate detected',
+          warnings,
+          can_force: true,
+        });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `INSERT INTO corporate_accounts(
+           company_name, contact_person, contact_phone, email,
+           gst_number, gstn, pan, address, is_active, created_by_station
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9) RETURNING *`,
+        [company_name, contact_person||null, contact_phone||null,
+         email||null, effectiveGstn||null, effectiveGstn||null,
+         pan||null, address||null, station_id||null]
+      );
+
+      const corp = rows[0];
+
+      // Create station link
+      if (station_id && credit_limit !== undefined) {
+        await client.query(
+          `INSERT INTO corporate_station_links(corporate_id,station_id,credit_limit,payment_terms)
+           VALUES($1,$2,$3,$4) ON CONFLICT(corporate_id,station_id) DO NOTHING`,
+          [corp.id, station_id, credit_limit, payment_terms]
+        );
+      }
+
+      await client.query('COMMIT');
+      res.status(201).json(corp);
+    } catch(e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/corporate/:id — update master record
+router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const {
+      company_name, contact_person, contact_phone,
+      email, gst_number, gstn, pan, address,
+    } = req.body;
+    const effectiveGstn = gstn || gst_number;
     const { rows } = await pool.query(
-      `SELECT *, (credit_limit - current_outstanding) AS available_credit
-       FROM corporate_accounts WHERE is_active=TRUE ORDER BY company_name`
+      `UPDATE corporate_accounts SET
+         company_name=COALESCE($1,company_name),
+         contact_person=COALESCE($2,contact_person),
+         contact_phone=COALESCE($3,contact_phone),
+         email=COALESCE($4,email),
+         gst_number=COALESCE($5,gst_number),
+         gstn=COALESCE($5,gstn),
+         pan=COALESCE($6,pan),
+         address=COALESCE($7,address)
+       WHERE id=$8 RETURNING *`,
+      [company_name, contact_person, contact_phone,
+       email, effectiveGstn, pan, address, req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ── Station links ───────────────────────────────────────────
+
+// POST /api/corporate/:id/links — link to a station
+router.post('/:id/links', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const { station_id, credit_limit, payment_terms = 30 } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO corporate_station_links(corporate_id,station_id,credit_limit,payment_terms)
+       VALUES($1,$2,$3,$4)
+       ON CONFLICT(corporate_id,station_id) DO UPDATE SET
+         credit_limit=$3, payment_terms=$4, is_active=TRUE
+       RETURNING *`,
+      [req.params.id, station_id, credit_limit, payment_terms]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// GET /api/corporate/:id/links — get all station links for a corporate
+router.get('/:id/links', authenticate, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT csl.*, s.name AS station_name, s.city, s.state,
+        COALESCE((
+          SELECT SUM(de.amount) FROM dispense_events de
+          WHERE de.corporate_id=csl.corporate_id AND de.station_id=csl.station_id
+            AND de.payment_mode='credit' AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+        ),0) AS current_outstanding
+      FROM corporate_station_links csl
+      JOIN stations s ON s.id = csl.station_id
+      WHERE csl.corporate_id = $1 ORDER BY s.name`,
+      [req.params.id]
     );
     res.json(rows);
   } catch (err) { next(err); }
 });
 
-// POST /api/corporate
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+// PATCH /api/corporate/:id/links/:station_id — update link
+router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
-    const { company_name, gst_number, contact_person, contact_phone, contact_email, credit_limit, billing_cycle } = req.body;
+    const { credit_limit, payment_terms, is_active } = req.body;
     const { rows } = await pool.query(
-      `INSERT INTO corporate_accounts(company_name,gst_number,contact_person,contact_phone,contact_email,credit_limit,billing_cycle)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [company_name, gst_number, contact_person, contact_phone, contact_email, credit_limit || 0, billing_cycle || 'monthly']
+      `UPDATE corporate_station_links SET
+         credit_limit=COALESCE($1,credit_limit),
+         payment_terms=COALESCE($2,payment_terms),
+         is_active=COALESCE($3,is_active)
+       WHERE corporate_id=$4 AND station_id=$5 RETURNING *`,
+      [credit_limit, payment_terms, is_active, req.params.id, req.params.station_id]
     );
-    res.status(201).json(rows[0]);
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ── Merge ───────────────────────────────────────────────────
+
+// POST /api/corporate/merge — merge two accounts (superadmin or owner)
+router.post('/merge', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const { master_id, duplicate_id } = req.body;
+    if (master_id === duplicate_id) {
+      return res.status(400).json({ error: 'Cannot merge account with itself' });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Move all dispense_events to master
+      await client.query(
+        `UPDATE dispense_events SET corporate_id=$1 WHERE corporate_id=$2`,
+        [master_id, duplicate_id]
+      );
+
+      // 2. Move station links — if master already has link for same station, skip
+      await client.query(
+        `INSERT INTO corporate_station_links(corporate_id,station_id,credit_limit,payment_terms)
+         SELECT $1, station_id, credit_limit, payment_terms
+         FROM corporate_station_links
+         WHERE corporate_id=$2
+         ON CONFLICT(corporate_id,station_id) DO NOTHING`,
+        [master_id, duplicate_id]
+      );
+
+      // 3. Move drivers
+      await client.query(
+        `UPDATE corporate_drivers SET corporate_id=$1 WHERE corporate_id=$2`,
+        [master_id, duplicate_id]
+      );
+
+      // 4. Move gst_invoices
+      await client.query(
+        `UPDATE gst_invoices SET corporate_id=$1 WHERE corporate_id=$2`,
+        [master_id, duplicate_id]
+      );
+
+      // 5. Mark duplicate as merged
+      await client.query(
+        `UPDATE corporate_accounts SET merged_into_id=$1, is_active=FALSE WHERE id=$2`,
+        [master_id, duplicate_id]
+      );
+
+      // 6. Update duplicate flags
+      await client.query(
+        `UPDATE corporate_duplicate_flags SET status='merged', resolved_at=NOW()
+         WHERE (corp1_id=$1 AND corp2_id=$2) OR (corp1_id=$2 AND corp2_id=$1)`,
+        [master_id, duplicate_id]
+      );
+
+      await client.query('COMMIT');
+
+      // Return merged master
+      const { rows } = await pool.query(
+        'SELECT * FROM corporate_accounts WHERE id=$1', [master_id]
+      );
+      res.json({ merged: true, master: rows[0] });
+    } catch(e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+  } catch (err) { next(err); }
+});
+
+// GET /api/corporate/duplicates — list pending duplicate flags
+router.get('/duplicates', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT cdf.*,
+        ca1.company_name AS corp1_name, ca1.gst_number AS corp1_gstn,
+        ca1.contact_phone AS corp1_phone,
+        ca2.company_name AS corp2_name, ca2.gst_number AS corp2_gstn,
+        ca2.contact_phone AS corp2_phone
+      FROM corporate_duplicate_flags cdf
+      JOIN corporate_accounts ca1 ON ca1.id = cdf.corp1_id
+      JOIN corporate_accounts ca2 ON ca2.id = cdf.corp2_id
+      WHERE cdf.status = 'pending'
+      ORDER BY cdf.flagged_at DESC`);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/corporate/duplicates/:id/dismiss
+router.patch('/duplicates/:id/dismiss', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    await pool.query(
+      `UPDATE corporate_duplicate_flags SET status='dismissed', resolved_at=NOW() WHERE id=$1`,
+      [req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// GET /api/corporate/:id/statement
+router.get('/:id/statement', authenticate, async (req, res, next) => {
+  try {
+    const { station_id, month, date_from, date_to } = req.query;
+    let dateFrom = date_from;
+    let dateTo   = date_to;
+
+    // Support legacy month parameter
+    if (!dateFrom && month) {
+      dateFrom = `${month}-01`;
+      const d = new Date(month + '-01');
+      d.setMonth(d.getMonth() + 1);
+      dateTo = d.toISOString().slice(0, 10);
+    }
+
+    let q = `
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number
+      FROM dispense_events de
+      LEFT JOIN users u ON u.id = de.attendant_id
+      LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      WHERE de.corporate_id = $1 AND de.payment_mode = 'credit'
+    `;
+    const p = [req.params.id];
+    if (station_id) { p.push(station_id); q += ` AND de.station_id=$${p.length}`; }
+    if (dateFrom)   { p.push(dateFrom);   q += ` AND de.occurred_at::date>=$${p.length}`; }
+    if (dateTo)     { p.push(dateTo);     q += ` AND de.occurred_at::date<=$${p.length}`; }
+    q += ' ORDER BY de.occurred_at DESC';
+
+    const { rows } = await pool.query(q, p);
+    const total = rows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    res.json({ transactions: rows, total_amount: total });
   } catch (err) { next(err); }
 });
 
@@ -31,7 +374,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 router.get('/:id/drivers', authenticate, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM corporate_drivers WHERE corporate_id=$1 AND is_active=TRUE ORDER BY name',
+      `SELECT * FROM corporate_drivers WHERE corporate_id=$1 ORDER BY driver_name`,
       [req.params.id]
     );
     res.json(rows);
@@ -41,118 +384,30 @@ router.get('/:id/drivers', authenticate, async (req, res, next) => {
 // POST /api/corporate/:id/drivers
 router.post('/:id/drivers', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
-    const { name, phone, vehicle_number, fasttag_id, biometric_ref, per_fill_limit } = req.body;
+    const { vehicle_number, driver_name, phone } = req.body;
     const { rows } = await pool.query(
-      `INSERT INTO corporate_drivers(corporate_id,name,phone,vehicle_number,fasttag_id,biometric_ref,per_fill_limit)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [req.params.id, name, phone, vehicle_number, fasttag_id, biometric_ref, per_fill_limit]
+      `INSERT INTO corporate_drivers(corporate_id,vehicle_number,driver_name,phone)
+       VALUES($1,$2,$3,$4) RETURNING *`,
+      [req.params.id, vehicle_number, driver_name||null, phone||null]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
 
-// POST /api/corporate/verify-biometric  (called at nozzle terminal)
-router.post('/verify-biometric', authenticate, async (req, res, next) => {
+// GET /api/corporate/:id — get single
+router.get('/:id', authenticate, async (req, res, next) => {
   try {
-    const { biometric_ref, requested_amount } = req.body;
-
-    const { rows: drivers } = await pool.query(
-      `SELECT cd.*, ca.company_name, ca.credit_limit, ca.current_outstanding,
-              (ca.credit_limit - ca.current_outstanding) AS available_credit
-       FROM corporate_drivers cd
-       JOIN corporate_accounts ca ON ca.id = cd.corporate_id
-       WHERE cd.biometric_ref=$1 AND cd.is_active=TRUE AND ca.is_active=TRUE`,
-      [biometric_ref]
+    const { rows } = await pool.query(
+      `SELECT ca.*,
+         COALESCE((
+           SELECT SUM(de.amount) FROM dispense_events de
+           WHERE de.corporate_id=ca.id AND de.payment_mode='credit'
+             AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+         ),0) AS current_outstanding
+       FROM corporate_accounts ca WHERE ca.id=$1`,
+      [req.params.id]
     );
-
-    if (!drivers.length) return res.status(404).json({ error: 'Driver not found or not active' });
-
-    const driver = drivers[0];
-    const available = parseFloat(driver.available_credit);
-    const requested = parseFloat(requested_amount);
-
-    if (requested > available) {
-      return res.status(402).json({
-        error: 'Credit limit exceeded',
-        available_credit: available,
-        requested: requested,
-      });
-    }
-
-    if (driver.per_fill_limit && requested > parseFloat(driver.per_fill_limit)) {
-      return res.status(402).json({
-        error: `Exceeds per-fill limit of ₹${driver.per_fill_limit}`,
-        per_fill_limit: driver.per_fill_limit,
-      });
-    }
-
-    res.json({
-      verified: true,
-      driver_id: driver.id,
-      driver_name: driver.name,
-      vehicle_number: driver.vehicle_number,
-      company_name: driver.company_name,
-      available_credit: available,
-    });
-  } catch (err) { next(err); }
-});
-
-// POST /api/corporate/transaction
-router.post('/transaction', authenticate, async (req, res, next) => {
-  try {
-    const { dispense_event_id, corporate_id, driver_id, amount, plate_photo_url, fasttag_read } = req.body;
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const { rows: acc } = await client.query(
-        'SELECT current_outstanding FROM corporate_accounts WHERE id=$1 FOR UPDATE',
-        [corporate_id]
-      );
-      const credit_before = parseFloat(acc[0].current_outstanding);
-      const credit_after  = credit_before + parseFloat(amount);
-
-      await client.query(
-        'UPDATE corporate_accounts SET current_outstanding=$1 WHERE id=$2',
-        [credit_after, corporate_id]
-      );
-
-      const { rows } = await client.query(
-        `INSERT INTO corporate_transactions(dispense_event_id,corporate_id,driver_id,amount,credit_before,credit_after,plate_photo_url,fasttag_read)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-        [dispense_event_id, corporate_id, driver_id, amount, credit_before, credit_after, plate_photo_url, fasttag_read]
-      );
-
-      await client.query('COMMIT');
-      res.status(201).json(rows[0]);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  } catch (err) { next(err); }
-});
-
-// GET /api/corporate/:id/statement?month=YYYY-MM
-router.get('/:id/statement', authenticate, async (req, res, next) => {
-  try {
-    const { month } = req.query;
-    const start = month ? `${month}-01` : new Date(new Date().setDate(1)).toISOString().slice(0,10);
-    const end   = month ? new Date(new Date(start).setMonth(new Date(start).getMonth()+1)).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
-
-    const { rows } = await pool.query(`
-      SELECT ct.*, cd.name AS driver_name, cd.vehicle_number,
-             de.quantity_ltrs, de.fuel_type, de.occurred_at, de.rate_per_ltr
-      FROM corporate_transactions ct
-      JOIN corporate_drivers cd ON cd.id = ct.driver_id
-      JOIN dispense_events de ON de.id = ct.dispense_event_id
-      WHERE ct.corporate_id=$1 AND de.occurred_at BETWEEN $2 AND $3
-      ORDER BY de.occurred_at`, [req.params.id, start, end]);
-
-    const total = rows.reduce((s, r) => s + parseFloat(r.amount), 0);
-    res.json({ transactions: rows, total_amount: total, period: { start, end } });
+    res.json(rows[0] || {});
   } catch (err) { next(err); }
 });
 

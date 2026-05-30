@@ -6,7 +6,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 router.get('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
     const { station_id, role } = req.query;
-    let q = `SELECT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.created_at
+    let q = `SELECT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.created_at,u.must_change_password
              FROM users u`;
     const p = [];
     if (station_id) {
@@ -31,6 +31,7 @@ router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res
     if (language !== undefined)  { p.push(language);  sets.push(`language=$${p.length}`); }
     if (is_active !== undefined) { p.push(is_active); sets.push(`is_active=$${p.length}`); }
     if (password)                { p.push(await bcrypt.hash(password,12)); sets.push(`password_hash=$${p.length}`); }
+    if (req.body.corporate_id !== undefined){ p.push(req.body.corporate_id); sets.push(`corporate_id=$${p.length}`); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     p.push(req.params.id);
     const { rows } = await pool.query(

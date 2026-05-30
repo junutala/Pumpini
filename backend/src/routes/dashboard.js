@@ -16,8 +16,8 @@ router.get('/owner', authenticate, async (req, res, next) => {
                SUM(quantity_ltrs) AS total_ltrs,
                SUM(amount) AS total_amount
         FROM dispense_events
-        WHERE station_id=$1 AND occurred_at::date=$2
-        GROUP BY fuel_type, payment_mode`, [station_id, date]),
+        WHERE station_id=$1 AND occurred_at::date>=$2 AND occurred_at::date<=$3
+        GROUP BY fuel_type, payment_mode`, [station_id, date, dateTo]),
 
       // Open shifts
       pool.query(`

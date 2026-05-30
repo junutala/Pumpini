@@ -130,4 +130,3 @@ router.get('/summary/:corporate_id', authenticate, async (req, res, next) => {
 });
 
 module.exports = router;
-

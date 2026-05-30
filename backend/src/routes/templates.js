@@ -121,4 +121,21 @@ router.get('/user-permissions', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/templates/assignments?station_id= — get all user→template assignments for a station
+router.get('/assignments', authenticate, async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(`
+      SELECT ura.user_id, ura.template_id, rt.name AS template_name,
+             u.name AS user_name, u.role AS user_role
+      FROM user_role_assignments ura
+      JOIN role_templates rt ON rt.id = ura.template_id
+      JOIN users u ON u.id = ura.user_id
+      WHERE ura.station_id = $1`,
+      [station_id]
+    );
+    res.json(rows);
+  } catch(err) { next(err); }
+});
+
 module.exports = router;
