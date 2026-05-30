@@ -6,30 +6,41 @@ import { login as apiLogin, getMe } from './api';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser]       = useState(null);
+  const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [station, setStation] = useState(null);
 
   useEffect(() => {
     const token = Cookies.get('token') || localStorage.getItem('token');
-    if (token) {
-      getMe().then(u => {
+    if (!token) { setLoading(false); return; }
+
+    // Token exists — verify it with the backend
+    getMe()
+      .then(u => {
         setUser(u);
         const savedStation = localStorage.getItem('station');
-        if (savedStation) setStation(JSON.parse(savedStation));
-      }).catch(() => {
+        if (savedStation) {
+          try { setStation(JSON.parse(savedStation)); } catch {}
+        }
+      })
+      .catch(() => {
+        // Token invalid — clear everything
         Cookies.remove('token');
         localStorage.removeItem('token');
-      }).finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+        localStorage.removeItem('station');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (phone, password) => {
     const res = await apiLogin({ phone, password });
-    Cookies.set('token', res.token, { expires: 1, sameSite: 'lax', secure: true });
-        localStorage.setItem('token', res.token);
+    // Save token to both cookie and localStorage
+    Cookies.set('token', res.token, {
+      expires: 1,
+      sameSite: 'lax',
+      secure: window.location.protocol === 'https:',
+    });
+    localStorage.setItem('token', res.token);
     setUser(res.user);
     if (res.user.stations?.length) {
       const s = res.user.stations[0];
@@ -62,6 +73,9 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be inside AuthProvider');
+  if (!ctx) return {
+    user: null, loading: true, station: null,
+    login: async () => {}, logout: () => {}, switchStation: () => {}
+  };
   return ctx;
 };
