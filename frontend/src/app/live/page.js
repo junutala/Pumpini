@@ -172,4 +172,3 @@ export default function LiveEventsPage() {
     </AppShell>
   );
 }
-
