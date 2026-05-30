@@ -28,8 +28,8 @@ export function AuthProvider({ children }) {
 
   const login = async (phone, password) => {
     const res = await apiLogin({ phone, password });
-    Cookies.set('token', res.token, { expires: 1 });
-    localStorage.setItem('token', res.token);
+    Cookies.set('token', res.token, { expires: 1, sameSite: 'lax', secure: true });
+        localStorage.setItem('token', res.token);
     setUser(res.user);
     if (res.user.stations?.length) {
       const s = res.user.stations[0];
