@@ -1,31 +1,55 @@
 // src/routes/auth.js
-const router   = require('express').Router();
-const bcrypt   = require('bcryptjs');
-const jwt      = require('jsonwebtoken');
-const { body, validationResult } = require('express-validator');
-const pool     = require('../db/pool');
+const router  = require('express').Router();
+const crypto  = require('crypto');
+const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
+const pool    = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { sendWhatsApp } = require('../services/whatsappService');
+
+// Normalize phone — accept 10 digits, with/without +91, with/without spaces
+const normalizePhone = (raw) => {
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');            // strip everything non-digit
+  if (digits.length === 10) return `+91${digits}`;  // plain 10-digit
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`; // 91XXXXXXXXXX
+  if (digits.length === 11 && digits.startsWith('0')) return `+91${digits.slice(1)}`; // 0XXXXXXXXXX
+  return `+91${digits.slice(-10)}`;                 // fallback — take last 10
+};
+
+const validatePhone = (raw) => {
+  const digits = raw.replace(/\D/g, '');
+  const ten = digits.length === 10 ? digits
+    : digits.length === 12 && digits.startsWith('91') ? digits.slice(2)
+    : digits.length === 11 && digits.startsWith('0')  ? digits.slice(1)
+    : digits.slice(-10);
+  return /^[6-9]\d{9}$/.test(ten);
+};
 
 // POST /api/auth/login
-router.post('/login', [
-  body('phone').notEmpty(),
-  body('password').notEmpty(),
-], async (req, res, next) => {
+router.post('/login', async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
     const { phone, password } = req.body;
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Mobile number and password are required' });
+    }
+
+    // Try normalized form first, then fallback variants
+    const normalized = normalizePhone(phone);
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE phone = $1 AND is_active = TRUE', [phone]
+      `SELECT * FROM users
+       WHERE (phone = $1 OR phone = $2 OR phone = $3) AND is_active = TRUE
+       LIMIT 1`,
+      [normalized, phone, phone.replace(/\D/g,'').slice(-10)]
     );
-    if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const user = rows[0];
+    if (!rows.length) return res.status(401).json({ error: 'Invalid mobile number or password' });
+
+    const user  = rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!valid) return res.status(401).json({ error: 'Invalid mobile number or password' });
 
-    // Get stations for this user
+    // Get stations
     const { rows: stations } = await pool.query(
       `SELECT s.id, s.name FROM stations s
        JOIN station_users su ON su.station_id = s.id
@@ -36,6 +60,8 @@ router.post('/login', [
       id: user.id, name: user.name, role: user.role,
       phone: user.phone, language: user.language,
       stations: stations.map(s => s.id),
+      corporate_id: user.corporate_id || null,
+      must_change_password: user.must_change_password || false,
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '8h'
@@ -45,29 +71,29 @@ router.post('/login', [
   } catch (err) { next(err); }
 });
 
-// POST /api/auth/register  (owner-only in production)
-router.post('/register', [
-  body('name').notEmpty(),
-  body('phone').isMobilePhone(),
-  body('password').isLength({ min: 6 }),
-  body('role').isIn(['owner','manager','attendant','rsa','corporate']),
-], async (req, res, next) => {
+// POST /api/auth/register
+router.post('/register', async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
     const { name, phone, email, password, role, language = 'en' } = req.body;
+
+    if (!name)     return res.status(400).json({ error: 'Name is required' });
+    if (!phone)    return res.status(400).json({ error: 'Mobile number is required' });
+    if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (!role)     return res.status(400).json({ error: 'Role is required' });
+    if (!validatePhone(phone)) return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
+
+    const normalized = normalizePhone(phone);
     const hash = await bcrypt.hash(password, 12);
 
     const { rows } = await pool.query(
       `INSERT INTO users(name,phone,email,password_hash,role,language)
        VALUES($1,$2,$3,$4,$5,$6)
        RETURNING id,name,phone,email,role,language,created_at`,
-      [name, phone, email || null, hash, role, language]
+      [name, normalized, email||null, hash, role, language]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Phone or email already exists' });
+    if (err.code === '23505') return res.status(409).json({ error: 'Mobile number already registered' });
     next(err);
   }
 });
@@ -92,6 +118,64 @@ router.patch('/language', authenticate, async (req, res, next) => {
     if (!supported.includes(language)) return res.status(400).json({ error: 'Unsupported language' });
     await pool.query('UPDATE users SET language=$1 WHERE id=$2', [language, req.user.id]);
     res.json({ language });
+  } catch (err) { next(err); }
+});
+
+
+// POST /api/auth/forgot-password — generate temp password, send via WhatsApp
+router.post('/forgot-password', async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Mobile number is required' });
+    const normalized = normalizePhone(phone);
+    const { rows } = await pool.query(
+      'SELECT * FROM users WHERE (phone=$1 OR phone=$2) AND is_active=TRUE LIMIT 1',
+      [normalized, phone]
+    );
+    // Always return 200 — don't reveal whether number exists
+    if (!rows.length) return res.json({ ok: true });
+    const user = rows[0];
+
+    // Generate 8-char alphanumeric temp password
+    const tempPw = crypto.randomBytes(4).toString('hex').toUpperCase(); // e.g. A3F8C2D1
+    const hash   = await bcrypt.hash(tempPw, 12);
+
+    await pool.query(
+      'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2',
+      [hash, user.id]
+    );
+
+    const msg = `*Pumpini DMS*\nYour temporary password is: *${tempPw}*\n\nPlease login and change your password immediately.\n\nFor security, this password is valid for one login only.`;
+    await sendWhatsApp(user.phone, msg).catch(e => {
+      // Log but don't fail — user can still see it in dev demo mode
+      require('../utils/logger').warn('WhatsApp send failed:', e.message);
+    });
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/change-password — for must_change_password flow
+router.post('/change-password', authenticate, async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body;
+    if (!new_password || new_password.length < 6)
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    const user = rows[0];
+    // If not a forced-change flow, verify current password
+    if (!user.must_change_password) {
+      if (!current_password) return res.status(400).json({ error: 'Current password required' });
+      const valid = await bcrypt.compare(current_password, user.password_hash);
+      if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+    const hash = await bcrypt.hash(new_password, 12);
+    await pool.query(
+      'UPDATE users SET password_hash=$1, must_change_password=FALSE WHERE id=$2',
+      [hash, req.user.id]
+    );
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
