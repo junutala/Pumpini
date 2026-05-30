@@ -14,54 +14,96 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
-    if (user?.language) i18n.changeLanguage(user.language);
+    // The language chosen at login/landing (persisted by i18next in localStorage)
+    // takes precedence. Only fall back to the user's saved profile language when
+    // no explicit choice has been made yet in this browser.
+    if (user?.language && typeof window !== 'undefined') {
+      const explicit = window.localStorage.getItem('i18nextLng');
+      if (!explicit) i18n.changeLanguage(user.language);
+    }
   }, [user, loading]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTopColor: 'var(--brand)', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+  if (loading) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100dvh',background:'#0F1923'}}>
+      <div style={{textAlign:'center'}}>
+        <div style={{fontSize:28,fontWeight:900,marginBottom:16}}>
+          <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
         </div>
+        <div style={{width:32,height:32,border:'3px solid rgba(255,255,255,.1)',borderTopColor:'#FF6B00',borderRadius:'50%',animation:'spin .7s linear infinite',margin:'0 auto'}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
-    );
-  }
+    </div>
+  );
 
   if (!user) return null;
 
   return (
-    <div className="app-shell">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+    <>
+      {/* Single sidebar — handles both desktop (sticky) and mobile (fixed+overlay) */}
+      <div style={{display:'flex',minHeight:'100dvh',background:'var(--bg)'}}>
+        
+        {/* Sidebar — always rendered once */}
+        <Sidebar open={sidebarOpen} onClose={()=>setSidebarOpen(false)}/>
 
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        {/* Mobile top bar */}
-        <header style={{
-          display: 'none', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 1rem', height: 52,
-          background: 'var(--surface)', borderBottom: '1px solid var(--border)',
-          position: 'sticky', top: 0, zIndex: 30,
-        }} className="mobile-header">
-          <button onClick={() => setSidebarOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6 }}>
-            <Menu size={22} color="var(--text-1)" />
-          </button>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Petrol DMS</span>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6 }}>
-            <Bell size={20} color="var(--text-2)" />
-          </button>
-        </header>
+        {/* Main content */}
+        <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0}}>
 
-        <main style={{ flex: 1, padding: '1.5rem', maxWidth: '100%', overflow: 'auto' }}>
-          {children}
-        </main>
+          {/* Mobile top bar — hidden on desktop via CSS */}
+          <header className="mobile-topbar" style={{
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'0 1rem', height:52, background:'#0F1923',
+            position:'sticky', top:0, zIndex:30, flexShrink:0,
+          }}>
+            <button onClick={()=>setSidebarOpen(true)}
+              style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'rgba(255,255,255,.7)'}}>
+              <Menu size={22}/>
+            </button>
+            <span style={{fontWeight:900,fontSize:18}}>
+              <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
+            </span>
+            <button style={{background:'none',border:'none',cursor:'pointer',padding:6,color:'rgba(255,255,255,.5)'}}>
+              <Bell size={20}/>
+            </button>
+          </header>
+
+          <main style={{flex:1,padding:'1.5rem',overflow:'auto'}}>
+            {children}
+          </main>
+        </div>
       </div>
 
       <style>{`
+        /* Desktop: sidebar is sticky in normal flow */
+        @media (min-width: 769px) {
+          .mobile-topbar { display: none !important; }
+          .sidebar-overlay { display: none !important; }
+        }
+
+        /* Mobile: sidebar slides in as overlay */
         @media (max-width: 768px) {
-          .mobile-header { display: flex !important; }
-          main { padding: 1rem !important; }
+          .sidebar {
+            position: fixed !important;
+            left: -240px !important;
+            top: 0 !important;
+            z-index: 50 !important;
+            height: 100dvh !important;
+            transition: left .25s ease !important;
+          }
+          .sidebar.open {
+            left: 0 !important;
+          }
+          .sidebar-overlay {
+            position: fixed !important;
+            inset: 0 !important;
+            background: rgba(0,0,0,.5) !important;
+            z-index: 40 !important;
+            display: none !important;
+          }
+          .sidebar-overlay.open {
+            display: block !important;
+          }
         }
       `}</style>
-    </div>
+    </>
   );
 }
