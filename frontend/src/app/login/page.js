@@ -41,11 +41,11 @@ export default function LoginPage() {
     try {
       const res = await login(phone, password);
       if (res?.user?.must_change_password) {
-        router.replace('/change-password');
+        window.location.href = '/change-password';
       } else {
-        router.replace('/dashboard');
+        window.location.href = '/dashboard';
       }
-    } catch (err) {
+          } catch (err) {
       setError(err.error || 'Invalid mobile number or password');
     } finally {
       setLoading(false);
