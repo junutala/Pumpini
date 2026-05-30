@@ -3,6 +3,8 @@ const pool   = require('../db/pool');
 const logger = require('../utils/logger');
 const axios  = require('axios');
 const nodemailer = require('nodemailer');
+// Outbound WhatsApp is centralized in whatsappService (single source of truth).
+const { sendWhatsApp } = require('./whatsappService');
 
 const mailer = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -64,12 +66,4 @@ async function sendEmail(to, subject, text) {
   await mailer.sendMail({ from: process.env.SMTP_USER, to, subject, text });
 }
 
-async function sendWhatsApp(phone, message) {
-  // Uses MSG91 WhatsApp or replace with Twilio / Interakt
-  if (!process.env.WHATSAPP_API_KEY) return logger.info('WhatsApp (demo):', phone, message);
-  await axios.post(process.env.WHATSAPP_ENDPOINT, {
-    phone, message
-  }, { headers: { apikey: process.env.WHATSAPP_API_KEY } });
-}
-
-module.exports = { sendAlert, sendSms, sendEmail };
+module.exports = { sendAlert, sendSms, sendEmail, sendWhatsApp };
