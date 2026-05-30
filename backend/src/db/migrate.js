@@ -299,6 +299,31 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+
+-- ─────────────────────────────────────────────
+--  CORPORATE RECEIPTS (payments from credit customers)
+-- ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS corporate_receipts (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  corporate_id    UUID NOT NULL REFERENCES corporate_accounts(id) ON DELETE RESTRICT,
+  station_id      UUID NOT NULL REFERENCES stations(id) ON DELETE RESTRICT,
+  receipt_date    DATE NOT NULL DEFAULT CURRENT_DATE,
+  amount          NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  payment_type    VARCHAR(20) NOT NULL CHECK (payment_type IN ('cash','cheque','rtgs','upi')),
+  reference_no    VARCHAR(80),   -- cheque no / UTR / UPI ref
+  invoice_id      UUID REFERENCES gst_invoices(id) ON DELETE SET NULL,
+  remarks         TEXT,
+  recorded_by     UUID REFERENCES users(id),
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_corp_receipts_corp ON corporate_receipts(corporate_id);
+CREATE INDEX IF NOT EXISTS idx_corp_receipts_station ON corporate_receipts(station_id);
+
+-- ─────────────────────────────────────────────
+--  PASSWORD RESET / MUST-CHANGE flag
+-- ─────────────────────────────────────────────
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS corporate_id UUID REFERENCES corporate_accounts(id) ON DELETE SET NULL;
 -- ─────────────────────────────────────────────
 --  FUNCTION: auto-update updated_at
 -- ─────────────────────────────────────────────
