@@ -170,7 +170,13 @@
     "severity_warning": "హెచ్చరిక",
     "severity_critical": "క్లిష్టమైనది",
     "acknowledge": "గుర్తించు",
-    "unread": "చదవనిది"
+    "unread": "చదవని",
+    "showing_unread": "చదవనివి చూపిస్తోంది",
+    "ack_all": "అన్నీ అంగీకరించు",
+    "no_alerts": "హెచ్చరికలు లేవు",
+    "recorded": "నమోదైన",
+    "acknowledged": "అంగీకరించబడింది",
+    "unacknowledged": "అంగీకరించబడలేదు"
   },
   "fuel_types": {
     "petrol": "పెట్రోల్",
