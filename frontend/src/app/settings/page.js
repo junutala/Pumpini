@@ -22,9 +22,179 @@ const nowIST  = () => new Date().toLocaleString('sv-SE',{timeZone:'Asia/Kolkata'
 
 
 // ── Main Settings Page ─────────────────────────────────────
+
+// ── Geo-Fencing Tab ───────────────────────────────────────
+function GeoFenceTab({ stationId }) {
+  const [settings, setSettings] = useState({});
+  const [saving,   setSaving]   = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [toast,    setToast]    = useState('');
+
+  useEffect(() => {
+    if (!stationId) return;
+    api.get(`/stations/${stationId}/settings`)
+      .then(d => setSettings(d||{}))
+      .catch(console.error);
+  }, [stationId]);
+
+  const upd = (k,v) => setSettings(p=>({...p,[k]:v}));
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) return alert('Geolocation not supported by this browser');
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        upd('latitude',  parseFloat(pos.coords.latitude.toFixed(7)));
+        upd('longitude', parseFloat(pos.coords.longitude.toFixed(7)));
+        setLocating(false);
+      },
+      err => { alert('Could not get location: ' + err.message); setLocating(false); },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const save = async () => {
+    if (!settings.latitude || !settings.longitude) {
+      return alert('Please set GPS coordinates first');
+    }
+    setSaving(true);
+    try {
+      await api.post(`/stations/${stationId}/settings`, {
+        latitude:          settings.latitude,
+        longitude:         settings.longitude,
+        geo_fence_radius:  settings.geo_fence_radius || 500,
+        geo_fence_enabled: settings.geo_fence_enabled || false,
+      });
+      setToast('Geo-fence settings saved!');
+      setTimeout(() => setToast(''), 3000);
+    } catch(e) { alert('Save failed'); }
+    setSaving(false);
+  };
+
+  const RADIUS_OPTIONS = [100, 200, 500, 1000, 2000];
+  const radius = settings.geo_fence_radius || 500;
+
+  return (
+    <div>
+      {toast && (
+        <div style={{background:'#dcfce7',color:'#15803d',padding:'10px 16px',borderRadius:8,
+          marginBottom:'1rem',fontWeight:600,fontSize:13}}>
+          ✓ {toast}
+        </div>
+      )}
+
+      <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10,
+        padding:'0.75rem 1rem',marginBottom:'1.5rem',fontSize:13,color:'#1A5F7A'}}>
+        📍 Geo-fencing restricts POS access to staff physically present at the petrol station.
+        Staff outside the defined radius will see a warning and cannot record transactions.
+      </div>
+
+      {/* Enable toggle */}
+      <div style={{background:'#fff',borderRadius:12,border:'1px solid var(--border)',
+        padding:'1.25rem',marginBottom:'1rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:15}}>Enable Geo-Fencing</div>
+            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+              Block POS access for staff outside station boundary
+            </div>
+          </div>
+          <button onClick={() => upd('geo_fence_enabled', !settings.geo_fence_enabled)}
+            style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
+            <div style={{width:52,height:28,borderRadius:14,position:'relative',
+              background: settings.geo_fence_enabled ? '#16a34a' : '#e5e3de',
+              transition:'all .2s'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',
+                position:'absolute',top:3,
+                left: settings.geo_fence_enabled ? 27 : 3,
+                transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* GPS Coordinates */}
+      <div style={{background:'#fff',borderRadius:12,border:'1px solid var(--border)',
+        padding:'1.25rem',marginBottom:'1rem'}}>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>Station GPS Coordinates</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+          <div>
+            <label className="label">Latitude</label>
+            <input className="input" type="number" step="0.0000001"
+              placeholder="e.g. 17.3850" value={settings.latitude||''}
+              onChange={e=>upd('latitude', parseFloat(e.target.value))}/>
+          </div>
+          <div>
+            <label className="label">Longitude</label>
+            <input className="input" type="number" step="0.0000001"
+              placeholder="e.g. 78.4867" value={settings.longitude||''}
+              onChange={e=>upd('longitude', parseFloat(e.target.value))}/>
+          </div>
+        </div>
+        <button onClick={useMyLocation} disabled={locating}
+          style={{display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+            background:'#1A5F7A',color:'#fff',border:'none',borderRadius:8,
+            cursor:'pointer',fontWeight:600,fontSize:13}}>
+          <MapPin size={15}/>
+          {locating ? 'Getting location...' : '📍 Use My Current Location'}
+        </button>
+        <div style={{fontSize:12,color:'#888',marginTop:8}}>
+          Open this settings page on a device at the petrol station, then click above to auto-fill coordinates.
+        </div>
+      </div>
+
+      {/* Radius selector */}
+      <div style={{background:'#fff',borderRadius:12,border:'1px solid var(--border)',
+        padding:'1.25rem',marginBottom:'1.5rem'}}>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Allowed Radius</div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          {RADIUS_OPTIONS.map(r => (
+            <button key={r} onClick={() => upd('geo_fence_radius', r)}
+              style={{padding:'8px 16px',border:'1.5px solid',borderRadius:8,cursor:'pointer',
+                fontWeight:600,fontSize:13,
+                borderColor: radius===r ? '#FF6B00' : '#e5e3de',
+                background:  radius===r ? '#fff7ed' : '#fff',
+                color:       radius===r ? '#FF6B00' : '#555'}}>
+              {r < 1000 ? `${r}m` : `${r/1000}km`}
+            </button>
+          ))}
+        </div>
+        <div style={{fontSize:12,color:'#888',marginTop:8}}>
+          Recommended: 500m for most stations. Use 200m for tight urban locations.
+        </div>
+      </div>
+
+      {/* Map preview */}
+      {settings.latitude && settings.longitude && (
+        <div style={{background:'#fff',borderRadius:12,border:'1px solid var(--border)',
+          padding:'1.25rem',marginBottom:'1.5rem'}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Location Preview</div>
+          <a href={`https://www.google.com/maps?q=${settings.latitude},${settings.longitude}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{display:'inline-flex',alignItems:'center',gap:6,padding:'8px 14px',
+              background:'#f0f9ff',color:'#1A5F7A',borderRadius:8,textDecoration:'none',
+              fontWeight:600,fontSize:13,border:'1px solid #bae6fd'}}>
+            <MapPin size={14}/> View on Google Maps
+          </a>
+          <div style={{fontSize:12,color:'#888',marginTop:8}}>
+            Coordinates: {settings.latitude}, {settings.longitude} · Radius: {radius}m
+          </div>
+        </div>
+      )}
+
+      <button onClick={save} disabled={saving}
+        style={{padding:'12px 28px',background:'#FF6B00',color:'#fff',border:'none',
+          borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:14}}>
+        {saving ? 'Saving...' : 'Save Geo-Fence Settings'}
+      </button>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { user, station, switchStation } = useAuth();
   const stationId = typeof station==='object' ? station?.id : station;
+  if (typeof window === 'undefined') return null;
   const stationName = typeof station==='object' ? station?.name : '';
   const [groupStations, setGroupStations] = useState([]);
 
@@ -173,6 +343,10 @@ export default function SettingsPage() {
         <PricesTab stationId={stationId} prices={prices}
           reload={()=>{ load(); showToast('Price updated!'); }}/>
       )}
+      {tab==='geofence' && (
+        <GeoFenceTab stationId={stationId} />
+      )}
+
       {tab==='rfid' && (
         <RfidTab stationId={stationId} tags={rfid}
           reload={()=>{ load(); showToast('RFID tag saved!'); }} askConfirm={askConfirm}/>
