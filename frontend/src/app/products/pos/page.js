@@ -58,15 +58,37 @@ export default function ProductsPOSPage() {
       if (videoRef.current) videoRef.current.srcObject = stream;
       setScanning(true);
 
-      // Load zxing dynamically
-      const { BrowserMultiFormatReader } = await import('@zxing/browser');
-      const reader = new BrowserMultiFormatReader();
-      reader.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
-        if (result) {
-          addByBarcode(result.getText());
-          stopScanning();
-        }
-      });
+      // Load zxing from CDN
+      if (!window.ZXing) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/@zxing/browser@0.1.4/esm/index.min.js';
+          script.type = 'module';
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+      // Use native browser BarcodeDetector API as primary, zxing as fallback
+      if ('BarcodeDetector' in window) {
+        const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','code_128','qr_code','code_39'] });
+        const detect = async () => {
+          if (!videoRef.current || !streamRef.current) return;
+          try {
+            const barcodes = await detector.detect(videoRef.current);
+            if (barcodes.length > 0) {
+              addByBarcode(barcodes[0].rawValue);
+              stopScanning();
+              return;
+            }
+          } catch(e) {}
+          if (streamRef.current) requestAnimationFrame(detect);
+        };
+        requestAnimationFrame(detect);
+      } else {
+        alert('Barcode scanner not supported on this browser. Please type the barcode manually.');
+        stopScanning();
+      }
     } catch(e) {
       alert('Camera access denied or not available. Type barcode manually.');
     }
