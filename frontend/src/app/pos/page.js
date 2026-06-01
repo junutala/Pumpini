@@ -39,7 +39,11 @@ export default function POSPage() {
   const [voiceHint,  setVoiceHint]  = useState('');
 
   // Form
-  const [nozzle,setNozzle]         = useState('');
+  const [nozzle,setNozzleRaw]        = useState('');
+  const setNozzle = (id) => {
+    setNozzleRaw(id);
+    if (id && stationId) localStorage.setItem('lastNozzle_' + stationId, id);
+  };
   const [entryMode,setEntryMode]   = useState('litres');
   const [litres,setLitres]         = useState('');
   const [amount,setAmount]         = useState('');
@@ -66,6 +70,9 @@ export default function POSPage() {
     ]).then(([s, n, p, c]) => {
       setShifts(s);
       setNozzles(n);
+      // Restore last used nozzle
+      const last = localStorage.getItem('lastNozzle_' + stationId);
+      if (last && n.find(nz => nz.id === last)) setNozzleRaw(last);
       setPrices(p);
       setCorps(Array.isArray(c) ? c : []);
       const open = s.find(x => x.status === 'open');
@@ -217,8 +224,10 @@ export default function POSPage() {
           setVoiceStatus('done');
 
           // Auto-fill POS form fields
-          if (p.quantity)     setQty(p.quantity.toString());
-          if (p.entry_type)   setEntryType(p.entry_type);
+          if (p.quantity) {
+            if (p.entry_type === 'amount') { setEntryMode('amount'); setAmount(p.quantity.toString()); }
+            else { setEntryMode('litres'); setLitres(p.quantity.toString()); }
+          }
           if (p.payment_mode) setPayMode(p.payment_mode);
 
           // Auto-select nozzle:
@@ -229,7 +238,7 @@ export default function POSPage() {
               n.fuel_type?.toLowerCase().includes(p.fuel_type) ||
               p.fuel_type.includes(n.fuel_type?.toLowerCase())
             );
-            if (match) setNozzle(match);
+            if (match) setNozzle(match.id);
             // If no match found, keep current (last used) nozzle
           }
           // If no fuel type spoken at all, current nozzle stays selected
@@ -273,6 +282,59 @@ export default function POSPage() {
 
         {/* Entry Form */}
         <div>
+          {/* Geo-fence banners */}
+          {geoStatus === 'outside' && (
+            <div style={{background:'#fee2e2',border:'1px solid #fca5a5',borderRadius:10,
+              padding:'0.75rem 1rem',marginBottom:'1rem',fontSize:13,color:'#991b1b',
+              display:'flex',alignItems:'flex-start',gap:10}}>
+              <span style={{fontSize:20}}>🚫</span>
+              <div>
+                <div style={{fontWeight:700}}>Outside Station Boundary</div>
+                <div>You are {geoDistance}m from the station. POS is restricted to within the allowed radius.</div>
+              </div>
+            </div>
+          )}
+          {geoStatus === 'error' && (
+            <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:10,
+              padding:'0.75rem 1rem',marginBottom:'1rem',fontSize:13,color:'#9a3412',
+              display:'flex',alignItems:'center',gap:8}}>
+              <span>⚠️</span> Location access denied. Please enable location to use POS.
+            </div>
+          )}
+          {geoStatus === 'ok' && (
+            <div style={{background:'#dcfce7',border:'1px solid #86efac',borderRadius:10,
+              padding:'0.5rem 1rem',marginBottom:'0.75rem',fontSize:12,color:'#15803d',
+              display:'flex',alignItems:'center',gap:6}}>
+              <span>📍</span> Location verified — {geoDistance}m from station ✓
+            </div>
+          )}
+
+          {/* Voice Entry Button */}
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
+            <button type="button" onClick={startVoiceEntry}
+              style={{display:'flex',alignItems:'center',gap:8,padding:'10px 20px',
+                borderRadius:12,border:'none',cursor:'pointer',fontWeight:700,fontSize:14,
+                background: recording ? '#dc2626' : voiceStatus==='done' ? '#16a34a' : '#FF6B00',
+                color:'#fff',
+                boxShadow: recording ? '0 0 0 4px rgba(220,38,38,.25)' : '0 2px 8px rgba(255,107,0,.3)',
+                transition:'all .2s'}}>
+              {recording
+                ? <><MicOff size={17}/> {tc('pos_page.voice_stop','Stop')}</>
+                : voiceStatus==='processing'
+                ? <><Loader size={17} style={{animation:'spin 1s linear infinite'}}/> {tc('pos_page.voice_processing','Processing...')}</>
+                : <><Mic size={17}/> {tc('pos_page.voice_entry','🎙 Voice Entry')}</>}
+            </button>
+            {voiceHint && (
+              <div style={{fontSize:13,padding:'6px 12px',borderRadius:8,flex:1,
+                background: voiceStatus==='error'?'#fee2e2':voiceStatus==='done'?'#dcfce7':'#fff7ed',
+                color: voiceStatus==='error'?'#991b1b':voiceStatus==='done'?'#15803d':'#9a3412',
+                border:'1px solid',
+                borderColor: voiceStatus==='error'?'#fca5a5':voiceStatus==='done'?'#86efac':'#fed7aa'}}>
+                {voiceHint}
+              </div>
+            )}
+          </div>
+
           {/* Success flash */}
           {lastTxn && (
             <div className="alert-banner success" style={{marginBottom:'1rem',position:'relative'}}>
@@ -445,7 +507,7 @@ export default function POSPage() {
 
               <button className="btn btn-primary btn-lg" type="submit"
                 style={{width:'100%',justifyContent:'center'}}
-                disabled={loading || !activeShift || !nozzle}>
+                disabled={loading || !activeShift || !nozzle || geoStatus==='outside'}>
                 {loading ? tc('pos_page.recording','Recording...') : geoStatus==='outside' ? '🚫 Outside Station Boundary' : tc('pos_page.record_txn','✓ Record Transaction')}
               </button>
 
