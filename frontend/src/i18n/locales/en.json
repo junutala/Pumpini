@@ -170,7 +170,13 @@
     "severity_warning": "Warning",
     "severity_critical": "Critical",
     "acknowledge": "Acknowledge",
-    "unread": "Unread"
+    "unread": "unread",
+    "showing_unread": "Showing Unread",
+    "ack_all": "Acknowledge All",
+    "no_alerts": "No alerts",
+    "recorded": "recorded",
+    "acknowledged": "acknowledged",
+    "unacknowledged": "unacknowledged"
   },
   "fuel_types": {
     "petrol": "Petrol",
