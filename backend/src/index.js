@@ -68,6 +68,7 @@ app.use('/api/superadmin', superadminRoutes);
 app.use('/api/invoices',   require('./routes/invoices'));
 app.use('/api/deliveries', require('./routes/deliveries'));
 app.use('/api/voice',      voiceRoutes);
+app.use('/api/products',   productsRoutes);
 app.use('/api/whatsapp',   require('./routes/whatsapp'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
