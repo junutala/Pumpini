@@ -23,11 +23,24 @@ const LANG_MAP = {
   mr: 'mr-IN',
 };
 
+
+// GET /api/voice/test — verify Sarvam API key is working
+router.get('/test', authenticate, async (req, res) => {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) return res.json({ ok: false, error: 'SARVAM_API_KEY not set' });
+  res.json({
+    ok: true,
+    key_prefix: apiKey.substring(0, 8) + '...',
+    key_length: apiKey.length,
+  });
+});
+
 // ── POST /api/voice/transcribe ────────────────────────────
 // Receives audio blob from frontend, sends to Sarvam, returns
 // transcription + parsed POS fields
 router.post('/transcribe', authenticate, upload.single('audio'), async (req, res, next) => {
   try {
+    console.log('Voice request received, file:', req.file ? `${req.file.size} bytes, ${req.file.mimetype}` : 'MISSING');
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
 
     const apiKey  = process.env.SARVAM_API_KEY;
@@ -46,14 +59,17 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
     form.append('language_code', langCode);
     // saaras:v2.5 handles codemix natively, no mode param needed
 
+    const formHeaders = form.getHeaders ? form.getHeaders() : {};
+    console.log('Calling Sarvam API, lang:', langCode, 'file size:', req.file.size);
     const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
       method:  'POST',
       headers: {
         'api-subscription-key': apiKey,
-        ...form.getHeaders(),
+        ...formHeaders,
       },
       body: form,
     });
+    console.log('Sarvam response status:', sarvamRes.status);
 
     const sarvamData = await sarvamRes.json();
 
