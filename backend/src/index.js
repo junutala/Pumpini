@@ -25,6 +25,8 @@ const rfidRoutes       = require('./routes/rfid');
 const templateRoutes   = require('./routes/templates');
 const groupRoutes      = require('./routes/groups');
 const { router: superadminRoutes } = require('./routes/superadmin');
+const voiceRoutes      = require('./routes/voice');
+const productsRoutes   = require('./routes/products');
 
 const { startRfidListener } = require('./services/rfidService');
 const { sendDailySummaries }  = require('./services/reportService');
