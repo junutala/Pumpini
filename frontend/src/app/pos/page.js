@@ -28,6 +28,10 @@ export default function POSPage() {
   const [corps,setCorps]       = useState([]);
   const [activeShift,setActiveShift] = useState(null);
 
+  // Geo-fence state
+  const [geoStatus, setGeoStatus] = useState('checking'); // 'checking','ok','outside','disabled','error'
+  const [geoDistance, setGeoDistance] = useState(null);
+
   // Voice POS state
   const [recording,  setRecording]  = useState(false);
   const [voiceStatus,setVoiceStatus] = useState(''); // 'recording','processing','done','error'
@@ -133,6 +137,45 @@ export default function POSPage() {
   };
 
   const selectedNozzle = nozzles.find(n => n.id === nozzle);
+
+
+  // ── Geo-fence check ──────────────────────────────────────
+  useEffect(() => {
+    if (!stationId) return;
+    // Load station geo settings
+    api.get(`/stations/${stationId}/settings`).then(settings => {
+      if (!settings.geo_fence_enabled || !settings.latitude || !settings.longitude) {
+        setGeoStatus('disabled');
+        return;
+      }
+      if (!navigator.geolocation) {
+        setGeoStatus('error');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const dist = getDistance(
+            pos.coords.latitude, pos.coords.longitude,
+            parseFloat(settings.latitude), parseFloat(settings.longitude)
+          );
+          setGeoDistance(Math.round(dist));
+          setGeoStatus(dist <= (settings.geo_fence_radius || 500) ? 'ok' : 'outside');
+        },
+        () => setGeoStatus('error'),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }).catch(() => setGeoStatus('disabled'));
+  }, [stationId]);
+
+  // Haversine distance formula (returns metres)
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371000;
+    const dLat = (lat2-lat1) * Math.PI/180;
+    const dLon = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(dLat/2)**2 +
+      Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
 
   // ── Voice POS Handler ──────────────────────────────────
   const startVoiceEntry = async () => {
@@ -403,7 +446,7 @@ export default function POSPage() {
               <button className="btn btn-primary btn-lg" type="submit"
                 style={{width:'100%',justifyContent:'center'}}
                 disabled={loading || !activeShift || !nozzle}>
-                {loading ? tc('pos_page.recording','Recording...') : tc('pos_page.record_txn','✓ Record Transaction')}
+                {loading ? tc('pos_page.recording','Recording...') : geoStatus==='outside' ? '🚫 Outside Station Boundary' : tc('pos_page.record_txn','✓ Record Transaction')}
               </button>
 
             </form>
