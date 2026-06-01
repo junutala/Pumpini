@@ -17,7 +17,7 @@
   "export": "Export",
   "print": "Print",
   "nav": {
-    "dashboard": "Dashboard",
+    "dashboard": "Bunk View",
     "shifts": "Shifts",
     "dispense": "Reconciliation",
     "corporate": "Credit Customers",
@@ -40,7 +40,10 @@
     "grp_masters": "Masters",
     "grp_reports": "Reports",
     "grp_settings": "Settings",
-    "logout": "Logout"
+    "logout": "Logout",
+    "grp_dashboard": "Dashboard",
+    "grp_manage": "Manage",
+    "bunkview": "Bunk View"
   },
   "roles": {
     "owner": "Owner",
@@ -317,7 +320,7 @@
     "manager": "Manager",
     "attendants": "attendants",
     "sales": "sales",
-    "add_attendant": "Add Attendant",
+    "add_attendant": "+ Attendant",
     "close_shift": "Close Shift",
     "total_sales": "Total Sales",
     "transactions": "Transactions",
