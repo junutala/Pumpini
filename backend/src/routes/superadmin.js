@@ -36,17 +36,21 @@ router.post('/login', async (req, res, next) => {
 // GET /api/superadmin/platform-stats
 router.get('/platform-stats', authAdmin, async (req, res, next) => {
   try {
-    const [groups, stations, users, todaySales] = await Promise.all([
+    const [groups, stations, users, owners, todaySales, mtdSales] = await Promise.all([
       pool.query('SELECT COUNT(*)::int AS count FROM owner_groups WHERE is_active=TRUE'),
       pool.query('SELECT COUNT(*)::int AS count FROM stations'),
       pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
-      pool.query(`SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE`),
+      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
+      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE'),
+      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE)"),
     ]);
     res.json({
       total_groups:   groups.rows[0].count,
       total_stations: stations.rows[0].count,
       total_users:    users.rows[0].count,
+      total_owners:   owners.rows[0].count,
       today_sales:    todaySales.rows[0].total,
+      mtd_sales:      mtdSales.rows[0].total,
     });
   } catch (err) { next(err); }
 });
@@ -336,6 +340,234 @@ router.get('/groups/:id/dashboard', authAdmin, async (req, res, next) => {
       [req.params.id, today]
     );
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+
+// ── Station Subscriptions ─────────────────────────────────
+router.get('/station-subscriptions/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM station_subscriptions WHERE station_id=$1 ORDER BY start_date DESC`,
+      [req.params.station_id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/station-subscriptions', authAdmin, async (req, res, next) => {
+  try {
+    const { station_id, plan, status='active', start_date, end_date } = req.body;
+    // Close any existing open subscription first
+    if (!end_date) {
+      await pool.query(
+        `UPDATE station_subscriptions SET end_date=CURRENT_DATE-1
+         WHERE station_id=$1 AND end_date IS NULL`,
+        [station_id]
+      );
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO station_subscriptions(station_id,plan,status,start_date,end_date)
+       VALUES($1,$2,$3,$4,$5) RETURNING *`,
+      [station_id, plan, status, start_date || new Date().toISOString().slice(0,10), end_date||null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.patch('/station-subscriptions/:id', authAdmin, async (req, res, next) => {
+  try {
+    const { plan, status, end_date } = req.body;
+    const sets=[]; const p=[];
+    if (plan!==undefined)     { p.push(plan);     sets.push(`plan=$${p.length}`); }
+    if (status!==undefined)   { p.push(status);   sets.push(`status=$${p.length}`); }
+    if (end_date!==undefined) { p.push(end_date); sets.push(`end_date=$${p.length}`); }
+    if (!sets.length) return res.json({ ok:true });
+    p.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE station_subscriptions SET ${sets.join(',')} WHERE id=$${p.length} RETURNING *`, p
+    );
+    // If end_date was set, auto-create next subscription line
+    if (end_date && rows[0]) {
+      const nextStart = new Date(end_date);
+      nextStart.setDate(nextStart.getDate()+1);
+      await pool.query(
+        `INSERT INTO station_subscriptions(station_id,plan,status,start_date)
+         VALUES($1,$2,'active',$3) ON CONFLICT DO NOTHING`,
+        [rows[0].station_id, rows[0].plan, nextStart.toISOString().slice(0,10)]
+      );
+    }
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ── Group Stations ────────────────────────────────────────
+router.get('/groups/:id/stations', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT s.id, s.name, s.city, s.state, s.oil_company,
+        ss2.plan, ss2.status AS sub_status, ss2.start_date, ss2.end_date
+      FROM stations s
+      JOIN station_group_members sgm ON sgm.station_id = s.id
+      JOIN station_groups stg ON stg.id = sgm.station_group_id
+      LEFT JOIN station_subscriptions ss2 ON ss2.station_id=s.id AND ss2.end_date IS NULL
+      WHERE stg.owner_group_id=$1
+      ORDER BY s.name`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+
+// ── Plans ─────────────────────────────────────────────────
+router.get('/plans', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM plans ORDER BY name');
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/plans', authAdmin, async (req, res, next) => {
+  try {
+    const { name, price_per_month, features } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO plans(name, price_per_month, features)
+       VALUES($1,$2,$3) ON CONFLICT(name)
+       DO UPDATE SET price_per_month=EXCLUDED.price_per_month, features=EXCLUDED.features
+       RETURNING *`,
+      [name, price_per_month, JSON.stringify(features||[])]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.patch('/plans/:id', authAdmin, async (req, res, next) => {
+  try {
+    const { price_per_month, features } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE plans SET
+         price_per_month=COALESCE($1,price_per_month),
+         features=COALESCE($2,features)
+       WHERE id=$3 RETURNING *`,
+      [price_per_month, features ? JSON.stringify(features) : null, req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ── Alert Definitions ─────────────────────────────────────
+router.get('/alert-definitions', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM alert_definitions ORDER BY created_at');
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/alert-definitions', authAdmin, async (req, res, next) => {
+  try {
+    const { name, description, alert_type, severity='warning', whatsapp_enabled=false, is_active=true } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO alert_definitions(name, description, alert_type, severity, whatsapp_enabled, is_active)
+       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [name, description, alert_type, severity, whatsapp_enabled, is_active]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.patch('/alert-definitions/:id', authAdmin, async (req, res, next) => {
+  try {
+    const { name, description, severity, whatsapp_enabled, is_active } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE alert_definitions SET
+         name=COALESCE($1,name),
+         description=COALESCE($2,description),
+         severity=COALESCE($3,severity),
+         whatsapp_enabled=COALESCE($4,whatsapp_enabled),
+         is_active=COALESCE($5,is_active)
+       WHERE id=$6 RETURNING *`,
+      [name, description, severity, whatsapp_enabled, is_active, req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.delete('/alert-definitions/:id', authAdmin, async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM alert_definitions WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
+// ── Station Users (for admin panel user management) ───────
+router.get('/station-users/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.phone, u.email, u.role, u.is_active,
+             ur.permissions
+      FROM users u
+      JOIN station_users su ON su.user_id = u.id
+      LEFT JOIN user_role_assignments ura ON ura.user_id = u.id AND ura.station_id = $1
+      LEFT JOIN role_templates ur ON ur.id = ura.role_id
+      WHERE su.station_id = $1 AND u.role != 'owner'
+      ORDER BY u.name`,
+      [req.params.station_id]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/station-users', authAdmin, async (req, res, next) => {
+  try {
+    const { station_id, name, phone, email, role='attendant', password } = req.body;
+    const bcrypt = require('bcryptjs');
+    const cleanPhone = phone.replace(/\D/g,'');
+    const storedPhone = cleanPhone.startsWith('91') ? `+${cleanPhone}` : `+91${cleanPhone}`;
+    const hash = await bcrypt.hash(password || 'Welcome@123', 12);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO users(name,phone,email,password_hash,role)
+         VALUES($1,$2,$3,$4,$5) RETURNING *`,
+        [name, storedPhone, email||null, hash, role]
+      );
+      await client.query(
+        'INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
+        [station_id, rows[0].id]
+      );
+      await client.query('COMMIT');
+      res.status(201).json(rows[0]);
+    } catch(e){ await client.query('ROLLBACK'); throw e; }
+    finally{ client.release(); }
+  } catch (err) {
+    if (err.code==='23505') return res.status(409).json({ error:'Phone number already registered' });
+    next(err);
+  }
+});
+
+router.patch('/station-users/:id', authAdmin, async (req, res, next) => {
+  try {
+    const { name, email, is_active, role, password } = req.body;
+    const bcrypt = require('bcryptjs');
+    const sets=[]; const p=[];
+    if (name!==undefined)      { p.push(name);      sets.push(`name=$${p.length}`); }
+    if (email!==undefined)     { p.push(email);     sets.push(`email=$${p.length}`); }
+    if (role!==undefined)      { p.push(role);      sets.push(`role=$${p.length}`); }
+    if (is_active!==undefined) { p.push(is_active); sets.push(`is_active=$${p.length}`); }
+    if (password)              { p.push(await bcrypt.hash(password,12)); sets.push(`password_hash=$${p.length}`); }
+    if (!sets.length) return res.json({ok:true});
+    p.push(req.params.id);
+    const { rows } = await pool.query(`UPDATE users SET ${sets.join(',')} WHERE id=$${p.length} RETURNING *`, p);
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.delete('/station-users/:id', authAdmin, async (req, res, next) => {
+  try {
+    await pool.query('UPDATE users SET is_active=FALSE WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
