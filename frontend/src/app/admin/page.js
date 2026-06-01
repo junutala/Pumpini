@@ -812,6 +812,7 @@ export default function AdminPage() {
     setStationSubs(p=>({...p,[sid]:Array.isArray(res)?res:[]}));
   };
 
+  if (typeof window === 'undefined') return null;
   if(!admin) return <LoginScreen onLogin={a=>setAdmin(a)}/>;
 
   const openModal = (type, data={}) => { setForm({...data}); setModal({type,data}); };
