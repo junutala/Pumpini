@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu
+  Menu, Package
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -38,6 +38,7 @@ const NAV_GROUPS = [
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
+      { key:'products',   href:'/products/catalogue', icon:Package,      perm:'shifts.manage', label:'Products' },
     ]
   },
   {
@@ -62,6 +63,7 @@ const NAV_LABELS = {
   group:'Group View',       reports:'Reports',         alerts:'Alerts',
   invoices:'GST Invoices',  receipts:'Credit Receipts',settings:'Settings',
   creditdash:'Credit Dashboard',
+  products:'Products (Lubes)',
 };
 
 const GROUP_KEYS = {
