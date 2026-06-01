@@ -17,7 +17,7 @@
   "export": "ఎగుమతి",
   "print": "ప్రింట్",
   "nav": {
-    "dashboard": "డాష్‌బోర్డ్",
+    "dashboard": "బంక్ వీక్షణ",
     "shifts": "షిఫ్ట్‌లు",
     "dispense": "సరిపోలిక",
     "corporate": "క్రెడిట్ కస్టమర్లు",
@@ -40,7 +40,10 @@
     "grp_masters": "మాస్టర్స్",
     "grp_reports": "నివేదికలు",
     "grp_settings": "సెట్టింగ్‌లు",
-    "logout": "లాగౌట్"
+    "logout": "లాగౌట్",
+    "grp_dashboard": "డాష్‌బోర్డ్",
+    "grp_manage": "నిర్వహణ",
+    "bunkview": "బంక్ వీక్షణ"
   },
   "roles": {
     "owner": "యజమాని",
@@ -317,7 +320,7 @@
     "manager": "మేనేజర్",
     "attendants": "సహాయకులు",
     "sales": "అమ్మకాలు",
-    "add_attendant": "సహాయకుడిని జోడించు",
+    "add_attendant": "+ సహాయకుడు",
     "close_shift": "షిఫ్ట్ మూసివేయి",
     "total_sales": "మొత్తం అమ్మకాలు",
     "transactions": "లావాదేవీలు",
