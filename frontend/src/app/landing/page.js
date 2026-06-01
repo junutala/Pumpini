@@ -17,659 +17,672 @@ const COPY = {
   en: {
     hero:    'Control every drop.',
     hero2:   'Track every rupee.',
-    sub:     'India\'s most complete petrol station management platform — built for owners who want real control.',
-    cta:     'Start Free Trial',
-    demo:    'Watch Demo',
-    usp1_t:  '6 Indian Languages',
-    usp1_d:  'Your staff works in Hindi, Tamil, Telugu, Kannada, Marathi or English. Everyone gets the app in their own language.',
-    usp2_t:  'WhatsApp Updates',
-    usp2_d:  'Ask your station anything on WhatsApp. Get daily summaries, alerts and reports — no app needed.',
-    usp3_t:  'Credit Customer Portal',
-    usp3_d:  'Give your corporate clients their own dashboard. Vehicle-wise GST invoices, outstanding balance, full statement.',
-    usp4_t:  'Live Dashboard',
-    usp4_d:  'Watch every sale as it happens — from your phone, anywhere in India. Real-time. No delays.',
-    plans:   'Simple pricing',
-    trial:   '30-day free trial · No credit card · Cancel anytime',
-    nav_features: "Features",
-    nav_pricing: "Pricing",
-    nav_contact: "Contact",
-    login: "Login",
-    why_eyebrow: "WHY PUMPINI",
-    why_title: "Everything your petrol bunk needs",
-    why_sub: "Four features that set us apart from every other petrol station software in India",
-    pricing_title: "Simple pricing",
-    per_month: "/month",
-    most_popular: "Most Popular",
-    get_started: "Get Started",
-    stations_count: "petrol stations across South India",
-    whatsapp_ready: "WhatsApp Ready",
-    cta_footer: "Join petrol stations across South India who trust Pumpini",
+    sub:     'India\'s most intelligent petrol station management platform — built for owners who want real control, in their own language.',
+    cta:     'Start Free Trial →',
+    demo:    '📱 WhatsApp Demo',
+    usp1_t:  '🎙 Voice POS Entry',
+    usp1_d:  'Attendants speak transactions in Telugu, Tamil, Hindi or any Indian language. "50 litres petrol cash" — done. No typing needed.',
+    usp2_t:  '🌐 6 Indian Languages',
+    usp2_d:  'Every screen, every button, every alert — in Hindi, Tamil, Telugu, Kannada, Marathi or English. Your team works in the language they think in.',
+    usp3_t:  '📍 Geo-Fencing Security',
+    usp3_d:  'POS is locked to your station\'s location. Staff can only record transactions when physically present. Fired someone? Revoke access instantly.',
+    usp4_t:  '⚡ Live Dashboard',
+    usp4_d:  'Watch every sale as it happens — from your phone, anywhere in India. Real-time nozzle activity, shift status, tank levels. No delays.',
+    usp5_t:  '🏢 Credit & Corporate Portal',
+    usp5_d:  'Vehicle-wise GST invoices, outstanding tracking, credit limits. Your corporate clients get their own dashboard with full statement history.',
+    usp6_t:  '🛒 Lubes & Products',
+    usp6_d:  'Sell engine oils, lubricants and accessories with barcode scanning, GST invoices (LUB- series), and integrated stock management.',
+    feat_title: 'Everything your petrol bunk needs',
+    feat_sub:   'One platform. Every transaction. Total control.',
+    compare_title: 'Why switch to Pumpini?',
+    pricing_title: 'Simple pricing. No surprises.',
+    pricing_sub:   '30-day free trial · No credit card · Cancel anytime',
+    footer_cta: 'Start your free trial today',
+    footer_sub: 'Join petrol stations across South India who trust Pumpini',
   },
   hi: {
     hero:    'हर बूंद पर नियंत्रण।',
-    hero2:   'हर रुपये की निगरानी।',
-    sub:     'भारत का सबसे उन्नत पेट्रोल स्टेशन प्रबंधन प्लेटफ़ॉर्म — असली नियंत्रण चाहने वाले मालिकों के लिए।',
-    cta:     'मुफ़्त शुरू करें',
-    demo:    'डेमो देखें',
-    usp1_t:  '6 भारतीय भाषाएँ',
-    usp1_d:  'आपके कर्मचारी हिंदी, तमिल, तेलुगु, कन्नड़, मराठी या अंग्रेज़ी में काम कर सकते हैं। सबको अपनी भाषा में ऐप मिलता है।',
-    usp2_t:  'WhatsApp अपडेट',
-    usp2_d:  'WhatsApp पर अपने पंप से कुछ भी पूछें। दैनिक रिपोर्ट, अलर्ट और रिपोर्ट — बिना किसी ऐप के।',
-    usp3_t:  'क्रेडिट कस्टमर पोर्टल',
-    usp3_d:  'अपने कॉर्पोरेट ग्राहकों को अलग डैशबोर्ड दें। वाहन-वार GST इनवॉइस, बकाया राशि, पूरा विवरण।',
-    usp4_t:  'लाइव डैशबोर्ड',
-    usp4_d:  'हर बिक्री को होते ही देखें — अपने फ़ोन से, भारत में कहीं से भी। रियल-टाइम। कोई देरी नहीं।',
-    plans:   'सरल मूल्य निर्धारण',
-    trial:   '30 दिन मुफ़्त परीक्षण · क्रेडिट कार्ड नहीं · कभी भी रद्द करें',
-    nav_features: "विशेषताएँ",
-    nav_pricing: "मूल्य",
-    nav_contact: "संपर्क",
-    login: "लॉगिन",
-    why_eyebrow: "क्यों पंपिनी",
-    why_title: "आपके पेट्रोल पंप की हर ज़रूरत",
-    why_sub: "चार खूबियाँ जो हमें भारत के हर दूसरे पेट्रोल स्टेशन सॉफ़्टवेयर से अलग बनाती हैं",
-    pricing_title: "सरल मूल्य निर्धारण",
-    per_month: "/माह",
-    most_popular: "सबसे लोकप्रिय",
-    get_started: "शुरू करें",
-    stations_count: "दक्षिण भारत के पेट्रोल पंप",
-    whatsapp_ready: "WhatsApp तैयार",
-    cta_footer: "दक्षिण भारत के उन पेट्रोल पंपों से जुड़ें जो पंपिनी पर भरोसा करते हैं",
+    hero2:   'हर रुपया ट्रैक करें।',
+    sub:     'भारत का सबसे स्मार्ट पेट्रोल पंप मैनेजमेंट सिस्टम — आपकी भाषा में।',
+    cta:     'मुफ्त ट्रायल शुरू करें →',
+    demo:    '📱 WhatsApp डेमो',
+    usp1_t:  '🎙 आवाज़ से POS एंट्री',
+    usp1_d:  'अटेंडेंट हिंदी, तेलुगु या किसी भी भाषा में बोलकर एंट्री करें। "50 लीटर पेट्रोल कैश" — बस इतना काफी।',
+    usp2_t:  '🌐 6 भारतीय भाषाएँ',
+    usp2_d:  'हर स्क्रीन, हर बटन हिंदी, तमिल, तेलुगु, कन्नड़, मराठी या अंग्रेजी में।',
+    usp3_t:  '📍 जियो-फेंसिंग सुरक्षा',
+    usp3_d:  'POS सिर्फ पेट्रोल पंप पर ही काम करेगा। दूर से एक्सेस नहीं।',
+    usp4_t:  '⚡ लाइव डैशबोर्ड',
+    usp4_d:  'हर बिक्री रियल-टाइम में देखें — अपने फोन से, कहीं से भी।',
+    usp5_t:  '🏢 क्रेडिट कस्टमर पोर्टल',
+    usp5_d:  'GST इनवॉइस, बकाया ट्रैकिंग, क्रेडिट लिमिट — सब एक जगह।',
+    usp6_t:  '🛒 लुब्रिकेंट्स और प्रोडक्ट्स',
+    usp6_d:  'बारकोड स्कैन से बिक्री, GST इनवॉइस और स्टॉक मैनेजमेंट।',
+    feat_title: 'पेट्रोल पंप के लिए सब कुछ',
+    feat_sub:   'एक प्लेटफॉर्म। हर ट्रांजेक्शन। पूरा कंट्रोल।',
+    compare_title: 'Pumpini क्यों चुनें?',
+    pricing_title: 'सरल मूल्य निर्धारण।',
+    pricing_sub:   '30 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
+    footer_cta: 'आज ही मुफ्त ट्रायल शुरू करें',
+    footer_sub: 'दक्षिण भारत के पेट्रोल पंप मालिक Pumpini पर भरोसा करते हैं',
   },
   ta: {
-    hero:    'ஒவ்வொரு துளியும் உங்கள் கட்டுப்பாட்டில்.',
-    hero2:   'ஒவ்வொரு ரூபாயும் உங்கள் கண்காணிப்பில்.',
-    sub:     'இந்தியாவின் முழுமையான பெட்ரோல் நிலைய மேலாண்மை தளம் — உண்மையான கட்டுப்பாடு விரும்பும் உரிமையாளர்களுக்காக.',
-    cta:     'இலவசமாக தொடங்கு',
-    demo:    'டெமோ பார்க்க',
-    usp1_t:  '6 இந்திய மொழிகள்',
-    usp1_d:  'உங்கள் ஊழியர்கள் தமிழ், இந்தி, தெலுங்கு, கன்னடம், மராத்தி அல்லது ஆங்கிலத்தில் பணியாற்றலாம். அனைவருக்கும் அவரவர் மொழியில் செயலி.',
-    usp2_t:  'வாட்ஸ்அப் அறிவிப்புகள்',
-    usp2_d:  'வாட்ஸ்அப்பில் உங்கள் நிலையத்திடம் எதையும் கேளுங்கள். தினசரி சுருக்கம், எச்சரிக்கைகள், அறிக்கைகள் — செயலி தேவையில்லை.',
-    usp3_t:  'கடன் வாடிக்கையாளர் தளம்',
-    usp3_d:  'உங்கள் கார்பரேட் வாடிக்கையாளர்களுக்கு தனி டாஷ்போர்டு. வாகன வாரியான GST இன்வாய்ஸ், நிலுவைத் தொகை, முழு அறிக்கை.',
-    usp4_t:  'நேரலை டாஷ்போர்டு',
-    usp4_d:  'ஒவ்வொரு விற்பனையும் நிகழும்போதே பாருங்கள் — உங்கள் தொலைபேசியில், இந்தியாவின் எங்கிருந்தும். நிகழ்நேரம். தாமதம் இல்லை.',
-    plans:   'எளிய விலை நிர்ணயம்',
-    trial:   '30 நாள் இலவச சோதனை · கிரெடிட் கார்டு தேவையில்லை · எப்போது வேண்டுமானாலும் ரத்து செய்யலாம்',
-    nav_features: "அம்சங்கள்",
-    nav_pricing: "விலை",
-    nav_contact: "தொடர்பு",
-    login: "உள்நுழைவு",
-    why_eyebrow: "ஏன் பம்பினி",
-    why_title: "உங்கள் பெட்ரோல் நிலையத்தின் அனைத்து தேவைகளும்",
-    why_sub: "இந்தியாவின் மற்ற எல்லா பெட்ரோல் நிலைய மென்பொருளிலிருந்தும் எங்களை வேறுபடுத்தும் நான்கு அம்சங்கள்",
-    pricing_title: "எளிய விலை நிர்ணயம்",
-    per_month: "/மாதம்",
-    most_popular: "மிகவும் பிரபலம்",
-    get_started: "தொடங்கு",
-    stations_count: "தென்னிந்தியாவில் உள்ள பெட்ரோல் நிலையங்கள்",
-    whatsapp_ready: "WhatsApp தயார்",
-    cta_footer: "பம்பினியை நம்பும் தென்னிந்திய பெட்ரோல் நிலையங்களுடன் இணையுங்கள்",
+    hero:    'ஒவ்வொரு துளியையும் கட்டுப்படுத்துங்கள்.',
+    hero2:   'ஒவ்வொரு ரூபாயையும் கண்காணியுங்கள்.',
+    sub:     'இந்தியாவின் மிகவும் ஸ்மார்ட் பெட்ரோல் நிலைய மேலாண்மை தளம் — உங்கள் மொழியில்.',
+    cta:     'இலவச சோதனை தொடங்கு →',
+    demo:    '📱 WhatsApp டெமோ',
+    usp1_t:  '🎙 குரல் POS உள்ளீடு',
+    usp1_d:  'தமிழ் அல்லது எந்த மொழியிலும் பேசி பரிவர்த்தனை பதிவு செய்யுங்கள்.',
+    usp2_t:  '🌐 6 இந்திய மொழிகள்',
+    usp2_d:  'தமிழ், தெலுங்கு, கன்னடம், மராத்தி, இந்தி அல்லது ஆங்கிலத்தில் முழு ஆதரவு.',
+    usp3_t:  '📍 ஜியோ-ஃபென்சிங் பாதுகாப்பு',
+    usp3_d:  'நிலையத்தில் மட்டுமே POS செயல்படும். தொலைவிலிருந்து அணுக முடியாது.',
+    usp4_t:  '⚡ நேரடி டாஷ்போர்டு',
+    usp4_d:  'உங்கள் தொலைபேசியில் நேரடியாக விற்பனையை கண்காணியுங்கள்.',
+    usp5_t:  '🏢 கடன் வாடிக்கையாளர் போர்டல்',
+    usp5_d:  'GST இன்வாய்ஸ், நிலுவைத் தொகை கண்காணிப்பு, கடன் வரம்பு.',
+    usp6_t:  '🛒 லூப்ரிகண்ட்கள் & பொருட்கள்',
+    usp6_d:  'பார்கோட் ஸ்கேன், GST இன்வாய்ஸ் மற்றும் ஸ்டாக் மேலாண்மை.',
+    feat_title: 'உங்கள் நிலையத்திற்கு தேவையான அனைத்தும்',
+    feat_sub:   'ஒரு தளம். அனைத்து பரிவர்த்தனைகள். முழு கட்டுப்பாடு.',
+    compare_title: 'Pumpini ஏன் சிறந்தது?',
+    pricing_title: 'எளிமையான விலை நிர்ணயம்.',
+    pricing_sub:   '30 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
+    footer_cta: 'இன்றே இலவச சோதனை தொடங்குங்கள்',
+    footer_sub: 'தென்னிந்தியா முழுவதும் பெட்ரோல் நிலையங்கள் Pumpini-ஐ நம்புகின்றன',
   },
   te: {
-    hero:    'ప్రతి చుక్కపై నియంత్రణ.',
+    hero:    'ప్రతి చుక్కను నియంత్రించండి.',
     hero2:   'ప్రతి రూపాయిని ట్రాక్ చేయండి.',
-    sub:     'భారతదేశపు అత్యంత సమగ్ర పెట్రోల్ స్టేషన్ నిర్వహణ వేదిక — నిజమైన నియంత్రణ కోరుకునే యజమానుల కోసం.',
-    cta:     'ఉచితంగా ప్రారంభించండి',
-    demo:    'డెమో చూడండి',
-    usp1_t:  '6 భారతీయ భాషలు',
-    usp1_d:  'మీ సిబ్బంది హిందీ, తమిళం, తెలుగు, కన్నడ, మరాఠీ లేదా ఆంగ్లంలో పని చేయవచ్చు. ప్రతి ఒక్కరికీ వారి భాషలో యాప్.',
-    usp2_t:  'WhatsApp నవీకరణలు',
-    usp2_d:  'WhatsApp లో మీ స్టేషన్‌ను ఏదైనా అడగండి. రోజువారీ సారాంశాలు, హెచ్చరికలు, నివేదికలు — యాప్ అవసరం లేదు.',
-    usp3_t:  'క్రెడిట్ కస్టమర్ పోర్టల్',
-    usp3_d:  'మీ కార్పొరేట్ క్లయింట్లకు వారి సొంత డాష్‌బోర్డ్ ఇవ్వండి. వాహనం వారీగా GST ఇన్‌వాయిస్‌లు, బకాయి, పూర్తి స్టేట్‌మెంట్.',
-    usp4_t:  'లైవ్ డాష్‌బోర్డ్',
-    usp4_d:  'ప్రతి అమ్మకాన్ని జరిగినప్పుడే చూడండి — మీ ఫోన్ నుండి, భారతదేశంలో ఎక్కడి నుండైనా. రియల్-టైమ్. ఆలస్యం లేదు.',
-    plans:   'సరళమైన ధర',
-    trial:   '30 రోజుల ఉచిత ట్రయల్ · క్రెడిట్ కార్డ్ అవసరం లేదు · ఎప్పుడైనా రద్దు చేయండి',
-    nav_features: "ఫీచర్లు",
-    nav_pricing: "ధర",
-    nav_contact: "సంప్రదించండి",
-    login: "లాగిన్",
-    why_eyebrow: "ఎందుకు పంపిని",
-    why_title: "మీ పెట్రోల్ బంక్ అవసరాలన్నీ",
-    why_sub: "భారతదేశంలోని ప్రతి ఇతర పెట్రోల్ స్టేషన్ సాఫ్ట్‌వేర్ నుండి మమ్మల్ని వేరు చేసే నాలుగు ఫీచర్లు",
-    pricing_title: "సరళమైన ధర",
-    per_month: "/నెల",
-    most_popular: "అత్యంత ప్రజాదరణ",
-    get_started: "ప్రారంభించండి",
-    stations_count: "దక్షిణ భారతదేశంలోని పెట్రోల్ స్టేషన్లు",
-    whatsapp_ready: "WhatsApp సిద్ధం",
-    cta_footer: "పంపినిని నమ్మే దక్షిణ భారత పెట్రోల్ స్టేషన్లతో చేరండి",
+    sub:     'భారతదేశంలో అత్యంత తెలివైన పెట్రోల్ బంక్ నిర్వహణ వేదిక — మీ భాషలో.',
+    cta:     'ఉచిత ట్రయల్ ప్రారంభించండి →',
+    demo:    '📱 WhatsApp డెమో',
+    usp1_t:  '🎙 వాయిస్ POS ఎంట్రీ',
+    usp1_d:  '"50 లీటర్లు పెట్రోల్ నగదు" — తెలుగులో చెప్పండి, ఆటోమేటిగ్గా రికార్డ్ అవుతుంది.',
+    usp2_t:  '🌐 6 భారతీయ భాషలు',
+    usp2_d:  'తెలుగు, తమిళం, హిందీ, కన్నడ, మరాఠీ లేదా ఇంగ్లీష్‌లో మొత్తం సపోర్ట్.',
+    usp3_t:  '📍 జియో-ఫెన్సింగ్ సెక్యూరిటీ',
+    usp3_d:  'POS కేవలం బంక్ వద్ద మాత్రమే పని చేస్తుంది. దూరం నుండి యాక్సెస్ లేదు.',
+    usp4_t:  '⚡ లైవ్ డాష్‌బోర్డ్',
+    usp4_d:  'మీ ఫోన్‌లో రియల్-టైమ్‌లో అమ్మకాలు చూడండి — ఎక్కడి నుండైనా.',
+    usp5_t:  '🏢 క్రెడిట్ కస్టమర్ పోర్టల్',
+    usp5_d:  'GST ఇన్వాయిస్‌లు, బాకీ ట్రాకింగ్, క్రెడిట్ లిమిట్ — అన్నీ ఒకే చోట.',
+    usp6_t:  '🛒 లూబ్రికెంట్లు & ప్రొడక్ట్స్',
+    usp6_d:  'బార్‌కోడ్ స్కాన్, GST ఇన్వాయిస్ మరియు స్టాక్ మేనేజ్‌మెంట్.',
+    feat_title: 'మీ పెట్రోల్ బంక్‌కు అవసరమైన అన్నీ',
+    feat_sub:   'ఒక్క వేదిక. అన్ని లావాదేవీలు. పూర్తి నియంత్రణ.',
+    compare_title: 'Pumpini ఎందుకు మెరుగైనది?',
+    pricing_title: 'సరళమైన ధర నిర్ణయం.',
+    pricing_sub:   '30 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
+    footer_cta: 'ఈరోజే ఉచిత ట్రయల్ ప్రారంభించండి',
+    footer_sub: 'దక్షిణ భారతదేశంలో పెట్రోల్ బంకులు Pumpini నమ్ముతున్నాయి',
   },
   kn: {
-    hero:    'ಪ್ರತಿ ಹನಿಯ ಮೇಲೆ ನಿಯಂತ್ರಣ.',
+    hero:    'ಪ್ರತಿ ಹನಿಯನ್ನು ನಿಯಂತ್ರಿಸಿ.',
     hero2:   'ಪ್ರತಿ ರೂಪಾಯಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ.',
-    sub:     'ಭಾರತದ ಅತ್ಯಂತ ಸಮಗ್ರ ಪೆಟ್ರೋಲ್ ನಿಲ್ದಾಣ ನಿರ್ವಹಣಾ ವೇದಿಕೆ — ನಿಜವಾದ ನಿಯಂತ್ರಣ ಬಯಸುವ ಮಾಲೀಕರಿಗಾಗಿ.',
-    cta:     'ಉಚಿತವಾಗಿ ಪ್ರಾರಂಭಿಸಿ',
-    demo:    'ಡೆಮೋ ನೋಡಿ',
-    usp1_t:  '6 ಭಾರತೀಯ ಭಾಷೆಗಳು',
-    usp1_d:  'ನಿಮ್ಮ ಸಿಬ್ಬಂದಿ ಹಿಂದಿ, ತಮಿಳು, ತೆಲುಗು, ಕನ್ನಡ, ಮರಾಠಿ ಅಥವಾ ಇಂಗ್ಲಿಷ್‌ನಲ್ಲಿ ಕೆಲಸ ಮಾಡಬಹುದು. ಪ್ರತಿಯೊಬ್ಬರಿಗೂ ತಮ್ಮ ಭಾಷೆಯಲ್ಲಿ ಆ್ಯಪ್.',
-    usp2_t:  'WhatsApp ನವೀಕರಣಗಳು',
-    usp2_d:  'WhatsApp ನಲ್ಲಿ ನಿಮ್ಮ ನಿಲ್ದಾಣವನ್ನು ಏನು ಬೇಕಾದರೂ ಕೇಳಿ. ದೈನಂದಿನ ಸಾರಾಂಶಗಳು, ಎಚ್ಚರಿಕೆಗಳು, ವರದಿಗಳು — ಆ್ಯಪ್ ಅಗತ್ಯವಿಲ್ಲ.',
-    usp3_t:  'ಕ್ರೆಡಿಟ್ ಗ್ರಾಹಕ ಪೋರ್ಟಲ್',
-    usp3_d:  'ನಿಮ್ಮ ಕಾರ್ಪೊರೇಟ್ ಗ್ರಾಹಕರಿಗೆ ಅವರದೇ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ನೀಡಿ. ವಾಹನವಾರು GST ಇನ್‌ವಾಯ್ಸ್, ಬಾಕಿ, ಪೂರ್ಣ ಹೇಳಿಕೆ.',
-    usp4_t:  'ಲೈವ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್',
-    usp4_d:  'ಪ್ರತಿ ಮಾರಾಟವನ್ನು ನಡೆಯುತ್ತಿರುವಂತೆಯೇ ನೋಡಿ — ನಿಮ್ಮ ಫೋನ್‌ನಿಂದ, ಭಾರತದ ಎಲ್ಲಿಂದಲಾದರೂ. ರಿಯಲ್-ಟೈಮ್. ವಿಳಂಬವಿಲ್ಲ.',
-    plans:   'ಸರಳ ಬೆಲೆ',
-    trial:   '30 ದಿನಗಳ ಉಚಿತ ಪ್ರಯೋಗ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ · ಯಾವಾಗ ಬೇಕಾದರೂ ರದ್ದುಗೊಳಿಸಿ',
-    nav_features: "ವೈಶಿಷ್ಟ್ಯಗಳು",
-    nav_pricing: "ಬೆಲೆ",
-    nav_contact: "ಸಂಪರ್ಕ",
-    login: "ಲಾಗಿನ್",
-    why_eyebrow: "ಏಕೆ ಪಂಪಿನಿ",
-    why_title: "ನಿಮ್ಮ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ನ ಎಲ್ಲಾ ಅಗತ್ಯಗಳು",
-    why_sub: "ಭಾರತದ ಪ್ರತಿಯೊಂದು ಇತರ ಪೆಟ್ರೋಲ್ ಸ್ಟೇಷನ್ ಸಾಫ್ಟ್‌ವೇರ್‌ನಿಂದ ನಮ್ಮನ್ನು ಪ್ರತ್ಯೇಕಿಸುವ ನಾಲ್ಕು ವೈಶಿಷ್ಟ್ಯಗಳು",
-    pricing_title: "ಸರಳ ಬೆಲೆ",
-    per_month: "/ತಿಂಗಳು",
-    most_popular: "ಅತ್ಯಂತ ಜನಪ್ರಿಯ",
-    get_started: "ಪ್ರಾರಂಭಿಸಿ",
-    stations_count: "ದಕ್ಷಿಣ ಭಾರತದ ಪೆಟ್ರೋಲ್ ಸ್ಟೇಷನ್‌ಗಳು",
-    whatsapp_ready: "WhatsApp ಸಿದ್ಧ",
-    cta_footer: "ಪಂಪಿನಿಯನ್ನು ನಂಬುವ ದಕ್ಷಿಣ ಭಾರತದ ಪೆಟ್ರೋಲ್ ಸ್ಟೇಷನ್‌ಗಳೊಂದಿಗೆ ಸೇರಿ",
+    sub:     'ಭಾರತದ ಅತ್ಯಂತ ಬುದ್ಧಿವಂತ ಪೆಟ್ರೋಲ್ ಬಂಕ್ ನಿರ್ವಹಣಾ ವೇದಿಕೆ — ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ.',
+    cta:     'ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ →',
+    demo:    '📱 WhatsApp ಡೆಮೋ',
+    usp1_t:  '🎙 ವಾಯ್ಸ್ POS ಎಂಟ್ರಿ',
+    usp1_d:  'ಕನ್ನಡ ಅಥವಾ ಯಾವುದೇ ಭಾಷೆಯಲ್ಲಿ ಮಾತನಾಡಿ ವ್ಯವಹಾರ ದಾಖಲಿಸಿ.',
+    usp2_t:  '🌐 6 ಭಾರತೀಯ ಭಾಷೆಗಳು',
+    usp2_d:  'ಕನ್ನಡ, ತೆಲುಗು, ತಮಿಳು, ಹಿಂದಿ, ಮರಾಠಿ ಅಥವಾ ಇಂಗ್ಲೀಷ್‌ನಲ್ಲಿ ಸಂಪೂರ್ಣ ಬೆಂಬಲ.',
+    usp3_t:  '📍 ಜಿಯೋ-ಫೆನ್ಸಿಂಗ್ ಭದ್ರತೆ',
+    usp3_d:  'POS ಕೇವಲ ಬಂಕ್‌ನಲ್ಲಿ ಮಾತ್ರ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ.',
+    usp4_t:  '⚡ ಲೈವ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್',
+    usp4_d:  'ರಿಯಲ್-ಟೈಮ್‌ನಲ್ಲಿ ಮಾರಾಟ ನೋಡಿ — ನಿಮ್ಮ ಫೋನ್‌ನಿಂದ.',
+    usp5_t:  '🏢 ಕ್ರೆಡಿಟ್ ಗ್ರಾಹಕ ಪೋರ್ಟಲ್',
+    usp5_d:  'GST ಇನ್‌ವಾಯ್ಸ್, ಬಾಕಿ ಟ್ರ್ಯಾಕಿಂಗ್, ಕ್ರೆಡಿಟ್ ಮಿತಿ.',
+    usp6_t:  '🛒 ಲೂಬ್ರಿಕೆಂಟ್‌ಗಳು & ಉತ್ಪನ್ನಗಳು',
+    usp6_d:  'ಬಾರ್‌ಕೋಡ್ ಸ್ಕ್ಯಾನ್, GST ಇನ್‌ವಾಯ್ಸ್ ಮತ್ತು ಸ್ಟಾಕ್ ನಿರ್ವಹಣೆ.',
+    feat_title: 'ನಿಮ್ಮ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗೆ ಬೇಕಾದ ಎಲ್ಲವೂ',
+    feat_sub:   'ಒಂದು ವೇದಿಕೆ. ಎಲ್ಲಾ ವ್ಯವಹಾರಗಳು. ಸಂಪೂರ್ಣ ನಿಯಂತ್ರಣ.',
+    compare_title: 'Pumpini ಏಕೆ ಉತ್ತಮ?',
+    pricing_title: 'ಸರಳ ಬೆಲೆ ನಿರ್ಧಾರ.',
+    pricing_sub:   '30 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
+    footer_cta: 'ಇಂದೇ ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ',
+    footer_sub: 'ದಕ್ಷಿಣ ಭಾರತದ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗಳು Pumpini ನಂಬುತ್ತವೆ',
   },
   mr: {
-    hero:    'प्रत्येक थेंबावर नियंत्रण.',
-    hero2:   'प्रत्येक रुपयाचा मागोवा घ्या.',
-    sub:     'भारतातील सर्वात संपूर्ण पेट्रोल पंप व्यवस्थापन प्लॅटफॉर्म — खरे नियंत्रण हवे असणाऱ्या मालकांसाठी.',
-    cta:     'मोफत सुरू करा',
-    demo:    'डेमो पहा',
-    usp1_t:  '6 भारतीय भाषा',
-    usp1_d:  'तुमचे कर्मचारी हिंदी, तमिळ, तेलुगू, कन्नड, मराठी किंवा इंग्रजीत काम करू शकतात. प्रत्येकाला त्यांच्या भाषेत अॅप.',
-    usp2_t:  'WhatsApp अपडेट्स',
-    usp2_d:  'WhatsApp वर तुमच्या पंपाला काहीही विचारा. दैनिक सारांश, सूचना आणि अहवाल — अॅपची गरज नाही.',
-    usp3_t:  'क्रेडिट ग्राहक पोर्टल',
-    usp3_d:  'तुमच्या कॉर्पोरेट ग्राहकांना स्वतःचा डॅशबोर्ड द्या. वाहननिहाय GST बिले, थकबाकी, संपूर्ण विवरण.',
-    usp4_t:  'लाइव्ह डॅशबोर्ड',
-    usp4_d:  'प्रत्येक विक्री घडताक्षणी पहा — तुमच्या फोनवरून, भारतात कुठूनही. रिअल-टाइम. विलंब नाही.',
-    plans:   'सोपी किंमत',
-    trial:   '30 दिवस मोफत चाचणी · क्रेडिट कार्ड नाही · कधीही रद्द करा',
-    nav_features: "वैशिष्ट्ये",
-    nav_pricing: "किंमत",
-    nav_contact: "संपर्क",
-    login: "लॉगिन",
-    why_eyebrow: "पंपिनी का",
-    why_title: "तुमच्या पेट्रोल पंपाच्या सर्व गरजा",
-    why_sub: "भारतातील इतर प्रत्येक पेट्रोल पंप सॉफ्टवेअरपेक्षा आम्हाला वेगळे करणारी चार वैशिष्ट्ये",
-    pricing_title: "सोपी किंमत",
-    per_month: "/महिना",
-    most_popular: "सर्वाधिक लोकप्रिय",
-    get_started: "सुरू करा",
-    stations_count: "दक्षिण भारतातील पेट्रोल पंप",
-    whatsapp_ready: "WhatsApp तयार",
-    cta_footer: "पंपिनीवर विश्वास ठेवणाऱ्या दक्षिण भारतातील पेट्रोल पंपांमध्ये सामील व्हा",
+    hero:    'प्रत्येक थेंब नियंत्रित करा.',
+    hero2:   'प्रत्येक रुपया ट्रॅक करा.',
+    sub:     'भारतातील सर्वात हुशार पेट्रोल पंप व्यवस्थापन प्लॅटफॉर्म — तुमच्या भाषेत.',
+    cta:     'मोफत चाचणी सुरू करा →',
+    demo:    '📱 WhatsApp डेमो',
+    usp1_t:  '🎙 आवाज POS एंट्री',
+    usp1_d:  'मराठी किंवा कोणत्याही भाषेत बोलून व्यवहार नोंदवा.',
+    usp2_t:  '🌐 6 भारतीय भाषा',
+    usp2_d:  'मराठी, हिंदी, तमिळ, तेलुगू, कन्नड किंवा इंग्रजीत संपूर्ण समर्थन.',
+    usp3_t:  '📍 जिओ-फेन्सिंग सुरक्षा',
+    usp3_d:  'POS फक्त पेट्रोल पंपावर काम करतो. दुरून प्रवेश नाही.',
+    usp4_t:  '⚡ थेट डॅशबोर्ड',
+    usp4_d:  'रिअल-टाइममध्ये विक्री पहा — तुमच्या फोनवरून.',
+    usp5_t:  '🏢 क्रेडिट ग्राहक पोर्टल',
+    usp5_d:  'GST इनव्हॉइस, थकबाकी ट्रॅकिंग, क्रेडिट मर्यादा.',
+    usp6_t:  '🛒 लुब्रिकेंट्स आणि उत्पादने',
+    usp6_d:  'बारकोड स्कॅन, GST इनव्हॉइस आणि स्टॉक व्यवस्थापन.',
+    feat_title: 'तुमच्या पेट्रोल पंपासाठी सर्व काही',
+    feat_sub:   'एक प्लॅटफॉर्म. सर्व व्यवहार. संपूर्ण नियंत्रण.',
+    compare_title: 'Pumpini का निवडावे?',
+    pricing_title: 'सोपे मूल्य निर्धारण.',
+    pricing_sub:   '30 दिवस मोफत · क्रेडिट कार्ड नाही',
+    footer_cta: 'आजच मोफत चाचणी सुरू करा',
+    footer_sub: 'दक्षिण भारतातील पेट्रोल पंप Pumpini वर विश्वास ठेवतात',
   },
 };
 
+const FEATURES = [
+  { icon:'🎙', key:'usp1' },
+  { icon:'🌐', key:'usp2' },
+  { icon:'📍', key:'usp3' },
+  { icon:'⚡', key:'usp4' },
+  { icon:'🏢', key:'usp5' },
+  { icon:'🛒', key:'usp6' },
+];
+
+const COMPARE = [
+  ['Voice POS in Indian languages',           true,  false],
+  ['6 Indian language support',               true,  false],
+  ['Geo-fencing security',                    true,  false],
+  ['Real-time live dashboard',                true,  false],
+  ['Blind drop cash reconciliation',          true,  false],
+  ['Vehicle-wise GST invoice',                true,  false],
+  ['Credit customer portal',                  true,  false],
+  ['Lubes & products management',             true,  false],
+  ['WhatsApp alerts',                         true,  false],
+  ['Multi-station group view',                true,  false],
+  ['Barcode scanner (mobile camera)',         true,  false],
+  ['AI-powered transaction parsing',          true,  false],
+];
+
 const PLANS = [
-  { name:'Starter', price:'999',  color:'#1A5F7A', features:['1 station','Up to 8 nozzles','5 users','Shifts & reconciliation','Daily reports'] },
-  { name:'Pro',     price:'1,999',color:'#FF6B00', popular:true, features:['1 station','Unlimited nozzles','15 users','RFID tracking','Real-time dashboard','GST invoices','WhatsApp alerts'] },
-  { name:'Business',price:'3,499',color:'#7c3aed', features:['Up to 3 stations','Everything in Pro','WhatsApp AI bot','Group dashboard','Corporate fleet portal'] },
+  {
+    name: 'PRO',
+    price: '₹999',
+    period: '/month',
+    color: '#1A5F7A',
+    popular: false,
+    features: [
+      '1 petrol station',
+      'Unlimited nozzles & tanks',
+      'Up to 15 users',
+      'Voice POS entry',
+      '6 language support',
+      'Shifts & reconciliation',
+      'GST invoices',
+      'Credit customers',
+      'Lubes & products',
+      'Real-time dashboard',
+      'Geo-fencing security',
+      'WhatsApp alerts',
+    ],
+  },
+  {
+    name: 'ENTERPRISE',
+    price: '₹1,999',
+    period: '/month',
+    color: '#FF6B00',
+    popular: true,
+    features: [
+      'Up to 5 petrol stations',
+      'Everything in PRO',
+      'Group dashboard',
+      'Multi-station reports',
+      'Corporate fleet portal',
+      'Priority support',
+      'Custom invoice prefix',
+      'Advanced analytics',
+    ],
+  },
 ];
 
 export default function LandingPage() {
-  const { i18n } = useTranslation();
   const [lang,    setLang]    = useState('en');
-  const [scroll,  setScroll]  = useState(0);
-  const [active,  setActive]  = useState(null);
-  const t = COPY[lang] || COPY.en;
+  const [langOpen,setLangOpen] = useState(false);
+  const [scrolled,setScrolled] = useState(false);
+  const c = COPY[lang] || COPY.en;
 
-  // Sync with the app-wide i18next language (persisted in localStorage)
-  useEffect(()=>{
-    const current = (i18n.language || 'en').split('-')[0];
-    if (COPY[current]) setLang(current);
-  },[i18n.language]);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
-  const pickLang = (code) => {
+  const changeLang = (code) => {
     setLang(code);
-    setActive(null);
-    if (i18n && i18n.changeLanguage) i18n.changeLanguage(code);
+    setLangOpen(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('i18nextLng', code);
+    }
   };
 
-  useEffect(()=>{
-    const onScroll = ()=>setScroll(window.scrollY);
-    window.addEventListener('scroll',onScroll,{passive:true});
-    return ()=>window.removeEventListener('scroll',onScroll);
-  },[]);
-
-  const USPS = [
-    { icon:'🌐', color:'#FF6B00', bg:'#fff3e0', title:t.usp1_t, desc:t.usp1_d },
-    { icon:'💬', color:'#25D366', bg:'#f0fdf4', title:t.usp2_t, desc:t.usp2_d },
-    { icon:'🏢', color:'#1A5F7A', bg:'#f0f9ff', title:t.usp3_t, desc:t.usp3_d },
-    { icon:'⚡', color:'#7c3aed', bg:'#faf5ff', title:t.usp4_t, desc:t.usp4_d },
-  ];
-
-  const NAV_LINKS = [
-    { href:'#features', label:t.nav_features || 'Features' },
-    { href:'#pricing',  label:t.nav_pricing  || 'Pricing' },
-    { href:'#contact',  label:t.nav_contact  || 'Contact' },
-  ];
-
   return (
-    <div style={{fontFamily:"'DM Sans',system-ui,sans-serif",background:'#fff',color:'#0F1923',overflowX:'hidden'}}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
-        * { box-sizing:border-box; margin:0; padding:0; }
-        html { scroll-behavior:smooth; }
-        .fade-up { opacity:0; transform:translateY(24px); animation:fadeUp .6s forwards; }
-        @keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
-        .usp-card:hover { transform:translateY(-4px); box-shadow:0 16px 48px rgba(0,0,0,.12) !important; }
-        .usp-card { transition:transform .25s, box-shadow .25s; }
-        .plan-card:hover { transform:translateY(-3px); }
-        .plan-card { transition:transform .2s; }
-        .lang-btn { transition:all .15s; }
-        .lang-btn:hover { transform:scale(1.05); }
-        .cta-primary:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(255,107,0,.4) !important; }
-        .cta-primary { transition:transform .2s, box-shadow .2s; }
-        @media(max-width:768px){
-          .hero-title { font-size:clamp(2rem,8vw,3rem) !important; }
-          .usps-grid { grid-template-columns:1fr 1fr !important; }
-          .plans-grid { grid-template-columns:1fr !important; }
-          .nav-links { display:none !important; }
-        }
-        @media(max-width:480px){
-          .usps-grid { grid-template-columns:1fr !important; }
-        }
-      `}</style>
+    <div style={{fontFamily:'DM Sans,system-ui,sans-serif',color:'#1a1a1a',overflowX:'hidden'}}>
 
-      {/* ── NAV ── */}
+      {/* ── Navbar ── */}
       <nav style={{
         position:'fixed',top:0,left:0,right:0,zIndex:100,
-        background:'rgba(255,255,255,.97)',
-        backdropFilter:'blur(12px)',
-        borderBottom:'1px solid rgba(0,0,0,.08)',
-        boxShadow: scroll>40 ? '0 2px 12px rgba(0,0,0,.06)' : 'none',
-        transition:'box-shadow .3s',padding:'0 2rem',height:64,
-        display:'flex',alignItems:'center',justifyContent:'space-between',
+        background: scrolled ? 'rgba(255,255,255,.97)' : 'transparent',
+        backdropFilter: scrolled ? 'blur(12px)' : 'none',
+        borderBottom: scrolled ? '1px solid rgba(0,0,0,.08)' : 'none',
+        transition:'all .3s',padding:'0 5%',
+        display:'flex',alignItems:'center',justifyContent:'space-between',height:64,
       }}>
-        <Image src="/pumpini-logo.png" alt="Pumpini" width={140} height={44} style={{objectFit:'contain'}}/>
-        <div className="nav-links" style={{display:'flex',gap:'2rem',alignItems:'center'}}>
-          {NAV_LINKS.map(l=>(
-            <a key={l.href} href={l.href}
-              style={{fontSize:14,fontWeight:500,color:'#333',textDecoration:'none',
-                transition:'color .2s'}}
-              onMouseEnter={e=>e.target.style.color='#FF6B00'}
-              onMouseLeave={e=>e.target.style.color='#333'}>
-              {l.label}
-            </a>
-          ))}
+        <div style={{fontWeight:900,fontSize:24,letterSpacing:'-.02em'}}>
+          <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#1A5F7A'}}>ini</span>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {/* Language selector */}
+
+        <div style={{display:'flex',alignItems:'center',gap:'2rem'}}>
+          <a href="#features" style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Features</a>
+          <a href="#pricing"  style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Pricing</a>
+          <a href="#contact"  style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Contact</a>
+
+          {/* Language switcher */}
           <div style={{position:'relative'}}>
-            <button onClick={()=>setActive(active==='lang'?null:'lang')}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'7px 12px',
-                background:'rgba(255,255,255,.9)',border:'1px solid rgba(0,0,0,.12)',
-                borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
-              {LANGS.find(l=>l.code===lang)?.flag} {LANGS.find(l=>l.code===lang)?.label}
-              <span style={{fontSize:10,opacity:.5}}>▼</span>
+            <button onClick={()=>setLangOpen(p=>!p)}
+              style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',
+                background:'rgba(0,0,0,.06)',border:'none',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:500}}>
+              {LANGS.find(l=>l.code===lang)?.flag} {LANGS.find(l=>l.code===lang)?.label} ▾
             </button>
-            {active==='lang' && (
-              <div style={{position:'absolute',top:'110%',right:0,background:'#fff',
-                borderRadius:10,boxShadow:'0 8px 32px rgba(0,0,0,.15)',
-                border:'1px solid rgba(0,0,0,.08)',overflow:'hidden',minWidth:160,zIndex:200}}>
+            {langOpen && (
+              <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'#fff',
+                borderRadius:10,boxShadow:'0 8px 30px rgba(0,0,0,.15)',padding:'0.5rem',
+                minWidth:160,zIndex:200}}>
                 {LANGS.map(l=>(
-                  <button key={l.code} onClick={()=>pickLang(l.code)}
-                    className="lang-btn"
-                    style={{display:'flex',alignItems:'center',gap:10,width:'100%',
-                      padding:'10px 16px',background:lang===l.code?'#fff3e0':'transparent',
-                      border:'none',cursor:'pointer',fontSize:14,
-                      color:lang===l.code?'#FF6B00':'#333',fontWeight:lang===l.code?700:400,
-                      textAlign:'left'}}>
-                    <span>{l.flag}</span>{l.label}
+                  <button key={l.code} onClick={()=>changeLang(l.code)}
+                    style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 12px',
+                      background:lang===l.code?'#fff7ed':'transparent',border:'none',borderRadius:7,
+                      cursor:'pointer',fontSize:13,fontWeight:lang===l.code?700:400,
+                      color:lang===l.code?'#FF6B00':'#333',textAlign:'left'}}>
+                    {l.flag} {l.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <Link href="/login"
-            style={{padding:'8px 20px',background:'#FF6B00',color:'#fff',
-              borderRadius:8,textDecoration:'none',fontWeight:700,fontSize:14,
-              boxShadow:'0 2px 8px rgba(255,107,0,.3)'}}>
-            {t.login || 'Login'}
+
+          <Link href="/login" style={{padding:'8px 20px',background:'#FF6B00',color:'#fff',
+            borderRadius:8,textDecoration:'none',fontWeight:700,fontSize:14}}>
+            Login
           </Link>
         </div>
       </nav>
 
-      {/* ── HERO ── */}
-      <div style={{
-        minHeight:'100vh',display:'flex',alignItems:'center',
-        background:'linear-gradient(135deg,#0a1520 0%,#0F1923 50%,#0d2235 100%)',
-        padding:'5rem 2rem 4rem',position:'relative',overflow:'hidden',
+      {/* ── Hero ── */}
+      <section style={{
+        minHeight:'100dvh',
+        background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 50%, #0F1923 100%)',
+        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+        textAlign:'center',padding:'0 5%',position:'relative',overflow:'hidden',
       }}>
-        {/* Background decorative circles */}
-        <div style={{position:'absolute',top:'-20%',right:'-10%',width:600,height:600,
-          borderRadius:'50%',background:'radial-gradient(circle,rgba(255,107,0,.12) 0%,transparent 70%)',
-          pointerEvents:'none'}}/>
-        <div style={{position:'absolute',bottom:'-10%',left:'-5%',width:400,height:400,
-          borderRadius:'50%',background:'radial-gradient(circle,rgba(26,95,122,.2) 0%,transparent 70%)',
-          pointerEvents:'none'}}/>
+        {/* Background decoration */}
+        <div style={{position:'absolute',inset:0,opacity:.04,backgroundImage:
+          'radial-gradient(circle at 20% 80%, #FF6B00 0%, transparent 50%), radial-gradient(circle at 80% 20%, #1A5F7A 0%, transparent 50%)'}}/>
 
-        <div style={{maxWidth:1100,margin:'0 auto',width:'100%',
-          display:'grid',gridTemplateColumns:'1fr 1fr',gap:'4rem',alignItems:'center'}}>
+        {/* Badge */}
+        <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,107,0,.15)',
+          border:'1px solid rgba(255,107,0,.3)',borderRadius:99,padding:'6px 16px',
+          marginBottom:'1.5rem',fontSize:13,fontWeight:600,color:'#FF6B00'}}>
+          🇮🇳 Built for Indian Petrol Stations
+        </div>
 
-          {/* Left */}
+        {/* Headline */}
+        <h1 style={{fontSize:'clamp(2.5rem,6vw,4.5rem)',fontWeight:900,lineHeight:1.1,
+          color:'#fff',marginBottom:'0.5rem',letterSpacing:'-.03em'}}>
+          {c.hero}
+        </h1>
+        <h1 style={{fontSize:'clamp(2.5rem,6vw,4.5rem)',fontWeight:900,lineHeight:1.1,
+          background:'linear-gradient(90deg,#FF6B00,#f97316)',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+          marginBottom:'1.5rem',letterSpacing:'-.03em'}}>
+          {c.hero2}
+        </h1>
+
+        <p style={{fontSize:'clamp(1rem,2vw,1.2rem)',color:'rgba(255,255,255,.7)',
+          maxWidth:600,lineHeight:1.6,marginBottom:'2.5rem'}}>
+          {c.sub}
+        </p>
+
+        {/* CTA buttons */}
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center',marginBottom:'3rem'}}>
+          <Link href="/login" style={{
+            padding:'14px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
+            textDecoration:'none',fontWeight:800,fontSize:16,
+            boxShadow:'0 4px 20px rgba(255,107,0,.4)',
+          }}>
+            {c.cta}
+          </Link>
+          <a href={`https://wa.me/919490704075?text=I want a demo of Pumpini`}
+            target="_blank" rel="noopener noreferrer"
+            style={{padding:'14px 28px',background:'rgba(255,255,255,.1)',color:'#fff',
+              borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
+              border:'1px solid rgba(255,255,255,.2)'}}>
+            {c.demo}
+          </a>
+        </div>
+
+        {/* Trust badges */}
+        <div style={{display:'flex',gap:'2rem',flexWrap:'wrap',justifyContent:'center',
+          fontSize:13,color:'rgba(255,255,255,.5)',fontWeight:500}}>
+          <span>🎙 Voice POS</span>
+          <span>🌐 6 भाषाएँ · 6 மொழிகள் · 6 Languages</span>
+          <span>📍 Geo-Fencing</span>
+          <span>🛒 Lubes & Products</span>
+        </div>
+
+        {/* Mock dashboard */}
+        <div style={{marginTop:'4rem',background:'rgba(255,255,255,.05)',borderRadius:16,
+          border:'1px solid rgba(255,255,255,.1)',padding:'1.5rem',maxWidth:600,width:'100%',
+          backdropFilter:'blur(10px)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'1rem',paddingBottom:'0.75rem',
+            borderBottom:'1px solid rgba(255,255,255,.1)'}}>
+            <div style={{width:12,height:12,borderRadius:'50%',background:'#ff5f57'}}/>
+            <div style={{width:12,height:12,borderRadius:'50%',background:'#febc2e'}}/>
+            <div style={{width:12,height:12,borderRadius:'50%',background:'#28c840'}}/>
+            <span style={{marginLeft:8,fontSize:12,color:'rgba(255,255,255,.4)'}}>pumpini.vercel.app/dashboard</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+            {[
+              ["Today's Sales", "₹1,24,850", "+12%", "#FF6B00"],
+              ["Total Litres",  "1,204 L",   "+8%",  "#1A5F7A"],
+              ["Open Shifts",   "3",         "Active","#16a34a"],
+              ["Alerts",        "0",         "Clear ✓","#6366f1"],
+            ].map(([l,v,s,c])=>(
+              <div key={l} style={{background:'rgba(255,255,255,.05)',borderRadius:10,padding:'0.75rem',
+                borderLeft:`3px solid ${c}`}}>
+                <div style={{fontSize:10,color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:4}}>{l}</div>
+                <div style={{fontSize:20,fontWeight:800,color:'#fff'}}>{v}</div>
+                <div style={{fontSize:11,color:c,marginTop:2,fontWeight:600}}>{s}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Voice POS Highlight ── */}
+      <section style={{background:'#fff7ed',padding:'5rem 5%',borderTop:'3px solid #FF6B00'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',display:'grid',gridTemplateColumns:'1fr 1fr',
+          gap:'4rem',alignItems:'center'}}>
           <div>
-            <div className="fade-up" style={{animationDelay:'.1s',
-              display:'inline-flex',alignItems:'center',gap:8,
-              background:'rgba(255,107,0,.15)',border:'1px solid rgba(255,107,0,.3)',
-              padding:'6px 16px',borderRadius:99,marginBottom:'1.5rem'}}>
-              <span style={{width:6,height:6,borderRadius:'50%',background:'#FF6B00',
-                animation:'pulse 2s infinite',display:'inline-block'}}/>
-              <span style={{fontSize:13,color:'#FF6B00',fontWeight:600}}>
-                Built for Indian petrol stations
-              </span>
+            <div style={{display:'inline-block',background:'#FF6B00',color:'#fff',
+              padding:'4px 12px',borderRadius:99,fontSize:12,fontWeight:700,marginBottom:'1rem'}}>
+              🆕 NEW FEATURE
             </div>
-
-            <h1 className="fade-up hero-title" style={{
-              fontSize:'clamp(2.5rem,4vw,4rem)',fontWeight:900,lineHeight:1.05,
-              color:'#fff',marginBottom:'0.5rem',animationDelay:'.2s',
-              letterSpacing:'-.02em',
-            }}>
-              {t.hero}
-            </h1>
-            <h1 className="fade-up hero-title" style={{
-              fontSize:'clamp(2.5rem,4vw,4rem)',fontWeight:900,lineHeight:1.05,
-              color:'#FF6B00',marginBottom:'1.5rem',animationDelay:'.3s',
-              letterSpacing:'-.02em',
-            }}>
-              {t.hero2}
-            </h1>
-            <p className="fade-up" style={{
-              fontSize:18,color:'rgba(255,255,255,.65)',lineHeight:1.7,
-              marginBottom:'2.5rem',animationDelay:'.4s',maxWidth:480,
-            }}>
-              {t.sub}
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,lineHeight:1.2,marginBottom:'1rem'}}>
+              Record transactions by{' '}
+              <span style={{color:'#FF6B00'}}>speaking</span> in your language
+            </h2>
+            <p style={{fontSize:16,color:'#555',lineHeight:1.7,marginBottom:'1.5rem'}}>
+              Your attendant presses the mic button and says the transaction in Telugu, Tamil, Hindi or any Indian language. 
+              Pumpini understands, fills the form, and waits for confirmation. No typing. No errors.
             </p>
-
-            <div className="fade-up" style={{display:'flex',gap:12,flexWrap:'wrap',animationDelay:'.5s'}}>
-              <Link href="/login"
-                className="cta-primary"
-                style={{display:'inline-flex',alignItems:'center',gap:8,
-                  padding:'14px 28px',background:'#FF6B00',color:'#fff',
-                  borderRadius:10,textDecoration:'none',fontWeight:700,fontSize:16,
-                  boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>
-                {t.cta} →
-              </Link>
-              <a href="https://wa.me/919999999999?text=I+want+a+demo+of+Pumpini"
-                target="_blank" rel="noopener"
-                style={{display:'inline-flex',alignItems:'center',gap:8,
-                  padding:'14px 28px',background:'rgba(255,255,255,.08)',
-                  color:'#fff',borderRadius:10,textDecoration:'none',fontWeight:600,
-                  fontSize:16,border:'1px solid rgba(255,255,255,.2)'}}>
-                📱 {t.demo}
-              </a>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {[
+                ['తెలుగు', '"యాభై లీటర్లు పెట్రోల్ నగదు"', '50L Petrol · Cash'],
+                ['தமிழ்',  '"ஐம்பது லிட்டர் டீசல் UPI"',    '50L Diesel · UPI'],
+                ['हिन्दी', '"पचास लीटर पेट्रोल कैश"',       '50L Petrol · Cash'],
+              ].map(([lang, spoken, parsed]) => (
+                <div key={lang} style={{background:'#fff',borderRadius:12,padding:'0.75rem 1rem',
+                  border:'1px solid #fed7aa',display:'flex',alignItems:'center',gap:12}}>
+                  <span style={{fontSize:11,fontWeight:700,color:'#9a3412',background:'#fee2e2',
+                    padding:'2px 8px',borderRadius:99,flexShrink:0}}>{lang}</span>
+                  <span style={{fontSize:14,color:'#555',flex:1}}>{spoken}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:'#16a34a',
+                    background:'#dcfce7',padding:'2px 8px',borderRadius:99,flexShrink:0}}>→ {parsed}</span>
+                </div>
+              ))}
             </div>
-
-            {/* Social proof */}
-            <div className="fade-up" style={{marginTop:'2.5rem',animationDelay:'.6s',
-              display:'flex',alignItems:'center',gap:'1.5rem'}}>
-              <div style={{display:'flex'}}>
-                {['🧑‍💼','👨‍💼','👩‍💼','🧑‍💼','👨‍💼'].map((e,i)=>(
-                  <div key={i} style={{width:36,height:36,borderRadius:'50%',
-                    background:`hsl(${200+i*20},60%,${40+i*5}%)`,
-                    border:'2px solid #0F1923',marginLeft:i>0?-8:0,
-                    display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>
-                    {e}
-                  </div>
-                ))}
-              </div>
-              <div style={{fontSize:13,color:'rgba(255,255,255,.5)'}}>
-                <strong style={{color:'rgba(255,255,255,.9)'}}>500+</strong> {t.stations_count || 'petrol stations across South India'}
-              </div>
+            <div style={{marginTop:'1rem',fontSize:12,color:'#888'}}>
+              Powered by Sarvam AI — India's sovereign AI platform for Indian languages
             </div>
           </div>
-
-          {/* Right — Feature preview cards */}
-          <div className="fade-up" style={{animationDelay:'.4s',position:'relative'}}>
-            {/* Main dashboard mockup */}
-            <div style={{background:'rgba(255,255,255,.05)',borderRadius:16,
-              border:'1px solid rgba(255,255,255,.1)',padding:'1.25rem',
-              backdropFilter:'blur(10px)'}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'1rem'}}>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#ff5f57'}}/>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#febc2e'}}/>
-                <div style={{width:8,height:8,borderRadius:'50%',background:'#28c840'}}/>
-                <div style={{flex:1,textAlign:'center',fontSize:11,color:'rgba(255,255,255,.3)'}}>
-                  app.pumpini.in/dashboard
+          <div style={{background:'#0F1923',borderRadius:20,padding:'2rem',position:'relative'}}>
+            <div style={{textAlign:'center',marginBottom:'1.5rem'}}>
+              <div style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:'0.5rem'}}>POS Entry</div>
+              <div style={{fontSize:11,color:'rgba(255,255,255,.3)'}}>Dilsukhnagar Bunk · Shift 1</div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:'1rem'}}>
+              {[['N1','Petrol','₹102/L'],['N2','Diesel','₹90/L']].map(([n,f,p])=>(
+                <div key={n} style={{background:'rgba(255,107,0,.2)',border:'2px solid #FF6B00',
+                  borderRadius:10,padding:'0.75rem',textAlign:'center'}}>
+                  <div style={{fontWeight:800,color:'#FF6B00',fontSize:16}}>{n}</div>
+                  <div style={{color:'rgba(255,255,255,.7)',fontSize:12}}>{f}</div>
+                  <div style={{color:'rgba(255,255,255,.5)',fontSize:11}}>{p}</div>
                 </div>
+              ))}
+            </div>
+            <div style={{background:'rgba(255,255,255,.05)',borderRadius:10,padding:'0.75rem',
+              textAlign:'center',marginBottom:'1rem'}}>
+              <div style={{width:48,height:48,borderRadius:'50%',background:'#FF6B00',
+                display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 8px',
+                boxShadow:'0 0 0 8px rgba(255,107,0,.2)'}}>
+                <span style={{fontSize:22}}>🎙</span>
               </div>
-              {/* Mock stats */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8,marginBottom:8}}>
-                {[
-                  ['Today\'s Sales','₹1,24,850','↑ 12%','#FF6B00'],
-                  ['Total Litres','1,204 L','↑ 8%','#1A5F7A'],
-                  ['Open Shifts','3','Active','#16a34a'],
-                  ['Alerts','0','All clear ✓','#7c3aed'],
-                ].map(([l,v,s,c])=>(
-                  <div key={l} style={{background:'rgba(255,255,255,.06)',borderRadius:10,
-                    padding:'0.75rem',border:'1px solid rgba(255,255,255,.08)'}}>
-                    <div style={{fontSize:10,color:'rgba(255,255,255,.4)',marginBottom:4,textTransform:'uppercase',letterSpacing:'.05em'}}>{l}</div>
-                    <div style={{fontSize:18,fontWeight:800,color:'#fff',fontFamily:'monospace'}}>{v}</div>
-                    <div style={{fontSize:11,color:c,marginTop:2,fontWeight:600}}>{s}</div>
-                  </div>
-                ))}
-              </div>
-              {/* Mock tank levels */}
-              <div style={{background:'rgba(255,255,255,.04)',borderRadius:10,padding:'0.75rem',
-                border:'1px solid rgba(255,255,255,.06)'}}>
-                <div style={{fontSize:10,color:'rgba(255,255,255,.4)',marginBottom:8,textTransform:'uppercase',letterSpacing:'.05em'}}>
-                  Tank Levels
-                </div>
-                {[['Petrol','#3b82f6',75],['Diesel','#f59e0b',42],['Premium','#8b5cf6',88]].map(([n,c,p])=>(
-                  <div key={n} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                    <div style={{fontSize:12,color:'rgba(255,255,255,.6)',width:60}}>{n}</div>
-                    <div style={{flex:1,height:6,background:'rgba(255,255,255,.1)',borderRadius:3}}>
-                      <div style={{width:`${p}%`,height:'100%',background:c,borderRadius:3,
-                        transition:'width 1s ease'}}/>
-                    </div>
-                    <div style={{fontSize:11,color:'rgba(255,255,255,.5)',width:30,textAlign:'right'}}>{p}%</div>
-                  </div>
-                ))}
+              <div style={{color:'rgba(255,255,255,.7)',fontSize:13,fontStyle:'italic'}}>
+                "50 లీటర్లు పెట్రోల్ నగదు"
               </div>
             </div>
-
-            {/* Floating WhatsApp badge */}
-            <div style={{position:'absolute',top:-20,right:-20,
-              background:'#25D366',borderRadius:12,padding:'10px 14px',
-              boxShadow:'0 8px 24px rgba(37,211,102,.4)',
-              fontSize:12,fontWeight:700,color:'#fff',
-              display:'flex',alignItems:'center',gap:6,
-              animation:'float 3s ease-in-out infinite'}}>
-              <style>{`@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-              @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
-              📱 {t.whatsapp_ready || 'WhatsApp Ready'}
-            </div>
-
-            {/* Floating language badge */}
-            <div style={{position:'absolute',bottom:-16,left:-16,
-              background:'#fff',borderRadius:12,padding:'10px 14px',
-              boxShadow:'0 8px 24px rgba(0,0,0,.2)',
-              fontSize:12,fontWeight:700,color:'#0F1923',
-              display:'flex',alignItems:'center',gap:6}}>
-              🌐 6 भाषाएँ · 6 மொழிகள் · 6 Languages
+            <div style={{background:'rgba(22,163,74,.15)',border:'1px solid rgba(22,163,74,.3)',
+              borderRadius:10,padding:'0.75rem',fontSize:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,.6)',marginBottom:4}}>
+                <span>Quantity</span><span style={{fontWeight:700,color:'#fff'}}>50 Litres</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,.6)',marginBottom:4}}>
+                <span>Payment</span><span style={{fontWeight:700,color:'#fff'}}>Cash</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,.6)'}}>
+                <span>Amount</span><span style={{fontWeight:700,color:'#16a34a'}}>₹5,100</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── USPs ── */}
-      <div id="features" style={{padding:'5rem 2rem',background:'#f8f7f5'}}>
+      {/* ── Features Grid ── */}
+      <section id="features" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
         <div style={{maxWidth:1100,margin:'0 auto'}}>
           <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <div style={{fontSize:13,fontWeight:700,color:'#FF6B00',
-              textTransform:'uppercase',letterSpacing:'.1em',marginBottom:12}}>
-              {t.why_eyebrow || 'WHY PUMPINI'}
-            </div>
-            <h2 style={{fontSize:'clamp(1.75rem,3vw,2.5rem)',fontWeight:900,
-              letterSpacing:'-.02em',marginBottom:12}}>
-              {t.why_title || 'Everything your petrol bunk needs'}
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
+              {c.feat_title}
             </h2>
-            <p style={{fontSize:16,color:'#666',maxWidth:500,margin:'0 auto'}}>
-              {t.why_sub || 'Four features that set us apart from every other petrol station software in India'}
-            </p>
+            <p style={{fontSize:16,color:'#666'}}>{c.feat_sub}</p>
           </div>
-
-          <div className="usps-grid" style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'1.5rem'}}>
-            {USPS.map((u,i)=>(
-              <div key={i} className="usp-card" style={{
-                background:'#fff',borderRadius:16,padding:'2rem',
-                boxShadow:'0 2px 16px rgba(0,0,0,.06)',
-                border:'1px solid rgba(0,0,0,.06)',
-                borderTop:`3px solid ${u.color}`,
-              }}>
-                <div style={{width:52,height:52,borderRadius:12,background:u.bg,
-                  display:'flex',alignItems:'center',justifyContent:'center',
-                  fontSize:24,marginBottom:'1rem'}}>
-                  {u.icon}
-                </div>
-                <div style={{fontWeight:800,fontSize:18,marginBottom:8,
-                  letterSpacing:'-.01em'}}>{u.title}</div>
-                <p style={{fontSize:14,color:'#666',lineHeight:1.7}}>{u.desc}</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
+            {FEATURES.map(feat => (
+              <div key={feat.key} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
+                border:'1px solid #e5e3de',transition:'all .2s',cursor:'default'}}
+                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.1)'; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}>
+                <div style={{fontSize:36,marginBottom:'1rem'}}>{feat.icon}</div>
+                <h3 style={{fontWeight:800,fontSize:17,marginBottom:'0.5rem'}}>{c[`${feat.key}_t`]}</h3>
+                <p style={{fontSize:14,color:'#666',lineHeight:1.6}}>{c[`${feat.key}_d`]}</p>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── COMPARISON ── */}
-      <div style={{padding:'5rem 2rem',background:'#0F1923',color:'#fff'}}>
-        <div style={{maxWidth:760,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <div style={{fontSize:13,fontWeight:700,color:'#FF6B00',
-              textTransform:'uppercase',letterSpacing:'.1em',marginBottom:12}}>
-              Pumpini vs Others
+      {/* ── Geo-fencing Highlight ── */}
+      <section style={{padding:'5rem 5%',background:'#0F1923',color:'#fff'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',display:'grid',gridTemplateColumns:'1fr 1fr',
+          gap:'4rem',alignItems:'center'}}>
+          <div style={{background:'rgba(255,255,255,.05)',borderRadius:20,padding:'2rem',
+            border:'1px solid rgba(255,255,255,.1)',textAlign:'center'}}>
+            <div style={{fontSize:64,marginBottom:'1rem'}}>📍</div>
+            <div style={{width:200,height:200,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.5)',
+              margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+              <div style={{width:140,height:140,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.3)',
+                display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div style={{width:80,height:80,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.2)',
+                  display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{width:16,height:16,borderRadius:'50%',background:'#FF6B00',
+                    boxShadow:'0 0 0 4px rgba(255,107,0,.3)'}}/>
+                </div>
+              </div>
+              <div style={{position:'absolute',top:'15%',right:'5%',fontSize:20}}>✅</div>
+              <div style={{position:'absolute',bottom:'5%',left:'0%',fontSize:20}}>🚫</div>
             </div>
-            <h2 style={{fontSize:'clamp(1.75rem,3vw,2.25rem)',fontWeight:900}}>
-              Why switch to Pumpini?
-            </h2>
+            <div style={{marginTop:'1rem',fontSize:13,color:'rgba(255,255,255,.5)'}}>
+              500m geo-fence around station
+            </div>
           </div>
-          <div style={{borderRadius:14,overflow:'hidden',border:'1px solid rgba(255,255,255,.1)'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 120px 120px',
-              background:'rgba(255,255,255,.05)',padding:'12px 20px',
-              fontSize:12,fontWeight:700,color:'rgba(255,255,255,.5)',
-              textTransform:'uppercase',letterSpacing:'.06em'}}>
+          <div>
+            <div style={{display:'inline-block',background:'rgba(255,107,0,.2)',color:'#FF6B00',
+              padding:'4px 12px',borderRadius:99,fontSize:12,fontWeight:700,marginBottom:'1rem',
+              border:'1px solid rgba(255,107,0,.3)'}}>
+              🆕 GEO-FENCING SECURITY
+            </div>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,lineHeight:1.2,marginBottom:'1rem'}}>
+              POS locked to your{' '}
+              <span style={{color:'#FF6B00'}}>station location</span>
+            </h2>
+            <p style={{fontSize:16,color:'rgba(255,255,255,.7)',lineHeight:1.7,marginBottom:'1.5rem'}}>
+              Staff can only record transactions when physically present at the petrol station. 
+              Set a 500m radius — anyone outside that boundary sees the POS locked.
+            </p>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {[
+                ['🔒', 'Attendant outside boundary → POS locked automatically'],
+                ['⚡', 'Fired someone? Revoke access instantly from admin panel'],
+                ['📍', 'Set station GPS with one click from any device'],
+                ['⚙️',  'Configurable radius: 100m to 2km per station'],
+              ].map(([icon, text]) => (
+                <div key={text} style={{display:'flex',alignItems:'flex-start',gap:12,fontSize:14,
+                  color:'rgba(255,255,255,.8)'}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
+                  <span>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Comparison table ── */}
+      <section style={{padding:'5rem 5%',background:'#fff'}}>
+        <div style={{maxWidth:800,margin:'0 auto'}}>
+          <h2 style={{textAlign:'center',fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'3rem'}}>
+            {c.compare_title}
+          </h2>
+          <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e5e3de'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 140px 140px',
+              background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700}}>
               <div>Feature</div>
               <div style={{textAlign:'center',color:'#FF6B00'}}>Pumpini</div>
-              <div style={{textAlign:'center'}}>Others</div>
+              <div style={{textAlign:'center',color:'rgba(255,255,255,.4)'}}>Others</div>
             </div>
-            {[
-              ['Real-time live dashboard'],
-              ['6 Indian language support'],
-              ['Blind drop cash reconciliation'],
-              ['Vehicle-wise GST invoice'],
-              ['Credit customer portal'],
-              ['WhatsApp AI alerts'],
-              ['Multi-station group view'],
-              ['DC Challan capture'],
-            ].map(([f],i)=>(
-              <div key={f} style={{display:'grid',gridTemplateColumns:'1fr 120px 120px',
-                padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,.06)',
-                background:i%2===0?'transparent':'rgba(255,255,255,.02)',
-                alignItems:'center'}}>
-                <div style={{fontSize:14,color:'rgba(255,255,255,.8)'}}>{f}</div>
-                <div style={{textAlign:'center',fontSize:18}}>✅</div>
-                <div style={{textAlign:'center',fontSize:18,opacity:.4}}>❌</div>
+            {COMPARE.map(([feat, us, them], i) => (
+              <div key={feat} style={{display:'grid',gridTemplateColumns:'1fr 140px 140px',
+                padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f8f7f5',
+                borderBottom:'1px solid #f0f0f0',fontSize:14}}>
+                <div style={{fontWeight:500}}>{feat}</div>
+                <div style={{textAlign:'center',fontSize:18}}>{us ? '✅' : '❌'}</div>
+                <div style={{textAlign:'center',fontSize:18}}>{them ? '✅' : '❌'}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── PRICING ── */}
-      <div id="pricing" style={{padding:'5rem 2rem',background:'#fff'}}>
-        <div style={{maxWidth:1000,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'1rem'}}>
-            <div style={{fontSize:13,fontWeight:700,color:'#FF6B00',
-              textTransform:'uppercase',letterSpacing:'.1em',marginBottom:12}}>
-              {t.nav_pricing || 'Pricing'}
-            </div>
-            <h2 style={{fontSize:'clamp(1.75rem,3vw,2.25rem)',fontWeight:900,
-              marginBottom:8,letterSpacing:'-.02em'}}>{t.plans}</h2>
-            <p style={{fontSize:14,color:'#888'}}>{t.trial}</p>
+      {/* ── Pricing ── */}
+      <section id="pricing" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
+        <div style={{maxWidth:900,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'3rem'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
+              {c.pricing_title}
+            </h2>
+            <p style={{fontSize:15,color:'#666'}}>{c.pricing_sub}</p>
           </div>
-
-          <div className="plans-grid" style={{display:'grid',
-            gridTemplateColumns:'repeat(3,1fr)',gap:'1.25rem',marginTop:'2.5rem'}}>
-            {PLANS.map(p=>(
-              <div key={p.name} className="plan-card" style={{
-                borderRadius:16,padding:'2rem',
-                border:`2px solid ${p.popular?p.color:'#eee'}`,
-                position:'relative',overflow:'hidden',
-                boxShadow:p.popular?`0 8px 32px rgba(255,107,0,.15)`:'none',
-                background:'#fff',
-              }}>
-                {p.popular && (
-                  <div style={{position:'absolute',top:14,right:-28,
-                    background:'#FF6B00',color:'#fff',fontSize:10,fontWeight:800,
-                    padding:'4px 40px',transform:'rotate(45deg)',
-                    letterSpacing:'.08em'}}>
-                    {(t.most_popular || 'Most Popular').toUpperCase()}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',maxWidth:700,margin:'0 auto'}}>
+            {PLANS.map(plan => (
+              <div key={plan.name} style={{background:'#fff',borderRadius:20,padding:'2rem',
+                border: plan.popular ? `2px solid #FF6B00` : '1px solid #e5e3de',
+                position:'relative',boxShadow: plan.popular ? '0 8px 40px rgba(255,107,0,.15)' : 'none'}}>
+                {plan.popular && (
+                  <div style={{position:'absolute',top:-13,left:'50%',transform:'translateX(-50%)',
+                    background:'#FF6B00',color:'#fff',padding:'4px 16px',borderRadius:99,
+                    fontSize:12,fontWeight:700,whiteSpace:'nowrap'}}>
+                    MOST POPULAR
                   </div>
                 )}
-                <div style={{fontWeight:800,fontSize:18,color:p.color,marginBottom:4}}>{p.name}</div>
-                <div style={{marginBottom:'1.5rem'}}>
-                  <span style={{fontSize:40,fontWeight:900,letterSpacing:'-.02em'}}>₹{p.price}</span>
-                  <span style={{fontSize:13,color:'#888'}}>{t.per_month || '/month'}</span>
+                <div style={{fontWeight:900,fontSize:18,color:plan.color,marginBottom:'0.25rem'}}>
+                  {plan.name}
                 </div>
-                {p.features.map(f=>(
-                  <div key={f} style={{display:'flex',gap:8,marginBottom:8,
-                    fontSize:13,color:'#444',alignItems:'flex-start'}}>
-                    <span style={{color:'#16a34a',fontWeight:700,flexShrink:0}}>✓</span>{f}
-                  </div>
-                ))}
-                <Link href="/login" style={{display:'block',textAlign:'center',
-                  marginTop:'1.5rem',padding:'12px',background:p.color,
-                  color:'#fff',borderRadius:8,textDecoration:'none',
-                  fontWeight:700,fontSize:14}}>
-                  {t.cta}
+                <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:'1.5rem'}}>
+                  <span style={{fontSize:32,fontWeight:900}}>{plan.price}</span>
+                  <span style={{fontSize:14,color:'#888'}}>{plan.period}</span>
+                </div>
+                <ul style={{listStyle:'none',padding:0,margin:'0 0 1.5rem',
+                  display:'flex',flexDirection:'column',gap:8}}>
+                  {plan.features.map(f => (
+                    <li key={f} style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:13}}>
+                      <span style={{color:'#16a34a',flexShrink:0,marginTop:1}}>✓</span>
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/login" style={{display:'block',textAlign:'center',padding:'12px',
+                  background: plan.popular ? '#FF6B00' : '#0F1923',color:'#fff',borderRadius:10,
+                  textDecoration:'none',fontWeight:700,fontSize:14}}>
+                  Start Free Trial
                 </Link>
               </div>
             ))}
           </div>
+          <div style={{textAlign:'center',marginTop:'2rem',fontSize:13,color:'#888'}}>
+            Need more stations or custom pricing?{' '}
+            <a href="https://wa.me/919490704075" style={{color:'#FF6B00',fontWeight:600}}>
+              WhatsApp us →
+            </a>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── FOOTER CTA ── */}
-      <div style={{background:'linear-gradient(135deg,#FF6B00,#c4520a)',
-        padding:'4rem 2rem',textAlign:'center',color:'#fff'}}>
-        <Image src="/pumpini-logo.png" alt="Pumpini" width={160} height={50}
-          style={{objectFit:'contain',marginBottom:'1.5rem',filter:'brightness(0) invert(1)'}}/>
-        <h2 style={{fontSize:'clamp(1.5rem,3vw,2.25rem)',fontWeight:900,
-          marginBottom:'0.75rem',letterSpacing:'-.02em'}}>
-          {t.cta || 'Start Free Trial'}
-        </h2>
-        <p style={{fontSize:16,opacity:.85,marginBottom:'2rem'}}>
-          {t.cta_footer || 'Join petrol stations across South India who trust Pumpini'}
-        </p>
-        <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-          <Link href="/login" style={{padding:'14px 32px',background:'#fff',
-            color:'#FF6B00',borderRadius:10,textDecoration:'none',fontWeight:800,fontSize:16}}>
-            {t.cta || 'Start Free Trial'}
-          </Link>
-          <a href="https://wa.me/919999999999"
-            target="_blank" rel="noopener"
-            style={{padding:'14px 32px',background:'#25D366',color:'#fff',
-              borderRadius:10,textDecoration:'none',fontWeight:700,fontSize:16,
-              display:'flex',alignItems:'center',gap:8}}>
-            📱 WhatsApp Us
-          </a>
+      {/* ── Footer CTA ── */}
+      <section id="contact" style={{padding:'5rem 5%',
+        background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 100%)',
+        color:'#fff',textAlign:'center'}}>
+        <div style={{maxWidth:600,margin:'0 auto'}}>
+          <div style={{fontSize:48,marginBottom:'1rem'}}>🚀</div>
+          <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'1rem'}}>
+            {c.footer_cta}
+          </h2>
+          <p style={{fontSize:16,color:'rgba(255,255,255,.6)',marginBottom:'2rem'}}>
+            {c.footer_sub}
+          </p>
+          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+            <Link href="/login" style={{padding:'14px 28px',background:'#FF6B00',color:'#fff',
+              borderRadius:12,textDecoration:'none',fontWeight:800,fontSize:16,
+              boxShadow:'0 4px 20px rgba(255,107,0,.4)'}}>
+              Start Free Trial →
+            </Link>
+            <a href="https://wa.me/919490704075?text=I want a demo of Pumpini"
+              target="_blank" rel="noopener noreferrer"
+              style={{padding:'14px 28px',background:'rgba(255,255,255,.1)',color:'#fff',
+                borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
+                border:'1px solid rgba(255,255,255,.2)'}}>
+              📱 WhatsApp Us
+            </a>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── FOOTER ── */}
-      <div id="contact" style={{background:'#0a1118',color:'rgba(255,255,255,.4)',
-        padding:'1.5rem 2rem',textAlign:'center',fontSize:12}}>
-        © 2026 Pumpini · Madurai, Tamil Nadu · Built for Indian petrol stations
-      </div>
-
-      {/* Click outside to close language dropdown */}
-      {active && (
-        <div style={{position:'fixed',inset:0,zIndex:99}}
-          onClick={()=>setActive(null)}/>
-      )}
+      {/* ── Footer ── */}
+      <footer style={{background:'#080f15',color:'rgba(255,255,255,.4)',
+        padding:'1.5rem 5%',display:'flex',justifyContent:'space-between',
+        alignItems:'center',flexWrap:'wrap',gap:8,fontSize:13}}>
+        <div>
+          <span style={{fontWeight:900,color:'#fff'}}>
+            <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
+          </span>
+          {' '}© 2026 · Madurai, Tamil Nadu · Built for Indian petrol stations
+        </div>
+        <div style={{display:'flex',gap:'1.5rem'}}>
+          <Link href="/login"   style={{color:'rgba(255,255,255,.4)',textDecoration:'none'}}>Login</Link>
+          <Link href="/landing" style={{color:'rgba(255,255,255,.4)',textDecoration:'none'}}>Home</Link>
+        </div>
+      </footer>
     </div>
   );
 }
-
