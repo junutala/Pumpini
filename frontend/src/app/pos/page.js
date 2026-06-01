@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShoppingCart, CheckCircle, X } from 'lucide-react';
+import { ShoppingCart, CheckCircle, X, Mic, MicOff, Loader } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getShifts, getNozzles, getCurrentPrices, recordDispense } from '../../lib/api';
 import api from '../../lib/api';
@@ -27,6 +27,12 @@ export default function POSPage() {
   const [prices,setPrices]     = useState([]);
   const [corps,setCorps]       = useState([]);
   const [activeShift,setActiveShift] = useState(null);
+
+  // Voice POS state
+  const [recording,  setRecording]  = useState(false);
+  const [voiceStatus,setVoiceStatus] = useState(''); // 'recording','processing','done','error'
+  const [mediaRec,   setMediaRec]   = useState(null);
+  const [voiceHint,  setVoiceHint]  = useState('');
 
   // Form
   const [nozzle,setNozzle]         = useState('');
@@ -127,6 +133,87 @@ export default function POSPage() {
   };
 
   const selectedNozzle = nozzles.find(n => n.id === nozzle);
+
+  // ── Voice POS Handler ──────────────────────────────────
+  const startVoiceEntry = async () => {
+    if (recording) {
+      // Stop recording
+      if (mediaRec) mediaRec.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks = [];
+      const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        setRecording(false);
+        setVoiceStatus('processing');
+        setVoiceHint(tc('pos_page.voice_processing', 'Processing...'));
+
+        try {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('audio', blob, 'audio.webm');
+          formData.append('language', localStorage.getItem('i18nextLng') || 'te');
+
+          const res = await fetch('/api/voice/transcribe', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            body: formData,
+          });
+          const data = await res.json();
+
+          if (data.error) throw new Error(data.error);
+
+          const p = data.parsed;
+          setVoiceHint(`"${data.transcript}"`);
+          setVoiceStatus('done');
+
+          // Auto-fill POS form fields
+          if (p.quantity)     setQty(p.quantity.toString());
+          if (p.entry_type)   setEntryType(p.entry_type);
+          if (p.payment_mode) setPayMode(p.payment_mode);
+
+          // Auto-select nozzle:
+          // 1. If fuel type spoken → find matching nozzle
+          // 2. Else → keep last used nozzle (already restored on load)
+          if (p.fuel_type && nozzles.length > 0) {
+            const match = nozzles.find(n =>
+              n.fuel_type?.toLowerCase().includes(p.fuel_type) ||
+              p.fuel_type.includes(n.fuel_type?.toLowerCase())
+            );
+            if (match) setNozzle(match);
+            // If no match found, keep current (last used) nozzle
+          }
+          // If no fuel type spoken at all, current nozzle stays selected
+
+          setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 4000);
+        } catch (err) {
+          setVoiceStatus('error');
+          setVoiceHint(err.message || 'Transcription failed');
+          setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 3000);
+        }
+      };
+
+      rec.start();
+      setMediaRec(rec);
+      setRecording(true);
+      setVoiceStatus('recording');
+      setVoiceHint(tc('pos_page.voice_listening', 'Listening... speak now'));
+
+      // Auto-stop after 10 seconds
+      setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, 10000);
+
+    } catch (err) {
+      setVoiceStatus('error');
+      setVoiceHint('Microphone access denied');
+      setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 3000);
+    }
+  };
 
   return (
     <AppShell>
