@@ -4,163 +4,109 @@
 const router  = require('express').Router();
 const { authenticate } = require('../middleware/auth');
 const multer  = require('multer');
-// Using native fetch (Node 18+)
-const FormData = require('form-data');
 
-// Use memory storage — we forward directly to Sarvam, no disk needed
+// Use memory storage
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// Language code mapping from app language to Sarvam language code
+// Language code mapping
 const LANG_MAP = {
-  en: 'en-IN',
-  hi: 'hi-IN',
-  ta: 'ta-IN',
-  te: 'te-IN',
-  kn: 'kn-IN',
-  mr: 'mr-IN',
+  en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN',
+  te: 'te-IN', kn: 'kn-IN', mr: 'mr-IN',
 };
 
-
-// GET /api/voice/test — verify Sarvam API key is working
-router.get('/test', authenticate, async (req, res) => {
-  const apiKey = process.env.SARVAM_API_KEY;
-  if (!apiKey) return res.json({ ok: false, error: 'SARVAM_API_KEY not set' });
-  res.json({
-    ok: true,
-    key_prefix: apiKey.substring(0, 8) + '...',
-    key_length: apiKey.length,
-  });
-});
-
 // ── POST /api/voice/transcribe ────────────────────────────
-// Receives audio blob from frontend, sends to Sarvam, returns
-// transcription + parsed POS fields
 router.post('/transcribe', authenticate, upload.single('audio'), async (req, res, next) => {
   try {
-    console.log('Voice request received, file:', req.file ? `${req.file.size} bytes, ${req.file.mimetype}` : 'MISSING');
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
 
-    const apiKey  = process.env.SARVAM_API_KEY;
-    if (!apiKey)  return res.status(500).json({ error: 'Sarvam API key not configured' });
+    const apiKey = process.env.SARVAM_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Sarvam API key not configured' });
 
-    const lang    = req.body.language || 'te'; // default Telugu
-    const langCode = LANG_MAP[lang] || 'te-IN';
+    const lang     = req.body.language || 'en';
+    const langCode = LANG_MAP[lang] || 'en-IN';
 
-    // Build multipart form for Sarvam
-    const form = new FormData();
-    form.append('file', req.file.buffer, {
-      filename:    'audio.webm',
-      contentType: req.file.mimetype || 'audio/webm',
+    console.log(`Voice: ${req.file.size} bytes, ${req.file.mimetype}, lang: ${langCode}`);
+
+    // Use Node 18 native FormData + Blob
+    const blob = new Blob([req.file.buffer], {
+      type: req.file.mimetype || 'audio/webm'
     });
-    form.append('model',         'saaras:v2.5');
-    form.append('language_code', langCode);
-    // saaras:v2.5 handles codemix natively, no mode param needed
 
-    const formHeaders = form.getHeaders ? form.getHeaders() : {};
-    console.log('Calling Sarvam API, lang:', langCode, 'file size:', req.file.size);
+    const form = new FormData();
+    form.append('file', blob, 'audio.webm');
+    form.append('model', 'saaras:v2.5');
+    form.append('language_code', langCode);
+
     const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
-      method:  'POST',
-      headers: {
-        'api-subscription-key': apiKey,
-        ...formHeaders,
-      },
+      method: 'POST',
+      headers: { 'api-subscription-key': apiKey },
       body: form,
     });
-    console.log('Sarvam response status:', sarvamRes.status);
 
     const sarvamData = await sarvamRes.json();
+    console.log('Sarvam status:', sarvamRes.status, JSON.stringify(sarvamData).slice(0, 200));
 
     if (!sarvamRes.ok) {
-      console.error('Sarvam error status:', sarvamRes.status);
-      console.error('Sarvam error body:', JSON.stringify(sarvamData));
-      return res.status(502).json({ error: 'Transcription failed', details: sarvamData, status: sarvamRes.status });
+      return res.status(502).json({
+        error: 'Transcription failed',
+        details: sarvamData,
+        status: sarvamRes.status
+      });
     }
 
     const transcript = sarvamData.transcript || '';
-    console.log(`Voice transcription [${lang}]: "${transcript}"`);
+    console.log(`Transcript [${lang}]: "${transcript}"`);
 
-    // Parse POS fields from transcript
-    const parsed = parsePOSCommand(transcript, lang);
-
-    res.json({ transcript, parsed });
+    res.json({ transcript, parsed: parsePOSCommand(transcript, lang) });
 
   } catch (err) {
+    console.error('Voice route error:', err.message);
     next(err);
   }
 });
 
 // ── POS Command Parser ────────────────────────────────────
-// Extracts: quantity (litres or amount), entry_type, payment_mode
-// from natural speech in any supported language
-
 function parsePOSCommand(text, lang) {
   const t = text.toLowerCase().trim();
-
   const result = {
-    quantity:     null,
-    entry_type:   null, // 'litres' or 'amount'
-    payment_mode: null, // 'cash', 'upi', 'card', 'credit'
-    fuel_type:    null, // 'petrol', 'diesel', 'cng'
-    raw:          text,
+    quantity: null, entry_type: null,
+    payment_mode: null, fuel_type: null, raw: text,
   };
 
-  // ── Extract number ────────────────────────────────────
-  // Matches: 50, 50.5, 1000, ₹500, 500 rupees
   const numMatch = t.match(/(\d+(?:\.\d+)?)/);
   if (numMatch) result.quantity = parseFloat(numMatch[1]);
 
-  // ── Entry type (litres vs amount) ─────────────────────
-  const LITRES_WORDS = [
-    'litre', 'litres', 'liter', 'liters', 'ltr', 'ltrs', 'l',
-    'లీటర్', 'లీటర్లు',      // Telugu
-    'लीटर', 'लीटर्स',         // Hindi/Marathi
-    'லிட்டர்', 'லிட்டர்கள்', // Tamil
-    'ಲೀಟರ್', 'ಲೀಟರ್ಗಳು',    // Kannada
-  ];
-  const AMOUNT_WORDS = [
-    'rupee', 'rupees', 'rs', '₹', 'worth', 'amount', 'ka',
-    'రూపాయలు', 'రూపాయి',   // Telugu
-    'रुपये', 'रुपया',       // Hindi/Marathi
-    'ரூபாய்', 'ரூபாய்கள்', // Tamil
-    'ರೂಪಾಯಿ', 'ರೂಪಾಯಿಗಳು', // Kannada
-  ];
+  const LITRES_WORDS = ['litre','litres','liter','liters','ltr','ltrs',
+    'లీటర్','లీటర్లు','लीटर','லிட்டர்','ಲೀಟರ್'];
+  const AMOUNT_WORDS = ['rupee','rupees','rs','₹','worth','amount',
+    'రూపాయలు','रुपये','ரூபாய்','ರೂಪಾಯಿ'];
 
-  if (LITRES_WORDS.some(w => t.includes(w)))  result.entry_type = 'litres';
+  if (LITRES_WORDS.some(w => t.includes(w))) result.entry_type = 'litres';
   else if (AMOUNT_WORDS.some(w => t.includes(w))) result.entry_type = 'amount';
-  else result.entry_type = 'litres'; // default assumption for POS
+  else result.entry_type = 'litres';
 
-  // ── Payment mode ──────────────────────────────────────
   const PAYMENT_MAP = {
-    cash:   ['cash', 'నగదు', 'कैश', 'பணம்', 'ನಗದು', 'रोख', 'nakit'],
-    upi:    ['upi', 'gpay', 'phonepe', 'paytm', 'google pay', 'phone pe', 'యూపీఐ', 'यूपीआई'],
-    card:   ['card', 'debit', 'credit card', 'swipe', 'కార్డ్', 'कार्ड', 'கார்டு', 'ಕಾರ್ಡ್'],
-    credit: ['credit', 'udhar', 'account', 'క్రెడిట్', 'उधार', 'கடன்', 'ಸಾಲ'],
+    cash:   ['cash','నగదు','कैश','பணம்','ನಗದು','रोख'],
+    upi:    ['upi','gpay','phonepe','paytm','google pay','యూపీఐ','यूपीआई'],
+    card:   ['card','debit','swipe','కార్డ్','कार्ड','கார்டு','ಕಾರ್ಡ್'],
+    credit: ['credit','udhar','account','క్రెడిట్','उधार','கடன்','ಸಾಲ'],
   };
-
   for (const [mode, keywords] of Object.entries(PAYMENT_MAP)) {
-    if (keywords.some(w => t.includes(w))) {
-      result.payment_mode = mode;
-      break;
-    }
+    if (keywords.some(w => t.includes(w))) { result.payment_mode = mode; break; }
   }
-  if (!result.payment_mode) result.payment_mode = 'cash'; // default
+  if (!result.payment_mode) result.payment_mode = 'cash';
 
-  // ── Fuel type ─────────────────────────────────────────
   const FUEL_MAP = {
-    petrol:  ['petrol', 'పెట్రోల్', 'पेट्रोल', 'பெட்ரோல்', 'ಪೆಟ್ರೋಲ್', 'पेट्रोल'],
-    diesel:  ['diesel', 'డీజిల్', 'डीजल', 'டீசல்', 'ಡೀಸೆಲ್', 'डिझेल'],
-    cng:     ['cng', 'gas', 'గ్యాస్', 'गैस', 'கேஸ்', 'ಗ್ಯಾಸ್'],
-    premium: ['premium', 'speed', 'power', 'xp95', 'hi speed'],
+    petrol:  ['petrol','పెట్రోల్','पेट्रोल','பெட்ரோல்','ಪೆಟ್ರೋಲ್'],
+    diesel:  ['diesel','డీజిల్','डीजल','டீசல்','ಡೀಸೆಲ್'],
+    cng:     ['cng','gas','గ్యాస్','गैस','கேஸ்','ಗ್ಯಾಸ್'],
+    premium: ['premium','speed','power','xp95'],
   };
-
   for (const [fuel, keywords] of Object.entries(FUEL_MAP)) {
-    if (keywords.some(w => t.includes(w))) {
-      result.fuel_type = fuel;
-      break;
-    }
+    if (keywords.some(w => t.includes(w))) { result.fuel_type = fuel; break; }
   }
 
   return result;
