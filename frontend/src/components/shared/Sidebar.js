@@ -1,6 +1,5 @@
 'use client';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
@@ -8,58 +7,66 @@ import { usePermissions } from '../../hooks/usePermissions';
 import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
-  Globe, Shield, FileText, Activity, Layers, Truck, CreditCard, Headset, Receipt
+  Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
+  Menu
 } from 'lucide-react';
 
 const NAV_GROUPS = [
   {
+    label: 'Dashboard',
+    items: [
+      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:null,            roles:['owner'] },
+      { key:'dashboard',  href:'/dashboard',       icon:LayoutDashboard,perm:null },
+      { key:'live',       href:'/live',            icon:Activity,       perm:'dispense.view' },
+      { key:'alerts',     href:'/alerts',          icon:Bell,           perm:'alerts.view' },
+    ]
+  },
+  {
     label: 'Transactions',
     items: [
-      { key:'dashboard',   href:'/dashboard',       icon:LayoutDashboard, perm:null },
-      { key:'live',        href:'/live',             icon:Activity,        perm:'dispense.view' },
-      { key:'pos',         href:'/pos',              icon:ShoppingCart,    perm:'dispense.entry' },
-      { key:'shifts',      href:'/shifts',           icon:RefreshCw,       perm:'shifts.view' },
-      { key:'dispense',    href:'/dispense',         icon:Fuel,            perm:'reconcile.manage' },
-      { key:'attendance',  href:'/attendance',       icon:Calendar,        perm:'attendance.view' },
-      { key:'dipstick',    href:'/dipstick',         icon:Gauge,           perm:'dipstick.view' },
-      { key:'deliveries',  href:'/deliveries',       icon:Truck,           perm:'shifts.manage' },
+      { key:'pos',        href:'/pos',             icon:ShoppingCart,   perm:'dispense.entry' },
+    ]
+  },
+  {
+    label: 'Manage',
+    items: [
+      { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
+      { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
+      { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
+      { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'shifts.manage' },
+      { key:'invoices',   href:'/invoices',        icon:FileText,       perm:'invoice.generate' },
+      { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
+      { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
+      { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
     ]
   },
   {
     label: 'Masters',
     items: [
-      { key:'corporate',   href:'/corporate',        icon:Building2,       perm:'corporate.view' },
-      { key:'creditdash',  href:'/credit-dashboard', icon:CreditCard,      perm:null, roles:['corporate'] },
-      { key:'users',       href:'/users',            icon:Users,           perm:'users.manage' },
-      { key:'templates',   href:'/templates',        icon:Shield,          perm:'users.manage' },
-    ]
-  },
-  {
-    label: 'Reports',
-    items: [
-      { key:'group',       href:'/group-dashboard',  icon:Globe,           perm:null,  roles:['owner'] },
-      { key:'reports',     href:'/reports',          icon:BarChart2,       perm:'reports.view' },
-      { key:'invoices',    href:'/invoices',         icon:FileText,        perm:'invoice.generate' },
-      { key:'receipts',    href:'/receipts',         icon:Receipt,         perm:'invoice.generate' },
-      { key:'alerts',      href:'/alerts',           icon:Bell,            perm:'alerts.view' },
+      { key:'corporate',  href:'/corporate',       icon:Building2,      perm:'corporate.view' },
+      { key:'creditdash', href:'/credit-dashboard',icon:CreditCard,     perm:null, roles:['corporate'] },
     ]
   },
   {
     label: 'Settings',
     items: [
-      { key:'settings',    href:'/settings',         icon:Settings,        perm:'settings.manage' },
-      { key:'admin',       href:'/admin',            icon:Layers,          perm:null,  roles:['owner','manager'] },
+      { key:'settings',   href:'/settings',        icon:Settings,       perm:'settings.manage' },
     ]
   },
 ];
 
 const NAV_LABELS = {
-  dashboard:'Dashboard',    live:'Live Events',      pos:'POS Entry',
+  dashboard:'Bunk View',   live:'Live Events',      pos:'POS Entry',
   shifts:'Shifts',          dispense:'Reconciliation', attendance:'Attendance',
-  dipstick:'Dipstick',      deliveries:'Deliveries',      corporate:'Credit Customers',   users:'Users',
-  templates:'Roles', group:'Group View',    reports:'Reports',     support:'Support View',
-  invoices:'GST Invoices',  receipts:'Credit Receipts', alerts:'Alerts',  settings:'Settings',
-  admin:'Admin Panel',
+  dipstick:'Dipstick',      deliveries:'Deliveries',   corporate:'Credit Customers',
+  group:'Group View',       reports:'Reports',         alerts:'Alerts',
+  invoices:'GST Invoices',  receipts:'Credit Receipts',settings:'Settings',
+  creditdash:'Credit Dashboard',
+};
+
+const GROUP_KEYS = {
+  Dashboard:'grp_dashboard', Transactions:'grp_transactions',
+  Manage:'grp_manage', Masters:'grp_masters', Settings:'grp_settings'
 };
 
 export default function Sidebar({ open, onClose }) {
@@ -68,12 +75,11 @@ export default function Sidebar({ open, onClose }) {
   const { t }      = useTranslation();
   const pathname   = usePathname();
 
-  // Translate nav label, falling back to the English label if a key is missing
   const navLabel = (key) => {
     const translated = t(`nav.${key}`);
     return translated === `nav.${key}` ? (NAV_LABELS[key] || key) : translated;
   };
-  const GROUP_KEYS = { Transactions:'grp_transactions', Masters:'grp_masters', Reports:'grp_reports', Settings:'grp_settings' };
+
   const groupLabel = (label) => {
     const key = GROUP_KEYS[label];
     if (!key) return label;
@@ -89,7 +95,6 @@ export default function Sidebar({ open, onClose }) {
 
   return (
     <>
-      {/* Overlay for mobile */}
       <div className={`sidebar-overlay ${open?'open':''}`} onClick={onClose}/>
 
       <aside style={{
@@ -130,7 +135,6 @@ export default function Sidebar({ open, onClose }) {
             if (!visible.length) return null;
             return (
               <div key={group.label} style={{marginBottom:'0.25rem'}}>
-                {/* Group label */}
                 <div style={{
                   fontSize:10,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',
                   color:'rgba(255,255,255,.25)',padding:'10px 16px 4px',
