@@ -37,7 +37,8 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
 
     const form = new FormData();
     form.append('file', blob, 'audio.webm');
-    form.append('model', 'saaras:v2.5');
+    form.append('model', 'saaras:v3');
+    form.append('mode', 'codemix');
     form.append('language_code', langCode);
 
     const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
