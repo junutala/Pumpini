@@ -42,11 +42,9 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
       filename:    'audio.webm',
       contentType: req.file.mimetype || 'audio/webm',
     });
-    form.append('model',            'saaras:v3');
-    form.append('language_code',    langCode);
-    form.append('mode',             'codemix'); // handles mixed Telugu+English ("50 litres petrol cash")
-    form.append('with_timestamps',  'false');
-    form.append('with_diarization', 'false');
+    form.append('model',         'saaras:v2.5');
+    form.append('language_code', langCode);
+    // saaras:v2.5 handles codemix natively, no mode param needed
 
     const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
       method:  'POST',
@@ -60,8 +58,9 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
     const sarvamData = await sarvamRes.json();
 
     if (!sarvamRes.ok) {
-      console.error('Sarvam error:', sarvamData);
-      return res.status(502).json({ error: 'Transcription failed', details: sarvamData });
+      console.error('Sarvam error status:', sarvamRes.status);
+      console.error('Sarvam error body:', JSON.stringify(sarvamData));
+      return res.status(502).json({ error: 'Transcription failed', details: sarvamData, status: sarvamRes.status });
     }
 
     const transcript = sarvamData.transcript || '';
