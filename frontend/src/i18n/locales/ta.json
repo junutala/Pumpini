@@ -17,7 +17,7 @@
   "export": "ஏற்றுமதி",
   "print": "அச்சிடு",
   "nav": {
-    "dashboard": "டாஷ்போர்டு",
+    "dashboard": "பங்க் காட்சி",
     "shifts": "ஷிப்டுகள்",
     "dispense": "சரிபார்ப்பு",
     "corporate": "கடன் வாடிக்கையாளர்கள்",
@@ -40,7 +40,10 @@
     "grp_masters": "முதன்மை தரவு",
     "grp_reports": "அறிக்கைகள்",
     "grp_settings": "அமைப்புகள்",
-    "logout": "வெளியேறு"
+    "logout": "வெளியேறு",
+    "grp_dashboard": "டாஷ்போர்டு",
+    "grp_manage": "நிர்வாகம்",
+    "bunkview": "பங்க் காட்சி"
   },
   "roles": {
     "owner": "உரிமையாளர்",
@@ -317,7 +320,7 @@
     "manager": "மேலாளர்",
     "attendants": "பணியாளர்கள்",
     "sales": "விற்பனை",
-    "add_attendant": "பணியாளரைச் சேர்",
+    "add_attendant": "+ பணியாளர்",
     "close_shift": "ஷிப்ட் மூடு",
     "total_sales": "மொத்த விற்பனை",
     "transactions": "பரிவர்த்தனைகள்",
