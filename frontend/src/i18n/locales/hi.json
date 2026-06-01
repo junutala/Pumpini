@@ -170,7 +170,13 @@
     "severity_warning": "चेतावनी",
     "severity_critical": "गंभीर",
     "acknowledge": "स्वीकार करें",
-    "unread": "अपठित"
+    "unread": "अपठित",
+    "showing_unread": "अपठित दिखा रहा है",
+    "ack_all": "सभी स्वीकार करें",
+    "no_alerts": "कोई अलर्ट नहीं",
+    "recorded": "दर्ज",
+    "acknowledged": "स्वीकृत",
+    "unacknowledged": "अस्वीकृत"
   },
   "fuel_types": {
     "petrol": "पेट्रोल",
