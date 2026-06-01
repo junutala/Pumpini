@@ -194,7 +194,16 @@ export default function POSPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const chunks = [];
-      const rec = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      // Find supported audio format
+      const mimeType = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg',
+        'audio/mp4',
+        '',
+      ].find(m => m === '' || MediaRecorder.isTypeSupported(m)) || '';
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : {});
 
       rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
 
@@ -205,9 +214,11 @@ export default function POSPage() {
         setVoiceHint(tc('pos_page.voice_processing', 'Processing...'));
 
         try {
-          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const mType = rec.mimeType || 'audio/webm';
+          const blob = new Blob(chunks, { type: mType });
+          const ext = mType.includes('ogg') ? 'ogg' : mType.includes('mp4') ? 'mp4' : 'webm';
           const formData = new FormData();
-          formData.append('audio', blob, 'audio.webm');
+          formData.append('audio', blob, `audio.${ext}`);
           formData.append('language', localStorage.getItem('i18nextLng') || 'te');
 
           const res = await fetch('/api/voice/transcribe', {
@@ -245,6 +256,7 @@ export default function POSPage() {
 
           setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 4000);
         } catch (err) {
+          console.error('Voice error:', err);
           setVoiceStatus('error');
           setVoiceHint(err.message || 'Transcription failed');
           setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 3000);
@@ -261,8 +273,9 @@ export default function POSPage() {
       setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, 10000);
 
     } catch (err) {
+      console.error('Mic error:', err);
       setVoiceStatus('error');
-      setVoiceHint('Microphone access denied');
+      setVoiceHint('Mic: ' + (err.message || 'Access denied'));
       setTimeout(() => { setVoiceStatus(''); setVoiceHint(''); }, 3000);
     }
   };
