@@ -17,7 +17,7 @@
   "export": "निर्यात",
   "print": "प्रिंट",
   "nav": {
-    "dashboard": "डैशबोर्ड",
+    "dashboard": "बंक दृश्य",
     "shifts": "शिफ्ट",
     "dispense": "मिलान",
     "corporate": "क्रेडिट ग्राहक",
@@ -40,7 +40,10 @@
     "grp_masters": "मास्टर्स",
     "grp_reports": "रिपोर्ट",
     "grp_settings": "सेटिंग्स",
-    "logout": "लॉगआउट"
+    "logout": "लॉगआउट",
+    "grp_dashboard": "डैशबोर्ड",
+    "grp_manage": "प्रबंधन",
+    "bunkview": "बंक दृश्य"
   },
   "roles": {
     "owner": "मालिक",
@@ -317,7 +320,7 @@
     "manager": "प्रबंधक",
     "attendants": "परिचारक",
     "sales": "बिक्री",
-    "add_attendant": "परिचारक जोड़ें",
+    "add_attendant": "+ परिचारक",
     "close_shift": "शिफ्ट बंद करें",
     "total_sales": "कुल बिक्री",
     "transactions": "लेन-देन",
