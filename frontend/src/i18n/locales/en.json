@@ -313,7 +313,12 @@
     "avail_credit": "Available credit",
     "this_sale": "This sale",
     "reduce_qty": "Reduce the quantity or collect a payment first.",
-    "txn_failed": "Transaction failed. Please try again."
+    "txn_failed": "Transaction failed. Please try again.",
+    "voice_entry": "🎙 Voice Entry",
+    "voice_listening": "Listening... speak now",
+    "voice_processing": "Processing...",
+    "voice_stop": "Stop Recording",
+    "voice_done": "Got it!"
   },
   "shifts_page": {
     "title": "Shifts",
