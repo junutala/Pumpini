@@ -170,7 +170,13 @@
     "severity_warning": "ಎಚ್ಚರಿಕೆ",
     "severity_critical": "ಗಂಭೀರ",
     "acknowledge": "ಒಪ್ಪಿಕೊ",
-    "unread": "ಓದದಿರುವುದು"
+    "unread": "ಓದದ",
+    "showing_unread": "ಓದದ್ದು ತೋರಿಸುತ್ತಿದೆ",
+    "ack_all": "ಎಲ್ಲವನ್ನೂ ಒಪ್ಪಿಕೊಳ್ಳಿ",
+    "no_alerts": "ಎಚ್ಚರಿಕೆಗಳಿಲ್ಲ",
+    "recorded": "ದಾಖಲಾದ",
+    "acknowledged": "ಒಪ್ಪಿಕೊಳ್ಳಲಾಗಿದೆ",
+    "unacknowledged": "ಒಪ್ಪಿಕೊಳ್ಳಲಾಗಿಲ್ಲ"
   },
   "fuel_types": {
     "petrol": "ಪೆಟ್ರೋಲ್",
