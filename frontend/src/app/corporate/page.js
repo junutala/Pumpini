@@ -53,6 +53,7 @@ export default function CorporatePage() {
   const { user, station } = useAuth();
   const stationId = typeof station==='object' ? station?.id : station;
   const router = useRouter();
+  if (typeof window === 'undefined') return null;
 
   const [corps,      setCorps]      = useState([]);
   const [selected,   setSelected]   = useState(null);
