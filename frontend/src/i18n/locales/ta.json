@@ -170,7 +170,13 @@
     "severity_warning": "எச்சரிக்கை",
     "severity_critical": "மிக முக்கியம்",
     "acknowledge": "ஒப்புக்கொள்",
-    "unread": "படிக்கப்படாதது"
+    "unread": "படிக்காத",
+    "showing_unread": "படிக்காதவை காட்டுகிறது",
+    "ack_all": "அனைத்தையும் ஒப்புக்கொள்",
+    "no_alerts": "எச்சரிக்கைகள் இல்லை",
+    "recorded": "பதிவான",
+    "acknowledged": "ஒப்புக்கொள்ளப்பட்டது",
+    "unacknowledged": "ஒப்புக்கொள்ளப்படாதது"
   },
   "fuel_types": {
     "petrol": "பெட்ரோல்",
