@@ -51,14 +51,6 @@ router.get('/:id/nozzles', authenticate, async (req, res, next) => {
 
 module.exports = router;
 
-// GET /api/stations/:id/settings
-router.get('/:id/settings', authenticate, async (req, res, next) => {
-  try {
-    const { rows } = await pool.query('SELECT * FROM station_settings WHERE station_id=$1', [req.params.id]);
-    res.json(rows[0] || {});
-  } catch(err) { next(err); }
-});
-
 // POST /api/stations/:id/settings
 router.post('/:id/settings', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
