@@ -17,7 +17,7 @@
   "export": "ರಫ್ತು",
   "print": "ಮುದ್ರಿಸು",
   "nav": {
-    "dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+    "dashboard": "ಬಂಕ್ ನೋಟ",
     "shifts": "ಶಿಫ್ಟ್‌ಗಳು",
     "dispense": "ಹೊಂದಾಣಿಕೆ",
     "corporate": "ಕ್ರೆಡಿಟ್ ಗ್ರಾಹಕರು",
@@ -40,7 +40,10 @@
     "grp_masters": "ಮಾಸ್ಟರ್ಸ್",
     "grp_reports": "ವರದಿಗಳು",
     "grp_settings": "ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
-    "logout": "ಲಾಗ್‌ಔಟ್"
+    "logout": "ಲಾಗ್‌ಔಟ್",
+    "grp_dashboard": "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
+    "grp_manage": "ನಿರ್ವಹಣೆ",
+    "bunkview": "ಬಂಕ್ ನೋಟ"
   },
   "roles": {
     "owner": "ಮಾಲೀಕ",
@@ -317,7 +320,7 @@
     "manager": "ವ್ಯವಸ್ಥಾಪಕ",
     "attendants": "ಸಹಾಯಕರು",
     "sales": "ಮಾರಾಟ",
-    "add_attendant": "ಸಹಾಯಕ ಸೇರಿಸಿ",
+    "add_attendant": "+ ಸಹಾಯಕ",
     "close_shift": "ಶಿಫ್ಟ್ ಮುಚ್ಚು",
     "total_sales": "ಒಟ್ಟು ಮಾರಾಟ",
     "transactions": "ವಹಿವಾಟುಗಳು",
