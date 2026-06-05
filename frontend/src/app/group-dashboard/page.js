@@ -4,6 +4,7 @@ import { Globe, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:1});
@@ -18,6 +19,7 @@ export default function GroupDashboardPage() {
   useEffect(()=>{
     api.get('/groups/my').then(g=>{ setGroups(g); if(g.length===1){ setSelectedGroup(g[0]); loadGroup(g[0].id); }});
   },[]);
+  useRefreshOnFocus(load);
 
   const loadGroup = async(id) => {
     setLoading(true);
