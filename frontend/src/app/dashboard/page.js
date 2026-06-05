@@ -10,6 +10,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import LiveEventsWidget from '../../components/ui/LiveEventsWidget';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const PAYMENT_COLORS = { cash:'#16a34a', upi:'#2563eb', credit:'#9333ea', card:'#ea580c' };
 const FUEL_COLORS    = { petrol:'#3b82f6', diesel:'#f59e0b', cng:'#10b981', premium_petrol:'#8b5cf6', lubes:'#ec4899' };
@@ -58,6 +59,7 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => on('dispense:new', () => load()), [on, load]);
+  useRefreshOnFocus(load);
 
   if (!stationId) return (
     <AppShell>
