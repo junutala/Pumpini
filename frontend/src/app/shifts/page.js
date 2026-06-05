@@ -6,6 +6,8 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+
 
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL   = n => Number(n||0).toFixed(2);
@@ -66,7 +68,8 @@ export default function ShiftsPage() {
 
   // Real-time update
   useEffect(()=> on('dispense:new', ()=>{ if(selected) loadShiftDetail(selected); }),[on,selected]);
-
+  useRefreshOnFocus(load);
+  
   const getShiftLabel = (num) => {
     const def = shiftDefs.find(d=>d.shift_number===num);
     return def ? `${tc('shifts_page.shift_label','Shift')} ${num} — ${def.name} (${def.start_time}–${def.end_time})` : `${tc('shifts_page.shift_label','Shift')} ${num}`;
