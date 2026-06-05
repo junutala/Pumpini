@@ -7,6 +7,7 @@ import AppShell from '../../components/shared/AppShell';
 import DateRangePicker from '../../components/shared/DateRangePicker';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt   = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 const fmtL  = n => Number(n||0).toFixed(2);
@@ -63,7 +64,8 @@ export default function CreditDashboardPage() {
   };
 
   useEffect(()=>{ load(); },[effectiveCorpId, stationId, dateFrom, dateTo]);
-
+  useRefreshOnFocus(load);
+  
   const exportCSV = () => {
     const csv = ['Date,Vehicle,Fuel Type,Qty (L),Rate,Amount'].join(',')+'\n'+
       txns.map(t=>[toIST(t.occurred_at),t.vehicle_number,t.fuel_type,
