@@ -7,7 +7,6 @@ import { getShifts, getManagerDashboard, submitReco, getReco } from '../../lib/a
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
-import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const DENOMS = [500,200,100,50,20,10,5,2,1];
 const fmt = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
