@@ -29,7 +29,7 @@ export default function ReconcilePage() {
   useEffect(()=>{
     if(stationId) getShifts({station_id:stationId,date:today}).then(setShifts);
   },[stationId]);
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(loadShift);
 
   const loadShift = async(shift) => {
     setSelectedShift(shift);
