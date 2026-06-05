@@ -5,6 +5,7 @@ import { Plus, Download, Receipt } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const toIST  = ts => ts ? new Date(ts).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—';
@@ -47,6 +48,7 @@ export default function ReceiptsPage() {
   };
 
   useEffect(()=>{ load(); },[stationId]);
+  useRefreshOnFocus(load);
 
   // When customer changes, load their invoices and summary
   useEffect(()=>{
