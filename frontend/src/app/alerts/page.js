@@ -6,6 +6,7 @@ import AppShell from '../../components/shared/AppShell';
 import { getAlerts, acknowledgeAlert } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const SEVERITY_STYLE = {
   info:     { cls: 'badge-info',    banner: 'info'    },
@@ -43,6 +44,7 @@ export default function AlertsPage() {
 
   // Real-time new alerts
   useEffect(() => on('alert:new', () => load()), [on]);
+  useRefreshOnFocus(load);
 
   const ack = async (id) => {
     await acknowledgeAlert(id);
