@@ -6,6 +6,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL = n => Number(n||0).toFixed(2);
@@ -45,7 +46,8 @@ export default function LiveEventsPage() {
   };
 
   useEffect(()=>{ loadRecent(); },[stationId]);
-
+  useRefreshOnFocus(load);
+  
   // Real-time new events
   useEffect(()=>{
     return on('dispense:new', ev => {
