@@ -1,6 +1,6 @@
 'use client';
 import { displayMobile } from '../../lib/india';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, FileText, Download, CheckSquare, Square, Filter, X, Printer, ChevronDown } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
@@ -73,13 +73,16 @@ export default function InvoicesPage() {
   const [savedInvoices, setSavedInvoices] = useState([]);
   const printRef = useRef();
 
-  useEffect(() => {
+  const loadCorps = useCallback(()=>{
     if (!stationId) return;
-    Promise.all([
+    return Promise.all([
       api.get('/corporate', {params:{station_id:stationId}}),
       api.get(`/stations/${stationId}/settings`).catch(()=>null),
     ]).then(([c, s]) => { setCorps(c); setStationSettings(s); });
   }, [stationId]);
+
+  useEffect(() => { loadCorps(); }, [loadCorps]);
+  useRefreshOnFocus(loadCorps);
 
   useEffect(() => {
     if (selectedCorp) {
