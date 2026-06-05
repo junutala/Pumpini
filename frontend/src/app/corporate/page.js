@@ -7,6 +7,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { displayMobile } from '../../lib/india';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
 
@@ -105,7 +106,8 @@ export default function CorporatePage() {
 
   useEffect(()=>{ load(); },[load]);
   useEffect(()=>{ if(selected) loadDetail(selected); },[selected?.id]);
-
+  useRefreshOnFocus(load);
+  
   const triggerDupCheck = (gstn,phone) => {
     if(checkTimer) clearTimeout(checkTimer);
     const t = setTimeout(async() => {
