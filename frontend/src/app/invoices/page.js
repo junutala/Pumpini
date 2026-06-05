@@ -6,6 +6,7 @@ import { Search, FileText, Download, CheckSquare, Square, Filter, X, Printer, Ch
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt   = n => Number(n||0).toLocaleString('en-IN', { minimumFractionDigits:2, maximumFractionDigits:2 });
 const fmtL  = n => Number(n||0).toFixed(3);
@@ -88,7 +89,8 @@ export default function InvoicesPage() {
       });
     }
   }, [selectedCorp]);
-
+  useRefreshOnFocus(load);
+  
   const loadTransactions = async () => {
     if (!selectedCorp || !stationId) return alert(tc('inv_page.select_first','Select a credit customer first'));
     setLoading(true);
