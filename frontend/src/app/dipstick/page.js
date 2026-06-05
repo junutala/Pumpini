@@ -5,6 +5,7 @@ import { Plus, X, Droplets } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getDipstick, recordDipstick, getTankStock, getShifts } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const FUEL_COLORS = { petrol: '#3b82f6', diesel: '#f59e0b', cng: '#10b981', premium_petrol: '#8b5cf6' };
 const fmtL = n => Number(n || 0).toFixed(2);
@@ -36,6 +37,7 @@ export default function DipstickPage() {
   };
 
   useEffect(() => { load(); }, [stationId]);
+  useRefreshOnFocus(load);
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
