@@ -68,7 +68,7 @@ export default function ShiftsPage() {
 
   // Real-time update
   useEffect(()=> on('dispense:new', ()=>{ if(selected) loadShiftDetail(selected); }),[on,selected]);
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(loadShifts);
   
   const getShiftLabel = (num) => {
     const def = shiftDefs.find(d=>d.shift_number===num);
