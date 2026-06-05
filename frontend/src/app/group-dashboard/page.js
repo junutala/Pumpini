@@ -16,14 +16,13 @@ export default function GroupDashboardPage() {
   const [data,setData]           = useState(null);
   const [loading,setLoading]     = useState(false);
 
-  useEffect(()=>{
-    const loadGroups = useCallback(()=>{
+  const loadGroups = useCallback(()=>{
     return api.get('/groups/my').then(g=>{ setGroups(g); if(g.length===1){ setSelectedGroup(g[0]); loadGroup(g[0].id); }});
   },[]);
 
   useEffect(()=>{ loadGroups(); },[loadGroups]);
   useRefreshOnFocus(loadGroups);
-
+    
   const loadGroup = async(id) => {
     setLoading(true);
     try { const d = await api.get(`/groups/${id}/dashboard`); setData(d); }
