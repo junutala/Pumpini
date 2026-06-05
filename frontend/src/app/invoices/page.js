@@ -92,8 +92,7 @@ export default function InvoicesPage() {
       });
     }
   }, [selectedCorp]);
-  useRefreshOnFocus(loadTransactions);
-  
+    
   const loadTransactions = async () => {
     if (!selectedCorp || !stationId) return alert(tc('inv_page.select_first','Select a credit customer first'));
     setLoading(true);
