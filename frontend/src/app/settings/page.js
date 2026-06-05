@@ -8,6 +8,7 @@ import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag } from 
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const FUEL_TYPES = [
   {value:'petrol',         label:'Petrol (MS)'},
@@ -245,6 +246,7 @@ export default function SettingsPage() {
   };
 
   useEffect(()=>{ load(); },[stationId]);
+  useRefreshOnFocus(load);
 
   return (
     <AppShell>
