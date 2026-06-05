@@ -6,6 +6,7 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { displayMobile } from '../../lib/india';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const CATEGORY_ORDER = ['Dashboard','Shifts','Dispense','Reconciliation',
   'Corporate','Attendance','Stock','Reports','Alerts','Admin'];
@@ -47,6 +48,7 @@ export default function RolesPage() {
   };
 
   useEffect(()=>{ load(); },[stationId]);
+  useRefreshOnFocus(load);
 
   const grouped = CATEGORY_ORDER.map(cat=>({
     category:cat, items:modules.filter(m=>m.category===cat)
