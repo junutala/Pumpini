@@ -19,7 +19,7 @@ export default function GroupDashboardPage() {
   useEffect(()=>{
     api.get('/groups/my').then(g=>{ setGroups(g); if(g.length===1){ setSelectedGroup(g[0]); loadGroup(g[0].id); }});
   },[]);
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(loadGroup);
 
   const loadGroup = async(id) => {
     setLoading(true);
