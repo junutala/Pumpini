@@ -6,6 +6,7 @@ import AppShell from '../../components/shared/AppShell';
 import { getUsers, updateUser } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const ROLE_COLORS = { owner: 'badge-danger', manager: 'badge-warning', attendant: 'badge-info', rsa: 'badge-gray', corporate: 'badge-success' };
 
@@ -29,6 +30,7 @@ export default function UsersPage() {
   };
 
   useEffect(() => { if (stationId) load(); }, [stationId, roleFilter]);
+  useRefreshOnFocus(load);
 
   const handleAdd = async (e) => {
     e.preventDefault(); setLoading(true);
