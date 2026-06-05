@@ -5,6 +5,7 @@ import { Plus, X, CheckCircle, Truck, Package } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmt   = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:2 });
 const fmtL  = n => Number(n||0).toFixed(2);
@@ -72,6 +73,7 @@ export default function DeliveriesPage() {
   };
 
   useEffect(() => { load(); }, [stationId]);
+  useRefreshOnFocus(load);
 
   const handleSubmit = async e => {
     e.preventDefault(); setLoading(true);
