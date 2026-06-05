@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Globe, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
@@ -17,9 +17,12 @@ export default function GroupDashboardPage() {
   const [loading,setLoading]     = useState(false);
 
   useEffect(()=>{
-    api.get('/groups/my').then(g=>{ setGroups(g); if(g.length===1){ setSelectedGroup(g[0]); loadGroup(g[0].id); }});
+    const loadGroups = useCallback(()=>{
+    return api.get('/groups/my').then(g=>{ setGroups(g); if(g.length===1){ setSelectedGroup(g[0]); loadGroup(g[0].id); }});
   },[]);
-  useRefreshOnFocus(loadGroup);
+
+  useEffect(()=>{ loadGroups(); },[loadGroups]);
+  useRefreshOnFocus(loadGroups);
 
   const loadGroup = async(id) => {
     setLoading(true);
