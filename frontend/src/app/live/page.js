@@ -46,7 +46,7 @@ export default function LiveEventsPage() {
   };
 
   useEffect(()=>{ loadRecent(); },[stationId]);
-  useRefreshOnFocus(load);
+  useRefreshOnFocus(loadRecent);
   
   // Real-time new events
   useEffect(()=>{
