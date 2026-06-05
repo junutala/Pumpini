@@ -1,11 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, AlertTriangle, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getShifts, getManagerDashboard, submitReco, getReco } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const DENOMS = [500,200,100,50,20,10,5,2,1];
@@ -26,11 +27,14 @@ export default function ReconcilePage() {
   const [loading,setLoading]       = useState(false);
   const [dispute,setDispute]       = useState({});   // {attendantId: {type,notes}}
 
-  useEffect(()=>{
-    if(stationId) getShifts({station_id:stationId,date:today}).then(setShifts);
-  },[stationId]);
-  useRefreshOnFocus(loadShift);
+  const loadShifts = useCallback(()=>{
+    if(stationId) return getShifts({station_id:stationId,date:today}).then(setShifts);
+  },[stationId,today]);
 
+  useEffect(()=>{ loadShifts(); },[loadShifts]);
+  useRefreshOnFocus(loadShifts);
+  
+  
   const loadShift = async(shift) => {
     setSelectedShift(shift);
     setExpanded(null);
