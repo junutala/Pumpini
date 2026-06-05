@@ -5,6 +5,7 @@ import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getAttendance, markAttendance, getUsers } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const STATUS_COLORS = { present:'badge-success', absent:'badge-danger', half_day:'badge-warning', leave:'badge-gray' };
 const DENOMS = [500,200,100,50,20,10,5,2,1];
@@ -60,6 +61,7 @@ export default function AttendancePage() {
   };
 
   useEffect(()=>{load();},[stationId,date,shiftFilter]);
+  useRefreshOnFocus(load);
 
   const saveOne = async(empId) => {
     setSaving(p=>({...p,[empId]:true}));
