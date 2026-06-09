@@ -13,7 +13,13 @@ const { isoBase64URL } = require('@simplewebauthn/server/helpers');
 
 const RP_NAME = 'Pumpini';
 const RP_ID   = process.env.WEBAUTHN_RP_ID  || 'localhost';
-const ORIGIN  = process.env.WEBAUTHN_ORIGIN || 'http://localhost:3000';
+const _origin = process.env.WEBAUTHN_ORIGIN || 'http://localhost:3000';
+// Accept both www and non-www so either redirect target works
+const ORIGINS = Array.from(new Set([
+  _origin,
+  _origin.startsWith('https://www.') ? _origin.replace('https://www.', 'https://')
+                                     : _origin.replace('https://', 'https://www.'),
+]));
 
 // In-memory challenge store — 5 min TTL, cleaned every minute
 const _store = new Map();
@@ -77,7 +83,7 @@ router.post('/register-finish', authenticate, async (req, res, next) => {
     const verification = await verifyRegistrationResponse({
       response:                req.body,
       expectedChallenge,
-      expectedOrigin:          ORIGIN,
+      expectedOrigin:          ORIGINS,
       expectedRPID:            RP_ID,
       requireUserVerification: true,
     });
@@ -147,7 +153,7 @@ router.post('/auth-finish', async (req, res, next) => {
     const verification = await verifyAuthenticationResponse({
       response:                assertion,
       expectedChallenge,
-      expectedOrigin:          ORIGIN,
+      expectedOrigin:          ORIGINS,
       expectedRPID:            RP_ID,
       requireUserVerification: true,
       credential: {
