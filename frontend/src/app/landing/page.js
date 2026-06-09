@@ -302,9 +302,10 @@ export default function LandingPage() {
         transition:'box-shadow .3s',padding:'0 5%',
         display:'flex',alignItems:'center',justifyContent:'space-between',height:64,
       }}>
-        <div style={{fontWeight:900,fontSize:24,letterSpacing:'-.02em'}}>
-          <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#1A5F7A'}}>ini</span>
-        </div>
+        <Link href="/" style={{display:'flex',alignItems:'center'}} aria-label="Pumpini home">
+          <Image src="/pumpini-logo.png" alt="Pumpini — control every drop, track every rupee"
+            width={150} height={46} priority style={{objectFit:'contain',display:'block'}}/>
+        </Link>
 
         <div style={{display:'flex',alignItems:'center',gap:'2rem'}}>
           <a href="#features" style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Features</a>
