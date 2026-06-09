@@ -136,6 +136,12 @@ router.post('/auth-finish', async (req, res, next) => {
     }
 
     // Find the credential
+    console.log('[passkey] auth-finish received id:', assertion.id, 'len:', String(assertion.id||'').length);
+
+    // Also fetch all stored credential IDs for comparison
+    const { rows: allCreds } = await pool.query('SELECT credential_id FROM user_passkeys');
+    console.log('[passkey] stored credential_ids:', allCreds.map(r => r.credential_id + '(len=' + r.credential_id.length + ')'));
+
     const { rows } = await pool.query(
       `SELECT pk.credential_id, pk.public_key, pk.counter,
               u.id AS user_id, u.name, u.phone, u.role, u.language,
@@ -146,7 +152,7 @@ router.post('/auth-finish', async (req, res, next) => {
       [assertion.id]
     );
     if (!rows.length) {
-      console.error('[passkey auth] credential not found in DB. assertion.id:', assertion.id);
+      console.log('[passkey] NO MATCH. received:', assertion.id, '| stored:', allCreds.map(r=>r.credential_id).join(', '));
       return res.status(401).json({ error: 'Credential not recognised. Please login with password.' });
     }
     const cred = rows[0];
