@@ -113,7 +113,7 @@ Current station data:
 ${contextLines}`;
 
     const response = await client.messages.create({
-      model:      'claude-haiku-4-5-20251001',
+      model:      'claude-haiku-4-5',
       max_tokens: 512,
       system:     systemPrompt,
       messages:   [{ role: 'user', content: message.trim() }],
@@ -121,6 +121,7 @@ ${contextLines}`;
 
     res.json({ reply: response.content[0].text });
   } catch (err) {
+    console.error('[ai-chat] error:', err?.status, err?.message, err?.error);
     next(err);
   }
 });

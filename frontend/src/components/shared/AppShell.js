@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Menu, Bell } from 'lucide-react';
 import Sidebar from './Sidebar';
+import FloatingChat from './FloatingChat';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
@@ -71,6 +72,8 @@ export default function AppShell({ children }) {
           </main>
         </div>
       </div>
+
+      <FloatingChat/>
 
       <style>{`
         /* Desktop: sidebar is sticky in normal flow */

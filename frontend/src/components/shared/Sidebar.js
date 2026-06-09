@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package, MessageSquare, CheckSquare
+  Menu, Package, CheckSquare
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -50,12 +50,6 @@ const NAV_GROUPS = [
     ]
   },
   {
-    label: 'Assistant',
-    items: [
-      { key:'aichat',     href:'/ai-chat',         icon:MessageSquare,  perm:null },
-    ]
-  },
-  {
     label: 'Settings',
     items: [
       { key:'settings',   href:'/settings',        icon:Settings,       perm:'settings.manage' },
@@ -72,12 +66,11 @@ const NAV_LABELS = {
   creditdash:'Credit Dashboard',
   products:'Products (Lubes)',
   reconcile:'Reconciliation',
-  aichat:'AI Assistant',
 };
 
 const GROUP_KEYS = {
   Dashboard:'grp_dashboard', Transactions:'grp_transactions',
-  Manage:'grp_manage', Masters:'grp_masters', Assistant:'grp_assistant', Settings:'grp_settings'
+  Manage:'grp_manage', Masters:'grp_masters', Settings:'grp_settings'
 };
 
 export default function Sidebar({ open, onClose }) {
