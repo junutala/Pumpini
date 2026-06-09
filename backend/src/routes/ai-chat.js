@@ -47,9 +47,9 @@ router.post('/', authenticate, async (req, res, next) => {
         [station_id]
       ),
       pool.query(`
-        SELECT alert_type, message, severity, created_at
-        FROM alerts WHERE station_id = $1 AND is_acknowledged = FALSE
-        ORDER BY created_at DESC LIMIT 5`,
+        SELECT alert_type, message, severity, sent_at
+        FROM alerts WHERE station_id = $1 AND acknowledged_at IS NULL
+        ORDER BY sent_at DESC LIMIT 5`,
         [station_id]
       ),
       pool.query(`
