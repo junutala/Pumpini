@@ -2,9 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 // GET /api/dashboard/owner?station_id=&date=
-router.get('/owner', authenticate, async (req, res, next) => {
+router.get('/owner', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, date = new Date().toISOString().slice(0,10) } = req.query;
 
@@ -69,7 +70,7 @@ router.get('/owner', authenticate, async (req, res, next) => {
 });
 
 // GET /api/dashboard/manager?station_id=&shift_id=
-router.get('/manager', authenticate, async (req, res, next) => {
+router.get('/manager', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, shift_id } = req.query;
 
@@ -148,7 +149,7 @@ router.get('/corporate/:id', authenticate, async (req, res, next) => {
 });
 
 // GET /api/dashboard/attendant?attendant_id=&shift_id=
-router.get('/attendant', authenticate, async (req, res, next) => {
+router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const { attendant_id, shift_id } = req.query;
     const { rows } = await pool.query(`

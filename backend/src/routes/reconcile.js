@@ -2,10 +2,11 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
 
 // POST /api/reconcile/denomination  — save denomination count (attendant)
-router.post('/denomination', authenticate, async (req, res, next) => {
+router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const {
       shift_id, attendant_id,
@@ -31,7 +32,7 @@ router.post('/denomination', authenticate, async (req, res, next) => {
 
 // POST /api/reconcile — attendant submits blind drop
 // CRITICAL: saves totals in DB but does NOT return them to attendant
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const { shift_id, attendant_id, cash_actual, remarks } = req.body;
 
@@ -77,7 +78,7 @@ router.post('/', authenticate, async (req, res, next) => {
 
 // GET /api/reconcile/:shift_id — manager gets list of submissions
 // Returns data but hides totals for unconfirmed entries
-router.get('/:shift_id', authenticate, async (req, res, next) => {
+router.get('/:shift_id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const isManager = ['owner','manager'].includes(req.user.role);
     const { rows } = await pool.query(`
@@ -112,7 +113,7 @@ router.get('/:shift_id', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/reconcile/:id/confirm — manager confirms receipt, NOW reveals totals
-router.patch('/:id/confirm', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/confirm', authenticate, authorize('owner','manager'), requireStationVia('SELECT s.station_id FROM shift_reconciliation r JOIN shifts s ON s.id=r.shift_id WHERE r.id=$1', 'id'), async (req, res, next) => {
   try {
     const { dispute_type, dispute_notes } = req.body;
 

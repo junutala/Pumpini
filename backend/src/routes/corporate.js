@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess } = require('../middleware/stationAccess');
 
 // ── Duplicate check helper ──────────────────────────────────
 const checkDuplicates = async (gstn, phone, excludeId = null) => {
@@ -50,7 +51,7 @@ const checkDuplicates = async (gstn, phone, excludeId = null) => {
 };
 
 // GET /api/corporate — list for a station
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     let q = `

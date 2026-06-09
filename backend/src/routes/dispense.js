@@ -5,6 +5,7 @@ const multer  = require('multer');
 const path    = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -15,7 +16,7 @@ const upload = multer({
 });
 
 // POST /api/dispense  
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const {
       station_id, shift_id, rfid_tag_uid, nozzle_id,
@@ -137,7 +138,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // POST /api/dispense/:id/photo
-router.post('/:id/photo', authenticate, upload.single('photo'), async (req, res, next) => {
+router.post('/:id/photo', authenticate, requireStationVia('SELECT station_id FROM dispense_events WHERE id=$1', 'id'), upload.single('photo'), async (req, res, next) => {
   try {
     const { latitude, longitude } = req.body;
     const photo_url = `/uploads/${req.file.filename}`;
@@ -151,7 +152,7 @@ router.post('/:id/photo', authenticate, upload.single('photo'), async (req, res,
 });
 
 // GET /api/dispense
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { shift_id, attendant_id, date_from, date_to, station_id, limit = 200 } = req.query;
     let q = `

@@ -2,9 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess } = require('../middleware/stationAccess');
 
 // POST /api/dipstick
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c } = req.body;
 
@@ -22,7 +23,7 @@ router.post('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/dipstick?tank_id=&date_from=&date_to=
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { tank_id, shift_id, station_id } = req.query;
     let q = `
@@ -44,7 +45,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/dipstick/tanks/:station_id  - current stock per tank
-router.get('/tanks/:station_id', authenticate, async (req, res, next) => {
+router.get('/tanks/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.*, 

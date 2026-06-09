@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationId } = require('../middleware/stationAccess');
 
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -29,7 +30,7 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/:id/users', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/users', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { user_id } = req.body;
     await pool.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
@@ -38,7 +39,7 @@ router.post('/:id/users', authenticate, authorize('owner','manager'), async (req
   } catch (err) { next(err); }
 });
 
-router.get('/:id/nozzles', authenticate, async (req, res, next) => {
+router.get('/:id/nozzles', authenticate, requireStationId('id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT n.*, t.tank_number, t.fuel_type AS tank_fuel FROM nozzles n
@@ -52,7 +53,7 @@ router.get('/:id/nozzles', authenticate, async (req, res, next) => {
 module.exports = router;
 
 // POST /api/stations/:id/settings
-router.post('/:id/settings', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/settings', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { gstn, pan, tan, address, city, state, pincode, owner_whatsapp, owner_email,
             variance_threshold, invoice_prefix,
@@ -77,7 +78,7 @@ router.post('/:id/settings', authenticate, authorize('owner','manager'), async (
 });
 
 // POST /api/stations/:id/nozzles
-router.post('/:id/nozzles', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/nozzles', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { nozzle_number, fuel_type, tank_id } = req.body;
     const { rows } = await pool.query(
@@ -89,7 +90,7 @@ router.post('/:id/nozzles', authenticate, authorize('owner','manager'), async (r
 });
 
 // PATCH /api/stations/:id/nozzles/:nozzle_id
-router.patch('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { nozzle_number, fuel_type, tank_id, is_active } = req.body;
     const { rows } = await pool.query(
@@ -106,7 +107,7 @@ router.patch('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager
 });
 
 // DELETE /api/stations/:id/nozzles/:nozzle_id
-router.delete('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.delete('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     await pool.query('DELETE FROM nozzles WHERE id=$1 AND station_id=$2',
       [req.params.nozzle_id, req.params.id]);
@@ -115,7 +116,7 @@ router.delete('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manage
 });
 
 // PATCH /api/stations/:id/settings
-router.patch('/:id/settings', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/settings', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { name, address, state, city, pincode, oil_company, gstn, pan,
             owner_whatsapp, invoice_prefix } = req.body;
@@ -144,7 +145,7 @@ router.patch('/:id/settings', authenticate, authorize('owner','manager'), async 
 });
 
 // GET /api/stations/:id/settings
-router.get('/:id/settings', authenticate, async (req, res, next) => {
+router.get('/:id/settings', authenticate, requireStationId('id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
@@ -159,7 +160,7 @@ router.get('/:id/settings', authenticate, async (req, res, next) => {
 
 // GET /api/stations/:id/tanks
 
-router.get('/:id/tanks', authenticate, async (req, res, next) => {
+router.get('/:id/tanks', authenticate, requireStationId('id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT t.*,
@@ -172,7 +173,7 @@ router.get('/:id/tanks', authenticate, async (req, res, next) => {
 });
 
 // POST /api/stations/:id/tanks
-router.post('/:id/tanks', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/tanks', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
     const { rows } = await pool.query(
@@ -185,7 +186,7 @@ router.post('/:id/tanks', authenticate, authorize('owner','manager'), async (req
 });
 
 // PATCH /api/stations/:id/tanks/:tank_id
-router.patch('/:id/tanks/:tank_id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/tanks/:tank_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
     const { rows } = await pool.query(
@@ -203,7 +204,7 @@ router.patch('/:id/tanks/:tank_id', authenticate, authorize('owner','manager'), 
 });
 
 // DELETE /api/stations/:id/tanks/:tank_id
-router.delete('/:id/tanks/:tank_id', authenticate, authorize('owner'), async (req, res, next) => {
+router.delete('/:id/tanks/:tank_id', authenticate, authorize('owner'), requireStationId('id'), async (req, res, next) => {
   try {
     await pool.query('DELETE FROM tanks WHERE id=$1 AND station_id=$2',
       [req.params.tank_id, req.params.id]);

@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess } = require('../middleware/stationAccess');
 
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, date, user_id } = req.query;
     let q = `SELECT a.*, u.name, u.role FROM attendance a JOIN users u ON u.id=a.user_id WHERE 1=1`;
@@ -16,7 +17,7 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', authenticate, async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { user_id, station_id, date, check_in, check_out, shift_number, status, notes } = req.body;
     const { rows } = await pool.query(

@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess } = require('../middleware/stationAccess');
 
-router.get('/:station_id/current', authenticate, async (req, res, next) => {
+router.get('/:station_id/current', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT DISTINCT ON (fuel_type) * FROM fuel_prices
@@ -13,7 +14,7 @@ router.get('/:station_id/current', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, fuel_type, price, effective_from } = req.body;
     const { rows } = await pool.query(

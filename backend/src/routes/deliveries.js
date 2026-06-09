@@ -2,9 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 // GET /api/deliveries/book-stock/:station_id  ← must be before /:id routes
-router.get('/book-stock/:station_id', authenticate, async (req, res, next) => {
+router.get('/book-stock/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const today   = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -70,7 +71,7 @@ router.get('/book-stock/:station_id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/deliveries
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const {
       station_id, tank_id, shift_id,
@@ -117,7 +118,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // GET /api/deliveries
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, tank_id, date_from, date_to, limit=50 } = req.query;
     let q = `
@@ -141,7 +142,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/deliveries/:id/verify
-router.patch('/:id/verify', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/verify', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `UPDATE fuel_deliveries SET verified_by=$1, verified_at=NOW()

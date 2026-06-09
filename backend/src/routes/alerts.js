@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, unread } = req.query;
     let q = `SELECT * FROM alerts WHERE station_id=$1`;
@@ -14,7 +15,7 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.patch('/:id/acknowledge', authenticate, async (req, res, next) => {
+router.patch('/:id/acknowledge', authenticate, requireStationVia('SELECT station_id FROM alerts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       'UPDATE alerts SET acknowledged_at=NOW() WHERE id=$1 RETURNING *', [req.params.id]

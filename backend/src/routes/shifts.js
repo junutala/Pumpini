@@ -2,10 +2,11 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
 
 // GET /api/shifts
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, date, status } = req.query;
     let q = `
@@ -29,7 +30,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/shifts/:id
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT s.*, u.name AS manager_name FROM shifts s
@@ -57,7 +58,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/shifts  — open a new shift
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, shift_number, date } = req.body;
     const { rows: existing } = await pool.query(
@@ -79,7 +80,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // POST /api/shifts/:id/assign  — add attendant to shift
-router.post('/:id/assign', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/assign', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const {
       attendant_id, rfid_tag_id, nozzle_id,
@@ -138,7 +139,7 @@ router.post('/:id/assign-rfid', authenticate, authorize('owner','manager'), asyn
 });
 
 // PATCH /api/shifts/:id/close
-router.patch('/:id/close', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/close', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     // Count attendants who have NOT yet submitted reconciliation for this shift
     const { rows: pending } = await pool.query(
@@ -176,7 +177,7 @@ router.patch('/:id/close', authenticate, authorize('owner','manager'), async (re
 });
 
 // GET /api/shifts/:id/events
-router.get('/:id/events', authenticate, async (req, res, next) => {
+router.get('/:id/events', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT de.*, u.name AS attendant_name, n.nozzle_number, r.tag_uid
@@ -191,7 +192,7 @@ router.get('/:id/events', authenticate, async (req, res, next) => {
 });
 
 // GET /api/shifts/definitions/:station_id
-router.get('/definitions/:station_id', authenticate, async (req, res, next) => {
+router.get('/definitions/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM shift_definitions WHERE station_id=$1 ORDER BY shift_number`,
@@ -210,7 +211,7 @@ router.get('/definitions/:station_id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/shifts/definitions — save shift definitions
-router.post('/definitions', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/definitions', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, shifts } = req.body;
     for (const s of shifts) {

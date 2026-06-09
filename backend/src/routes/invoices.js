@@ -2,9 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess } = require('../middleware/stationAccess');
 
 // POST /api/invoices — save invoice
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const {
       station_id, corporate_id, invoice_number, invoice_date,
@@ -49,7 +50,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // GET /api/invoices?station_id=&corporate_id=
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, corporate_id } = req.query;
     let q = `
@@ -67,7 +68,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // GET /api/invoices/saved?station_id=&corporate_id=
-router.get('/saved', authenticate, async (req, res, next) => {
+router.get('/saved', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, corporate_id } = req.query;
     let q = `
