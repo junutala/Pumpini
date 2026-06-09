@@ -93,6 +93,7 @@ app.use('/api/deliveries', require('./routes/deliveries'));
 app.use('/api/voice',      voiceRoutes);
 app.use('/api/products',   productsRoutes);
 app.use('/api/whatsapp',   require('./routes/whatsapp'));
+app.use('/api/ai-chat',   require('./routes/ai-chat'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

@@ -91,3 +91,10 @@ export const resetRfidTag = (id)        => api.patch(`/rfid/${id}/reset`);
 // Stations
 export const getStations  = ()     => api.get('/stations');
 export const getNozzles   = (sid)  => api.get(`/stations/${sid}/nozzles`);
+
+// Reconcile (denomination)
+export const submitDenomination = (data) => api.post('/reconcile/denomination', data);
+export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`, {});
+
+// AI Chat
+export const sendAiChat = (data) => api.post('/ai-chat', data);

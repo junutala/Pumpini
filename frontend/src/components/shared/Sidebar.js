@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package
+  Menu, Package, MessageSquare, CheckSquare
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -25,6 +25,7 @@ const NAV_GROUPS = [
     label: 'Transactions',
     items: [
       { key:'pos',        href:'/pos',             icon:ShoppingCart,   perm:'dispense.entry' },
+      { key:'reconcile',  href:'/reconcile',       icon:CheckSquare,    perm:'reconcile.manage' },
     ]
   },
   {
@@ -49,6 +50,12 @@ const NAV_GROUPS = [
     ]
   },
   {
+    label: 'Assistant',
+    items: [
+      { key:'aichat',     href:'/ai-chat',         icon:MessageSquare,  perm:null },
+    ]
+  },
+  {
     label: 'Settings',
     items: [
       { key:'settings',   href:'/settings',        icon:Settings,       perm:'settings.manage' },
@@ -58,17 +65,19 @@ const NAV_GROUPS = [
 
 const NAV_LABELS = {
   dashboard:'Bunk View',   live:'Live Events',      pos:'POS Entry',
-  shifts:'Shifts',          dispense:'Reconciliation', attendance:'Attendance',
-  dipstick:'Dipstick',      deliveries:'Deliveries',   corporate:'Credit Customers',
-  group:'Group View',       reports:'Reports',         alerts:'Alerts',
-  invoices:'GST Invoices',  receipts:'Credit Receipts',settings:'Settings',
+  shifts:'Shifts',          dispense:'Dispense Log', attendance:'Attendance',
+  dipstick:'Dipstick',      deliveries:'Deliveries', corporate:'Credit Customers',
+  group:'Group View',       reports:'Reports',       alerts:'Alerts',
+  invoices:'GST Invoices',  receipts:'Credit Receipts', settings:'Settings',
   creditdash:'Credit Dashboard',
   products:'Products (Lubes)',
+  reconcile:'Reconciliation',
+  aichat:'AI Assistant',
 };
 
 const GROUP_KEYS = {
   Dashboard:'grp_dashboard', Transactions:'grp_transactions',
-  Manage:'grp_manage', Masters:'grp_masters', Settings:'grp_settings'
+  Manage:'grp_manage', Masters:'grp_masters', Assistant:'grp_assistant', Settings:'grp_settings'
 };
 
 export default function Sidebar({ open, onClose }) {
