@@ -2,7 +2,6 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const jwt    = require('jsonwebtoken');
-const logger = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
 const {
   generateRegistrationOptions,
@@ -94,8 +93,10 @@ router.post('/register-finish', authenticate, async (req, res, next) => {
     }
 
     const { credential } = verification.registrationInfo;
-    // credential.id and credential.publicKey are Uint8Array in v13
-    const credentialId = isoBase64URL.fromBuffer(Buffer.from(credential.id));
+    // v13: credential.id is ALREADY a base64url string — store as-is (do NOT
+    // re-encode or it double-encodes and never matches the device).
+    // credential.publicKey is a Uint8Array — encode that one.
+    const credentialId = credential.id;
     const publicKey    = isoBase64URL.fromBuffer(Buffer.from(credential.publicKey));
 
     await pool.query(
@@ -144,14 +145,6 @@ router.post('/auth-finish', async (req, res, next) => {
       return res.status(400).json({ error: 'Challenge expired — please try again.' });
     }
 
-    // Find the credential
-    const rxId = String(assertion.id || '');
-    logger.warn('[passkey] auth-finish received id=' + rxId + ' len=' + rxId.length);
-
-    // Also fetch all stored credential IDs for comparison
-    const { rows: allCreds } = await pool.query('SELECT credential_id FROM user_passkeys');
-    logger.warn('[passkey] stored ids: ' + allCreds.map(r => r.credential_id + '(len=' + r.credential_id.length + ')').join(' | '));
-
     const { rows } = await pool.query(
       `SELECT pk.credential_id, pk.public_key, pk.counter,
               u.id AS user_id, u.name, u.phone, u.role, u.language,
@@ -162,7 +155,6 @@ router.post('/auth-finish', async (req, res, next) => {
       [assertion.id]
     );
     if (!rows.length) {
-      logger.warn('[passkey] NO MATCH received=' + rxId + ' stored=' + allCreds.map(r=>r.credential_id).join(','));
       return res.status(401).json({ error: 'Credential not recognised. Please login with password.' });
     }
     const cred = rows[0];
@@ -176,7 +168,7 @@ router.post('/auth-finish', async (req, res, next) => {
         expectedRPID:            RP_ID,
         requireUserVerification: true,
         credential: {
-          id:        isoBase64URL.toBuffer(cred.credential_id),
+          id:        cred.credential_id, // v13: base64url string, not Buffer
           publicKey: isoBase64URL.toBuffer(cred.public_key),
           counter:   Number(cred.counter),
         },
