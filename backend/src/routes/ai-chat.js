@@ -37,13 +37,9 @@ router.post('/', authenticate, async (req, res, next) => {
         [station_id, today]
       ),
       pool.query(`
-        SELECT t.tank_name, t.fuel_type, t.capacity_ltrs,
-          COALESCE(
-            (SELECT d.volume_ltrs FROM dipstick_readings d
-             WHERE d.tank_id = t.id ORDER BY d.recorded_at DESC LIMIT 1),
-            0
-          ) AS current_stock
-        FROM tanks t WHERE t.station_id = $1 AND t.is_active = TRUE`,
+        SELECT tank_number, fuel_type, capacity_ltrs, current_stock
+        FROM tanks WHERE station_id = $1
+        ORDER BY tank_number`,
         [station_id]
       ),
       pool.query(`
@@ -82,7 +78,7 @@ router.post('/', authenticate, async (req, res, next) => {
       '--- Tank Stock ---',
       stockRes.rows.length
         ? stockRes.rows.map(t =>
-            `${t.fuel_type} (${t.tank_name}): ${parseFloat(t.current_stock).toFixed(0)}L / ${parseFloat(t.capacity_ltrs).toFixed(0)}L`
+            `${t.fuel_type} (Tank ${t.tank_number}): ${parseFloat(t.current_stock).toFixed(0)}L / ${parseFloat(t.capacity_ltrs).toFixed(0)}L`
           ).join('\n')
         : 'No tank data',
       '',
