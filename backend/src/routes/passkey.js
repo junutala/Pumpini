@@ -146,24 +146,32 @@ router.post('/auth-finish', async (req, res, next) => {
       [assertion.id]
     );
     if (!rows.length) {
+      console.error('[passkey auth] credential not found in DB. assertion.id:', assertion.id);
       return res.status(401).json({ error: 'Credential not recognised. Please login with password.' });
     }
     const cred = rows[0];
 
-    const verification = await verifyAuthenticationResponse({
-      response:                assertion,
-      expectedChallenge,
-      expectedOrigin:          ORIGINS,
-      expectedRPID:            RP_ID,
-      requireUserVerification: true,
-      credential: {
-        id:        isoBase64URL.toBuffer(cred.credential_id),
-        publicKey: isoBase64URL.toBuffer(cred.public_key),
-        counter:   Number(cred.counter),
-      },
-    });
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response:                assertion,
+        expectedChallenge,
+        expectedOrigin:          ORIGINS,
+        expectedRPID:            RP_ID,
+        requireUserVerification: true,
+        credential: {
+          id:        isoBase64URL.toBuffer(cred.credential_id),
+          publicKey: isoBase64URL.toBuffer(cred.public_key),
+          counter:   Number(cred.counter),
+        },
+      });
+    } catch (verifyErr) {
+      console.error('[passkey auth] verifyAuthenticationResponse threw:', verifyErr.message);
+      return res.status(401).json({ error: 'Biometric authentication failed.', detail: verifyErr.message });
+    }
 
     if (!verification.verified) {
+      console.error('[passkey auth] verified=false, authInfo:', verification.authenticationInfo);
       return res.status(401).json({ error: 'Biometric authentication failed.' });
     }
 
