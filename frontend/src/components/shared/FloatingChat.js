@@ -47,10 +47,16 @@ export default function FloatingChat() {
     try {
       const { reply } = await sendAiChat({ message: msg, station_id: stationId, language: lang });
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
-    } catch {
+    } catch (e) {
+      const detail = e?.detail
+        || (typeof e?.error === 'string' && e.error !== 'ai_unreachable' ? e.error : '')
+        || e?.message || '';
+      const code = e?.status ? ` (${e.status})` : '';
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '⚠️ Could not reach AI. Check your connection and try again.',
+        content: detail
+          ? `⚠️ AI error${code}: ${detail}`
+          : '⚠️ Could not reach AI. Check your connection and try again.',
         error: true,
       }]);
     } finally {

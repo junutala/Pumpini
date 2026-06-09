@@ -96,5 +96,5 @@ export const getNozzles   = (sid)  => api.get(`/stations/${sid}/nozzles`);
 export const submitDenomination = (data) => api.post('/reconcile/denomination', data);
 export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`, {});
 
-// AI Chat
-export const sendAiChat = (data) => api.post('/ai-chat', data);
+// AI Chat — longer timeout: model latency + possible Railway cold start
+export const sendAiChat = (data) => api.post('/ai-chat', data, { timeout: 60000 });

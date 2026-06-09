@@ -121,8 +121,11 @@ ${contextLines}`;
 
     res.json({ reply: response.content[0].text });
   } catch (err) {
-    console.error('[ai-chat] error:', err?.status, err?.message, err?.error);
-    next(err);
+    // Surface the real Anthropic error (status + message) so it's diagnosable
+    // from the chat UI / network tab instead of a generic "could not reach AI".
+    const detail = err?.error?.error?.message || err?.message || 'Unknown error';
+    console.error('[ai-chat] error:', err?.status, detail, err?.error);
+    res.status(502).json({ error: 'ai_unreachable', status: err?.status || null, detail });
   }
 });
 
