@@ -152,7 +152,7 @@ router.post('/:id/photo', authenticate, requireStationVia('SELECT station_id FRO
 });
 
 // GET /api/dispense
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { shift_id, attendant_id, date_from, date_to, station_id, limit = 200 } = req.query;
     let q = `

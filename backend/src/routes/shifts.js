@@ -6,7 +6,7 @@ const { requireStationAccess, requireStationVia } = require('../middleware/stati
 const { sendAlert } = require('../services/alertService');
 
 // GET /api/shifts
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, date, status } = req.query;
     let q = `

@@ -50,7 +50,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
 });
 
 // GET /api/invoices?station_id=&corporate_id=
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, corporate_id } = req.query;
     let q = `
@@ -68,7 +68,7 @@ router.get('/', authenticate, requireStationAccess(), async (req, res, next) => 
 });
 
 // GET /api/invoices/saved?station_id=&corporate_id=
-router.get('/saved', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/saved', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, corporate_id } = req.query;
     let q = `

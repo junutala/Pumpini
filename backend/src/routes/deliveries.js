@@ -118,7 +118,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
 });
 
 // GET /api/deliveries
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, tank_id, date_from, date_to, limit=50 } = req.query;
     let q = `

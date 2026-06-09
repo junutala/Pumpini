@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
-const { requireStationAccess } = require('../middleware/stationAccess');
+const { requireStationAccess, requireCorporateAccess } = require('../middleware/stationAccess');
 
 // ── Duplicate check helper ──────────────────────────────────
 const checkDuplicates = async (gstn, phone, excludeId = null) => {
@@ -51,7 +51,7 @@ const checkDuplicates = async (gstn, phone, excludeId = null) => {
 };
 
 // GET /api/corporate — list for a station
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     let q = `
@@ -163,7 +163,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // PATCH /api/corporate/:id — update master record
-router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const {
       company_name, contact_person, contact_phone,
@@ -191,7 +191,7 @@ router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res
 // ── Station links ───────────────────────────────────────────
 
 // POST /api/corporate/:id/links — link to a station
-router.post('/:id/links', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/links', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const { station_id, credit_limit, payment_terms = 30 } = req.body;
     const { rows } = await pool.query(
@@ -207,7 +207,7 @@ router.post('/:id/links', authenticate, authorize('owner','manager'), async (req
 });
 
 // GET /api/corporate/:id/links — get all station links for a corporate
-router.get('/:id/links', authenticate, async (req, res, next) => {
+router.get('/:id/links', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT csl.*, s.name AS station_name, s.city, s.state,
@@ -226,7 +226,7 @@ router.get('/:id/links', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/corporate/:id/links/:station_id — update link
-router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const { credit_limit, payment_terms, is_active } = req.body;
     const { rows } = await pool.query(
@@ -338,7 +338,7 @@ router.patch('/duplicates/:id/dismiss', authenticate, authorize('owner','manager
 });
 
 // GET /api/corporate/:id/statement
-router.get('/:id/statement', authenticate, async (req, res, next) => {
+router.get('/:id/statement', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { station_id, month, date_from, date_to } = req.query;
     let dateFrom = date_from;
@@ -372,7 +372,7 @@ router.get('/:id/statement', authenticate, async (req, res, next) => {
 });
 
 // GET /api/corporate/:id/drivers
-router.get('/:id/drivers', authenticate, async (req, res, next) => {
+router.get('/:id/drivers', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT * FROM corporate_drivers WHERE corporate_id=$1 ORDER BY driver_name`,
@@ -383,7 +383,7 @@ router.get('/:id/drivers', authenticate, async (req, res, next) => {
 });
 
 // POST /api/corporate/:id/drivers
-router.post('/:id/drivers', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/drivers', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const { vehicle_number, driver_name, phone } = req.body;
     const { rows } = await pool.query(
@@ -396,7 +396,7 @@ router.post('/:id/drivers', authenticate, authorize('owner','manager'), async (r
 });
 
 // GET /api/corporate/:id — get single
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT ca.*,

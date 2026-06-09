@@ -2,10 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
-const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
 
 // GET /api/dashboard/owner?station_id=&date=
-router.get('/owner', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/owner', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, date = new Date().toISOString().slice(0,10) } = req.query;
 
@@ -70,7 +70,7 @@ router.get('/owner', authenticate, requireStationAccess(), async (req, res, next
 });
 
 // GET /api/dashboard/manager?station_id=&shift_id=
-router.get('/manager', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/manager', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, shift_id } = req.query;
 
@@ -108,7 +108,7 @@ router.get('/manager', authenticate, requireStationAccess(), async (req, res, ne
 });
 
 // GET /api/dashboard/corporate/:id
-router.get('/corporate/:id', authenticate, async (req, res, next) => {
+router.get('/corporate/:id', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { id } = req.params;
     const today = new Date().toISOString().slice(0,10);

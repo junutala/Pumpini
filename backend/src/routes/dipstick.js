@@ -23,7 +23,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
 });
 
 // GET /api/dipstick?tank_id=&date_from=&date_to=
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { tank_id, shift_id, station_id } = req.query;
     let q = `

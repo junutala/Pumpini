@@ -1,13 +1,23 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
-const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { requireStationAccess, requireStationVia, getAccessibleStationIds } = require('../middleware/stationAccess');
 
 router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { station_id, unread } = req.query;
-    let q = `SELECT * FROM alerts WHERE station_id=$1`;
-    const p = [station_id];
+    const p = [];
+    let q = `SELECT * FROM alerts WHERE `;
+    if (station_id) {
+      p.push(station_id);
+      q += `station_id=$${p.length}`;
+    } else {
+      // No explicit station → scope to the user's accessible stations
+      const ids = await getAccessibleStationIds(req.user.id);
+      if (!ids.length) return res.json([]);
+      p.push(ids);
+      q += `station_id = ANY($${p.length}::uuid[])`;
+    }
     if (unread === 'true') q += ` AND acknowledged_at IS NULL`;
     q += ' ORDER BY sent_at DESC LIMIT 50';
     const { rows } = await pool.query(q, p);

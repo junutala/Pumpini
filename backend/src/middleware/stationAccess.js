@@ -96,10 +96,62 @@ function requireStationVia(sql, key) {
   };
 }
 
+// All station ids a user may access (direct + via owner group). Used to
+// auto-scope list endpoints that can be called without an explicit station_id.
+async function getAccessibleStationIds(userId) {
+  if (!userId) return [];
+  const { rows } = await pool.query(
+    `SELECT station_id FROM station_users WHERE user_id = $1
+     UNION
+     SELECT sgm.station_id
+       FROM owner_group_members ogm
+       JOIN station_groups stg        ON stg.owner_group_id = ogm.group_id
+       JOIN station_group_members sgm ON sgm.station_group_id = stg.id
+      WHERE ogm.user_id = $1`,
+    [userId]
+  );
+  return rows.map(r => r.station_id);
+}
+
+// A corporate account is reachable if the user can access its owning station
+// (corporate_accounts.created_by_station) OR any station it's linked to.
+async function canAccessCorporate(userId, corporateId) {
+  if (!userId || !corporateId) return false;
+  const ids = await getAccessibleStationIds(userId);
+  if (!ids.length) return false;
+  const { rows } = await pool.query(
+    `SELECT 1 FROM corporate_accounts ca
+       WHERE ca.id = $1
+         AND ( ca.created_by_station = ANY($2::uuid[])
+            OR EXISTS (SELECT 1 FROM corporate_station_links csl
+                        WHERE csl.corporate_id = ca.id
+                          AND csl.station_id = ANY($2::uuid[])) )
+       LIMIT 1`,
+    [corporateId, ids]
+  );
+  return rows.length > 0;
+}
+
+// Guard a corporate-keyed route (req.params[paramName] = corporate id).
+function requireCorporateAccess(paramName = 'id') {
+  return async (req, res, next) => {
+    try {
+      const corporateId = req.params[paramName];
+      if (!corporateId) return next();
+      return (await canAccessCorporate(req.user.id, corporateId))
+        ? next()
+        : res.status(403).json({ error: 'You do not have access to this corporate account.' });
+    } catch (err) { next(err); }
+  };
+}
+
 module.exports = {
   canAccessStation,
+  getAccessibleStationIds,
+  canAccessCorporate,
   clearAccessCache,
   requireStationAccess,
   requireStationId,
   requireStationVia,
+  requireCorporateAccess,
 };

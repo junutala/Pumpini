@@ -3,7 +3,7 @@ const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 
-router.get('/', authenticate, requireStationAccess(), async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, date, user_id } = req.query;
     let q = `SELECT a.*, u.name, u.role FROM attendance a JOIN users u ON u.id=a.user_id WHERE 1=1`;
