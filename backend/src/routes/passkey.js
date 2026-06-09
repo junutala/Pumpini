@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const jwt    = require('jsonwebtoken');
+const logger = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
 const {
   generateRegistrationOptions,
@@ -136,11 +137,12 @@ router.post('/auth-finish', async (req, res, next) => {
     }
 
     // Find the credential
-    console.log('[passkey] auth-finish received id:', assertion.id, 'len:', String(assertion.id||'').length);
+    const rxId = String(assertion.id || '');
+    logger.warn('[passkey] auth-finish received id=' + rxId + ' len=' + rxId.length);
 
     // Also fetch all stored credential IDs for comparison
     const { rows: allCreds } = await pool.query('SELECT credential_id FROM user_passkeys');
-    console.log('[passkey] stored credential_ids:', allCreds.map(r => r.credential_id + '(len=' + r.credential_id.length + ')'));
+    logger.warn('[passkey] stored ids: ' + allCreds.map(r => r.credential_id + '(len=' + r.credential_id.length + ')').join(' | '));
 
     const { rows } = await pool.query(
       `SELECT pk.credential_id, pk.public_key, pk.counter,
@@ -152,7 +154,7 @@ router.post('/auth-finish', async (req, res, next) => {
       [assertion.id]
     );
     if (!rows.length) {
-      console.log('[passkey] NO MATCH. received:', assertion.id, '| stored:', allCreds.map(r=>r.credential_id).join(', '));
+      logger.warn('[passkey] NO MATCH received=' + rxId + ' stored=' + allCreds.map(r=>r.credential_id).join(','));
       return res.status(401).json({ error: 'Credential not recognised. Please login with password.' });
     }
     const cred = rows[0];
