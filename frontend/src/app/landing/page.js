@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Zap, Mic, Send } from 'lucide-react';
 
 const LANGS = [
   { code:'en', label:'English',    flag:'🇬🇧' },
@@ -313,91 +314,150 @@ export default function LandingPage() {
       <section style={{
         minHeight:'100dvh',
         background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 50%, #0F1923 100%)',
-        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-        textAlign:'center',padding:'0 5%',position:'relative',overflow:'hidden',
+        display:'flex',alignItems:'center',justifyContent:'center',
+        padding:'90px 5% 60px',position:'relative',overflow:'hidden',
       }}>
         {/* Background decoration */}
         <div style={{position:'absolute',inset:0,opacity:.04,backgroundImage:
           'radial-gradient(circle at 20% 80%, #FF6B00 0%, transparent 50%), radial-gradient(circle at 80% 20%, #1A5F7A 0%, transparent 50%)'}}/>
 
-        {/* Badge */}
-        <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,107,0,.15)',
-          border:'1px solid rgba(255,107,0,.3)',borderRadius:99,padding:'6px 16px',
-          marginBottom:'1.5rem',fontSize:13,fontWeight:600,color:'#FF6B00'}}>
-          🇮🇳 Built for Indian Petrol Stations
-        </div>
+        <div className="pmp-hero" style={{
+          maxWidth:1150,width:'100%',display:'grid',gap:'3rem',
+          alignItems:'center',position:'relative',zIndex:1,
+        }}>
+          {/* ── LEFT: copy ── */}
+          <div className="pmp-hero-text">
+            {/* Badge */}
+            <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,107,0,.15)',
+              border:'1px solid rgba(255,107,0,.3)',borderRadius:99,padding:'6px 16px',
+              marginBottom:'1.5rem',fontSize:13,fontWeight:600,color:'#FF6B00'}}>
+              🇮🇳 Built for Indian Petrol Stations
+            </div>
 
-        {/* Headline */}
-        <h1 style={{fontSize:'clamp(2.5rem,6vw,4.5rem)',fontWeight:900,lineHeight:1.1,
-          color:'#fff',marginBottom:'0.5rem',letterSpacing:'-.03em'}}>
-          {c.hero}
-        </h1>
-        <h1 style={{fontSize:'clamp(2.5rem,6vw,4.5rem)',fontWeight:900,lineHeight:1.1,
-          background:'linear-gradient(90deg,#FF6B00,#f97316)',
-          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
-          marginBottom:'1.5rem',letterSpacing:'-.03em'}}>
-          {c.hero2}
-        </h1>
+            {/* Headline */}
+            <h1 style={{fontSize:'clamp(2.4rem,5vw,4rem)',fontWeight:900,lineHeight:1.1,
+              color:'#fff',marginBottom:'0.5rem',letterSpacing:'-.03em'}}>
+              {c.hero}
+            </h1>
+            <h1 style={{fontSize:'clamp(2.4rem,5vw,4rem)',fontWeight:900,lineHeight:1.1,
+              background:'linear-gradient(90deg,#FF6B00,#f97316)',
+              WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+              marginBottom:'1.5rem',letterSpacing:'-.03em'}}>
+              {c.hero2}
+            </h1>
 
-        <p style={{fontSize:'clamp(1rem,2vw,1.2rem)',color:'rgba(255,255,255,.7)',
-          maxWidth:600,lineHeight:1.6,marginBottom:'2.5rem'}}>
-          {c.sub}
-        </p>
+            <p style={{fontSize:'clamp(1rem,1.6vw,1.15rem)',color:'rgba(255,255,255,.7)',
+              maxWidth:520,lineHeight:1.6,marginBottom:'2rem'}}>
+              {c.sub}
+            </p>
 
-        {/* CTA buttons */}
-        <div style={{display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center',marginBottom:'3rem'}}>
-          <Link href="/login" style={{
-            padding:'14px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
-            textDecoration:'none',fontWeight:800,fontSize:16,
-            boxShadow:'0 4px 20px rgba(255,107,0,.4)',
-          }}>
-            {c.cta}
-          </Link>
-          <a href={`https://wa.me/919490704075?text=I want a demo of Pumpini`}
-            target="_blank" rel="noopener noreferrer"
-            style={{padding:'14px 28px',background:'rgba(255,255,255,.1)',color:'#fff',
-              borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
-              border:'1px solid rgba(255,255,255,.2)'}}>
-            {c.demo}
-          </a>
-        </div>
-
-        {/* Trust badges */}
-        <div style={{display:'flex',gap:'2rem',flexWrap:'wrap',justifyContent:'center',
-          fontSize:13,color:'rgba(255,255,255,.5)',fontWeight:500}}>
-          <span>🎙 Voice POS</span>
-          <span>🌐 6 भाषाएँ · 6 மொழிகள் · 6 Languages</span>
-          <span>📍 Geo-Fencing</span>
-          <span>🛒 Lubes & Products</span>
-        </div>
-
-        {/* Mock dashboard */}
-        <div style={{marginTop:'4rem',background:'rgba(255,255,255,.05)',borderRadius:16,
-          border:'1px solid rgba(255,255,255,.1)',padding:'1.5rem',maxWidth:600,width:'100%',
-          backdropFilter:'blur(10px)'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'1rem',paddingBottom:'0.75rem',
-            borderBottom:'1px solid rgba(255,255,255,.1)'}}>
-            <div style={{width:12,height:12,borderRadius:'50%',background:'#ff5f57'}}/>
-            <div style={{width:12,height:12,borderRadius:'50%',background:'#febc2e'}}/>
-            <div style={{width:12,height:12,borderRadius:'50%',background:'#28c840'}}/>
-            <span style={{marginLeft:8,fontSize:12,color:'rgba(255,255,255,.4)'}}>pumpini.vercel.app/dashboard</span>
+            {/* Trust badges */}
+            <div className="pmp-hero-badges" style={{display:'flex',gap:'1.5rem',flexWrap:'wrap',
+              fontSize:13,color:'rgba(255,255,255,.5)',fontWeight:500}}>
+              <span>🎙 Voice POS</span>
+              <span>🌐 6 Languages</span>
+              <span>📍 Geo-Fencing</span>
+              <span>🛒 Lubes & Products</span>
+            </div>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-            {[
-              ["Today's Sales", "₹1,24,850", "+12%", "#FF6B00"],
-              ["Total Litres",  "1,204 L",   "+8%",  "#1A5F7A"],
-              ["Open Shifts",   "3",         "Active","#16a34a"],
-              ["Alerts",        "0",         "Clear ✓","#6366f1"],
-            ].map(([l,v,s,c])=>(
-              <div key={l} style={{background:'rgba(255,255,255,.05)',borderRadius:10,padding:'0.75rem',
-                borderLeft:`3px solid ${c}`}}>
-                <div style={{fontSize:10,color:'rgba(255,255,255,.4)',textTransform:'uppercase',marginBottom:4}}>{l}</div>
-                <div style={{fontSize:20,fontWeight:800,color:'#fff'}}>{v}</div>
-                <div style={{fontSize:11,color:c,marginTop:2,fontWeight:600}}>{s}</div>
+
+          {/* ── RIGHT: live AI chat mockup ── */}
+          <div style={{position:'relative',display:'flex',justifyContent:'center'}}>
+            {/* glow */}
+            <div style={{position:'absolute',inset:'-10% 5%',background:
+              'radial-gradient(circle, rgba(255,107,0,.35) 0%, transparent 70%)',
+              filter:'blur(40px)',zIndex:0}}/>
+
+            <div style={{
+              position:'relative',zIndex:1,width:'100%',maxWidth:380,
+              background:'#fff',borderRadius:18,overflow:'hidden',
+              boxShadow:'0 24px 70px rgba(0,0,0,.45)',
+              border:'1px solid rgba(255,255,255,.12)',
+            }}>
+              {/* Header */}
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',background:'#FF6B00'}}>
+                <div style={{width:32,height:32,background:'rgba(255,255,255,.2)',borderRadius:8,
+                  display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Zap size={16} color="#fff" fill="#fff"/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:800,color:'#fff'}}>AI Assistant</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.8)'}}>Live station data · EN</div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,
+                  color:'rgba(255,255,255,.85)',fontWeight:600}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'#28c840',
+                    boxShadow:'0 0 0 3px rgba(40,200,64,.3)'}}/>
+                  Live
+                </div>
               </div>
-            ))}
+
+              {/* Messages */}
+              <div style={{padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,
+                background:'#f8fafc',minHeight:230}}>
+                {/* User question */}
+                <div style={{display:'flex',justifyContent:'flex-end'}}>
+                  <div style={{maxWidth:'80%',padding:'9px 13px',borderRadius:12,borderBottomRightRadius:3,
+                    background:'#FF6B00',color:'#fff',fontSize:13.5,fontWeight:500,lineHeight:1.5}}>
+                    Today&apos;s total sales?
+                  </div>
+                </div>
+
+                {/* AI answer */}
+                <div style={{display:'flex',alignItems:'flex-start',gap:7}}>
+                  <div style={{width:24,height:24,background:'#FF6B00',borderRadius:7,
+                    display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:2}}>
+                    <Zap size={12} color="#fff" fill="#fff"/>
+                  </div>
+                  <div style={{maxWidth:'82%',padding:'10px 13px',borderRadius:12,borderBottomLeftRadius:3,
+                    background:'#fff',color:'#1a1a1a',fontSize:13,lineHeight:1.6,
+                    border:'1px solid #eef1f4',boxShadow:'0 1px 2px rgba(0,0,0,.04)'}}>
+                    Today&apos;s total is <b>₹1,24,850</b> across <b>312 fills</b>. 🚀
+                    <div style={{marginTop:8,display:'flex',flexDirection:'column',gap:3,
+                      fontSize:12.5,color:'#475569'}}>
+                      <span>• Cash <b style={{color:'#16a34a'}}>₹68,400</b></span>
+                      <span>• UPI <b style={{color:'#16a34a'}}>₹42,300</b></span>
+                      <span>• Credit <b style={{color:'#16a34a'}}>₹14,150</b></span>
+                    </div>
+                    <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid #f0f2f5',
+                      fontSize:12.5,color:'#475569'}}>
+                      Petrol leads with <b>1,204 L</b> dispensed today.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Input bar (decorative) */}
+              <div style={{padding:'10px 12px',borderTop:'1px solid #eef1f4',background:'#fff',
+                display:'flex',alignItems:'center',gap:8}}>
+                <div style={{width:34,height:34,borderRadius:8,background:'#f1f5f9',
+                  display:'flex',alignItems:'center',justifyContent:'center',color:'#64748b',flexShrink:0}}>
+                  <Mic size={16}/>
+                </div>
+                <div style={{flex:1,height:34,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff',
+                  display:'flex',alignItems:'center',padding:'0 12px',fontSize:12.5,color:'#9ca3af'}}>
+                  Ask anything… या किसी भी भाषा में
+                </div>
+                <div style={{width:34,height:34,borderRadius:8,background:'#FF6B00',
+                  display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',flexShrink:0}}>
+                  <Send size={15}/>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Responsive: two columns on desktop, stacked + centered on mobile */}
+        <style>{`
+          .pmp-hero { grid-template-columns: 1.05fr 0.95fr; }
+          .pmp-hero-text { text-align: left; }
+          .pmp-hero-badges { justify-content: flex-start; }
+          @media (max-width: 880px) {
+            .pmp-hero { grid-template-columns: 1fr; gap: 2.5rem; }
+            .pmp-hero-text { text-align: center; }
+            .pmp-hero-badges { justify-content: center; }
+          }
+        `}</style>
       </section>
 
       {/* ── Voice POS Highlight ── */}
@@ -683,6 +743,26 @@ export default function LandingPage() {
           <Link href="/landing" style={{color:'rgba(255,255,255,.4)',textDecoration:'none'}}>Home</Link>
         </div>
       </footer>
+
+      {/* ── Floating WhatsApp button ── */}
+      <a
+        href="https://wa.me/917842178350?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20Pumpini"
+        target="_blank" rel="noopener noreferrer"
+        aria-label="Chat on WhatsApp"
+        style={{
+          position:'fixed',bottom:24,right:24,zIndex:1000,
+          width:58,height:58,borderRadius:'50%',background:'#25D366',
+          display:'flex',alignItems:'center',justifyContent:'center',
+          boxShadow:'0 6px 24px rgba(37,211,102,.5)',
+          textDecoration:'none',transition:'transform .2s',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'}
+        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
+      >
+        <svg viewBox="0 0 32 32" width="32" height="32" fill="#fff" aria-hidden="true">
+          <path d="M16.04 4C9.4 4 4 9.4 4 16.04c0 2.12.56 4.18 1.6 6L4 28l6.13-1.6a12 12 0 0 0 5.9 1.54h.01C22.67 27.95 28 22.6 28 16.04 28 9.4 22.67 4 16.04 4zm0 21.9h-.01a9.9 9.9 0 0 1-5.05-1.38l-.36-.22-3.74.98 1-3.64-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.46 4.45-9.9 9.92-9.9 2.65 0 5.14 1.04 7.01 2.91a9.82 9.82 0 0 1 2.9 7c0 5.46-4.45 9.88-9.92 9.88zm5.44-7.41c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.18.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.21-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.42.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+        </svg>
+      </a>
     </div>
   );
 }
