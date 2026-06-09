@@ -59,7 +59,7 @@ router.post('/register-begin', authenticate, async (req, res, next) => {
       userName:        user.phone,
       userDisplayName: user.name,
       excludeCredentials: existing.map(c => ({
-        id: isoBase64URL.toBuffer(c.credential_id),
+        id: c.credential_id, // already base64url string (v13 expects string, not Buffer)
         type: 'public-key',
       })),
       authenticatorSelection: {
@@ -118,7 +118,7 @@ router.post('/auth-begin', async (req, res, next) => {
     // passkeys from previous failed registrations from being presented
     const { rows: stored } = await pool.query('SELECT credential_id FROM user_passkeys');
     const allowCredentials = stored.map(r => ({
-      id:   isoBase64URL.toBuffer(r.credential_id),
+      id:   r.credential_id, // already base64url string (v13 expects string, not Buffer)
       type: 'public-key',
     }));
 
