@@ -6,6 +6,7 @@ import AppShell from '../../components/shared/AppShell';
 import { getShifts, getNozzles, getCurrentPrices, recordDispense, getReco, submitReco } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useSocket } from '../../hooks/useSocket';
 
 const PAYMENT_MODES = [
   { id:'cash',   labelKey:'pos_page.cash',   fallback:'💵 Cash',   color:'#16a34a' },
@@ -23,12 +24,15 @@ export default function POSPage() {
   const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const { user, station } = useAuth();
   const stationId = typeof station==='object' ? station?.id : station;
+  const { on } = useSocket(stationId, null);
 
   const [shifts,setShifts]     = useState([]);
   const [nozzles,setNozzles]   = useState([]);
   const [prices,setPrices]     = useState([]);
   const [corps,setCorps]       = useState([]);
   const [activeShift,setActiveShift] = useState(null);
+  // null = loading, false = no shift, shift object = active
+  const [shiftLoaded, setShiftLoaded] = useState(false);
 
   // Geo-fence state
   const [geoStatus, setGeoStatus] = useState('checking');
@@ -84,9 +88,22 @@ export default function POSPage() {
       setPrices(p);
       setCorps(Array.isArray(c) ? c : []);
       const open = s.find(x => x.status === 'open');
-      if (open) setActiveShift(open);
-    }).catch(err => console.error('POS load error:', err));
+      setActiveShift(open || null);
+      setShiftLoaded(true);
+    }).catch(err => { console.error('POS load error:', err); setShiftLoaded(true); });
   }, [stationId]);
+
+  // Real-time: lock POS immediately when manager closes the shift
+  useEffect(() => {
+    if (!stationId) return;
+    return on('shift:closed', (closedShift) => {
+      if (closedShift.station_id === stationId) {
+        setActiveShift(null);
+        setShiftLoaded(true);
+        setPosPhase('pos'); // reset any denomination flow
+      }
+    });
+  }, [stationId, on]);
 
   // Check if this attendant already submitted reconciliation for the active shift
   useEffect(() => {
@@ -434,6 +451,39 @@ export default function POSPage() {
               </button>
             </div>
           </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // ── PHASE: No active shift → locked screen ───────────────
+  if (shiftLoaded && !activeShift) {
+    return (
+      <AppShell>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+          minHeight:'60vh',textAlign:'center',padding:'2rem'}}>
+          <div style={{width:72,height:72,borderRadius:'50%',background:'#fee2e2',
+            display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'1.5rem'}}>
+            <Lock size={32} color="#dc2626"/>
+          </div>
+          <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800,color:'var(--text-1)'}}>
+            POS Locked
+          </h2>
+          <p style={{margin:'0 0 1.5rem',fontSize:14,color:'var(--text-2)',maxWidth:320,lineHeight:1.6}}>
+            No shift is currently open at this station. Ask your manager to open a shift before you can record transactions.
+          </p>
+          <button className="btn btn-primary" onClick={() => {
+            setShiftLoaded(false);
+            if (!stationId) return;
+            const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+            getShifts({ station_id:stationId, date:today }).then(s => {
+              const open = s.find(x => x.status === 'open');
+              setActiveShift(open || null);
+              setShiftLoaded(true);
+            }).catch(() => setShiftLoaded(true));
+          }}>
+            🔄 Check Again
+          </button>
         </div>
       </AppShell>
     );

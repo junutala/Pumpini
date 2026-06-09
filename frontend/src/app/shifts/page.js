@@ -96,11 +96,21 @@ export default function ShiftsPage() {
     finally{ setLoading(false); }
   };
 
-  const handleClose = async(shift) => {
-    if(!confirm(tc('shifts_page.close_confirm','Close this shift?'))) return;
-    await api.patch(`/shifts/${shift.id}/close`);
-    loadShifts();
-    if(selected?.id===shift.id) setSelected(null);
+  const handleClose = async(shift, force = false) => {
+    if(!force && !confirm(tc('shifts_page.close_confirm','Close this shift?'))) return;
+    try {
+      await api.patch(`/shifts/${shift.id}/close`, force ? { confirm: true } : {});
+      loadShifts();
+      if(selected?.id===shift.id) setSelected(null);
+    } catch(err) {
+      if(err.error === 'active_pos') {
+        if(confirm(`⚠️ ${err.message}\n\nForce close the shift anyway?`)) {
+          handleClose(shift, true);
+        }
+      } else {
+        alert(err.error || 'Failed to close shift');
+      }
+    }
   };
 
   const shiftAttendants = selected?.attendants || [];

@@ -140,6 +140,28 @@ router.post('/:id/assign-rfid', authenticate, authorize('owner','manager'), asyn
 // PATCH /api/shifts/:id/close
 router.patch('/:id/close', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    // Count attendants who have NOT yet submitted reconciliation for this shift
+    const { rows: pending } = await pool.query(
+      `SELECT COUNT(*) AS cnt
+       FROM shift_attendants sa
+       WHERE sa.shift_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM shift_reconciliation r
+           WHERE r.shift_id = sa.shift_id AND r.attendant_id = sa.attendant_id
+         )`,
+      [req.params.id]
+    );
+    const pendingCount = parseInt(pending[0]?.cnt || 0);
+
+    // Require explicit confirm=true if attendants still active
+    if (pendingCount > 0 && req.body.confirm !== true) {
+      return res.status(409).json({
+        error: 'active_pos',
+        pending_count: pendingCount,
+        message: `${pendingCount} attendant${pendingCount > 1 ? 's have' : ' has'} not yet closed their POS session. Force close anyway?`,
+      });
+    }
+
     const { rows } = await pool.query(
       `UPDATE shifts SET status='closed', end_time=NOW()
        WHERE id=$1 AND status='open' RETURNING *`,

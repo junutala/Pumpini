@@ -147,7 +147,8 @@ router.patch('/:id/settings', authenticate, authorize('owner','manager'), async 
 router.get('/:id/settings', authenticate, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq
+      `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
+              ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
