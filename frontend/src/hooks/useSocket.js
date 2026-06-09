@@ -10,7 +10,7 @@ export function useSocket(stationId, shiftId) {
   useEffect(() => {
     if (!socket) {
       socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000', {
-        auth: { token: localStorage.getItem('token') },
+        auth: { token: sessionStorage.getItem('token') },
         reconnection: true,
       });
     }

@@ -126,8 +126,8 @@ export default function LoginPage() {
 
       // Save token the same way useAuth does
       const { token, user } = result;
-      document.cookie = `token=${token}; path=/; max-age=${8*3600}`;
-      localStorage.setItem('token', token);
+      document.cookie = `token=${token}; path=/`; // session cookie (cleared on browser close)
+      sessionStorage.setItem('token', token);
       if (user.station_id) localStorage.setItem('station', user.station_id);
       if (user.language)   localStorage.setItem('i18nextLng', user.language);
 

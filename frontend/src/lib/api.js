@@ -8,7 +8,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = Cookies.get('token') || (typeof window !== 'undefined' && localStorage.getItem('token'));
+  const token = Cookies.get('token') || (typeof window !== 'undefined' && sessionStorage.getItem('token'));
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -18,8 +18,10 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       Cookies.remove('token');
-      localStorage.removeItem('token');
-      if (typeof window !== 'undefined') window.location.href = '/login';
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err.response?.data || err);
   }
@@ -28,8 +30,9 @@ api.interceptors.response.use(
 export default api;
 
 // Auth
-export const login  = (data)  => api.post('/auth/login', data);
-export const getMe  = ()      => api.get('/auth/me');
+export const login    = (data) => api.post('/auth/login', data);
+export const getMe    = ()     => api.get('/auth/me');
+export const logoutApi = ()    => api.post('/auth/logout', {});
 
 // Dashboard
 export const getOwnerDashboard   = (stationId, date)     => api.get(`/dashboard/owner?station_id=${stationId}&date=${date || ''}`);

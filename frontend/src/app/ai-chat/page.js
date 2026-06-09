@@ -78,7 +78,7 @@ export default function AiChatPage() {
           formData.append('language', lang);
           const res = await fetch('/api/voice/transcribe', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
             body: formData,
           });
           const data = await res.json();

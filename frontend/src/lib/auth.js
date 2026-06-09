@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
 import Cookies from 'js-cookie';
-import { login as apiLogin, getMe } from './api';
+import { login as apiLogin, getMe, logoutApi } from './api';
 
 const AuthContext = createContext(null);
 
@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   const [station, setStation] = useState(null);
 
   useEffect(() => {
-    const token = Cookies.get('token') || localStorage.getItem('token');
+    const token = Cookies.get('token') || sessionStorage.getItem('token');
     if (!token) { setLoading(false); return; }
 
     // Token exists — verify it with the backend
@@ -26,7 +26,7 @@ export function AuthProvider({ children }) {
       .catch(() => {
         // Token invalid — clear everything
         Cookies.remove('token');
-        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         localStorage.removeItem('station');
       })
       .finally(() => setLoading(false));
@@ -34,13 +34,13 @@ export function AuthProvider({ children }) {
 
   const login = async (phone, password) => {
     const res = await apiLogin({ phone, password });
-    // Save token to both cookie and localStorage
+    // Session-only: session cookie (no `expires`) + sessionStorage, both cleared
+    // when the browser session ends. No persistence across full browser close.
     Cookies.set('token', res.token, {
-      expires: 1,
       sameSite: 'lax',
       secure: window.location.protocol === 'https:',
     });
-    localStorage.setItem('token', res.token);
+    sessionStorage.setItem('token', res.token);
     setUser(res.user);
     if (res.user.stations?.length) {
       const s = res.user.stations[0];
@@ -50,9 +50,12 @@ export function AuthProvider({ children }) {
     return res;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Best-effort server-side revocation (kills this token everywhere) — the
+    // request interceptor still has the token at this point.
+    try { await logoutApi(); } catch {}
     Cookies.remove('token');
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     localStorage.removeItem('station');
     setUser(null);
     setStation(null);

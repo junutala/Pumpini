@@ -266,7 +266,7 @@ export default function POSPage() {
           formData.append('language', localStorage.getItem('i18nextLng') || 'te');
           const res = await fetch('/api/voice/transcribe', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
             body: formData,
           });
           const data = await res.json();

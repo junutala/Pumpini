@@ -189,8 +189,13 @@ router.post('/auth-finish', async (req, res, next) => {
       [verification.authenticationInfo.newCounter, cred.credential_id]
     );
 
+    let tv = 0;
+    try {
+      const r = await pool.query('SELECT token_version FROM users WHERE id=$1', [cred.user_id]);
+      tv = r.rows[0]?.token_version ?? 0;
+    } catch { /* token_version column not migrated yet */ }
     const token = jwt.sign(
-      { id: cred.user_id, role: cred.role },
+      { id: cred.user_id, role: cred.role, tv },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );

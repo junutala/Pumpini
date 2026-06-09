@@ -4,7 +4,7 @@ const crypto  = require('crypto');
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, bumpTokenVersion } = require('../middleware/auth');
 const { sendWhatsApp } = require('../services/whatsappService');
 
 // Normalize phone — accept 10 digits, with/without +91, with/without spaces
@@ -62,6 +62,7 @@ router.post('/login', async (req, res, next) => {
       stations: stations.map(s => s.id),
       corporate_id: user.corporate_id || null,
       must_change_password: user.must_change_password || false,
+      tv: user.token_version ?? 0, // session-revocation version
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '8h'
@@ -96,6 +97,15 @@ router.post('/register', async (req, res, next) => {
     if (err.code === '23505') return res.status(409).json({ error: 'Mobile number already registered' });
     next(err);
   }
+});
+
+// POST /api/auth/logout — server-side session kill (invalidates all this
+// user's existing tokens immediately).
+router.post('/logout', authenticate, async (req, res, next) => {
+  try {
+    await bumpTokenVersion(req.user.id);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // GET /api/auth/me
@@ -144,6 +154,8 @@ router.post('/forgot-password', async (req, res, next) => {
       'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2',
       [hash, user.id]
     );
+    // Invalidate any existing sessions when a reset is issued
+    await bumpTokenVersion(user.id);
 
     const msg = `*Pumpini DMS*\nYour temporary password is: *${tempPw}*\n\nPlease login and change your password immediately.\n\nFor security, this password is valid for one login only.`;
     await sendWhatsApp(user.phone, msg).catch(e => {
@@ -175,7 +187,21 @@ router.post('/change-password', authenticate, async (req, res, next) => {
       'UPDATE users SET password_hash=$1, must_change_password=FALSE WHERE id=$2',
       [hash, req.user.id]
     );
-    res.json({ ok: true });
+    // Invalidate other existing sessions, then mint a fresh token for THIS
+    // session so the user isn't bounced to login right after changing.
+    await bumpTokenVersion(req.user.id);
+    let tv = 0;
+    try {
+      const r = await pool.query('SELECT token_version FROM users WHERE id=$1', [req.user.id]);
+      tv = r.rows[0]?.token_version ?? 0;
+    } catch { /* column not migrated */ }
+    const { iat, exp, ...rest } = req.user;
+    const token = jwt.sign(
+      { ...rest, must_change_password: false, tv },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+    );
+    res.json({ ok: true, token });
   } catch (err) { next(err); }
 });
 

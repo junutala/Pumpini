@@ -88,7 +88,7 @@ export default function FloatingChat() {
           form.append('language', getLang());
           const res  = await fetch('/api/voice/transcribe', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
             body: form,
           });
           const data = await res.json();
