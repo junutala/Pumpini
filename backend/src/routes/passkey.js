@@ -114,10 +114,18 @@ router.post('/register-finish', authenticate, async (req, res, next) => {
 // POST /api/auth/passkey/auth-begin
 router.post('/auth-begin', async (req, res, next) => {
   try {
+    // Constrain browser to only credentials we have in DB — prevents orphaned
+    // passkeys from previous failed registrations from being presented
+    const { rows: stored } = await pool.query('SELECT credential_id FROM user_passkeys');
+    const allowCredentials = stored.map(r => ({
+      id:   isoBase64URL.toBuffer(r.credential_id),
+      type: 'public-key',
+    }));
+
     const options = await generateAuthenticationOptions({
       rpID:             RP_ID,
       userVerification: 'required',
-      allowCredentials: [], // discoverable — browser shows credential picker
+      allowCredentials,
     });
 
     const sessionKey = `auth_${Date.now()}_${Math.random().toString(36).slice(2)}`;
