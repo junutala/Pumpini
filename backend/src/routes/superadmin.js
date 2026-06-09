@@ -571,4 +571,57 @@ router.delete('/station-users/:id', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Leads / Enquiries ─────────────────────────────────────
+const LEAD_FIELDS = ['name','station_name','city','phone','email','message','source','status','notes'];
+
+router.get('/leads', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM leads ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// Manual add (owner logging a WhatsApp/personal enquiry)
+router.post('/leads', authAdmin, async (req, res, next) => {
+  try {
+    const { name, phone } = req.body;
+    if (!name?.trim() || !phone?.trim()) {
+      return res.status(400).json({ error: 'Name and phone are required.' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO leads(name, station_name, city, phone, email, message, source, status, notes)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        req.body.name.trim(), req.body.station_name || null, req.body.city || null,
+        req.body.phone.trim(), req.body.email || null, req.body.message || null,
+        req.body.source || 'whatsapp', req.body.status || 'new', req.body.notes || null,
+      ]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.patch('/leads/:id', authAdmin, async (req, res, next) => {
+  try {
+    const sets = [], p = [];
+    for (const k of LEAD_FIELDS) {
+      if (k in req.body) { p.push(req.body[k]); sets.push(`${k}=$${p.length}`); }
+    }
+    if (!sets.length) return res.json({ ok: true });
+    sets.push('updated_at=NOW()');
+    p.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE leads SET ${sets.join(',')} WHERE id=$${p.length} RETURNING *`, p
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+router.delete('/leads/:id', authAdmin, async (req, res, next) => {
+  try {
+    await pool.query('DELETE FROM leads WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 module.exports = { router, authAdmin };

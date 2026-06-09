@@ -25,8 +25,8 @@ const COPY = {
     usp1_d:  'Attendants speak transactions in Telugu, Tamil, Hindi or any Indian language. "50 litres petrol cash" — done. No typing needed.',
     usp2_t:  '🌐 6 Indian Languages',
     usp2_d:  'Every screen, every button, every alert — in Hindi, Tamil, Telugu, Kannada, Marathi or English. Your team works in the language they think in.',
-    usp3_t:  '📍 Geo-Fencing Security',
-    usp3_d:  'POS is locked to your station\'s location. Staff can only record transactions when physically present. Fired someone? Revoke access instantly.',
+    usp3_t:  '🔒 Blind-Drop Cash Control',
+    usp3_d:  'Attendants drop collections without seeing the expected total — so they can\'t skim or short-change. Every customer gets correct change back, every time. Honest counters, happier customers, zero cash leakage.',
     usp4_t:  '⚡ Live Dashboard',
     usp4_d:  'Watch every sale as it happens — from your phone, anywhere in India. Real-time nozzle activity, shift status, tank levels. No delays.',
     usp5_t:  '🏢 Credit & Corporate Portal',
@@ -37,9 +37,9 @@ const COPY = {
     feat_sub:   'One platform. Every transaction. Total control.',
     compare_title: 'Why switch to Pumpini?',
     pricing_title: 'Simple pricing. No surprises.',
-    pricing_sub:   '30-day free trial · No credit card · Cancel anytime',
+    pricing_sub:   '15-day free trial · No credit card · Cancel anytime',
     footer_cta: 'Start your free trial today',
-    footer_sub: 'Join petrol stations across South India who trust Pumpini',
+    footer_sub: 'Join petrol stations across India who trust Pumpini',
   },
   hi: {
     hero:    'हर बूंद पर नियंत्रण।',
@@ -51,8 +51,8 @@ const COPY = {
     usp1_d:  'अटेंडेंट हिंदी, तेलुगु या किसी भी भाषा में बोलकर एंट्री करें। "50 लीटर पेट्रोल कैश" — बस इतना काफी।',
     usp2_t:  '🌐 6 भारतीय भाषाएँ',
     usp2_d:  'हर स्क्रीन, हर बटन हिंदी, तमिल, तेलुगु, कन्नड़, मराठी या अंग्रेजी में।',
-    usp3_t:  '📍 जियो-फेंसिंग सुरक्षा',
-    usp3_d:  'POS सिर्फ पेट्रोल पंप पर ही काम करेगा। दूर से एक्सेस नहीं।',
+    usp3_t:  '🔒 ब्लाइंड-ड्रॉप कैश कंट्रोल',
+    usp3_d:  'अटेंडेंट को पता नहीं होता कि कितना कैश जमा होना है — इसलिए वह पैसे नहीं चुरा सकता या कम छुट्टे नहीं दे सकता। हर ग्राहक को सही छुट्टे मिलते हैं। ईमानदार स्टाफ, खुश ग्राहक, ज़ीरो लीकेज।',
     usp4_t:  '⚡ लाइव डैशबोर्ड',
     usp4_d:  'हर बिक्री रियल-टाइम में देखें — अपने फोन से, कहीं से भी।',
     usp5_t:  '🏢 क्रेडिट कस्टमर पोर्टल',
@@ -63,9 +63,9 @@ const COPY = {
     feat_sub:   'एक प्लेटफॉर्म। हर ट्रांजेक्शन। पूरा कंट्रोल।',
     compare_title: 'Pumpini क्यों चुनें?',
     pricing_title: 'सरल मूल्य निर्धारण।',
-    pricing_sub:   '30 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
+    pricing_sub:   '15 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
     footer_cta: 'आज ही मुफ्त ट्रायल शुरू करें',
-    footer_sub: 'दक्षिण भारत के पेट्रोल पंप मालिक Pumpini पर भरोसा करते हैं',
+    footer_sub: 'भारत भर के पेट्रोल पंप मालिक Pumpini पर भरोसा करते हैं',
   },
   ta: {
     hero:    'ஒவ்வொரு துளியையும் கட்டுப்படுத்துங்கள்.',
@@ -77,8 +77,8 @@ const COPY = {
     usp1_d:  'தமிழ் அல்லது எந்த மொழியிலும் பேசி பரிவர்த்தனை பதிவு செய்யுங்கள்.',
     usp2_t:  '🌐 6 இந்திய மொழிகள்',
     usp2_d:  'தமிழ், தெலுங்கு, கன்னடம், மராத்தி, இந்தி அல்லது ஆங்கிலத்தில் முழு ஆதரவு.',
-    usp3_t:  '📍 ஜியோ-ஃபென்சிங் பாதுகாப்பு',
-    usp3_d:  'நிலையத்தில் மட்டுமே POS செயல்படும். தொலைவிலிருந்து அணுக முடியாது.',
+    usp3_t:  '🔒 பிளைண்ட்-டிராப் பணக் கட்டுப்பாடு',
+    usp3_d:  'எவ்வளவு பணம் வரவேண்டும் என்று தெரியாமலேயே ஊழியர் பணத்தை செலுத்துகிறார் — எனவே திருட்டோ குறைவான சில்லறையோ முடியாது. ஒவ்வொரு வாடிக்கையாளரும் சரியான சில்லறை பெறுகிறார். நேர்மையான ஊழியர்கள், மகிழ்ச்சியான வாடிக்கையாளர்கள், பணக் கசிவு இல்லை.',
     usp4_t:  '⚡ நேரடி டாஷ்போர்டு',
     usp4_d:  'உங்கள் தொலைபேசியில் நேரடியாக விற்பனையை கண்காணியுங்கள்.',
     usp5_t:  '🏢 கடன் வாடிக்கையாளர் போர்டல்',
@@ -89,9 +89,9 @@ const COPY = {
     feat_sub:   'ஒரு தளம். அனைத்து பரிவர்த்தனைகள். முழு கட்டுப்பாடு.',
     compare_title: 'Pumpini ஏன் சிறந்தது?',
     pricing_title: 'எளிமையான விலை நிர்ணயம்.',
-    pricing_sub:   '30 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
+    pricing_sub:   '15 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
     footer_cta: 'இன்றே இலவச சோதனை தொடங்குங்கள்',
-    footer_sub: 'தென்னிந்தியா முழுவதும் பெட்ரோல் நிலையங்கள் Pumpini-ஐ நம்புகின்றன',
+    footer_sub: 'இந்தியா முழுவதும் பெட்ரோல் நிலையங்கள் Pumpini-ஐ நம்புகின்றன',
   },
   te: {
     hero:    'ప్రతి చుక్కను నియంత్రించండి.',
@@ -103,8 +103,8 @@ const COPY = {
     usp1_d:  '"50 లీటర్లు పెట్రోల్ నగదు" — తెలుగులో చెప్పండి, ఆటోమేటిగ్గా రికార్డ్ అవుతుంది.',
     usp2_t:  '🌐 6 భారతీయ భాషలు',
     usp2_d:  'తెలుగు, తమిళం, హిందీ, కన్నడ, మరాఠీ లేదా ఇంగ్లీష్‌లో మొత్తం సపోర్ట్.',
-    usp3_t:  '📍 జియో-ఫెన్సింగ్ సెక్యూరిటీ',
-    usp3_d:  'POS కేవలం బంక్ వద్ద మాత్రమే పని చేస్తుంది. దూరం నుండి యాక్సెస్ లేదు.',
+    usp3_t:  '🔒 బ్లైండ్-డ్రాప్ క్యాష్ కంట్రోల్',
+    usp3_d:  'ఎంత నగదు రావాలో తెలియకుండానే అటెండర్ నగదును జమ చేస్తాడు — కాబట్టి దొంగతనం చేయలేడు లేదా తక్కువ చిల్లర ఇవ్వలేడు. ప్రతి కస్టమర్‌కు సరైన చిల్లర తిరిగి వస్తుంది. నిజాయితీ సిబ్బంది, సంతోషంగా ఉన్న కస్టమర్లు, జీరో లీకేజ్.',
     usp4_t:  '⚡ లైవ్ డాష్‌బోర్డ్',
     usp4_d:  'మీ ఫోన్‌లో రియల్-టైమ్‌లో అమ్మకాలు చూడండి — ఎక్కడి నుండైనా.',
     usp5_t:  '🏢 క్రెడిట్ కస్టమర్ పోర్టల్',
@@ -115,9 +115,9 @@ const COPY = {
     feat_sub:   'ఒక్క వేదిక. అన్ని లావాదేవీలు. పూర్తి నియంత్రణ.',
     compare_title: 'Pumpini ఎందుకు మెరుగైనది?',
     pricing_title: 'సరళమైన ధర నిర్ణయం.',
-    pricing_sub:   '30 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
+    pricing_sub:   '15 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
     footer_cta: 'ఈరోజే ఉచిత ట్రయల్ ప్రారంభించండి',
-    footer_sub: 'దక్షిణ భారతదేశంలో పెట్రోల్ బంకులు Pumpini నమ్ముతున్నాయి',
+    footer_sub: 'భారతదేశం అంతటా పెట్రోల్ బంకులు Pumpini నమ్ముతున్నాయి',
   },
   kn: {
     hero:    'ಪ್ರತಿ ಹನಿಯನ್ನು ನಿಯಂತ್ರಿಸಿ.',
@@ -129,8 +129,8 @@ const COPY = {
     usp1_d:  'ಕನ್ನಡ ಅಥವಾ ಯಾವುದೇ ಭಾಷೆಯಲ್ಲಿ ಮಾತನಾಡಿ ವ್ಯವಹಾರ ದಾಖಲಿಸಿ.',
     usp2_t:  '🌐 6 ಭಾರತೀಯ ಭಾಷೆಗಳು',
     usp2_d:  'ಕನ್ನಡ, ತೆಲುಗು, ತಮಿಳು, ಹಿಂದಿ, ಮರಾಠಿ ಅಥವಾ ಇಂಗ್ಲೀಷ್‌ನಲ್ಲಿ ಸಂಪೂರ್ಣ ಬೆಂಬಲ.',
-    usp3_t:  '📍 ಜಿಯೋ-ಫೆನ್ಸಿಂಗ್ ಭದ್ರತೆ',
-    usp3_d:  'POS ಕೇವಲ ಬಂಕ್‌ನಲ್ಲಿ ಮಾತ್ರ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತದೆ.',
+    usp3_t:  '🔒 ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ನಗದು ನಿಯಂತ್ರಣ',
+    usp3_d:  'ಎಷ್ಟು ನಗದು ಬರಬೇಕು ಎಂದು ತಿಳಿಯದೆಯೇ ಸಿಬ್ಬಂದಿ ನಗದು ಜಮೆ ಮಾಡುತ್ತಾರೆ — ಆದ್ದರಿಂದ ಕಳ್ಳತನ ಅಥವಾ ಕಡಿಮೆ ಚಿಲ್ಲರೆ ಕೊಡಲು ಸಾಧ್ಯವಿಲ್ಲ. ಪ್ರತಿ ಗ್ರಾಹಕರಿಗೆ ಸರಿಯಾದ ಚಿಲ್ಲರೆ ಸಿಗುತ್ತದೆ. ಪ್ರಾಮಾಣಿಕ ಸಿಬ್ಬಂದಿ, ಸಂತೋಷದ ಗ್ರಾಹಕರು, ಶೂನ್ಯ ಸೋರಿಕೆ.',
     usp4_t:  '⚡ ಲೈವ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್',
     usp4_d:  'ರಿಯಲ್-ಟೈಮ್‌ನಲ್ಲಿ ಮಾರಾಟ ನೋಡಿ — ನಿಮ್ಮ ಫೋನ್‌ನಿಂದ.',
     usp5_t:  '🏢 ಕ್ರೆಡಿಟ್ ಗ್ರಾಹಕ ಪೋರ್ಟಲ್',
@@ -141,9 +141,9 @@ const COPY = {
     feat_sub:   'ಒಂದು ವೇದಿಕೆ. ಎಲ್ಲಾ ವ್ಯವಹಾರಗಳು. ಸಂಪೂರ್ಣ ನಿಯಂತ್ರಣ.',
     compare_title: 'Pumpini ಏಕೆ ಉತ್ತಮ?',
     pricing_title: 'ಸರಳ ಬೆಲೆ ನಿರ್ಧಾರ.',
-    pricing_sub:   '30 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
+    pricing_sub:   '15 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
     footer_cta: 'ಇಂದೇ ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ',
-    footer_sub: 'ದಕ್ಷಿಣ ಭಾರತದ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗಳು Pumpini ನಂಬುತ್ತವೆ',
+    footer_sub: 'ಭಾರತದಾದ್ಯಂತ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗಳು Pumpini ನಂಬುತ್ತವೆ',
   },
   mr: {
     hero:    'प्रत्येक थेंब नियंत्रित करा.',
@@ -155,8 +155,8 @@ const COPY = {
     usp1_d:  'मराठी किंवा कोणत्याही भाषेत बोलून व्यवहार नोंदवा.',
     usp2_t:  '🌐 6 भारतीय भाषा',
     usp2_d:  'मराठी, हिंदी, तमिळ, तेलुगू, कन्नड किंवा इंग्रजीत संपूर्ण समर्थन.',
-    usp3_t:  '📍 जिओ-फेन्सिंग सुरक्षा',
-    usp3_d:  'POS फक्त पेट्रोल पंपावर काम करतो. दुरून प्रवेश नाही.',
+    usp3_t:  '🔒 ब्लाइंड-ड्रॉप कॅश कंट्रोल',
+    usp3_d:  'किती रोख जमा व्हायची हे न कळताच कर्मचारी रोख जमा करतो — त्यामुळे चोरी किंवा कमी सुटे देणे शक्य नाही. प्रत्येक ग्राहकाला योग्य सुटे परत मिळतात. प्रामाणिक कर्मचारी, आनंदी ग्राहक, शून्य गळती.',
     usp4_t:  '⚡ थेट डॅशबोर्ड',
     usp4_d:  'रिअल-टाइममध्ये विक्री पहा — तुमच्या फोनवरून.',
     usp5_t:  '🏢 क्रेडिट ग्राहक पोर्टल',
@@ -167,35 +167,40 @@ const COPY = {
     feat_sub:   'एक प्लॅटफॉर्म. सर्व व्यवहार. संपूर्ण नियंत्रण.',
     compare_title: 'Pumpini का निवडावे?',
     pricing_title: 'सोपे मूल्य निर्धारण.',
-    pricing_sub:   '30 दिवस मोफत · क्रेडिट कार्ड नाही',
+    pricing_sub:   '15 दिवस मोफत · क्रेडिट कार्ड नाही',
     footer_cta: 'आजच मोफत चाचणी सुरू करा',
-    footer_sub: 'दक्षिण भारतातील पेट्रोल पंप Pumpini वर विश्वास ठेवतात',
+    footer_sub: 'भारतभरातील पेट्रोल पंप Pumpini वर विश्वास ठेवतात',
   },
 };
 
 const FEATURES = [
   { icon:'🎙', key:'usp1' },
   { icon:'🌐', key:'usp2' },
-  { icon:'📍', key:'usp3' },
+  { icon:'🔒', key:'usp3' },
   { icon:'⚡', key:'usp4' },
   { icon:'🏢', key:'usp5' },
   { icon:'🛒', key:'usp6' },
 ];
 
+// Honest comparison vs typical Indian pump software.
+// Values: 'yes' | 'partial' | 'no'  — we concede the basics so the
+// differentiators are believable.
 const COMPARE = [
-  ['Voice POS in Indian languages',           true,  false],
-  ['6 Indian language support',               true,  false],
-  ['Geo-fencing security',                    true,  false],
-  ['Real-time live dashboard',                true,  false],
-  ['Blind drop cash reconciliation',          true,  false],
-  ['Vehicle-wise GST invoice',                true,  false],
-  ['Credit customer portal',                  true,  false],
-  ['Lubes & products management',             true,  false],
-  ['WhatsApp alerts',                         true,  false],
-  ['Multi-station group view',                true,  false],
-  ['Barcode scanner (mobile camera)',         true,  false],
-  ['AI-powered transaction parsing',          true,  false],
+  ['Billing & GST invoices',            'yes', 'yes'],
+  ['Shift & cash reconciliation',       'yes', 'yes'],
+  ['Tank stock & nozzle readings',      'yes', 'yes'],
+  ['Credit / corporate customers',      'yes', 'yes'],
+  ['Cloud + mobile app',                'yes', 'partial'],
+  ['WhatsApp alerts',                   'yes', 'partial'],
+  ['Voice POS in Indian languages',     'yes', 'no'],
+  ['Full app in 6 Indian languages',    'yes', 'no'],
+  ['GPS geo-fencing security',          'yes', 'no'],
+  ['Blind-drop cash control',           'yes', 'no'],
+  ['AI assistant — ask your data',      'yes', 'no'],
+  ['Real-time live dashboard',          'yes', 'partial'],
 ];
+
+const CMP_MARK = { yes:'✅', partial:'⚠️', no:'❌' };
 
 const PLANS = [
   {
@@ -238,11 +243,38 @@ const PLANS = [
   },
 ];
 
+const leadInp = {
+  width:'100%',padding:'11px 13px',border:'1.5px solid #e5e7eb',borderRadius:10,
+  fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit',color:'#1a1a1a',background:'#fff',
+};
+
 export default function LandingPage() {
   const [lang,    setLang]    = useState('en');
   const [langOpen,setLangOpen] = useState(false);
   const [scrolled,setScrolled] = useState(false);
   const c = COPY[lang] || COPY.en;
+
+  // Contact / lead form
+  const [lead, setLead] = useState({ name:'', phone:'', station_name:'', city:'', message:'', company:'' });
+  const [leadState, setLeadState] = useState('idle'); // idle | sending | done | error
+  const setL = (k,v) => setLead(p => ({ ...p, [k]: v }));
+
+  const submitLead = async (e) => {
+    e.preventDefault();
+    if (!lead.name.trim() || !lead.phone.trim()) return;
+    setLeadState('sending');
+    try {
+      const r = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead),
+      });
+      if (!r.ok) throw new Error('failed');
+      setLeadState('done');
+    } catch {
+      setLeadState('error');
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -264,10 +296,10 @@ export default function LandingPage() {
       {/* ── Navbar ── */}
       <nav style={{
         position:'fixed',top:0,left:0,right:0,zIndex:100,
-        background: scrolled ? 'rgba(255,255,255,.97)' : 'transparent',
-        backdropFilter: scrolled ? 'blur(12px)' : 'none',
-        borderBottom: scrolled ? '1px solid rgba(0,0,0,.08)' : 'none',
-        transition:'all .3s',padding:'0 5%',
+        background:'#fff',
+        borderBottom:'1px solid rgba(0,0,0,.08)',
+        boxShadow: scrolled ? '0 2px 12px rgba(0,0,0,.08)' : 'none',
+        transition:'box-shadow .3s',padding:'0 5%',
         display:'flex',alignItems:'center',justifyContent:'space-between',height:64,
       }}>
         <div style={{fontWeight:900,fontSize:24,letterSpacing:'-.02em'}}>
@@ -331,7 +363,7 @@ export default function LandingPage() {
             <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,107,0,.15)',
               border:'1px solid rgba(255,107,0,.3)',borderRadius:99,padding:'6px 16px',
               marginBottom:'1.5rem',fontSize:13,fontWeight:600,color:'#FF6B00'}}>
-              🇮🇳 Built for Indian Petrol Stations
+              ⛽ Built for Indian Petrol Stations
             </div>
 
             {/* Headline */}
@@ -539,30 +571,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Features Grid ── */}
-      <section id="features" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
-        <div style={{maxWidth:1100,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
-              {c.feat_title}
-            </h2>
-            <p style={{fontSize:16,color:'#666'}}>{c.feat_sub}</p>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
-            {FEATURES.map(feat => (
-              <div key={feat.key} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
-                border:'1px solid #e5e3de',transition:'all .2s',cursor:'default'}}
-                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.1)'; }}
-                onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}>
-                <div style={{fontSize:36,marginBottom:'1rem'}}>{feat.icon}</div>
-                <h3 style={{fontWeight:800,fontSize:17,marginBottom:'0.5rem'}}>{c[`${feat.key}_t`]}</h3>
-                <p style={{fontSize:14,color:'#666',lineHeight:1.6}}>{c[`${feat.key}_d`]}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ── Geo-fencing Highlight ── */}
       <section style={{padding:'5rem 5%',background:'#0F1923',color:'#fff'}}>
         <div style={{maxWidth:1100,margin:'0 auto',display:'grid',gridTemplateColumns:'1fr 1fr',
@@ -619,28 +627,61 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Comparison table ── */}
-      <section style={{padding:'5rem 5%',background:'#fff'}}>
-        <div style={{maxWidth:800,margin:'0 auto'}}>
-          <h2 style={{textAlign:'center',fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'3rem'}}>
-            {c.compare_title}
-          </h2>
-          <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e5e3de'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 140px 140px',
-              background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700}}>
-              <div>Feature</div>
-              <div style={{textAlign:'center',color:'#FF6B00'}}>Pumpini</div>
-              <div style={{textAlign:'center',color:'rgba(255,255,255,.4)'}}>Others</div>
-            </div>
-            {COMPARE.map(([feat, us, them], i) => (
-              <div key={feat} style={{display:'grid',gridTemplateColumns:'1fr 140px 140px',
-                padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f8f7f5',
-                borderBottom:'1px solid #f0f0f0',fontSize:14}}>
-                <div style={{fontWeight:500}}>{feat}</div>
-                <div style={{textAlign:'center',fontSize:18}}>{us ? '✅' : '❌'}</div>
-                <div style={{textAlign:'center',fontSize:18}}>{them ? '✅' : '❌'}</div>
+      {/* ── Features Grid ── */}
+      <section id="features" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'3rem'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
+              {c.feat_title}
+            </h2>
+            <p style={{fontSize:16,color:'#666'}}>{c.feat_sub}</p>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
+            {FEATURES.map(feat => (
+              <div key={feat.key} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
+                border:'1px solid #e5e3de',transition:'all .2s',cursor:'default'}}
+                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.1)'; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}>
+                <div style={{fontSize:36,marginBottom:'1rem'}}>{feat.icon}</div>
+                <h3 style={{fontWeight:800,fontSize:17,marginBottom:'0.5rem'}}>{c[`${feat.key}_t`]}</h3>
+                <p style={{fontSize:14,color:'#666',lineHeight:1.6}}>{c[`${feat.key}_d`]}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Comparison table ── */}
+      <section style={{padding:'5rem 5%',background:'#fff'}}>
+        <div style={{maxWidth:820,margin:'0 auto'}}>
+          <h2 style={{textAlign:'center',fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.75rem'}}>
+            {c.compare_title}
+          </h2>
+          <p style={{textAlign:'center',fontSize:16,color:'#555',fontStyle:'italic',
+            maxWidth:620,margin:'0 auto 2.5rem',lineHeight:1.6}}>
+            Others leave bunks running high and dry. Pumpini accounts for every
+            drop — and every rupee. We match the basics, then go where legacy
+            software can&apos;t.
+          </p>
+          <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e5e3de'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 110px 150px',
+              background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700,fontSize:14}}>
+              <div>Feature</div>
+              <div style={{textAlign:'center',color:'#FF6B00'}}>Pumpini</div>
+              <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>Typical pump software</div>
+            </div>
+            {COMPARE.map(([feat, us, them], i) => (
+              <div key={feat} style={{display:'grid',gridTemplateColumns:'1fr 110px 150px',
+                padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f8f7f5',
+                borderBottom:'1px solid #f0f0f0',fontSize:14,alignItems:'center'}}>
+                <div style={{fontWeight:500}}>{feat}</div>
+                <div style={{textAlign:'center',fontSize:18}}>{CMP_MARK[us]}</div>
+                <div style={{textAlign:'center',fontSize:18}}>{CMP_MARK[them]}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{textAlign:'center',marginTop:'1rem',fontSize:12.5,color:'#888'}}>
+            ✅ included · ⚠️ only with some vendors / basic version · ❌ not available
           </div>
         </div>
       </section>
@@ -699,32 +740,71 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Footer CTA ── */}
+      {/* ── Footer CTA / Contact form ── */}
       <section id="contact" style={{padding:'5rem 5%',
         background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 100%)',
         color:'#fff',textAlign:'center'}}>
-        <div style={{maxWidth:600,margin:'0 auto'}}>
+        <div style={{maxWidth:560,margin:'0 auto'}}>
           <div style={{fontSize:48,marginBottom:'1rem'}}>🚀</div>
-          <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'1rem'}}>
-            {c.footer_cta}
+          <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.75rem'}}>
+            Get in touch — we&apos;ll set up your free trial
           </h2>
           <p style={{fontSize:16,color:'rgba(255,255,255,.6)',marginBottom:'2rem'}}>
-            {c.footer_sub}
+            Leave your details and our team will reach out to activate your
+            15-day free trial. Prefer not to share your personal number? Just
+            give us your bunk manager&apos;s contact.
           </p>
-          <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-            <Link href="/login" style={{padding:'14px 28px',background:'#FF6B00',color:'#fff',
-              borderRadius:12,textDecoration:'none',fontWeight:800,fontSize:16,
-              boxShadow:'0 4px 20px rgba(255,107,0,.4)'}}>
-              Start Free Trial →
-            </Link>
-            <a href="https://wa.me/919490704075?text=I want a demo of Pumpini"
-              target="_blank" rel="noopener noreferrer"
-              style={{padding:'14px 28px',background:'rgba(255,255,255,.1)',color:'#fff',
-                borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
-                border:'1px solid rgba(255,255,255,.2)'}}>
-              📱 WhatsApp Us
-            </a>
-          </div>
+
+          <form onSubmit={submitLead} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
+            textAlign:'left',boxShadow:'0 20px 60px rgba(0,0,0,.35)',position:'relative'}}>
+            {leadState === 'done' ? (
+              <div style={{textAlign:'center',padding:'1.5rem 0'}}>
+                <div style={{fontSize:44,marginBottom:'0.75rem'}}>✅</div>
+                <div style={{fontSize:18,fontWeight:800,color:'#0F1923',marginBottom:6}}>Thank you!</div>
+                <div style={{fontSize:14,color:'#555',lineHeight:1.6}}>
+                  We&apos;ve received your details and will reach out shortly to set up your free trial.
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Honeypot — hidden from humans, traps bots */}
+                <input type="text" name="company" value={lead.company} tabIndex={-1} autoComplete="off"
+                  aria-hidden="true" onChange={e=>setL('company', e.target.value)}
+                  style={{position:'absolute',left:'-9999px',width:1,height:1,opacity:0}}/>
+
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+                  <input style={leadInp} placeholder="Your name *" value={lead.name}
+                    onChange={e=>setL('name', e.target.value)} required/>
+                  <input style={leadInp} type="tel" placeholder="Mobile number *" value={lead.phone}
+                    onChange={e=>setL('phone', e.target.value)} required/>
+                  <input style={leadInp} placeholder="Petrol bunk name" value={lead.station_name}
+                    onChange={e=>setL('station_name', e.target.value)}/>
+                  <input style={leadInp} placeholder="City" value={lead.city}
+                    onChange={e=>setL('city', e.target.value)}/>
+                </div>
+                <textarea style={{...leadInp, minHeight:72, resize:'vertical', marginBottom:12}}
+                  placeholder="Anything you'd like to tell us? (optional)" value={lead.message}
+                  onChange={e=>setL('message', e.target.value)}/>
+
+                {leadState === 'error' && (
+                  <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',
+                    fontSize:13,marginBottom:12,border:'1px solid #fca5a5'}}>
+                    Something went wrong. Please try again, or message us on WhatsApp.
+                  </div>
+                )}
+
+                <button type="submit" disabled={leadState==='sending'}
+                  style={{width:'100%',height:50,background:'#FF6B00',color:'#fff',border:'none',
+                    borderRadius:10,fontSize:16,fontWeight:800,cursor:'pointer',
+                    boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>
+                  {leadState==='sending' ? 'Sending…' : 'Get in touch'}
+                </button>
+                <div style={{fontSize:12,color:'#888',textAlign:'center',marginTop:10}}>
+                  15-day free trial · No credit card · We&apos;ll never spam you.
+                </div>
+              </>
+            )}
+          </form>
         </div>
       </section>
 
@@ -736,7 +816,7 @@ export default function LandingPage() {
           <span style={{fontWeight:900,color:'#fff'}}>
             <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
           </span>
-          {' '}© 2026 · Madurai, Tamil Nadu · Built for Indian petrol stations
+          {' '}© 2026 · Built for Indian petrol stations
         </div>
         <div style={{display:'flex',gap:'1.5rem'}}>
           <Link href="/login"   style={{color:'rgba(255,255,255,.4)',textDecoration:'none'}}>Login</Link>

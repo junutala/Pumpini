@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
-         CheckCircle, Eye, EyeOff, Calendar, IndianRupee } from 'lucide-react';
+         CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
 
 if (typeof window === 'undefined') {
@@ -22,6 +22,16 @@ const adminFetch = (url, opts={}) => {
 
 const PLAN_COLORS   = { pro:['#dbeafe','#1d4ed8'], enterprise:['#ede9fe','#5b21b6'] };
 const STATUS_COLORS = { active:['#dcfce7','#15803d'], suspended:['#fef9c3','#854d0e'], cancelled:['#fee2e2','#991b1b'] };
+
+// Lead pipeline
+const LEAD_STATUS = [
+  ['new',       'New',       '#dbeafe', '#1d4ed8'],
+  ['contacted', 'Contacted', '#fef9c3', '#854d0e'],
+  ['trial',     'Trial Set', '#ede9fe', '#5b21b6'],
+  ['converted', 'Converted', '#dcfce7', '#15803d'],
+  ['lost',      'Lost',      '#fee2e2', '#991b1b'],
+];
+const LEAD_SOURCE = ['website','whatsapp','referral','call','other'];
 const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
 const btn = (bg='#FF6B00',color='#fff') => ({padding:'0 14px',height:34,background:bg,color,border:'none',borderRadius:7,cursor:'pointer',fontSize:13,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5});
 
@@ -154,6 +164,7 @@ export default function AdminPage(){
   const [groupStations,setGroupStations] = useState({});
   const [selStation,setSelStation]     = useState('');
   const [stationUsers,setStationUsers] = useState([]);
+  const [leads,setLeads]               = useState([]);
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
   const [loading,setLoading] = useState(false);
@@ -187,10 +198,13 @@ export default function AdminPage(){
     setStats(s); setGroups(Array.isArray(g)?g:[]); setOwners(Array.isArray(o)?o:[]);
     setStations(Array.isArray(st)?st:[]); setPlans(Array.isArray(pl)?pl:[]);
     setAlertDefs(Array.isArray(ad)?ad:[]);
+    loadLeads();
   };
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
 
+  const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
+  const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   const loadGroupMembers  = async gid => { const r=await adminFetch(`/groups/${gid}/members-list`); setGroupMembers(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadGroupStations = async gid => { const r=await adminFetch(`/groups/${gid}/stations`); setGroupStations(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadStationUsers  = async sid => { if(!sid)return; const r=await adminFetch(`/station-users/${sid}`); setStationUsers(Array.isArray(r)?r:[]); };
@@ -221,6 +235,7 @@ export default function AdminPage(){
     {id:'plans',    label:'Plans',             icon:<Layers size={14}/>},
     {id:'alertdefs',label:'Alert Definitions', icon:<Shield size={14}/>},
     {id:'stationusers',label:'Users & Roles',  icon:<UserPlus size={14}/>},
+    {id:'leads',    label:'Leads',             icon:<Inbox size={14}/>},
   ];
 
   const formCities = getCities(form.state||'');
@@ -584,6 +599,57 @@ export default function AdminPage(){
             }
           </div>
         )}
+
+        {/* ── Leads ── */}
+        {tab==='leads'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Leads <span style={{fontSize:14,color:'#888',fontWeight:500}}>({leads.length})</span></h1>
+              <button style={btn()} onClick={()=>openModal('lead',{source:'whatsapp',status:'new'})}><Plus size={15}/>Add Lead</button>
+            </div>
+            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:920}}>
+                <thead><tr style={{background:'#f8f7f5'}}>
+                  {['Date','Name','Phone','Bunk','City','Source','Status','Notes',''].map((h,i)=>(
+                    <th key={i} style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {leads.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>No leads yet</td></tr>}
+                  {leads.map(l=>{
+                    const m = LEAD_STATUS.find(x=>x[0]===l.status) || ['','','#f3f4f6','#374151'];
+                    const sb = m[2], st = m[3];
+                    return (
+                      <tr key={l.id} style={{borderBottom:'1px solid #f0f0f0'}}>
+                        <td style={{padding:'10px 12px',fontSize:12,color:'#666',whiteSpace:'nowrap'}}>{(l.created_at||'').slice(0,10)}</td>
+                        <td style={{padding:'10px 12px',fontWeight:600}} title={l.message||''}>{l.name}{l.message?' 💬':''}</td>
+                        <td style={{padding:'10px 12px',fontFamily:'monospace',fontSize:13,whiteSpace:'nowrap'}}>{l.phone}</td>
+                        <td style={{padding:'10px 12px',fontSize:13}}>{l.station_name||'—'}</td>
+                        <td style={{padding:'10px 12px',fontSize:13}}>{l.city||'—'}</td>
+                        <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 7px',borderRadius:99,background:'#f1f5f9',color:'#475569',textTransform:'capitalize'}}>{l.source}</span></td>
+                        <td style={{padding:'10px 12px'}}>
+                          <select value={l.status} onChange={e=>patchLead(l.id,{status:e.target.value})}
+                            style={{padding:'4px 8px',borderRadius:99,border:'none',fontSize:11,fontWeight:600,background:sb,color:st,cursor:'pointer'}}>
+                            {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{lab}</option>)}
+                          </select>
+                        </td>
+                        <td style={{padding:'10px 12px',minWidth:180}}>
+                          <input defaultValue={l.notes||''} placeholder="Add note…"
+                            onBlur={e=>{ if(e.target.value!==(l.notes||'')) patchLead(l.id,{notes:e.target.value}); }}
+                            style={{width:'100%',padding:'5px 8px',border:'1px solid #e5e7eb',borderRadius:6,fontSize:12,outline:'none'}}/>
+                        </td>
+                        <td style={{padding:'10px 12px'}}>
+                          <button style={btn('#fee2e2','#991b1b')} title="Delete"
+                            onClick={()=>{ if(confirm('Delete this lead?')) adminFetch(`/leads/${l.id}`,{method:'DELETE'}).then(()=>{loadLeads();showToast('Deleted.');}); }}><Trash2 size={12}/></button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Modals ── */}
@@ -763,6 +829,31 @@ export default function AdminPage(){
           </Field>
           <Field label="Password"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Default: Welcome@123"/></Field>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/station-users').then(()=>loadStationUsers(form.station_id))} disabled={loading}>{loading?'Adding...':'Add User'}</button>
+        </Modal>
+      )}
+
+      {modal?.type==='lead'&&(
+        <Modal title="Add Lead" onClose={closeModal}>
+          <Field label="Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label="Mobile" required><input style={inp} value={form.phone||''} onChange={e=>f('phone',e.target.value)} placeholder="+91…"/></Field>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Field label="Petrol Bunk"><input style={inp} value={form.station_name||''} onChange={e=>f('station_name',e.target.value)}/></Field>
+            <Field label="City"><input style={inp} value={form.city||''} onChange={e=>f('city',e.target.value)}/></Field>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Field label="Source">
+              <select style={inp} value={form.source||'whatsapp'} onChange={e=>f('source',e.target.value)}>
+                {LEAD_SOURCE.map(s=><option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select style={inp} value={form.status||'new'} onChange={e=>f('status',e.target.value)}>
+                {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{lab}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="Notes"><textarea style={{...inp,height:72,resize:'vertical'}} value={form.notes||''} onChange={e=>f('notes',e.target.value)}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/leads')} disabled={loading}>{loading?'Saving...':'Add Lead'}</button>
         </Modal>
       )}
 
