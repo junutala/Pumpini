@@ -139,6 +139,29 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
       }
     }
 
+    // One attendant can't be live on two shifts at once. Reject if they're still
+    // assigned to a DIFFERENT open shift that hasn't been reconciled yet. Works
+    // for both modes: POS submit and manager-mode close both write a
+    // shift_reconciliation row, which "releases" the attendant for the next shift.
+    // (Overlapping shifts during changeover are fine — only the same attendant
+    // being un-reconciled on two open shifts is blocked.)
+    const { rows: busy } = await pool.query(`
+      SELECT 1
+      FROM shift_attendants sa
+      JOIN shifts s ON s.id = sa.shift_id
+      WHERE sa.attendant_id = $1
+        AND sa.shift_id <> $2
+        AND s.status = 'open'
+        AND NOT EXISTS (
+          SELECT 1 FROM shift_reconciliation r
+          WHERE r.shift_id = sa.shift_id AND r.attendant_id = sa.attendant_id
+        )
+      LIMIT 1`,
+      [attendant_id, req.params.id]);
+    if (busy.length) {
+      return res.status(409).json({ error: 'This attendant is still on an open shift (not yet reconciled). Reconcile/close their current shift before assigning them to another.' });
+    }
+
     // Activate RFID tag if provided
     if (rfid_tag_id) {
       await pool.query('UPDATE rfid_tags SET is_active=TRUE WHERE id=$1', [rfid_tag_id]);
