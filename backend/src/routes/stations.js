@@ -153,7 +153,9 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
               COALESCE(ss.manager_blind_drop, FALSE) AS manager_blind_drop,
               COALESCE(ss.stock_tol_pct_petrol, 0.75) AS stock_tol_pct_petrol,
               COALESCE(ss.stock_tol_pct_diesel, 0.50) AS stock_tol_pct_diesel,
-              COALESCE(ss.stock_tol_floor_ltrs, 20)   AS stock_tol_floor_ltrs
+              COALESCE(ss.stock_tol_floor_ltrs, 20)   AS stock_tol_floor_ltrs,
+              COALESCE(ss.deposit_alert_days, 2)       AS deposit_alert_days,
+              COALESCE(ss.deposit_alert_amount, 0)     AS deposit_alert_amount
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
@@ -195,6 +197,21 @@ router.patch('/:id/blind-drop-mode', authenticate, authorize('owner'), requireSt
     );
     res.json({ ok: true, manager_blind_drop: enabled });
   } catch(err) { next(err); }
+});
+
+// PATCH /api/stations/:id/deposit-alert — owner sets undeposited-cash aging limits
+router.patch('/:id/deposit-alert', authenticate, authorize('owner'), requireStationId('id'), async (req, res, next) => {
+  try {
+    const { deposit_alert_days, deposit_alert_amount } = req.body;
+    await pool.query(
+      `INSERT INTO station_settings(station_id, deposit_alert_days, deposit_alert_amount)
+       VALUES($1,$2,$3)
+       ON CONFLICT(station_id) DO UPDATE SET
+         deposit_alert_days=COALESCE($2,station_settings.deposit_alert_days),
+         deposit_alert_amount=COALESCE($3,station_settings.deposit_alert_amount)`,
+      [req.params.id, deposit_alert_days ?? null, deposit_alert_amount ?? null]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // GET /api/stations/:id/tanks

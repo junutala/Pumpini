@@ -99,6 +99,7 @@ app.use('/api/leads',     require('./routes/leads'));
 app.use('/api/product-credit-notes', require('./routes/productReturns'));
 app.use('/api/petty-cash', require('./routes/pettyCash'));
 app.use('/api/tank-reco', require('./routes/tankReco'));
+app.use('/api/cash-deposits', require('./routes/cashDeposits'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

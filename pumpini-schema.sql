@@ -385,3 +385,28 @@ CREATE INDEX IF NOT EXISTS idx_tank_reco_tank    ON tank_reconciliation(tank_id,
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_pct_petrol NUMERIC(5,3) DEFAULT 0.75;
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_pct_diesel NUMERIC(5,3) DEFAULT 0.50;
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_floor_ltrs NUMERIC(8,2) DEFAULT 20;
+
+-- ═════════════════════════════════════════════
+--  WAVE 3 PHASE C — Cash custody → bank deposit → aging alert
+-- ═════════════════════════════════════════════
+-- Sales cash collected (Σ cash_actual − opening float, from confirmed recons)
+-- accumulates as "awaiting deposit". A bank deposit draws it down; the owner
+-- confirms it landed in the bank. Stale undeposited cash → owner alert.
+CREATE TABLE IF NOT EXISTS cash_deposits (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id    UUID NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+  amount        NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  deposit_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+  bank_account  VARCHAR(80),
+  reference_no  VARCHAR(80),                 -- pay-in slip / UTR
+  notes         TEXT,
+  deposited_by  UUID REFERENCES users(id),
+  confirmed     BOOLEAN DEFAULT FALSE,        -- owner verified it is in the bank
+  confirmed_by  UUID REFERENCES users(id),
+  confirmed_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cash_deposits_station ON cash_deposits(station_id, deposit_date DESC);
+
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS deposit_alert_days   INT           DEFAULT 2;
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS deposit_alert_amount NUMERIC(12,2) DEFAULT 0;  -- 0 = amount check off

@@ -4,6 +4,7 @@ const pool      = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 const { computeLiveTankStatus } = require('./tankReco');
+const { computeDepositStatus } = require('./cashDeposits');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -82,6 +83,9 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // Live wet-stock variance (between the last two dips) — not blind-drop sensitive
     let tankStatus = [];
     try { tankStatus = await computeLiveTankStatus(station_id); } catch { /* ignore */ }
+    // Cash awaiting bank deposit (owner only)
+    let depositStatus = null;
+    if (isOwner) { try { depositStatus = await computeDepositStatus(station_id); } catch { /* ignore */ } }
 
     const s = salesRes.rows[0];
     const contextLines = [
@@ -133,6 +137,11 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
         cashIntRes.rows.length
           ? cashIntRes.rows.map(c => `${c.operator}: ${c.undercash}/${c.recons} shifts undercash, total short ₹${parseFloat(c.total_short).toLocaleString('en-IN')}`).join('\n')
           : 'No confirmed reconciliations in the last 30 days.',
+        '',
+        '--- Cash Awaiting Bank Deposit (OWNER ONLY) ---',
+        depositStatus
+          ? `₹${depositStatus.awaiting.toLocaleString('en-IN')} awaiting deposit${depositStatus.awaiting > 0.5 ? `, oldest ${depositStatus.age_days} day(s)${depositStatus.stale ? ' (OVERDUE — deposit and confirm in bank)' : ''}` : ' (all deposited)'}. Last deposit: ${depositStatus.last_deposit || 'never'}.`
+          : 'No deposit data.',
       ] : []),
     ].join('\n');
 

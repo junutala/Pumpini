@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [corps,     setCorps]     = useState([]);
   const [cashInt,   setCashInt]   = useState([]);
   const [tankLive,  setTankLive]  = useState([]);
+  const [deposit,   setDeposit]   = useState(null);
   const [loading,   setLoading]   = useState(true);
 
   const { on } = useSocket(stationId, null);
@@ -45,7 +46,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     if (!stationId) return;
     try {
-      const [d, bs, p, c, ci, tl] = await Promise.all([
+      const [d, bs, p, c, ci, tl, dp] = await Promise.all([
         getOwnerDashboard(stationId, today),
         api.get(`/deliveries/book-stock/${stationId}`).catch(() => []),
         getCurrentPrices(stationId),
@@ -54,6 +55,9 @@ export default function DashboardPage() {
           ? api.get('/dashboard/cash-integrity', {params:{station_id:stationId, days:90}}).catch(()=>[])
           : Promise.resolve([]),
         api.get('/tank-reco/live', {params:{station_id:stationId}}).catch(()=>[]),
+        user?.role==='owner'
+          ? api.get('/cash-deposits', {params:{station_id:stationId}}).then(r=>r?.status||null).catch(()=>null)
+          : Promise.resolve(null),
       ]);
       setData(d);
       setBookStock(Array.isArray(bs) ? bs : []);
@@ -61,6 +65,7 @@ export default function DashboardPage() {
       setCorps(Array.isArray(c) ? c : []);
       setCashInt(Array.isArray(ci) ? ci : []);
       setTankLive(Array.isArray(tl) ? tl : []);
+      setDeposit(dp || null);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
   }, [stationId, today, user?.role]);
@@ -168,6 +173,24 @@ export default function DashboardPage() {
           <div className="stat-sub">{unreadAlerts.length ? tc('dash_page.action_needed','Action needed') : tc('dash_page.all_clear','All clear ✓')}</div>
         </div>
       </div>
+
+      {/* Cash awaiting bank deposit — flags the overnight/T+1 custody gap */}
+      {user?.role==='owner' && deposit && deposit.awaiting>0.5 && (
+        <a href="/deposits" style={{textDecoration:'none'}}>
+          <div className="card" style={{marginBottom:'1.5rem',display:'flex',justifyContent:'space-between',alignItems:'center',
+            borderLeft:`4px solid ${deposit.stale?'#dc2626':'#FF6B00'}`,background:deposit.stale?'#fef2f2':undefined}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>🏦 Cash awaiting bank deposit</div>
+              <div style={{fontSize:12.5,color:deposit.stale?'#dc2626':'var(--text-3)',marginTop:2}}>
+                {deposit.stale ? `⚠ Sitting ${deposit.age_days} day(s) — deposit overdue` : `Oldest: ${deposit.age_days} day(s)`}
+              </div>
+            </div>
+            <div style={{fontSize:22,fontWeight:900,color:deposit.stale?'#dc2626':'var(--brand)'}}>
+              ₹{Number(deposit.awaiting||0).toLocaleString('en-IN')}
+            </div>
+          </div>
+        </a>
+      )}
 
       {/* Cash Integrity — owner oversight: each operator's last shift-end report + undercash count */}
       {user?.role==='owner' && cashInt.length>0 && (

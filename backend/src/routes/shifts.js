@@ -228,6 +228,8 @@ router.patch('/:id/close', authenticate, authorize('owner','manager'), requireSt
     // closing dip, and alert the owner on any variance beyond tolerance. Never
     // blocks the close.
     try { await require('./tankReco').finalizeShiftReco(req.params.id, req.user.id, req.io); } catch (e) { /* non-blocking */ }
+    // Aging check: if sales cash has been sitting undeposited too long, alert owner.
+    try { await require('./cashDeposits').checkDepositAging(rows[0].station_id, req.io); } catch (e) { /* non-blocking */ }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
