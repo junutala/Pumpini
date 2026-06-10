@@ -25,7 +25,11 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     if (status)     { p.push(status);     q += ` AND s.status=$${p.length}`; }
     q += ' GROUP BY s.id, u.name ORDER BY s.date DESC, s.shift_number';
     const { rows } = await pool.query(q, p);
-    res.json(rows);
+    // Blind drop: non-owners don't see sales for an OPEN shift
+    const isOwner = req.user.role === 'owner';
+    const out = rows.map(r => (!isOwner && r.status === 'open')
+      ? { ...r, total_sales: null, sales_hidden: true } : r);
+    res.json(out);
   } catch (err) { next(err); }
 });
 
@@ -53,7 +57,13 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
       GROUP BY sa.id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`,
       [req.params.id]);
 
-    res.json({ ...rows[0], attendants });
+    // Blind drop: hide per-attendant sales while the shift is open (non-owners)
+    const isOwner = req.user.role === 'owner';
+    const hide = !isOwner && rows[0].status === 'open';
+    const att = hide
+      ? attendants.map(a => ({ ...a, total_sales: null, total_ltrs: null, sales_hidden: true }))
+      : attendants;
+    res.json({ ...rows[0], attendants: att });
   } catch (err) { next(err); }
 });
 

@@ -15,6 +15,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     if (!station_id)      return res.status(400).json({ error: 'Station ID is required' });
 
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const isOwner = req.user.role === 'owner'; // blind drop: non-owners don't get open-shift sales
 
     // Fetch live station context
     const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes] = await Promise.all([
@@ -29,8 +30,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
           COUNT(*)                                                                        AS txn_count
         FROM dispense_events de
         JOIN shifts s ON s.id = de.shift_id
-        WHERE s.station_id = $1 AND s.date = $2`,
-        [station_id, today]
+        WHERE s.station_id = $1 AND s.date = $2 AND (s.status='closed' OR $3)`,
+        [station_id, today, isOwner]
       ),
       pool.query(`
         SELECT shift_number, status, start_time

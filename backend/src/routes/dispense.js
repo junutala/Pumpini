@@ -154,12 +154,15 @@ router.post('/:id/photo', authenticate, requireStationVia('SELECT station_id FRO
 // GET /api/dispense
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
+    const isOwner = req.user.role === 'owner';
     const { shift_id, attendant_id, date_from, date_to, station_id, limit = 200 } = req.query;
     let q = `
-      SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel,
+             sh.status AS shift_status
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      LEFT JOIN shifts sh ON sh.id = de.shift_id
       WHERE 1=1
     `;
     const p = [];
@@ -172,7 +175,10 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     p.push(parseInt(limit));
     q += ` ORDER BY de.event_seq DESC LIMIT $${p.length}`;
     const { rows } = await pool.query(q, p);
-    res.json(rows);
+    // Blind drop: non-owners don't see sale amounts for OPEN shifts
+    const out = rows.map(r => (!isOwner && r.shift_status === 'open')
+      ? { ...r, amount: null, sales_hidden: true } : r);
+    res.json(out);
   } catch (err) { next(err); }
 });
 

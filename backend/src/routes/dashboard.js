@@ -8,17 +8,21 @@ const { requireStationAccess, requireStationVia, requireCorporateAccess } = requ
 router.get('/owner', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, date = new Date().toISOString().slice(0,10) } = req.query;
+    const isOwner = req.user.role === 'owner';
 
     const [sales, shifts, stock, alerts, attendance] = await Promise.all([
-      // Today's sales by fuel type & payment mode
+      // Today's sales by fuel type & payment mode — blind drop: non-owners
+      // only see CLOSED-shift sales.
       pool.query(`
-        SELECT fuel_type, payment_mode,
+        SELECT de.fuel_type, de.payment_mode,
                COUNT(*)::int AS txn_count,
-               SUM(quantity_ltrs) AS total_ltrs,
-               SUM(amount) AS total_amount
-        FROM dispense_events
-        WHERE station_id=$1 AND occurred_at::date = $2
-        GROUP BY fuel_type, payment_mode`, [station_id, date]),
+               SUM(de.quantity_ltrs) AS total_ltrs,
+               SUM(de.amount) AS total_amount
+        FROM dispense_events de
+        JOIN shifts s ON s.id = de.shift_id
+        WHERE de.station_id=$1 AND de.occurred_at::date = $2
+          AND (s.status='closed' OR $3=TRUE)
+        GROUP BY de.fuel_type, de.payment_mode`, [station_id, date, isOwner]),
 
       // Open shifts
       pool.query(`
@@ -65,6 +69,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       alerts: alerts.rows,
       attendance: attendance.rows,
       variances,
+      sales_masked: !isOwner && shifts.rows.some(s => s.status === 'open'),
     });
   } catch (err) { next(err); }
 });
@@ -73,6 +78,9 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
 router.get('/manager', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, shift_id } = req.query;
+    const isOwner = req.user.role === 'owner';
+    const { rows: shiftRow } = await pool.query('SELECT status FROM shifts WHERE id=$1', [shift_id]);
+    const hideSales = !isOwner && shiftRow[0]?.status === 'open';
 
     const [liveEvents, attendantSummary, recoStatus] = await Promise.all([
       pool.query(`
@@ -100,9 +108,14 @@ router.get('/manager', authenticate, requireStationAccess({ required: true }), a
     ]);
 
     res.json({
-      live_events: liveEvents.rows,
-      attendant_summary: attendantSummary.rows,
+      live_events: hideSales
+        ? liveEvents.rows.map(r => ({ ...r, amount: null, sales_hidden: true }))
+        : liveEvents.rows,
+      attendant_summary: hideSales
+        ? attendantSummary.rows.map(r => ({ ...r, sales: null, litres: null, sales_hidden: true }))
+        : attendantSummary.rows,
       reconciliation: recoStatus.rows,
+      sales_hidden: hideSales,
     });
   } catch (err) { next(err); }
 });
@@ -152,12 +165,24 @@ router.get('/corporate/:id', authenticate, requireCorporateAccess(), async (req,
 router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const { attendant_id, shift_id } = req.query;
+    const isOwner = req.user.role === 'owner';
+    const { rows: shiftRow } = await pool.query('SELECT status FROM shifts WHERE id=$1', [shift_id]);
+    const hideSales = !isOwner && shiftRow[0]?.status === 'open';
+
     const { rows } = await pool.query(`
       SELECT de.*, n.nozzle_number, n.fuel_type
       FROM dispense_events de
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
       WHERE de.attendant_id=$1 AND de.shift_id=$2
       ORDER BY de.event_seq`, [attendant_id, shift_id]);
+
+    if (hideSales) {
+      return res.json({
+        events: rows.map(r => ({ ...r, amount: null })),
+        summary: null,
+        sales_hidden: true,
+      });
+    }
 
     const summary = {
       total_sales: rows.reduce((s,r) => s + parseFloat(r.amount),0),
