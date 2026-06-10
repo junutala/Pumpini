@@ -132,7 +132,7 @@ export default function ShiftsPage() {
         )}
       </div>
 
-      <div>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:selected?'320px 1fr':'1fr',gap:'1.5rem'}}>
 
         {/* Shifts list */}
         <div>
@@ -144,8 +144,10 @@ export default function ShiftsPage() {
           )}
           {shifts.map(shift=>(
             <div key={shift.id} className="card"
-              style={{marginBottom:'0.75rem',
-                borderLeft:`3px solid ${shift.status==='open'?'var(--success)':'var(--border)'}`}}>
+              style={{marginBottom:'0.75rem',cursor:'pointer',
+                borderLeft:`3px solid ${shift.status==='open'?'var(--success)':'var(--border)'}`,
+                borderColor:selected?.id===shift.id?'var(--brand)':'var(--border)'}}
+              onClick={()=>loadShiftDetail(shift)}>
 
               {/* Shift header */}
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
@@ -187,6 +189,42 @@ export default function ShiftsPage() {
             </div>
           ))}
         </div>
+
+        {/* Shift detail — assignment view only (sales hidden by blind drop) */}
+        {selected && (
+          <div className="card" style={{alignSelf:'flex-start'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
+              <div style={{fontWeight:700,fontSize:14}}>
+                {tc('shifts_page.active_attendants','Active Attendants')} — {shiftAttendants.length} {tc('shifts_page.assigned','assigned')}
+              </div>
+              <button style={{background:'none',border:'none',cursor:'pointer'}} onClick={()=>setSelected(null)}><X size={18}/></button>
+            </div>
+            {shiftAttendants.length===0 ? (
+              <div style={{color:'var(--text-3)',fontSize:13,padding:'1rem',textAlign:'center'}}>
+                {tc('shifts_page.none_assigned','No attendants assigned yet.')}{isManager?tc('shifts_page.use_add_btn',' Use "Add Attendant" button.'):''}
+              </div>
+            ) : (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:'0.75rem'}}>
+                {shiftAttendants.map(att=>(
+                  <div key={att.id} style={{background:'var(--surface-2)',borderRadius:10,padding:'0.85rem',border:'1px solid var(--border)'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{width:32,height:32,borderRadius:'50%',background:'var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:14,flexShrink:0}}>
+                        {(att.attendant_name||'?')[0].toUpperCase()}
+                      </div>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{att.attendant_name}</div>
+                        <div style={{fontSize:11,color:'var(--text-3)'}}>N{att.nozzle_number} · {att.fuel_type}</div>
+                      </div>
+                    </div>
+                    {att.tag_uid && (
+                      <div style={{marginTop:6,fontSize:10,color:'var(--text-3)',fontFamily:'var(--font-mono)'}}>RFID: {att.tag_uid}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
       </div>
 
