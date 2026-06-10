@@ -4,6 +4,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 // ── Helper: next invoice number ───────────────────────────
 async function nextInvoiceNumber(stationId) {
@@ -35,7 +36,7 @@ async function nextInvoiceNumber(stationId) {
 // ── CATALOGUE ─────────────────────────────────────────────
 
 // GET /api/products/catalogue?station_id=
-router.get('/catalogue', authenticate, async (req, res, next) => {
+router.get('/catalogue', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(
@@ -49,7 +50,7 @@ router.get('/catalogue', authenticate, async (req, res, next) => {
 });
 
 // GET /api/products/barcode/:code?station_id=
-router.get('/barcode/:code', authenticate, async (req, res, next) => {
+router.get('/barcode/:code', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(
@@ -63,7 +64,7 @@ router.get('/barcode/:code', authenticate, async (req, res, next) => {
 });
 
 // POST /api/products/catalogue
-router.post('/catalogue', authenticate, async (req, res, next) => {
+router.post('/catalogue', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, name, brand, barcode, hsn_code, unit='piece',
             selling_price, buying_price=0, gst_rate=18, min_stock_level=5 } = req.body;
@@ -83,7 +84,7 @@ router.post('/catalogue', authenticate, async (req, res, next) => {
 });
 
 // PATCH /api/products/catalogue/:id
-router.patch('/catalogue/:id', authenticate, async (req, res, next) => {
+router.patch('/catalogue/:id', authenticate, requireStationVia('SELECT station_id FROM products WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { name, brand, barcode, hsn_code, unit, selling_price,
             buying_price, gst_rate, min_stock_level, is_active } = req.body;
@@ -105,7 +106,7 @@ router.patch('/catalogue/:id', authenticate, async (req, res, next) => {
 });
 
 // DELETE /api/products/catalogue/:id (soft delete)
-router.delete('/catalogue/:id', authenticate, async (req, res, next) => {
+router.delete('/catalogue/:id', authenticate, requireStationVia('SELECT station_id FROM products WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     await pool.query('UPDATE products SET is_active=FALSE WHERE id=$1', [req.params.id]);
     res.json({ ok: true });
@@ -115,7 +116,7 @@ router.delete('/catalogue/:id', authenticate, async (req, res, next) => {
 // ── STOCK RECEIPTS ────────────────────────────────────────
 
 // GET /api/products/stock?station_id=
-router.get('/stock', authenticate, async (req, res, next) => {
+router.get('/stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(
@@ -131,7 +132,7 @@ router.get('/stock', authenticate, async (req, res, next) => {
 });
 
 // POST /api/products/stock — receive stock
-router.post('/stock', authenticate, async (req, res, next) => {
+router.post('/stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, product_id, quantity, buying_price, selling_price, notes } = req.body;
     const client = await pool.connect();
@@ -169,7 +170,7 @@ router.post('/stock', authenticate, async (req, res, next) => {
 // ── SALES / INVOICES ──────────────────────────────────────
 
 // GET /api/products/invoices?station_id=&from=&to=
-router.get('/invoices', authenticate, async (req, res, next) => {
+router.get('/invoices', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, from, to } = req.query;
     let q = `
@@ -190,7 +191,7 @@ router.get('/invoices', authenticate, async (req, res, next) => {
 });
 
 // GET /api/products/invoices/:id — full invoice with items
-router.get('/invoices/:id', authenticate, async (req, res, next) => {
+router.get('/invoices/:id', authenticate, requireStationVia('SELECT station_id FROM product_invoices WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const [inv, items] = await Promise.all([
       pool.query(`
@@ -213,7 +214,7 @@ router.get('/invoices/:id', authenticate, async (req, res, next) => {
 });
 
 // POST /api/products/invoices — create sale + invoice
-router.post('/invoices', authenticate, async (req, res, next) => {
+router.post('/invoices', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, customer_type='cash', customer_id, customer_name,
             customer_gstn, payment_mode='cash', items, notes } = req.body;
@@ -297,7 +298,7 @@ router.post('/invoices', authenticate, async (req, res, next) => {
 
 // ── LOW STOCK CHECK ───────────────────────────────────────
 // GET /api/products/low-stock?station_id=
-router.get('/low-stock', authenticate, async (req, res, next) => {
+router.get('/low-stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(
