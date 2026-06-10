@@ -870,7 +870,7 @@ function RfidTab({ stationId, tags, reload, askConfirm }) {
 
 // ── Shift Timings Tab ──────────────────────────────────────
 function ShiftsTab({ stationId, onSaved }) {
-  const { station } = useAuth();
+  const { station, user } = useAuth();
   const sid = stationId || (typeof station==='object'?station?.id:station);
   const [defs,setDefs]     = useState([
     {shift_number:1,name:'Morning',  start_time:'06:00',end_time:'14:00'},
@@ -878,11 +878,24 @@ function ShiftsTab({ stationId, onSaved }) {
     {shift_number:3,name:'Night',    start_time:'22:00',end_time:'06:00'},
   ]);
   const [loading,setLoading] = useState(false);
+  const [mgrMode,setMgrMode] = useState(false);   // manager-driven blind drop
+  const [modeBusy,setModeBusy] = useState(false);
+  const isOwner = user?.role === 'owner';
 
   useEffect(()=>{
     if(!sid) return;
     api.get(`/shifts/definitions/${sid}`).then(d=>{ if(d?.length) setDefs(d); }).catch(()=>{});
+    api.get(`/stations/${sid}/settings`).then(s=>setMgrMode(!!s?.manager_blind_drop)).catch(()=>{});
   },[sid]);
+
+  const toggleMode = async () => {
+    setModeBusy(true);
+    try {
+      const r = await api.patch(`/stations/${sid}/blind-drop-mode`, { manager_blind_drop: !mgrMode });
+      setMgrMode(!!r?.manager_blind_drop);
+    } catch(e){ alert(e.response?.data?.error || e.error || 'Could not change mode'); }
+    setModeBusy(false);
+  };
 
   const save = async() => {
     setLoading(true);
@@ -892,7 +905,32 @@ function ShiftsTab({ stationId, onSaved }) {
   };
 
   return (
-    <div className="card" style={{maxWidth:560}}>
+    <div style={{maxWidth:560}}>
+    {/* Blind-drop reconciliation mode (owner only) */}
+    {isOwner && (
+      <div className="card" style={{marginBottom:'1rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{paddingRight:12}}>
+            <div style={{fontWeight:700,fontSize:15}}>Manager-driven blind drop</div>
+            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+              When ON, operators don’t use POS during the shift. The manager opens with cash + meter
+              reading and reconciles each operator at shift end from the meter. When OFF, the standard
+              POS blind drop applies. (Can’t change while a shift is open.)
+            </div>
+          </div>
+          <button onClick={toggleMode} disabled={modeBusy}
+            style={{background:'none',border:'none',cursor:modeBusy?'wait':'pointer',padding:0,flexShrink:0}}>
+            <div style={{width:52,height:28,borderRadius:14,position:'relative',
+              background: mgrMode ? '#16a34a' : '#e5e3de', transition:'all .2s'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',top:3,
+                left: mgrMode ? 27 : 3, transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+    )}
+
+    <div className="card">
       <div style={{fontWeight:600,marginBottom:'0.5rem'}}>Shift Timings</div>
       <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>
         Define start and end times for each shift. These appear when opening shifts.
@@ -917,6 +955,7 @@ function ShiftsTab({ stationId, onSaved }) {
       <button className="btn btn-primary" style={{marginTop:'0.5rem',width:'100%',justifyContent:'center'}} onClick={save} disabled={loading}>
         {loading?'Saving...':'Save Shift Timings'}
       </button>
+    </div>
     </div>
   );
 }

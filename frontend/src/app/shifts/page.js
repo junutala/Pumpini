@@ -7,6 +7,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import ManagerReconcileModal from '../../components/shared/ManagerReconcileModal';
 
 
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
@@ -35,6 +36,8 @@ export default function ShiftsPage() {
   const [assignForm,setAssignForm]= useState({});
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
+  const [managerMode, setManagerMode] = useState(false); // station runs manager-driven blind drop
+  const [recoShift,   setRecoShift]   = useState(null);  // shift being reconciled+closed by manager
 
   const { on } = useSocket(stationId, selected?.id);
 
@@ -58,11 +61,13 @@ export default function ShiftsPage() {
       api.get(`/stations/${stationId}/nozzles`),
       api.get(`/rfid?station_id=${stationId}`),
       api.get(`/shifts/definitions/${stationId}`),
-    ]).then(([u,n,r,d])=>{
+      api.get(`/stations/${stationId}/settings`).catch(()=>({})),
+    ]).then(([u,n,r,d,st])=>{
       setUsers(Array.isArray(u)?u:[]);
       setNozzles(Array.isArray(n)?n:[]);
       setRfidTags(Array.isArray(r)?r:[]);
       setShiftDefs(Array.isArray(d)?d:[]);
+      setManagerMode(!!st?.manager_blind_drop);
     });
   },[stationId]);
 
@@ -123,6 +128,7 @@ export default function ShiftsPage() {
           <h1 className="page-title">{tc('shifts_page.title','Shifts')}</h1>
           <div style={{fontSize:13,color:'var(--text-3)'}}>
             {today} · {shifts.filter(s=>s.status==='open').length} {tc('shifts_page.shifts_open','shift(s) open')}
+            {managerMode && <span style={{marginLeft:8,fontSize:11,fontWeight:700,color:'#9a3412',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:6,padding:'2px 7px'}}>🔒 Manager-driven mode</span>}
           </div>
         </div>
         {isManager && (
@@ -181,8 +187,8 @@ export default function ShiftsPage() {
                     <UserPlus size={13}/>{tc('shifts_page.add_attendant','Add Attendant')}
                   </button>
                   <button className="btn btn-danger btn-sm"
-                    onClick={e=>{e.stopPropagation();handleClose(shift);}}>
-                    {tc('shifts_page.close_shift','Close Shift')}
+                    onClick={e=>{e.stopPropagation(); managerMode ? setRecoShift(shift) : handleClose(shift);}}>
+                    {managerMode ? tc('shifts_page.reconcile_close','Reconcile & Close') : tc('shifts_page.close_shift','Close Shift')}
                   </button>
                 </div>
               )}
@@ -323,6 +329,15 @@ export default function ShiftsPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Manager-driven blind-drop: reconcile each attendant, then close */}
+      {recoShift && (
+        <ManagerReconcileModal
+          shift={recoShift}
+          onClose={()=>setRecoShift(null)}
+          onClosed={()=>{ setRecoShift(null); setSelected(null); loadShifts(); }}
+        />
       )}
     </AppShell>
   );

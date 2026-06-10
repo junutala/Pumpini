@@ -38,6 +38,8 @@ export default function POSPage() {
   // Geo-fence state
   const [geoStatus, setGeoStatus] = useState('checking');
   const [geoDistance, setGeoDistance] = useState(null);
+  // Manager-driven blind drop: when ON, operators don't use POS at all
+  const [managerMode, setManagerMode] = useState(false);
 
   // Voice POS state
   const [recording,  setRecording]  = useState(false);
@@ -213,6 +215,7 @@ export default function POSPage() {
   useEffect(() => {
     if (!stationId) return;
     api.get(`/stations/${stationId}/settings`).then(settings => {
+      setManagerMode(!!settings.manager_blind_drop);
       if (!settings.geo_fence_enabled || !settings.latitude || !settings.longitude) {
         setGeoStatus('disabled');
         return;
@@ -453,6 +456,28 @@ export default function POSPage() {
               </button>
             </div>
           </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  // ── PHASE: Manager-driven mode → POS disabled for this station ──
+  if (managerMode) {
+    return (
+      <AppShell>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+          minHeight:'60vh',textAlign:'center',padding:'2rem'}}>
+          <div style={{width:72,height:72,borderRadius:'50%',background:'#fff7ed',
+            display:'flex',alignItems:'center',justifyContent:'center',marginBottom:'1.5rem'}}>
+            <Lock size={32} color="#FF6B00"/>
+          </div>
+          <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800,color:'var(--text-1)'}}>
+            Manager-driven reconciliation
+          </h2>
+          <p style={{margin:'0 0 1.5rem',fontSize:14,color:'var(--text-2)',maxWidth:340,lineHeight:1.6}}>
+            This station reconciles sales at shift end via the manager. No POS entry is needed during
+            the shift — just dispense fuel, and hand over cash to the manager at the end.
+          </p>
         </div>
       </AppShell>
     );
