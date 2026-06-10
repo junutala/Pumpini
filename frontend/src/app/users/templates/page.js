@@ -85,7 +85,7 @@ export default function TemplatesPage() {
         </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'280px 1fr',gap:'1.5rem'}}>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'280px 1fr',gap:'1.5rem'}}>
         {/* Template list */}
         <div>
           {templates.map(t=>(

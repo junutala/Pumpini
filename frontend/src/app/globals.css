@@ -210,6 +210,14 @@ table.dms-table td { padding: 10px 14px; color: var(--text-1); }
   .sidebar-overlay.open { display: block; }
 }
 
+/* ── Responsive: collapse page split-layouts to one column on phones ──
+   Add className="stack-mobile" to a page's main two-column grid. The inline
+   grid-template-columns keeps the desktop layout; this overrides it on mobile. */
+@media (max-width: 820px) {
+  .stack-mobile { grid-template-columns: 1fr !important; }
+  .page-header  { flex-wrap: wrap; gap: 10px; }
+}
+
 /* ── Number monospace ──────────────────── */
 .num { font-family: var(--font-mono); }
 

@@ -149,7 +149,7 @@ export default function RolesPage() {
         </div>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:'1.5rem'}}>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'260px 1fr',gap:'1.5rem'}}>
 
         {/* Roles list */}
         <div>

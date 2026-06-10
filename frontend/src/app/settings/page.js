@@ -513,7 +513,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
   };
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
+    <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
       <div className="card">
         <div style={{fontWeight:600,marginBottom:'1rem'}}>{editTank?`Edit Tank ${editTank.tank_number}`:'Add New Tank'}</div>
         <form onSubmit={save}>
@@ -647,7 +647,7 @@ function NozzlesTab({ stationId, nozzles, tanks, reload, askConfirm }) {
   const linkedTanks = tanks.filter(t=>t.fuel_type===form.fuel_type);
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
+    <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
       <div className="card">
         <div style={{fontWeight:600,marginBottom:'1rem'}}>{editNozzle?`Edit Nozzle ${editNozzle.nozzle_number}`:'Add New Nozzle'}</div>
         <form onSubmit={save}>
@@ -750,7 +750,7 @@ function PricesTab({ stationId, prices, reload }) {
   };
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
+    <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
       <div className="card">
         <div style={{fontWeight:600,marginBottom:'1rem'}}>Set Fuel Price</div>
         <form onSubmit={save}>
@@ -819,7 +819,7 @@ function RfidTab({ stationId, tags, reload, askConfirm }) {
   );
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
+    <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
       <div className="card">
         <div style={{fontWeight:600,marginBottom:'1rem'}}>Register RFID Tag</div>
         <form onSubmit={save}>

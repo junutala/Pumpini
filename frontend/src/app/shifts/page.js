@@ -132,7 +132,7 @@ export default function ShiftsPage() {
         )}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:selected?'320px 1fr':'1fr',gap:'1.5rem'}}>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:selected?'320px 1fr':'1fr',gap:'1.5rem'}}>
 
         {/* Shifts list */}
         <div>

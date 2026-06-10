@@ -185,7 +185,7 @@ export default function ProductsPOSPage() {
     <AppShell>
       <h1 className="page-title" style={{marginBottom:'1.5rem'}}>Products POS</h1>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 380px',gap:'1.5rem',alignItems:'start'}}>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 380px',gap:'1.5rem',alignItems:'start'}}>
 
         {/* Left — product selection */}
         <div>
