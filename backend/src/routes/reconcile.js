@@ -67,8 +67,17 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
       [shift_id, attendant_id]
     );
 
-    const t        = totals[0];
-    const variance = parseFloat(cash_actual) - parseFloat(t.cash_expected);
+    const t = totals[0];
+    // The operator was given an opening float at shift start. The end-of-shift
+    // drawer = opening float + cash sales, so we reconcile the counted cash
+    // against (float + cash sales), not sales alone — otherwise the float reads
+    // as a phantom overage every shift. (Manager-driven mode already does this.)
+    const { rows: saRows } = await pool.query(
+      'SELECT COALESCE(opening_cash,0) AS opening_cash FROM shift_attendants WHERE shift_id=$1 AND attendant_id=$2',
+      [shift_id, attendant_id]
+    );
+    const openingCash  = parseFloat(saRows[0]?.opening_cash || 0);
+    const cashExpected = +(parseFloat(t.cash_expected) + openingCash).toFixed(2);
 
     const { rows } = await pool.query(
       `INSERT INTO shift_reconciliation(
@@ -78,7 +87,7 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
        ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
          cash_actual=$5, remarks=$9, reconciled_at=NOW(), manager_confirmed=FALSE
        RETURNING *`,
-      [shift_id, attendant_id, t.total_sales, t.cash_expected, cash_actual,
+      [shift_id, attendant_id, t.total_sales, cashExpected, cash_actual,
        t.upi_total, t.credit_total, t.card_total, remarks||null]
     );
 

@@ -256,6 +256,36 @@ router.get('/my-consolidated', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/dashboard/cash-integrity?station_id=&days=90
+// Per-operator cash honesty signal. A clean operator's drawer is over or exact,
+// never under — so repeated UNDERCASH (even when made good on the spot) marks a
+// suspect for the owner. Counts confirmed reconciliations only.
+router.get('/cash-integrity', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days || 90)));
+    const { rows } = await pool.query(`
+      SELECT u.id AS attendant_id, u.name AS attendant_name,
+        COUNT(*)::int                                                          AS total_recons,
+        COUNT(*) FILTER (WHERE r.cash_actual < r.cash_expected)::int           AS undercash_count,
+        COUNT(*) FILTER (WHERE r.cash_actual > r.cash_expected)::int           AS overcash_count,
+        COALESCE(SUM(CASE WHEN r.cash_actual < r.cash_expected
+                          THEN r.cash_expected - r.cash_actual ELSE 0 END),0)  AS total_short,
+        MAX(CASE WHEN r.cash_actual < r.cash_expected THEN r.reconciled_at END) AS last_short_at
+      FROM shift_reconciliation r
+      JOIN shifts s ON s.id = r.shift_id
+      JOIN users  u ON u.id = r.attendant_id
+      WHERE s.station_id = $1
+        AND r.manager_confirmed = TRUE
+        AND r.reconciled_at >= NOW() - make_interval(days => $2)
+      GROUP BY u.id, u.name
+      HAVING COUNT(*) > 0
+      ORDER BY undercash_count DESC, total_short DESC`,
+      [station_id, days]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 // GET /api/dashboard/attendant?attendant_id=&shift_id=
 router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
