@@ -76,6 +76,15 @@ router.post('/catalogue', authenticate, requireStationAccess({ required: true })
       [station_id, name, brand||null, barcode||null, hsn_code||null,
        unit, selling_price, buying_price, gst_rate, min_stock_level]
     );
+    // require_barcode set separately + guarded so it can't break create
+    // before the column migration is applied.
+    if (req.body.require_barcode !== undefined) {
+      const rb = req.body.require_barcode === true || req.body.require_barcode === 'true';
+      try {
+        await pool.query('UPDATE products SET require_barcode=$1 WHERE id=$2', [rb, rows[0].id]);
+        rows[0].require_barcode = rb;
+      } catch { /* require_barcode column not migrated yet */ }
+    }
     res.status(201).json(rows[0]);
   } catch(err) {
     if (err.code==='23505') return res.status(409).json({ error:'Barcode already exists for this station' });
@@ -88,6 +97,11 @@ router.patch('/catalogue/:id', authenticate, requireStationVia('SELECT station_i
   try {
     const { name, brand, barcode, hsn_code, unit, selling_price,
             buying_price, gst_rate, min_stock_level, is_active } = req.body;
+    // require_barcode handled separately + guarded (column may not be migrated)
+    if (req.body.require_barcode !== undefined) {
+      const rb = req.body.require_barcode === true || req.body.require_barcode === 'true';
+      try { await pool.query('UPDATE products SET require_barcode=$1 WHERE id=$2', [rb, req.params.id]); } catch {}
+    }
     const sets=[]; const p=[];
     const add = (col, val) => { if(val!==undefined){ p.push(val); sets.push(`${col}=$${p.length}`); } };
     add('name', name); add('brand', brand); add('barcode', barcode);

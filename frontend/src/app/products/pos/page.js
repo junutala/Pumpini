@@ -41,7 +41,7 @@ export default function ProductsPOSPage() {
     if (!stationId) return;
     Promise.all([
       api.get('/products/catalogue', { params:{ station_id:stationId } }),
-      api.get('/corporate/accounts', { params:{ station_id:stationId } }),
+      api.get('/corporate', { params:{ station_id:stationId } }),
       api.get(`/stations/${stationId}/settings`),
     ]).then(([p,c,s]) => {
       setProducts(Array.isArray(p)?p:[]);

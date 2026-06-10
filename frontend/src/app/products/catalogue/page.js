@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Package, AlertTriangle, X } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
+import BarcodeScanner from '../../../components/shared/BarcodeScanner';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
@@ -178,7 +179,19 @@ export default function ProductCataloguePage() {
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Barcode</label>
-                <input style={inp} placeholder="Scan or type barcode" value={form.barcode||''} onChange={e=>f('barcode',e.target.value)}/>
+                <div style={{display:'flex',gap:6}}>
+                  <input style={{...inp,flex:1}} placeholder="Scan or type barcode" value={form.barcode||''} onChange={e=>f('barcode',e.target.value)}/>
+                  <BarcodeScanner label="" onScan={code=>f('barcode',code)}/>
+                </div>
+              </div>
+              <div style={{gridColumn:'1/-1',display:'flex',alignItems:'flex-start',gap:8,
+                background:'#f8fafc',border:'1px solid #e5e7eb',borderRadius:8,padding:'10px 12px'}}>
+                <input type="checkbox" id="reqbc" checked={!!form.require_barcode}
+                  onChange={e=>f('require_barcode',e.target.checked)} style={{width:16,height:16,marginTop:2,flexShrink:0}}/>
+                <label htmlFor="reqbc" style={{fontSize:12.5,cursor:'pointer',lineHeight:1.5,color:'#334155'}}>
+                  <b>Require barcode</b> — block receiving &amp; selling until a barcode is tied to this product.
+                  Leave off for loose items (oil by weight, cotton waste) sold by name.
+                </label>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>HSN Code</label>
