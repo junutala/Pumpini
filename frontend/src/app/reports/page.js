@@ -108,6 +108,11 @@ export default function ReportsPage() {
 
       {report && (
         <>
+          {report.rows.some(r => r.sales_hidden) && (
+            <div className="alert-banner info" style={{ marginBottom: '1.5rem' }}>
+              🔒 Sales from open shifts are hidden until those shifts close — the totals below exclude them.
+            </div>
+          )}
           {/* Totals */}
           <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
             {[
@@ -182,8 +187,8 @@ export default function ReportsPage() {
                         <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(r.occurred_at).toLocaleString('en-IN')}</td>
                         <td>{r.attendant_name}</td>
                         <td><span className={`fuel-chip fuel-${r.fuel_type}`}>{r.fuel_type}</span></td>
-                        <td className="num">{Number(r.quantity_ltrs).toFixed(2)}</td>
-                        <td className="num">₹{fmt(r.amount)}</td>
+                        <td className="num">{r.sales_hidden ? '—' : Number(r.quantity_ltrs).toFixed(2)}</td>
+                        <td className="num">{r.sales_hidden ? <span style={{color:'var(--text-3)',fontSize:11}}>🔒 Hidden</span> : `₹${fmt(r.amount)}`}</td>
                         <td><span className="badge badge-gray">{r.payment_mode}</span></td>
                         <td style={{ fontSize: 12 }}>{r.vehicle_number || '—'}</td>
                       </tr>

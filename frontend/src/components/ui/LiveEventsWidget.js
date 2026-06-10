@@ -67,12 +67,13 @@ export default function LiveEventsWidget({ stationId, maxRows=8 }) {
                 {ev.attendant_name||'—'} · N{ev.nozzle_number}
               </div>
               <div style={{fontSize:11,color:'var(--text-3)'}}>
-                {fmtL(ev.quantity_ltrs)}L · {ev.payment_mode} · {toIST(ev.occurred_at)}
+                {ev.sales_hidden ? '' : `${fmtL(ev.quantity_ltrs)}L · `}{ev.payment_mode} · {toIST(ev.occurred_at)}
               </div>
             </div>
           </div>
-          <div style={{fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--brand)',flexShrink:0,marginLeft:10}}>
-            ₹{fmt(ev.amount)}
+          <div style={{fontFamily:'var(--font-mono)',fontWeight:700,flexShrink:0,marginLeft:10,
+            color: ev.sales_hidden?'var(--text-3)':'var(--brand)', fontSize: ev.sales_hidden?11:undefined}}>
+            {ev.sales_hidden ? '🔒 Hidden' : `₹${fmt(ev.amount)}`}
           </div>
         </div>
       ))}
