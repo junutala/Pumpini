@@ -297,16 +297,13 @@ export default function LandingPage() {
           overridden by a media query, so two-column sections use these classes. */}
       <style>{`
         .pmp-2col  { grid-template-columns: 1fr 1fr; }
-        .pmp-cmp   { grid-template-columns: 1fr 110px 150px; }
+        .pmp-cmp   { grid-template-columns: 1fr 90px 90px; }
         .pmp-form2 { grid-template-columns: 1fr 1fr; }
-        .pmp-cmp-mobile { display: none; }
         @media (max-width: 860px) {
           .pmp-2col { grid-template-columns: 1fr; gap: 2.25rem !important; }
         }
         @media (max-width: 600px) {
-          .pmp-cmp { grid-template-columns: 1fr 46px 46px; }
-          .pmp-cmp-desktop { display: none; }
-          .pmp-cmp-mobile  { display: inline; }
+          .pmp-cmp { grid-template-columns: 1fr 54px 54px; }
         }
         @media (max-width: 460px) {
           .pmp-form2 { grid-template-columns: 1fr; }
@@ -688,11 +685,8 @@ export default function LandingPage() {
             <div className="pmp-cmp" style={{display:'grid',
               background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700,fontSize:14}}>
               <div>Feature</div>
-              <div style={{textAlign:'center',color:'#FF6B00'}}>Pumpini</div>
-              <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>
-                <span className="pmp-cmp-desktop">Typical pump software</span>
-                <span className="pmp-cmp-mobile">Others</span>
-              </div>
+              <div style={{textAlign:'center',color:'#FF6B00'}}>Us</div>
+              <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>Others</div>
             </div>
             {COMPARE.map(([feat, us, them], i) => (
               <div key={feat} className="pmp-cmp" style={{display:'grid',
