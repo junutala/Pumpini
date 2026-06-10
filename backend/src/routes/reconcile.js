@@ -37,6 +37,8 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
     const { shift_id, attendant_id, cash_actual, remarks } = req.body;
 
     // Compute totals — store but do NOT expose to attendant
+    // Settlement = fuel (dispense_events) + bay lube sales (product_invoices)
+    // for this attendant/shift, bucketed by the same 4 payment modes.
     const { rows: totals } = await pool.query(`
       SELECT
         COALESCE(SUM(amount),0)                                            AS total_sales,
@@ -44,8 +46,13 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
         COALESCE(SUM(CASE WHEN payment_mode='upi'    THEN amount ELSE 0 END),0) AS upi_total,
         COALESCE(SUM(CASE WHEN payment_mode='credit' THEN amount ELSE 0 END),0) AS credit_total,
         COALESCE(SUM(CASE WHEN payment_mode='card'   THEN amount ELSE 0 END),0) AS card_total
-      FROM dispense_events
-      WHERE shift_id=$1 AND attendant_id=$2`,
+      FROM (
+        SELECT amount, payment_mode FROM dispense_events
+          WHERE shift_id=$1 AND attendant_id=$2
+        UNION ALL
+        SELECT grand_total AS amount, payment_mode FROM product_invoices
+          WHERE shift_id=$1 AND attendant_id=$2
+      ) sales`,
       [shift_id, attendant_id]
     );
 

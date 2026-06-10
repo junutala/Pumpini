@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, X, Mic, MicOff, Loader, Lock, LogOut } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
+import LubeSaleModal from '../../components/shared/LubeSaleModal';
 import { getShifts, getNozzles, getCurrentPrices, recordDispense, getReco, submitReco } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -61,6 +62,7 @@ export default function POSPage() {
   // Results
   const [lastTxn,setLastTxn]   = useState(null);
   const [loading,setLoading]   = useState(false);
+  const [lubeOpen,setLubeOpen] = useState(false); // bay lube-sale modal
 
   // Shift End flow
   // posPhase: 'pos' | 'confirm-end' | 'denomination' | 'locked'
@@ -500,14 +502,32 @@ export default function POSPage() {
             : <div style={{fontSize:13,color:'var(--danger)'}}>⚠ {tc('pos_page.no_shift','No open shift — contact manager')}</div>}
         </div>
         {activeShift && (
-          <button
-            className="btn"
-            style={{background:'#dc2626',color:'#fff',border:'none',display:'flex',alignItems:'center',gap:6,fontWeight:700}}
-            onClick={() => setPosPhase('confirm-end')}>
-            <LogOut size={15}/> End Shift
-          </button>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button
+              className="btn"
+              style={{background:'#16a34a',color:'#fff',border:'none',display:'flex',alignItems:'center',gap:6,fontWeight:700}}
+              onClick={() => setLubeOpen(true)}>
+              🛒 {tc('pos_page.lube_sale','Lube Sale')}
+            </button>
+            <button
+              className="btn"
+              style={{background:'#dc2626',color:'#fff',border:'none',display:'flex',alignItems:'center',gap:6,fontWeight:700}}
+              onClick={() => setPosPhase('confirm-end')}>
+              <LogOut size={15}/> End Shift
+            </button>
+          </div>
         )}
       </div>
+
+      {lubeOpen && activeShift && (
+        <LubeSaleModal
+          stationId={stationId}
+          shiftId={activeShift.id}
+          attendantId={user?.id}
+          corps={corps}
+          onClose={() => setLubeOpen(false)}
+        />
+      )}
 
       <div style={{maxWidth:520}}>
 

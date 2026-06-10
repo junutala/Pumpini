@@ -240,7 +240,8 @@ router.get('/invoices/:id', authenticate, requireStationVia('SELECT station_id F
 router.post('/invoices', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, customer_type='cash', customer_id, customer_name,
-            customer_gstn, payment_mode='cash', items, notes } = req.body;
+            customer_gstn, payment_mode='cash', items, notes,
+            shift_id, attendant_id } = req.body;
 
     if (!items || !items.length) return res.status(400).json({ error:'No items provided' });
 
@@ -284,12 +285,13 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
         `INSERT INTO product_invoices
            (station_id, invoice_number, customer_type, customer_id, customer_name,
             customer_gstn, payment_mode, subtotal, total_cgst, total_sgst,
-            grand_total, notes, created_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            grand_total, notes, created_by, shift_id, attendant_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
         [station_id, invoice_number, customer_type, customer_id||null,
          customer_name||'Cash Customer', customer_gstn||null, payment_mode,
          subtotal.toFixed(2), total_cgst.toFixed(2), total_sgst.toFixed(2),
-         grand_total.toFixed(2), notes||null, req.user.id]
+         grand_total.toFixed(2), notes||null, req.user.id,
+         shift_id||null, attendant_id||null]
       );
       const invoice = invRows[0];
 
