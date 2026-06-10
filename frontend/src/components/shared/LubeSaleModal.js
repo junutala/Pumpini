@@ -64,6 +64,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
     try {
       const res = await api.post('/products/invoices', {
         station_id:    stationId,
+        location:      'bay',          // forecourt/bay impulse sale
         shift_id:      shiftId,
         attendant_id:  attendantId,
         customer_type: payMode === 'credit' ? 'credit' : 'cash',

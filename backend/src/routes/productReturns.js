@@ -7,6 +7,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { addEntry } = require('./pettyCash');
 
 async function nextCnNumber(client, stationId) {
   await client.query(
@@ -79,12 +80,14 @@ router.post('/', authenticate, authorize('owner', 'manager'), requireStationAcce
     await client.query('BEGIN');
 
     const { rows: inv } = await client.query(
-      'SELECT id, station_id, customer_type, customer_id FROM product_invoices WHERE id=$1', [invoice_id]
+      'SELECT id, station_id, customer_type, customer_id, location FROM product_invoices WHERE id=$1', [invoice_id]
     );
     if (!inv.length || inv[0].station_id !== station_id) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Invoice not found for this station' });
     }
+    // Returned stock goes back to the SAME location it was sold from.
+    const retLoc = inv[0].location === 'bay' ? 'bay_stock' : 'shop_stock';
 
     let subtotal = 0, total_cgst = 0, total_sgst = 0, grand_total = 0;
     const lines = [];
@@ -142,16 +145,27 @@ router.post('/', authenticate, authorize('owner', 'manager'), requireStationAcce
         [cn.id, l.invoice_item_id, l.product_id, l.product_name, l.hsn_code, l.unit,
          l.quantity, l.unit_price, l.gst_rate, l.taxable_amount, l.cgst_amount, l.sgst_amount, l.total_amount]
       );
-      await client.query(`UPDATE products SET current_stock = current_stock + $1, updated_at=NOW() WHERE id=$2`,
+      await client.query(`UPDATE products SET current_stock = current_stock + $1,
+          ${retLoc} = COALESCE(${retLoc},0) + $1, updated_at=NOW() WHERE id=$2`,
         [l.quantity, l.product_id]);
     }
 
-    // Credit customer → reduce outstanding (may go negative = advance). Cash → petty cash, no balance change.
+    // Credit customer → reduce outstanding (may go negative = advance).
+    // Cash customer → pay out of the manager's petty cash and DEBIT the float
+    // ledger in the same transaction so the cash refund is auditable.
     if (settlement === 'outstanding' && inv[0].customer_id) {
       await client.query(
         `UPDATE corporate_accounts SET current_outstanding = current_outstanding - $1 WHERE id=$2`,
         [grand_total.toFixed(2), inv[0].customer_id]
       );
+    } else if (settlement === 'petty_cash') {
+      await addEntry(client, {
+        station_id, direction: 'out', amount: grand_total,
+        entry_type: 'refund',
+        description: `Cash refund — credit note ${cn_number}`,
+        reference_type: 'product_credit_note', reference_id: cn.id,
+        created_by: req.user.id,
+      });
     }
 
     await client.query('COMMIT');

@@ -149,6 +149,9 @@ router.get('/stock', authenticate, requireStationAccess({ required: true }), asy
 router.post('/stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, product_id, quantity, buying_price, selling_price, notes } = req.body;
+    // Location the stock is received into: 'bay' (forecourt) or 'shop'. Default shop.
+    const location = req.body.location === 'bay' ? 'bay' : 'shop';
+    const locCol   = location === 'bay' ? 'bay_stock' : 'shop_stock';
 
     // Enforce: a require-barcode product must have a barcode tied before receiving
     const { rows: pr } = await pool.query(
@@ -164,15 +167,16 @@ router.post('/stock', authenticate, requireStationAccess({ required: true }), as
       // Insert receipt
       const { rows } = await client.query(
         `INSERT INTO product_stock_receipts
-           (station_id, product_id, quantity, buying_price, selling_price, notes, received_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+           (station_id, product_id, quantity, buying_price, selling_price, notes, received_by, location)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
         [station_id, product_id, quantity, buying_price||null, selling_price||null,
-         notes||null, req.user.id]
+         notes||null, req.user.id, location]
       );
-      // Update stock level
+      // Update total stock + the chosen location bucket (locCol is a controlled enum)
       await client.query(
         `UPDATE products SET
            current_stock = current_stock + $1,
+           ${locCol}     = COALESCE(${locCol},0) + $1,
            buying_price  = COALESCE($2, buying_price),
            selling_price = COALESCE($3, selling_price),
            updated_at    = NOW()
@@ -242,6 +246,9 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
     const { station_id, customer_type='cash', customer_id, customer_name,
             customer_gstn, payment_mode='cash', items, notes,
             shift_id, attendant_id } = req.body;
+    // Which stock bucket this sale draws from: bay sales (forecourt) vs shop POS.
+    const location = req.body.location === 'bay' ? 'bay' : 'shop';
+    const locCol   = location === 'bay' ? 'bay_stock' : 'shop_stock';
 
     if (!items || !items.length) return res.status(400).json({ error:'No items provided' });
 
@@ -285,13 +292,13 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
         `INSERT INTO product_invoices
            (station_id, invoice_number, customer_type, customer_id, customer_name,
             customer_gstn, payment_mode, subtotal, total_cgst, total_sgst,
-            grand_total, notes, created_by, shift_id, attendant_id)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+            grand_total, notes, created_by, shift_id, attendant_id, location)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [station_id, invoice_number, customer_type, customer_id||null,
          customer_name||'Cash Customer', customer_gstn||null, payment_mode,
          subtotal.toFixed(2), total_cgst.toFixed(2), total_sgst.toFixed(2),
          grand_total.toFixed(2), notes||null, req.user.id,
-         shift_id||null, attendant_id||null]
+         shift_id||null, attendant_id||null, location]
       );
       const invoice = invRows[0];
 
@@ -306,9 +313,10 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
            item.unit||'piece', item.quantity, item.unit_price, item.gst_rate||18,
            item.taxable_amount, item.cgst_amount, item.sgst_amount, item.total_amount]
         );
-        // Deduct from stock
+        // Deduct from total + the location bucket this sale draws from
         await client.query(
-          `UPDATE products SET current_stock = current_stock - $1, updated_at=NOW() WHERE id=$2`,
+          `UPDATE products SET current_stock = current_stock - $1,
+             ${locCol} = COALESCE(${locCol},0) - $1, updated_at=NOW() WHERE id=$2`,
           [item.quantity, item.product_id]
         );
       }

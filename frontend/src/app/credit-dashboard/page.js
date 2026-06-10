@@ -65,6 +65,21 @@ export default function CreditDashboardPage() {
 
   useEffect(()=>{ load(); },[effectiveCorpId, stationId, dateFrom, dateTo]);
   useRefreshOnFocus(load);
+
+  // ── Consolidated view: all my bunks, grouped by PAN (customer only) ──
+  const [view, setView]                 = useState('single'); // 'single' | 'consolidated'
+  const [consol, setConsol]             = useState(null);
+  const [consolLoading, setConsolLoading] = useState(false);
+  const isCustomer = !corpId && user?.role === 'corporate';
+
+  useEffect(()=>{
+    if (view !== 'consolidated' || consol) return;
+    setConsolLoading(true);
+    api.get('/dashboard/my-consolidated')
+      .then(setConsol)
+      .catch(()=>setConsol({ error:true }))
+      .finally(()=>setConsolLoading(false));
+  },[view]); // eslint-disable-line
   
   const exportCSV = () => {
     const csv = ['Date,Vehicle,Fuel Type,Qty (L),Rate,Amount'].join(',')+'\n'+
@@ -91,6 +106,84 @@ export default function CreditDashboardPage() {
     </AppShell>
   );
 
+  const toggle = isCustomer ? (
+    <div style={{display:'flex',gap:6,marginBottom:'1rem'}}>
+      {[['single','This Bunk'],['consolidated','🏢 All My Bunks']].map(([id,label])=>(
+        <button key={id} onClick={()=>setView(id)}
+          style={{padding:'7px 14px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13,
+            border:'1.5px solid '+(view===id?'#FF6B00':'var(--border)'),
+            background:view===id?'#fff7ed':'#fff',color:view===id?'#9a3412':'var(--text-2)'}}>{label}</button>
+      ))}
+    </div>
+  ) : null;
+
+  if (view === 'consolidated') {
+    const c = consol || {};
+    const T = c.totals || {};
+    return (
+      <AppShell>
+        {toggle}
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">{c.company_name || corp.company_name}</h1>
+            <div style={{fontSize:13,color:'var(--text-3)'}}>
+              Consolidated across all your bunks{c.pan ? ` · PAN ${c.pan}` : ''}
+            </div>
+          </div>
+        </div>
+
+        {consolLoading && <div className="card" style={{textAlign:'center',padding:'2rem',color:'var(--text-3)'}}>Loading…</div>}
+        {!consolLoading && c.error && <div className="card" style={{padding:'1.5rem',color:'var(--danger)'}}>Could not load the consolidated view.</div>}
+        {!consolLoading && !c.error && (
+          <>
+            <div className="grid-3 stack-mobile" style={{marginBottom:'1.5rem'}}>
+              <div className="stat-card"><div className="stat-label">Total Outstanding</div><div className="stat-value amount">₹{fmt(T.total_outstanding)}</div></div>
+              <div className="stat-card"><div className="stat-label">Total Purchases</div><div className="stat-value">₹{fmt(T.total_purchases)}</div></div>
+              <div className="stat-card"><div className="stat-label">Total Paid</div><div className="stat-value" style={{color:'var(--success)'}}>₹{fmt(T.total_paid)}</div></div>
+            </div>
+
+            <div className="card" style={{marginBottom:'1.5rem'}}>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:'0.75rem'}}>Your Bunks ({(c.profiles||[]).length})</div>
+              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                {(c.profiles||[]).map(p=>(
+                  <div key={p.id} style={{background:'var(--surface-2)',borderRadius:8,padding:'0.75rem 1rem',minWidth:180}}>
+                    <div style={{fontWeight:700,fontSize:13}}>{p.station_name||'—'}</div>
+                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{p.company_name}</div>
+                    <div style={{fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--brand)',marginTop:4}}>
+                      ₹{fmt(p.current_outstanding)} <span style={{fontSize:11,color:'var(--text-3)',fontWeight:400}}>outstanding</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card">
+              <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>All Transactions</div>
+              <div className="table-wrap">
+                <table className="dms-table">
+                  <thead><tr><th>Date</th><th>Bunk</th><th>Type</th><th>Details</th><th>Debit</th><th>Credit</th></tr></thead>
+                  <tbody>
+                    {(c.ledger||[]).length===0 && <tr><td colSpan={6} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>No transactions</td></tr>}
+                    {(c.ledger||[]).map((r,i)=>(
+                      <tr key={i}>
+                        <td style={{fontSize:12}}>{toIST(r.date)}</td>
+                        <td style={{fontSize:12.5}}>{r.station_name||'—'}</td>
+                        <td><span className="badge badge-gray" style={{textTransform:'capitalize'}}>{(r.type||'').replace('_',' ')}</span></td>
+                        <td style={{fontSize:12.5}}>{r.description}</td>
+                        <td className="num" style={{color:'var(--danger)'}}>{r.debit?`₹${fmt(r.debit)}`:'—'}</td>
+                        <td className="num" style={{color:'var(--success)'}}>{r.credit?`₹${fmt(r.credit)}`:'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </AppShell>
+    );
+  }
+
   const totalAmount = txns.reduce((s,t)=>s+parseFloat(t.amount||0),0);
   const totalLitres = txns.reduce((s,t)=>s+parseFloat(t.quantity_ltrs||0),0);
   const vehicles    = [...new Set(txns.map(t=>t.vehicle_number).filter(Boolean))];
@@ -99,6 +192,7 @@ export default function CreditDashboardPage() {
 
   return (
     <AppShell>
+      {toggle}
       {corpId && (
         <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:8,
           padding:'8px 16px',marginBottom:'1rem',fontSize:13,color:'#9a3412',
@@ -127,7 +221,7 @@ export default function CreditDashboardPage() {
       {/* Credit utilisation */}
       <div className="card" style={{marginBottom:'1.5rem'}}>
         <div style={{fontWeight:600,fontSize:14,marginBottom:'1rem'}}>{tc('credit_page.credit_util','Credit Utilisation')}</div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1rem'}}>
+        <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1rem'}}>
           {[
             [tc('credit_page.credit_limit','Credit Limit'),  `₹${fmt(corp.credit_limit)}`,                                      '#1A5F7A'],
             [tc('credit_page.outstanding','Outstanding'),   `₹${fmt(corp.current_outstanding)}`,   pct>80?'var(--danger)':'var(--brand)'],

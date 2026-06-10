@@ -217,7 +217,7 @@ export default function ReceiptsPage() {
 
               {/* Account summary strip */}
               {summary && (
-                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:'1rem',padding:'0.75rem',background:'var(--surface-2)',borderRadius:8,fontSize:12}}>
+                <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:'1rem',padding:'0.75rem',background:'var(--surface-2)',borderRadius:8,fontSize:12}}>
                   {[
                     [tc('rec_page.credit_limit','Credit Limit'), fmt(summary.credit_limit), 'var(--text-1)'],
                     [tc('rec_page.total_sales','Total Sales'),   fmt(summary.total_sales),   'var(--text-1)'],

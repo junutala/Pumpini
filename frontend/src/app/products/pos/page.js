@@ -166,6 +166,7 @@ export default function ProductsPOSPage() {
     try {
       const res = await api.post('/products/invoices', {
         station_id:    stationId,
+        location:      'shop',         // counter / shop POS sale
         customer_type: custType,
         customer_id:   custId||null,
         customer_name: custType==='credit' ? corps.find(c=>c.id===custId)?.company_name : custName,

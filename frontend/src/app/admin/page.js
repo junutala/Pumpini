@@ -283,7 +283,7 @@ export default function AdminPage(){
         {tab==='dashboard'&&(
           <div>
             <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>Platform Dashboard</h1>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'1rem',marginBottom:'2rem'}}>
+            <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'1rem',marginBottom:'2rem'}}>
               {[
                 ['Owner Groups',  stats?.total_groups||0,   '#FF6B00'],
                 ['Owners',        stats?.total_owners||0,   '#9333ea'],

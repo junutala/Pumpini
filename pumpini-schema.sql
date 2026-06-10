@@ -301,3 +301,38 @@ DO $$ BEGIN
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
   END IF;
 END $$;
+-- ═════════════════════════════════════════════
+--  WAVE 2 ADDITIONS (Jun 2026)
+-- ═════════════════════════════════════════════
+
+-- Petty cash / imprest ledger — manager's cash float. Credit-note CASH refunds
+-- auto-debit this; manual top-ups/expenses are entered by owner/manager.
+-- Balance = SUM(in) − SUM(out) per station.
+CREATE TABLE IF NOT EXISTS petty_cash_entries (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id     UUID NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+  direction      VARCHAR(3)  NOT NULL CHECK (direction IN ('in','out')),
+  amount         NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+  entry_type     VARCHAR(20) NOT NULL DEFAULT 'expense', -- topup | expense | refund | adjustment
+  description    TEXT,
+  reference_type VARCHAR(40),   -- e.g. 'product_credit_note'
+  reference_id   UUID,
+  created_by     UUID REFERENCES users(id),
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_petty_cash_station ON petty_cash_entries(station_id, created_at DESC);
+
+-- Bay-vs-shop lube stock split. current_stock stays the authoritative total;
+-- bay_stock + shop_stock track location. Existing stock defaults to 'shop'.
+ALTER TABLE products              ADD COLUMN IF NOT EXISTS bay_stock  NUMERIC(12,3) DEFAULT 0;
+ALTER TABLE products              ADD COLUMN IF NOT EXISTS shop_stock NUMERIC(12,3) DEFAULT 0;
+UPDATE products SET shop_stock = COALESCE(current_stock,0)
+  WHERE COALESCE(bay_stock,0)=0 AND COALESCE(shop_stock,0)=0;
+ALTER TABLE product_stock_receipts ADD COLUMN IF NOT EXISTS location VARCHAR(8) DEFAULT 'shop';
+ALTER TABLE product_invoices       ADD COLUMN IF NOT EXISTS location VARCHAR(8) DEFAULT 'shop';
+
+-- PAN on corporate accounts (used to consolidate a customer's profiles across
+-- owners in the read-only customer portal). Code already writes pan; ensure it
+-- exists and is indexed for the consolidation lookup.
+ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan VARCHAR(10);
+CREATE INDEX IF NOT EXISTS idx_corporate_pan ON corporate_accounts(UPPER(TRIM(pan)));

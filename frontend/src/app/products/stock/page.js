@@ -114,7 +114,7 @@ export default function ProductStockPage() {
           <h1 className="page-title">Stock Management</h1>
           <p className="page-subtitle">Receive and track product inventory</p>
         </div>
-        <button onClick={()=>{ setForm({ station_id:stationId }); resetScan(); setModal(true); }}
+        <button onClick={()=>{ setForm({ station_id:stationId, location:'shop' }); resetScan(); setModal(true); }}
           style={{display:'flex',alignItems:'center',gap:6,padding:'10px 18px',
             background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:14}}>
           <Plus size={16}/> Receive Stock
@@ -137,6 +137,12 @@ export default function ProductStockPage() {
                 {Number(p.current_stock).toFixed(1)}
                 <span style={{fontSize:12,fontWeight:400,color:'#888',marginLeft:4}}>{p.unit}s</span>
               </div>
+              {(p.bay_stock != null || p.shop_stock != null) && (
+                <div style={{fontSize:11,color:'#888',marginTop:3,display:'flex',gap:10}}>
+                  <span>🛢 Bay: <strong style={{color:'#444'}}>{Number(p.bay_stock||0).toFixed(1)}</strong></span>
+                  <span>🏪 Shop: <strong style={{color:'#444'}}>{Number(p.shop_stock||0).toFixed(1)}</strong></span>
+                </div>
+              )}
               {p.current_stock <= p.min_stock_level && (
                 <div style={{fontSize:10,color:'#dc2626',fontWeight:600,marginTop:2}}>⚠ LOW STOCK</div>
               )}
@@ -157,7 +163,7 @@ export default function ProductStockPage() {
         ) : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr style={{background:'#f8f7f5'}}>
-              {['Date','Product','Quantity','Buying Price','Selling Price','Notes'].map(h=>(
+              {['Date','Product','Location','Quantity','Buying Price','Selling Price','Notes'].map(h=>(
                 <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,
                   fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
               ))}
@@ -167,6 +173,7 @@ export default function ProductStockPage() {
                 <tr key={r.id} style={{borderBottom:'1px solid #f0f0f0'}}>
                   <td style={{padding:'11px 14px',fontSize:13}}>{new Date(r.received_at).toLocaleDateString('en-IN')}</td>
                   <td style={{padding:'11px 14px',fontWeight:600}}>{r.product_name}</td>
+                  <td style={{padding:'11px 14px',fontSize:12.5}}>{r.location==='bay'?'🛢 Bay':'🏪 Shop'}</td>
                   <td style={{padding:'11px 14px',fontWeight:600,color:'#16a34a'}}>+{Number(r.quantity).toFixed(1)} {r.unit}s</td>
                   <td style={{padding:'11px 14px',fontSize:13}}>{r.buying_price ? `₹${Number(r.buying_price).toFixed(2)}` : '—'}</td>
                   <td style={{padding:'11px 14px',fontSize:13}}>{r.selling_price ? `₹${Number(r.selling_price).toFixed(2)}` : '—'}</td>
@@ -273,6 +280,20 @@ export default function ProductStockPage() {
                 {' · '}Current selling price: <strong>₹{Number(selectedProduct.selling_price).toFixed(2)}</strong>
               </div>
             )}
+
+            {/* Location: where this stock physically goes */}
+            <div style={{marginBottom:'0.85rem'}}>
+              <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Stock location</label>
+              <div style={{display:'flex',gap:8}}>
+                {[['shop','🏪 Shop'],['bay','🛢 Bay / Forecourt']].map(([id,label])=>(
+                  <button key={id} type="button" onClick={()=>f('location',id)}
+                    style={{flex:1,padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13,
+                      border:'1.5px solid '+((form.location||'shop')===id?'#FF6B00':'#e5e3de'),
+                      background:(form.location||'shop')===id?'#fff7ed':'#fff',
+                      color:(form.location||'shop')===id?'#9a3412':'#444'}}>{label}</button>
+                ))}
+              </div>
+            </div>
 
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
               <div>

@@ -78,7 +78,7 @@ export default function ProductsHistoryPage() {
 
       {/* Summary cards */}
       {invoices.length > 0 && (
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1rem'}}>
+        <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1rem'}}>
           {[
             ['Invoices', invoices.length, '#1A5F7A'],
             ['Subtotal', fmtCur(totals.subtotal), '#16a34a'],

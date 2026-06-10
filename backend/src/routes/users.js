@@ -1,7 +1,7 @@
 const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
 
 router.get('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
@@ -39,6 +39,16 @@ router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res
       p
     );
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// POST /:id/force-logout — revoke ALL of a user's active sessions immediately.
+// Bumps token_version so every issued JWT for that user fails the next request
+// (within the 30s auth cache). Owner/manager only.
+router.post('/:id/force-logout', authenticate, authorize('owner','manager'), async (req, res, next) => {
+  try {
+    await bumpTokenVersion(req.params.id);
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 

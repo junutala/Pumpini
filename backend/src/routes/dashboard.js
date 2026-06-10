@@ -161,6 +161,101 @@ router.get('/corporate/:id', authenticate, requireCorporateAccess(), async (req,
   } catch (err) { next(err); }
 });
 
+// GET /api/dashboard/my-consolidated
+// Read-only consolidated ledger for a credit customer ACROSS every profile that
+// shares their PAN — even when those profiles belong to DIFFERENT owners/bunks.
+// Reachable ONLY by the customer themselves (role=corporate), scoped strictly to
+// the PAN on their own corporate_id. No owner/station/manager login can hit this.
+router.get('/my-consolidated', authenticate, async (req, res, next) => {
+  try {
+    if (req.user.role !== 'corporate' || !req.user.corporate_id) {
+      return res.status(403).json({ error: 'Consolidated view is for credit-customer logins only.' });
+    }
+    // Resolve the caller's PAN from their OWN account only.
+    const { rows: self } = await pool.query(
+      'SELECT id, company_name, pan FROM corporate_accounts WHERE id=$1', [req.user.corporate_id]
+    );
+    if (!self.length) return res.status(404).json({ error: 'Account not found' });
+    const pan = (self[0].pan || '').trim().toUpperCase();
+
+    // Sibling profiles share the same PAN (across owners). No PAN → just self.
+    const { rows: profiles } = pan
+      ? await pool.query(
+          `SELECT ca.id, ca.company_name, ca.created_by_station AS station_id,
+                  s.name AS station_name, ca.credit_limit, ca.current_outstanding
+           FROM corporate_accounts ca
+           LEFT JOIN stations s ON s.id = ca.created_by_station
+           WHERE UPPER(TRIM(ca.pan)) = $1 AND ca.is_active = TRUE
+           ORDER BY ca.company_name`, [pan])
+      : await pool.query(
+          `SELECT ca.id, ca.company_name, ca.created_by_station AS station_id,
+                  s.name AS station_name, ca.credit_limit, ca.current_outstanding
+           FROM corporate_accounts ca
+           LEFT JOIN stations s ON s.id = ca.created_by_station
+           WHERE ca.id = $1`, [req.user.corporate_id]);
+
+    const ids = profiles.map(p => p.id);
+    if (!ids.length) {
+      return res.json({ company_name: self[0].company_name, pan, profiles: [], ledger: [], totals: {} });
+    }
+
+    // Four ledger sources across ALL sibling profiles: fuel credit, lube credit,
+    // payments received, and credit notes. Each tagged with its bunk name.
+    const [fuel, lube, receipts, notes] = await Promise.all([
+      pool.query(`
+        SELECT de.occurred_at AS date, de.amount, de.quantity_ltrs, de.fuel_type,
+               s.name AS station_name
+        FROM dispense_events de
+        LEFT JOIN stations s ON s.id = de.station_id
+        WHERE de.corporate_id = ANY($1) AND de.payment_mode='credit'
+        ORDER BY de.occurred_at DESC LIMIT 500`, [ids]),
+      pool.query(`
+        SELECT pi.created_at AS date, pi.grand_total AS amount, pi.invoice_number,
+               s.name AS station_name
+        FROM product_invoices pi
+        LEFT JOIN stations s ON s.id = pi.station_id
+        WHERE pi.customer_type='credit' AND pi.customer_id = ANY($1)
+        ORDER BY pi.created_at DESC LIMIT 500`, [ids]),
+      pool.query(`
+        SELECT cr.receipt_date AS date, cr.amount, cr.payment_type,
+               s.name AS station_name
+        FROM corporate_receipts cr
+        LEFT JOIN stations s ON s.id = cr.station_id
+        WHERE cr.corporate_id = ANY($1)
+        ORDER BY cr.receipt_date DESC LIMIT 500`, [ids]),
+      pool.query(`
+        SELECT cn.created_at AS date, cn.grand_total AS amount, cn.cn_number,
+               s.name AS station_name
+        FROM product_credit_notes cn
+        LEFT JOIN stations s ON s.id = cn.station_id
+        WHERE cn.customer_type='credit' AND cn.customer_id = ANY($1)
+        ORDER BY cn.created_at DESC LIMIT 500`, [ids]),
+    ]);
+
+    const ledger = [
+      ...fuel.rows.map(r => ({ date: r.date, station_name: r.station_name, type: 'fuel',
+        description: `${r.fuel_type || 'Fuel'}${r.quantity_ltrs ? ` · ${Number(r.quantity_ltrs).toFixed(2)} L` : ''}`,
+        debit: parseFloat(r.amount || 0), credit: 0 })),
+      ...lube.rows.map(r => ({ date: r.date, station_name: r.station_name, type: 'lube',
+        description: `Lube invoice ${r.invoice_number || ''}`.trim(), debit: parseFloat(r.amount || 0), credit: 0 })),
+      ...receipts.rows.map(r => ({ date: r.date, station_name: r.station_name, type: 'payment',
+        description: `Payment received (${r.payment_type || '—'})`, debit: 0, credit: parseFloat(r.amount || 0) })),
+      ...notes.rows.map(r => ({ date: r.date, station_name: r.station_name, type: 'credit_note',
+        description: `Credit note ${r.cn_number || ''}`.trim(), debit: 0, credit: parseFloat(r.amount || 0) })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const totals = {
+      total_outstanding:  profiles.reduce((s, p) => s + parseFloat(p.current_outstanding || 0), 0),
+      total_credit_limit: profiles.reduce((s, p) => s + parseFloat(p.credit_limit || 0), 0),
+      total_purchases:    ledger.reduce((s, r) => s + r.debit, 0),
+      total_paid:         ledger.reduce((s, r) => s + r.credit, 0),
+      profile_count:      profiles.length,
+    };
+
+    res.json({ company_name: self[0].company_name, pan, profiles, ledger, totals });
+  } catch (err) { next(err); }
+});
+
 // GET /api/dashboard/attendant?attendant_id=&shift_id=
 router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {

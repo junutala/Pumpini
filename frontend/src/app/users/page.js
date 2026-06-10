@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, UserCheck, UserX } from 'lucide-react';
+import { Plus, X, UserCheck, UserX, LogOut } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getUsers, updateUser } from '../../lib/api';
 import api from '../../lib/api';
@@ -66,6 +66,14 @@ export default function UsersPage() {
     await updateUser(u.id, { is_active: !u.is_active }); load();
   };
 
+  const forceLogout = async (u) => {
+    if (!confirm(`Force-logout ${u.name}? Their active sessions will end immediately and they'll need to log in again.`)) return;
+    try {
+      await api.post(`/users/${u.id}/force-logout`, {});
+      alert(`${u.name} has been logged out of all sessions.`);
+    } catch (err) { alert(err.error || 'Failed to force-logout'); }
+  };
+
   const filtered = users.filter(u =>
     !filter || u.name.toLowerCase().includes(filter.toLowerCase()) || u.phone.includes(filter)
   );
@@ -122,6 +130,9 @@ export default function UsersPage() {
                       <button className="btn btn-secondary btn-sm" onClick={() => setEditUser({ ...u })}>Edit</button>
                       <button className={`btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-secondary'}`} onClick={() => toggleActive(u)}>
                         {u.is_active ? <UserX size={13} /> : <UserCheck size={13} />}
+                      </button>
+                      <button className="btn btn-secondary btn-sm" title="Force logout (end all sessions)" onClick={() => forceLogout(u)}>
+                        <LogOut size={13} />
                       </button>
                     </div>
                   </td>
