@@ -175,7 +175,7 @@ export default function InvoicesPage() {
 
   const handleWhatsApp = () => {
     const text = encodeURIComponent(
-      `*GST Invoice ${invoiceNum}*\n` +
+      `*Credit Invoice ${invoiceNum}*\n` +
       `From: ${stationSettings?.name || 'Pumpini Station'}\n` +
       `To: ${corp?.company_name}\n` +
       `Period: ${toDateIST(dateFrom)} to ${toDateIST(dateTo)}\n` +
@@ -196,7 +196,7 @@ export default function InvoicesPage() {
     const content = printRef.current.innerHTML;
     const win = window.open('','_blank','width=900,height=700');
     win.document.write(`
-      <html><head><title>GST Invoice ${invoiceNum}</title>
+      <html><head><title>Credit Invoice ${invoiceNum}</title>
       <style>
         body { font-family: Arial, sans-serif; font-size: 13px; color: #000; padding: 20px; }
         table { width: 100%; border-collapse: collapse; margin: 10px 0; }
@@ -251,9 +251,9 @@ export default function InvoicesPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">{tc('inv_page.title','GST Invoice Generator')}</h1>
+          <h1 className="page-title">{tc('inv_page.title','Credit Invoice Generator')}</h1>
           <div style={{fontSize:13,color:'var(--text-3)'}}>
-            {tc('inv_page.subtitle','Select transactions → filter by vehicle → generate GST invoice')}
+            {tc('inv_page.subtitle','Select transactions → filter by vehicle → generate credit invoice')}
           </div>
         </div>
         {selected.size > 0 && (
@@ -458,7 +458,7 @@ export default function InvoicesPage() {
       {!selectedCorp && (
         <div className="card" style={{textAlign:'center',padding:'3rem',color:'var(--text-3)'}}>
           <FileText size={40} style={{margin:'0 auto 1rem',opacity:.3}}/>
-          <div style={{fontWeight:600,marginBottom:6}}>{tc('inv_page.gen_for_credit','Generate GST Invoices for Credit Customers')}</div>
+          <div style={{fontWeight:600,marginBottom:6}}>{tc('inv_page.gen_for_credit','Generate Credit Invoices')}</div>
           <div style={{fontSize:13}}>{tc('inv_page.select_to_start','Select a credit customer above to get started')}</div>
         </div>
       )}

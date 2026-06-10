@@ -39,7 +39,15 @@ const NAV_GROUPS = [
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
-      { key:'products',   href:'/products/catalogue', icon:Package,      perm:'shifts.manage', label:'Products' },
+    ]
+  },
+  {
+    label: 'Lubes',
+    items: [
+      { key:'lube_catalogue', href:'/products/catalogue', icon:Package,      perm:'shifts.manage' },
+      { key:'lube_stock',     href:'/products/stock',     icon:Layers,       perm:'shifts.manage' },
+      { key:'lube_pos',       href:'/products/pos',       icon:ShoppingCart, perm:'shifts.manage' },
+      { key:'lube_invoices',  href:'/products/history',   icon:Receipt,      perm:'shifts.manage' },
     ]
   },
   {
@@ -62,15 +70,16 @@ const NAV_LABELS = {
   shifts:'Shifts',          dispense:'Dispense Log', attendance:'Attendance',
   dipstick:'Dipstick',      deliveries:'Deliveries', corporate:'Credit Customers',
   group:'Group View',       reports:'Reports',       alerts:'Alerts',
-  invoices:'GST Invoices',  receipts:'Credit Receipts', settings:'Settings',
+  invoices:'Credit Invoices',  receipts:'Credit Receipts', settings:'Settings',
   creditdash:'Credit Dashboard',
-  products:'Products (Lubes)',
+  lube_catalogue:'Catalogue', lube_stock:'Stock',
+  lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
 };
 
 const GROUP_KEYS = {
   Dashboard:'grp_dashboard', Transactions:'grp_transactions',
-  Manage:'grp_manage', Masters:'grp_masters', Settings:'grp_settings'
+  Manage:'grp_manage', Lubes:'grp_lubes', Masters:'grp_masters', Settings:'grp_settings'
 };
 
 export default function Sidebar({ open, onClose }) {
