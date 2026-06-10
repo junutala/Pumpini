@@ -353,3 +353,35 @@ ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS resolution_amount NUME
 ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS operator_ack BOOLEAN DEFAULT FALSE;
 ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS test_ltrs NUMERIC(12,3) DEFAULT 0;
 ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS price_per_ltr NUMERIC(10,2) DEFAULT 0;
+
+-- ═════════════════════════════════════════════
+--  WAVE 3 PHASE B — Wet-stock (tank dip) reconciliation
+-- ═════════════════════════════════════════════
+-- Per tank, per shift: book_closing = opening dip + deliveries − sales(L);
+-- variance = actual closing dip − book_closing (neg=loss evap/pilferage, pos=gain).
+CREATE TABLE IF NOT EXISTS tank_reconciliation (
+  id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id       UUID NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+  shift_id         UUID REFERENCES shifts(id) ON DELETE CASCADE,
+  tank_id          UUID NOT NULL REFERENCES tanks(id) ON DELETE CASCADE,
+  opening_ltrs     NUMERIC(12,2) NOT NULL DEFAULT 0,
+  deliveries_ltrs  NUMERIC(12,2) NOT NULL DEFAULT 0,
+  sales_ltrs       NUMERIC(12,2) NOT NULL DEFAULT 0,
+  book_closing     NUMERIC(12,2) NOT NULL DEFAULT 0,
+  actual_closing   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  variance_ltrs    NUMERIC(12,2) NOT NULL DEFAULT 0,   -- actual − book; <0 = loss
+  variance_pct     NUMERIC(8,3)  NOT NULL DEFAULT 0,
+  tolerance_ltrs   NUMERIC(12,2) NOT NULL DEFAULT 0,
+  beyond_tolerance BOOLEAN NOT NULL DEFAULT FALSE,
+  recorded_by      UUID REFERENCES users(id),
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(shift_id, tank_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tank_reco_station ON tank_reconciliation(station_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tank_reco_tank    ON tank_reconciliation(tank_id, created_at DESC);
+
+-- Owner-configurable variance tolerance (petrol evaporates more than diesel) +
+-- an absolute-litre floor so low-throughput shifts don't false-alarm.
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_pct_petrol NUMERIC(5,3) DEFAULT 0.75;
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_pct_diesel NUMERIC(5,3) DEFAULT 0.50;
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS stock_tol_floor_ltrs NUMERIC(8,2) DEFAULT 20;

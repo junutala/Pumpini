@@ -150,13 +150,33 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
               ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
-              COALESCE(ss.manager_blind_drop, FALSE) AS manager_blind_drop
+              COALESCE(ss.manager_blind_drop, FALSE) AS manager_blind_drop,
+              COALESCE(ss.stock_tol_pct_petrol, 0.75) AS stock_tol_pct_petrol,
+              COALESCE(ss.stock_tol_pct_diesel, 0.50) AS stock_tol_pct_diesel,
+              COALESCE(ss.stock_tol_floor_ltrs, 20)   AS stock_tol_floor_ltrs
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
     );
     res.json(rows[0]||{});
   } catch(err) { next(err); }
+});
+
+// PATCH /api/stations/:id/stock-tolerance — owner sets wet-stock variance limits
+router.patch('/:id/stock-tolerance', authenticate, authorize('owner'), requireStationId('id'), async (req, res, next) => {
+  try {
+    const { stock_tol_pct_petrol, stock_tol_pct_diesel, stock_tol_floor_ltrs } = req.body;
+    await pool.query(
+      `INSERT INTO station_settings(station_id, stock_tol_pct_petrol, stock_tol_pct_diesel, stock_tol_floor_ltrs)
+       VALUES($1,$2,$3,$4)
+       ON CONFLICT(station_id) DO UPDATE SET
+         stock_tol_pct_petrol=COALESCE($2,station_settings.stock_tol_pct_petrol),
+         stock_tol_pct_diesel=COALESCE($3,station_settings.stock_tol_pct_diesel),
+         stock_tol_floor_ltrs=COALESCE($4,station_settings.stock_tol_floor_ltrs)`,
+      [req.params.id, stock_tol_pct_petrol ?? null, stock_tol_pct_diesel ?? null, stock_tol_floor_ltrs ?? null]
+    );
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 // PATCH /api/stations/:id/blind-drop-mode — owner toggles manager-driven blind drop.

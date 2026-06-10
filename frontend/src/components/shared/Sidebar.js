@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert
+  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -34,6 +34,7 @@ const NAV_GROUPS = [
       { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
       { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
       { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
+      { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'reconcile.manage' },
       { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'shifts.manage' },
       { key:'invoices',   href:'/invoices',        icon:FileText,       perm:'invoice.generate' },
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
@@ -77,6 +78,7 @@ const NAV_LABELS = {
   creditnotes:'Credit Notes',
   pettycash:'Petty Cash',
   cashintegrity:'Cash Integrity',
+  stockreco:'Stock Reco',
   creditdash:'Credit Dashboard',
   lube_catalogue:'Catalogue', lube_stock:'Stock',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',

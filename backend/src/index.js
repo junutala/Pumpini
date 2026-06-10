@@ -98,6 +98,7 @@ app.use('/api/auth/passkey', require('./routes/passkey'));
 app.use('/api/leads',     require('./routes/leads'));
 app.use('/api/product-credit-notes', require('./routes/productReturns'));
 app.use('/api/petty-cash', require('./routes/pettyCash'));
+app.use('/api/tank-reco', require('./routes/tankReco'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

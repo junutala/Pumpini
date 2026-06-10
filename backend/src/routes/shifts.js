@@ -224,6 +224,10 @@ router.patch('/:id/close', authenticate, authorize('owner','manager'), requireSt
       return res.status(404).json({ error: 'Shift not found or already closed' });
     }
     req.io.to(`station:${rows[0].station_id}`).emit('shift:closed', rows[0]);
+    // Best-effort: run wet-stock (tank dip) reconciliation for tanks that have a
+    // closing dip, and alert the owner on any variance beyond tolerance. Never
+    // blocks the close.
+    try { await require('./tankReco').finalizeShiftReco(req.params.id, req.user.id, req.io); } catch (e) { /* non-blocking */ }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
