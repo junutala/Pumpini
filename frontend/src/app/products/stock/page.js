@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Package, X } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
+import BarcodeScanner from '../../../components/shared/BarcodeScanner';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
@@ -20,7 +21,65 @@ export default function ProductStockPage() {
   const [form,setForm]         = useState({});
   const [saving,setSaving]     = useState(false);
 
+  // Scan-to-receive state
+  const [barcode,setBarcode] = useState('');
+  const [matched,setMatched] = useState(null);  // product matched by barcode
+  const [newCode,setNewCode] = useState(null);  // scanned code with no match
+  const [newMode,setNewMode] = useState(null);  // 'link' | 'create'
+  const [linkId,setLinkId]   = useState('');
+  const [np,setNp]           = useState({});    // mini new-product form
+  const [bcBusy,setBcBusy]   = useState(false);
+
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const resetScan = () => { setBarcode(''); setMatched(null); setNewCode(null); setNewMode(null); setLinkId(''); setNp({}); };
+
+  const handleBarcode = async (code) => {
+    const c = (code||'').trim();
+    if (!c) return;
+    setBarcode(c); setBcBusy(true); setNewCode(null); setMatched(null); setNewMode(null);
+    try {
+      const p = await api.get(`/products/barcode/${encodeURIComponent(c)}`, { params:{ station_id:stationId } });
+      setMatched(p);
+      setForm(prev => ({ ...prev, product_id: p.id }));
+    } catch {
+      setNewCode(c);                                   // no match → offer link / create
+      setForm(prev => ({ ...prev, product_id: '' }));
+    }
+    setBcBusy(false);
+  };
+
+  const linkExisting = async () => {
+    if (!linkId) return alert('Pick a product to link the barcode to');
+    setBcBusy(true);
+    try {
+      await api.patch(`/products/catalogue/${linkId}`, { barcode: newCode });
+      const list = await api.get('/products/catalogue', { params:{ station_id:stationId } });
+      const arr = Array.isArray(list)?list:[]; setProducts(arr);
+      setMatched(arr.find(x=>x.id===linkId) || { id:linkId, name:'(linked)', barcode:newCode });
+      setForm(prev => ({ ...prev, product_id: linkId }));
+      setNewCode(null); setNewMode(null); setLinkId('');
+    } catch(e) { alert(e.response?.data?.error || 'Could not link barcode'); }
+    setBcBusy(false);
+  };
+
+  const createNew = async () => {
+    if (!np.name || !np.selling_price) return alert('Name and selling price are required');
+    setBcBusy(true);
+    try {
+      const res = await api.post('/products/catalogue', {
+        station_id: stationId, name: np.name, selling_price: np.selling_price,
+        gst_rate: np.gst_rate ?? 18, hsn_code: np.hsn_code||null,
+        barcode: newCode, require_barcode: true, unit: 'piece',
+      });
+      const list = await api.get('/products/catalogue', { params:{ station_id:stationId } });
+      setProducts(Array.isArray(list)?list:[]);
+      setMatched(res);
+      setForm(prev => ({ ...prev, product_id: res.id }));
+      setNewCode(null); setNewMode(null); setNp({});
+    } catch(e) { alert(e.response?.data?.error || 'Could not create product'); }
+    setBcBusy(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -41,7 +100,7 @@ export default function ProductStockPage() {
     setSaving(true);
     try {
       await api.post('/products/stock', { ...form, station_id: stationId });
-      setModal(false); setForm({}); load();
+      setModal(false); setForm({}); resetScan(); load();
     } catch(e) { alert(e.response?.data?.error || 'Save failed'); }
     setSaving(false);
   };
@@ -55,7 +114,7 @@ export default function ProductStockPage() {
           <h1 className="page-title">Stock Management</h1>
           <p className="page-subtitle">Receive and track product inventory</p>
         </div>
-        <button onClick={()=>{ setForm({ station_id:stationId }); setModal(true); }}
+        <button onClick={()=>{ setForm({ station_id:stationId }); resetScan(); setModal(true); }}
           style={{display:'flex',alignItems:'center',gap:6,padding:'10px 18px',
             background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,cursor:'pointer',fontWeight:700,fontSize:14}}>
           <Plus size={16}/> Receive Stock
@@ -130,9 +189,79 @@ export default function ProductStockPage() {
               <button onClick={()=>setModal(false)} style={{background:'none',border:'none',cursor:'pointer'}}><X size={18}/></button>
             </div>
 
+            {/* Scan to receive */}
             <div style={{marginBottom:'0.85rem'}}>
-              <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Product *</label>
-              <select style={inp} value={form.product_id||''} onChange={e=>f('product_id',e.target.value)}>
+              <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Scan barcode</label>
+              <div style={{display:'flex',gap:6}}>
+                <input style={{...inp,flex:1}} placeholder="Scan or type barcode"
+                  value={barcode} onChange={e=>setBarcode(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); handleBarcode(barcode); } }}/>
+                <BarcodeScanner label="" onScan={handleBarcode}/>
+              </div>
+              {bcBusy && <div style={{fontSize:12,color:'#888',marginTop:4}}>Looking up…</div>}
+            </div>
+
+            {matched && (
+              <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'0.6rem 0.75rem',
+                marginBottom:'0.85rem',fontSize:13,color:'#15803d'}}>
+                ✓ Matched: <strong>{matched.name}</strong>{matched.brand?` (${matched.brand})`:''}
+              </div>
+            )}
+
+            {newCode && (
+              <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:8,padding:'0.75rem',marginBottom:'0.85rem'}}>
+                <div style={{fontSize:13,color:'#9a3412',marginBottom:8}}>
+                  Barcode <strong>{newCode}</strong> isn’t linked to any product yet.
+                </div>
+                <div style={{display:'flex',gap:8,marginBottom:newMode?10:0}}>
+                  <button type="button" onClick={()=>setNewMode('link')}
+                    style={{flex:1,padding:'8px',borderRadius:7,border:'1px solid #fdba74',cursor:'pointer',
+                      background:newMode==='link'?'#FF6B00':'#fff',color:newMode==='link'?'#fff':'#9a3412',fontWeight:600,fontSize:12.5}}>
+                    Link to existing
+                  </button>
+                  <button type="button" onClick={()=>setNewMode('create')}
+                    style={{flex:1,padding:'8px',borderRadius:7,border:'1px solid #fdba74',cursor:'pointer',
+                      background:newMode==='create'?'#FF6B00':'#fff',color:newMode==='create'?'#fff':'#9a3412',fontWeight:600,fontSize:12.5}}>
+                    Create new
+                  </button>
+                </div>
+
+                {newMode==='link' && (
+                  <div style={{display:'flex',gap:6}}>
+                    <select style={{...inp,flex:1}} value={linkId} onChange={e=>setLinkId(e.target.value)}>
+                      <option value="">Select a product…</option>
+                      {products.filter(p=>!p.barcode).map(p=>(
+                        <option key={p.id} value={p.id}>{p.name}{p.brand?` (${p.brand})`:''}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={linkExisting} disabled={bcBusy}
+                      style={{padding:'0 14px',background:'#FF6B00',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>Link</button>
+                  </div>
+                )}
+
+                {newMode==='create' && (
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                    <input style={{...inp,gridColumn:'1/-1'}} placeholder="Product name *" value={np.name||''} onChange={e=>setNp(s=>({...s,name:e.target.value}))}/>
+                    <input style={inp} type="number" step="0.01" placeholder="Selling price ₹ *" value={np.selling_price||''} onChange={e=>setNp(s=>({...s,selling_price:e.target.value}))}/>
+                    <select style={inp} value={np.gst_rate??18} onChange={e=>setNp(s=>({...s,gst_rate:parseFloat(e.target.value)}))}>
+                      {[0,5,12,18,28].map(r=><option key={r} value={r}>{r}% GST</option>)}
+                    </select>
+                    <button type="button" onClick={createNew} disabled={bcBusy}
+                      style={{gridColumn:'1/-1',padding:'9px',background:'#FF6B00',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
+                      Create &amp; select
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Or pick manually — for loose / non-barcoded items */}
+            <div style={{marginBottom:'0.85rem'}}>
+              <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Product *{' '}
+                <span style={{fontWeight:400,color:'#888'}}>(or pick by name — loose / non-barcoded items)</span>
+              </label>
+              <select style={inp} value={form.product_id||''}
+                onChange={e=>{ f('product_id',e.target.value); setMatched(products.find(p=>p.id===e.target.value)||null); setNewCode(null); }}>
                 <option value="">Select product...</option>
                 {products.map(p=><option key={p.id} value={p.id}>{p.name} {p.brand?`(${p.brand})`:''} — Stock: {Number(p.current_stock).toFixed(1)}</option>)}
               </select>

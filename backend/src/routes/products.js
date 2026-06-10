@@ -149,6 +149,15 @@ router.get('/stock', authenticate, requireStationAccess({ required: true }), asy
 router.post('/stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, product_id, quantity, buying_price, selling_price, notes } = req.body;
+
+    // Enforce: a require-barcode product must have a barcode tied before receiving
+    const { rows: pr } = await pool.query(
+      'SELECT require_barcode, barcode FROM products WHERE id=$1', [product_id]
+    );
+    if (pr.length && pr[0].require_barcode && !pr[0].barcode) {
+      return res.status(400).json({ error: 'Assign a barcode to this product before receiving stock.' });
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -234,6 +243,19 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
             customer_gstn, payment_mode='cash', items, notes } = req.body;
 
     if (!items || !items.length) return res.status(400).json({ error:'No items provided' });
+
+    // Enforce: a require-barcode product must have a barcode tied before selling
+    const pids = items.map(i => i.product_id).filter(Boolean);
+    if (pids.length) {
+      const { rows: bad } = await pool.query(
+        `SELECT name FROM products WHERE id = ANY($1)
+           AND require_barcode = TRUE AND (barcode IS NULL OR barcode = '')`,
+        [pids]
+      );
+      if (bad.length) {
+        return res.status(400).json({ error: `Tie a barcode before selling: ${bad.map(b => b.name).join(', ')}` });
+      }
+    }
 
     const client = await pool.connect();
     try {
