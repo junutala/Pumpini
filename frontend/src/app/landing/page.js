@@ -293,6 +293,26 @@ export default function LandingPage() {
   return (
     <div style={{fontFamily:'DM Sans,system-ui,sans-serif',color:'#1a1a1a',overflowX:'hidden'}}>
 
+      {/* Responsive grid helpers — inline grid-template-columns can't be
+          overridden by a media query, so two-column sections use these classes. */}
+      <style>{`
+        .pmp-2col  { grid-template-columns: 1fr 1fr; }
+        .pmp-cmp   { grid-template-columns: 1fr 110px 150px; }
+        .pmp-form2 { grid-template-columns: 1fr 1fr; }
+        .pmp-cmp-mobile { display: none; }
+        @media (max-width: 860px) {
+          .pmp-2col { grid-template-columns: 1fr; gap: 2.25rem !important; }
+        }
+        @media (max-width: 600px) {
+          .pmp-cmp { grid-template-columns: 1fr 46px 46px; }
+          .pmp-cmp-desktop { display: none; }
+          .pmp-cmp-mobile  { display: inline; }
+        }
+        @media (max-width: 460px) {
+          .pmp-form2 { grid-template-columns: 1fr; }
+        }
+      `}</style>
+
       {/* ── Navbar ── */}
       <nav style={{
         position:'fixed',top:0,left:0,right:0,zIndex:100,
@@ -495,7 +515,7 @@ export default function LandingPage() {
 
       {/* ── Voice POS Highlight ── */}
       <section style={{background:'#fff7ed',padding:'5rem 5%',borderTop:'3px solid #FF6B00'}}>
-        <div style={{maxWidth:1100,margin:'0 auto',display:'grid',gridTemplateColumns:'1fr 1fr',
+        <div className="pmp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',
           gap:'4rem',alignItems:'center'}}>
           <div>
             <div style={{display:'inline-block',background:'#FF6B00',color:'#fff',
@@ -574,7 +594,7 @@ export default function LandingPage() {
 
       {/* ── Geo-fencing Highlight ── */}
       <section style={{padding:'5rem 5%',background:'#0F1923',color:'#fff'}}>
-        <div style={{maxWidth:1100,margin:'0 auto',display:'grid',gridTemplateColumns:'1fr 1fr',
+        <div className="pmp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',
           gap:'4rem',alignItems:'center'}}>
           <div style={{background:'rgba(255,255,255,.05)',borderRadius:20,padding:'2rem',
             border:'1px solid rgba(255,255,255,.1)',textAlign:'center'}}>
@@ -665,14 +685,17 @@ export default function LandingPage() {
             software can&apos;t.
           </p>
           <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e5e3de'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 110px 150px',
+            <div className="pmp-cmp" style={{display:'grid',
               background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700,fontSize:14}}>
               <div>Feature</div>
               <div style={{textAlign:'center',color:'#FF6B00'}}>Pumpini</div>
-              <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>Typical pump software</div>
+              <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>
+                <span className="pmp-cmp-desktop">Typical pump software</span>
+                <span className="pmp-cmp-mobile">Others</span>
+              </div>
             </div>
             {COMPARE.map(([feat, us, them], i) => (
-              <div key={feat} style={{display:'grid',gridTemplateColumns:'1fr 110px 150px',
+              <div key={feat} className="pmp-cmp" style={{display:'grid',
                 padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f8f7f5',
                 borderBottom:'1px solid #f0f0f0',fontSize:14,alignItems:'center'}}>
                 <div style={{fontWeight:500}}>{feat}</div>
@@ -696,7 +719,7 @@ export default function LandingPage() {
             </h2>
             <p style={{fontSize:15,color:'#666'}}>{c.pricing_sub}</p>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',maxWidth:700,margin:'0 auto'}}>
+          <div className="pmp-2col" style={{display:'grid',gap:'1.5rem',maxWidth:700,margin:'0 auto'}}>
             {PLANS.map(plan => (
               <div key={plan.name} style={{background:'#fff',borderRadius:20,padding:'2rem',
                 border: plan.popular ? `2px solid #FF6B00` : '1px solid #e5e3de',
@@ -773,7 +796,7 @@ export default function LandingPage() {
                   aria-hidden="true" onChange={e=>setL('company', e.target.value)}
                   style={{position:'absolute',left:'-9999px',width:1,height:1,opacity:0}}/>
 
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+                <div className="pmp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
                   <input style={leadInp} placeholder="Your name *" value={lead.name}
                     onChange={e=>setL('name', e.target.value)} required/>
                   <input style={leadInp} type="tel" placeholder="Mobile number *" value={lead.phone}
