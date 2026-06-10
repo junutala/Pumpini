@@ -270,30 +270,11 @@ export default function ProductsPOSPage() {
                 </div>
               </div>
 
-              {/* Customer */}
-              <div style={{marginBottom:'0.75rem'}}>
-                <div style={{display:'flex',gap:6,marginBottom:6}}>
-                  {[{id:'cash',l:'Cash'},{id:'credit',l:'Credit'}].map(c=>(
-                    <button key={c.id} onClick={()=>setCustType(c.id)}
-                      style={{flex:1,padding:'6px',background:custType===c.id?'#FF6B00':'#f3f4f6',
-                        color:custType===c.id?'#fff':'#555',border:'none',borderRadius:7,cursor:'pointer',fontWeight:600,fontSize:12}}>
-                      {c.l}
-                    </button>
-                  ))}
-                </div>
-                {custType==='credit' && (
-                  <select style={inp} value={custId} onChange={e=>setCustId(e.target.value)}>
-                    <option value="">Select customer...</option>
-                    {corps.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
-                  </select>
-                )}
-              </div>
-
-              {/* Payment mode */}
+              {/* Payment */}
               <div style={{marginBottom:'0.75rem'}}>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
-                  {PAYMENT_MODES.filter(m=>custType==='credit'?m.id!=='credit':true).map(m=>(
-                    <button key={m.id} onClick={()=>setPayMode(m.id)}
+                  {PAYMENT_MODES.map(m=>(
+                    <button key={m.id} onClick={()=>{ setPayMode(m.id); setCustType(m.id==='credit'?'credit':'cash'); }}
                       style={{padding:'8px',background:payMode===m.id?m.color:'#f3f4f6',
                         color:payMode===m.id?'#fff':'#555',border:'none',borderRadius:8,
                         cursor:'pointer',fontWeight:600,fontSize:12}}>
@@ -301,6 +282,12 @@ export default function ProductsPOSPage() {
                     </button>
                   ))}
                 </div>
+                {payMode==='credit' && (
+                  <select style={{...inp,marginTop:6}} value={custId} onChange={e=>setCustId(e.target.value)}>
+                    <option value="">Select credit customer...</option>
+                    {corps.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
+                  </select>
+                )}
               </div>
 
               <button onClick={checkout} disabled={saving}

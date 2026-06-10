@@ -110,11 +110,19 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addByBarcode(barcode); } }}/>
               <BarcodeScanner label="" onScan={addByBarcode}/>
             </div>
-            <select style={{ ...inp, marginBottom:12 }} value=""
-              onChange={e => { const p = products.find(x => x.id === e.target.value); addProduct(p); }}>
-              <option value="">+ Add product by name…</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.brand ? ` (${p.brand})` : ''} — ₹{Number(p.selling_price).toFixed(2)}</option>)}
-            </select>
+            {/* Tap a product to add (no scan needed) */}
+            {products.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12, maxHeight:170, overflowY:'auto' }}>
+                {products.map(p => (
+                  <button key={p.id} type="button" onClick={() => addProduct(p)}
+                    style={{ padding:'7px 11px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff',
+                      cursor:'pointer', fontSize:12.5, textAlign:'left', lineHeight:1.3 }}>
+                    <span style={{ fontWeight:600 }}>{p.name}</span>
+                    <span style={{ color:'#16a34a', marginLeft:6 }}>₹{Number(p.selling_price).toFixed(2)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* Cart */}
             {cart.length === 0 ? (
