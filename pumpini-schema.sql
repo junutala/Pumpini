@@ -410,3 +410,19 @@ CREATE INDEX IF NOT EXISTS idx_cash_deposits_station ON cash_deposits(station_id
 
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS deposit_alert_days   INT           DEFAULT 2;
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS deposit_alert_amount NUMERIC(12,2) DEFAULT 0;  -- 0 = amount check off
+
+-- ═════════════════════════════════════════════
+--  WAVE 3 PHASE E — Tally Prime XML export
+-- ═════════════════════════════════════════════
+-- Maps each Pumpini financial touchpoint to the owner's Tally ledger NAME (Tally
+-- keys on ledger names, not codes). Per station / per GSTIN (≈ one Tally company
+-- per bunk). Daily vouchers are generated from these mappings.
+CREATE TABLE IF NOT EXISTS tally_ledger_map (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id     UUID NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+  touchpoint_key VARCHAR(40) NOT NULL,
+  ledger_name    VARCHAR(120),
+  updated_at     TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(station_id, touchpoint_key)
+);
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS tally_company_name VARCHAR(150);

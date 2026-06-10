@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote
+  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -44,6 +44,7 @@ const NAV_GROUPS = [
       { key:'cashintegrity', href:'/cash-integrity', icon:ShieldAlert,  perm:null, roles:['owner'] },
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
+      { key:'tally',      href:'/tally',           icon:Calculator,     perm:'invoice.generate' },
     ]
   },
   {
@@ -79,6 +80,7 @@ const NAV_LABELS = {
   creditnotes:'Credit Notes',
   pettycash:'Petty Cash',
   deposits:'Bank Deposits',
+  tally:'Tally Export',
   cashintegrity:'Cash Integrity',
   stockreco:'Stock Reco',
   creditdash:'Credit Dashboard',
