@@ -33,6 +33,25 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
   } catch (err) { next(err); }
 });
 
+// GET /api/shifts/active?station_id= — the open shift the LOGGED-IN user is
+// assigned to (via shift_attendants). The POS uses this instead of "the first
+// open shift", so when more than one shift is open at once the operator's
+// reconciliation attaches to the correct shift. Returns null if not assigned to
+// any open shift (e.g. an owner who hasn't taken a nozzle).
+// NOTE: must be declared before '/:id' so it isn't captured as an id.
+router.get('/active', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(`
+      SELECT s.* FROM shifts s
+      JOIN shift_attendants sa ON sa.shift_id = s.id
+      WHERE s.station_id = $1 AND s.status = 'open' AND sa.attendant_id = $2
+      ORDER BY s.start_time DESC LIMIT 1`,
+      [station_id, req.user.id]);
+    res.json(rows[0] || null);
+  } catch (err) { next(err); }
+});
+
 // GET /api/shifts/:id
 router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {

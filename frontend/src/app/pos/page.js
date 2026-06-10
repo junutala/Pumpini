@@ -80,19 +80,17 @@ export default function POSPage() {
     if (!stationId) return;
     const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
     Promise.all([
-      getShifts({ station_id:stationId, date:today }),
+      api.get('/shifts/active', { params:{ station_id:stationId } }).catch(()=>null),
       getNozzles(stationId),
       getCurrentPrices(stationId),
       api.get('/corporate', {params:{station_id:stationId}}),
-    ]).then(([s, n, p, c]) => {
-      setShifts(s);
+    ]).then(([mine, n, p, c]) => {
       setNozzles(n);
       const last = localStorage.getItem('lastNozzle_' + stationId);
       if (last && n.find(nz => nz.id === last)) setNozzleRaw(last);
       setPrices(p);
       setCorps(Array.isArray(c) ? c : []);
-      const open = s.find(x => x.status === 'open');
-      setActiveShift(open || null);
+      setActiveShift(mine || null);   // the shift THIS operator is assigned to
       setShiftLoaded(true);
     }).catch(err => { console.error('POS load error:', err); setShiftLoaded(true); });
   }, [stationId]);
@@ -502,10 +500,8 @@ export default function POSPage() {
           <button className="btn btn-primary" onClick={() => {
             setShiftLoaded(false);
             if (!stationId) return;
-            const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
-            getShifts({ station_id:stationId, date:today }).then(s => {
-              const open = s.find(x => x.status === 'open');
-              setActiveShift(open || null);
+            api.get('/shifts/active', { params:{ station_id:stationId } }).then(mine => {
+              setActiveShift(mine || null);
               setShiftLoaded(true);
             }).catch(() => setShiftLoaded(true));
           }}>
