@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Scan, Plus, Minus, Trash2, Printer, X, Camera, CameraOff } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
+import BarcodeScanner from '../../../components/shared/BarcodeScanner';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
@@ -196,19 +197,8 @@ export default function ProductsPOSPage() {
                 value={barcodeInput}
                 onChange={e=>setBarcodeInput(e.target.value)}
                 onKeyDown={e=>{ if(e.key==='Enter' && barcodeInput.trim()) addByBarcode(barcodeInput.trim()); }}/>
-              <button onClick={scanning ? stopScanning : startScanning}
-                style={{padding:'9px 14px',background:scanning?'#dc2626':'#1A5F7A',color:'#fff',border:'none',
-                  borderRadius:8,cursor:'pointer',display:'flex',alignItems:'center',gap:6,fontWeight:600,fontSize:13}}>
-                {scanning ? <><CameraOff size={15}/>Stop</> : <><Camera size={15}/>Camera</>}
-              </button>
+              <BarcodeScanner onScan={addByBarcode} label="Camera"/>
             </div>
-            {scanning && (
-              <div style={{marginTop:'0.75rem',borderRadius:8,overflow:'hidden',background:'#000',position:'relative'}}>
-                <video ref={videoRef} autoPlay playsInline muted style={{width:'100%',maxHeight:220,objectFit:'cover'}}/>
-                <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
-                  border:'2px solid #FF6B00',width:200,height:80,borderRadius:4,pointerEvents:'none'}}/>
-              </div>
-            )}
           </div>
 
           {/* Product grid */}

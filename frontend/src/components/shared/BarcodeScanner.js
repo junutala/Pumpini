@@ -22,35 +22,54 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
     setScanning(false);
   };
 
+  const reason = (e) => {
+    if (typeof window !== 'undefined' && !window.isSecureContext) return 'Camera needs a secure (https) connection.';
+    switch (e && e.name) {
+      case 'NotAllowedError':
+      case 'SecurityError':        return 'Camera permission is blocked. Tap the lock/ⓘ icon by the address bar → Site settings → allow Camera, then try again.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':  return 'No camera found on this device — type the barcode instead.';
+      case 'NotReadableError':
+      case 'TrackStartError':       return 'The camera is busy (in use by another app). Close it and try again.';
+      default:                      return `Couldn’t start the camera (${e?.name || 'error'}) — type the barcode instead.`;
+    }
+  };
+
+  const begin = (stream) => {
+    streamRef.current = stream;
+    setScanning(true);
+    setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
+    const detector = new window.BarcodeDetector({ formats: FORMATS });
+    const tick = async () => {
+      if (!streamRef.current || !videoRef.current) return;
+      try {
+        const codes = await detector.detect(videoRef.current);
+        if (codes.length && codes[0].rawValue) { const code = codes[0].rawValue; stop(); onScan(code); return; }
+      } catch { /* frame not ready */ }
+      if (streamRef.current) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
   const start = async () => {
     setErr('');
     if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
       setErr('Camera scanning isn’t supported on this browser — type the barcode instead.');
       return;
     }
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setErr('Camera needs a secure (https) connection.');
+      return;
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      streamRef.current = stream;
-      setScanning(true);
-      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
-
-      const detector = new window.BarcodeDetector({ formats: FORMATS });
-      const tick = async () => {
-        if (!streamRef.current || !videoRef.current) return;
-        try {
-          const codes = await detector.detect(videoRef.current);
-          if (codes.length && codes[0].rawValue) {
-            const code = codes[0].rawValue;
-            stop();
-            onScan(code);
-            return;
-          }
-        } catch { /* frame not ready */ }
-        if (streamRef.current) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    } catch {
-      setErr('Camera access denied or unavailable — type the barcode instead.');
+      begin(await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }));
+    } catch (e) {
+      // Laptops without a rear camera reject facingMode:environment → retry with any camera
+      if (e && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
+        try { begin(await navigator.mediaDevices.getUserMedia({ video: true })); return; }
+        catch (e2) { setErr(reason(e2)); stop(); return; }
+      }
+      setErr(reason(e));
       stop();
     }
   };
