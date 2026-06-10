@@ -56,6 +56,10 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
   const checkout = async () => {
     if (!cart.length) return;
     if (payMode === 'credit' && !custId) { setErr('Select a credit customer'); return; }
+    // ₹50,000 cash-invoice cap: a "Cash Customer" (non-credit) lube invoice over
+    // ₹50k needs an identifiable buyer (credit customer + receipt) or a split.
+    if (payMode !== 'credit' && grand > 50000 &&
+        !window.confirm(`⚠️ This cash invoice is ₹${grand.toLocaleString('en-IN', { minimumFractionDigits:2 })}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to a credit customer with a receipt — or split the invoice.\n\nProceed as a cash sale anyway?`)) return;
     setSaving(true); setErr('');
     try {
       const res = await api.post('/products/invoices', {

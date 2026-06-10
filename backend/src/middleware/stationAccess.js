@@ -138,6 +138,8 @@ function requireCorporateAccess(paramName = 'id') {
     try {
       const corporateId = req.params[paramName];
       if (!corporateId) return next();
+      // The credit customer themselves (role=corporate) can see their own account
+      if (req.user.corporate_id && req.user.corporate_id === corporateId) return next();
       return (await canAccessCorporate(req.user.id, corporateId))
         ? next()
         : res.status(403).json({ error: 'You do not have access to this corporate account.' });

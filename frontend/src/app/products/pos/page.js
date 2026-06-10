@@ -160,6 +160,8 @@ export default function ProductsPOSPage() {
   const checkout = async () => {
     if (cart.length===0) return alert('Cart is empty');
     if (custType==='credit' && !custId) return alert('Please select a credit customer');
+    if (custType!=='credit' && totals.grand > 50000 &&
+        !confirm(`⚠️ This cash invoice is ${fmtCur(totals.grand)}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to an identifiable (credit) customer and apply a receipt — or split the invoice.\n\nProceed as a cash sale anyway?`)) return;
     setSaving(true);
     try {
       const res = await api.post('/products/invoices', {
