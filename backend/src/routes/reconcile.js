@@ -13,6 +13,12 @@ router.post('/denomination', authenticate, requireStationVia('SELECT station_id 
       note_500=0,note_200=0,note_100=0,note_50=0,
       note_20=0,note_10=0,note_5=0,note_2=0,note_1=0
     } = req.body;
+    // Maker-checker: the cash count is the attendant's OWN declaration. Only he
+    // may enter it — no superior can make or alter it on his behalf. (Manager-
+    // driven mode is the separate, deliberate path: /reconcile/manager.)
+    if (!attendant_id || req.user.id !== attendant_id) {
+      return res.status(403).json({ error: 'Only the attendant can enter their own cash count. A manager verifies it on handover — they cannot record it for the attendant.' });
+    }
     const { rows } = await pool.query(
       `INSERT INTO cash_denominations(
          shift_id,attendant_id,
@@ -35,6 +41,11 @@ router.post('/denomination', authenticate, requireStationVia('SELECT station_id 
 router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const { shift_id, attendant_id, cash_actual, remarks } = req.body;
+    // Maker-checker: only the attendant himself submits his blind drop. A senior
+    // may verify on handover (PATCH /:id/confirm) but cannot be the maker.
+    if (!attendant_id || req.user.id !== attendant_id) {
+      return res.status(403).json({ error: 'Only the attendant can submit their own cash. A manager verifies it on handover — they cannot submit it for the attendant.' });
+    }
 
     // Compute totals — store but do NOT expose to attendant
     // Settlement = fuel (dispense_events) + bay lube sales (product_invoices)
