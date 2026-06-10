@@ -336,3 +336,20 @@ ALTER TABLE product_invoices       ADD COLUMN IF NOT EXISTS location VARCHAR(8) 
 -- exists and is indexed for the consolidation lookup.
 ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan VARCHAR(10);
 CREATE INDEX IF NOT EXISTS idx_corporate_pan ON corporate_accounts(UPPER(TRIM(pan)));
+
+-- ═════════════════════════════════════════════
+--  WAVE 3 PHASE A — Manager-driven blind drop
+-- ═════════════════════════════════════════════
+-- Per-station switch. OFF = existing POS blind drop. ON = operator does nothing
+-- in-system; manager derives sales from the meter delta at shift close.
+ALTER TABLE station_settings     ADD COLUMN IF NOT EXISTS manager_blind_drop BOOLEAN DEFAULT FALSE;
+ALTER TABLE shift_attendants     ADD COLUMN IF NOT EXISTS closing_reading NUMERIC(12,3);
+-- Aggregate sales synthesized at close are tagged source='manager' so they can be
+-- recomputed idempotently and told apart from real per-txn POS events.
+ALTER TABLE dispense_events      ADD COLUMN IF NOT EXISTS source VARCHAR(12) DEFAULT 'pos';
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS mode VARCHAR(10) DEFAULT 'pos';   -- 'pos' | 'manager'
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS resolution VARCHAR(20);            -- recovered | salary_deduction | overage_income
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS resolution_amount NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS operator_ack BOOLEAN DEFAULT FALSE;
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS test_ltrs NUMERIC(12,3) DEFAULT 0;
+ALTER TABLE shift_reconciliation ADD COLUMN IF NOT EXISTS price_per_ltr NUMERIC(10,2) DEFAULT 0;

@@ -149,12 +149,31 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
   try {
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
-              ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled
+              ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
+              COALESCE(ss.manager_blind_drop, FALSE) AS manager_blind_drop
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
     );
     res.json(rows[0]||{});
+  } catch(err) { next(err); }
+});
+
+// PATCH /api/stations/:id/blind-drop-mode — owner toggles manager-driven blind drop.
+// The reconciliation model can't change mid-shift, so reject if any shift is open.
+router.patch('/:id/blind-drop-mode', authenticate, authorize('owner'), requireStationId('id'), async (req, res, next) => {
+  try {
+    const enabled = req.body.manager_blind_drop === true || req.body.manager_blind_drop === 'true';
+    const { rows: open } = await pool.query(
+      `SELECT 1 FROM shifts WHERE station_id=$1 AND status='open' LIMIT 1`, [req.params.id]
+    );
+    if (open.length) return res.status(409).json({ error: 'Close all open shifts before changing the blind-drop mode.' });
+    await pool.query(
+      `INSERT INTO station_settings(station_id, manager_blind_drop) VALUES($1,$2)
+       ON CONFLICT(station_id) DO UPDATE SET manager_blind_drop=$2`,
+      [req.params.id, enabled]
+    );
+    res.json({ ok: true, manager_blind_drop: enabled });
   } catch(err) { next(err); }
 });
 
