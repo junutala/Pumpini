@@ -63,6 +63,8 @@ export default function LiveEventsPage() {
     });
   },[on]);
 
+  const salesMasked = events.some(e => e.sales_hidden);
+
   return (
     <AppShell>
       <div className="page-header">
@@ -86,13 +88,21 @@ export default function LiveEventsPage() {
       <div className="grid-3" style={{marginBottom:'1.5rem'}}>
         <div className="stat-card" style={{borderLeft:'3px solid var(--brand)'}}>
           <div className="stat-label">{tc('live_page.todays_revenue',"Today's Revenue")}</div>
-          <div className="stat-value amount">{fmt(stats.total)}</div>
-          <div className="stat-sub">{tc('live_page.updates_live','updates live')}</div>
+          {salesMasked ? (
+            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>🔒 {tc('live_page.hidden_open','Hidden during open shift')}</div>
+          ) : (<>
+            <div className="stat-value amount">{fmt(stats.total)}</div>
+            <div className="stat-sub">{tc('live_page.updates_live','updates live')}</div>
+          </>)}
         </div>
         <div className="stat-card" style={{borderLeft:'3px solid #3b82f6'}}>
           <div className="stat-label">{tc('live_page.litres_dispensed','Litres Dispensed')}</div>
-          <div className="stat-value" style={{color:'#3b82f6'}}>{fmtL(stats.litres)} L</div>
-          <div className="stat-sub">{tc('live_page.updates_live','updates live')}</div>
+          {salesMasked ? (
+            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>🔒 {tc('live_page.hidden_open','Hidden during open shift')}</div>
+          ) : (<>
+            <div className="stat-value" style={{color:'#3b82f6'}}>{fmtL(stats.litres)} L</div>
+            <div className="stat-sub">{tc('live_page.updates_live','updates live')}</div>
+          </>)}
         </div>
         <div className="stat-card" style={{borderLeft:'3px solid #16a34a'}}>
           <div className="stat-label">{tc('live_page.transactions','Transactions')}</div>
@@ -153,8 +163,12 @@ export default function LiveEventsPage() {
                         {ev.fuel_type}
                       </span>
                     </td>
-                    <td className="num">{fmtL(ev.quantity_ltrs)}</td>
-                    <td className="num" style={{fontWeight:600,color:'var(--brand)'}}>₹{fmt(ev.amount)}</td>
+                    <td className="num">{ev.sales_hidden ? '—' : fmtL(ev.quantity_ltrs)}</td>
+                    <td className="num" style={{fontWeight:600,color:'var(--brand)'}}>
+                      {ev.sales_hidden
+                        ? <span style={{color:'var(--text-3)',fontWeight:500,fontSize:11}}>🔒 Hidden</span>
+                        : `₹${fmt(ev.amount)}`}
+                    </td>
                     <td>
                       <span style={{
                         display:'inline-block',padding:'2px 8px',borderRadius:4,fontSize:12,fontWeight:600,

@@ -177,7 +177,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     const { rows } = await pool.query(q, p);
     // Blind drop: non-owners don't see sale amounts for OPEN shifts
     const out = rows.map(r => (!isOwner && r.shift_status === 'open')
-      ? { ...r, amount: null, sales_hidden: true } : r);
+      ? { ...r, amount: null, quantity_ltrs: null, sales_hidden: true } : r);
     res.json(out);
   } catch (err) { next(err); }
 });

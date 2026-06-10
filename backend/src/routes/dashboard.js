@@ -109,7 +109,7 @@ router.get('/manager', authenticate, requireStationAccess({ required: true }), a
 
     res.json({
       live_events: hideSales
-        ? liveEvents.rows.map(r => ({ ...r, amount: null, sales_hidden: true }))
+        ? liveEvents.rows.map(r => ({ ...r, amount: null, quantity_ltrs: null, sales_hidden: true }))
         : liveEvents.rows,
       attendant_summary: hideSales
         ? attendantSummary.rows.map(r => ({ ...r, sales: null, litres: null, sales_hidden: true }))
@@ -178,7 +178,7 @@ router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM
 
     if (hideSales) {
       return res.json({
-        events: rows.map(r => ({ ...r, amount: null })),
+        events: rows.map(r => ({ ...r, amount: null, quantity_ltrs: null })),
         summary: null,
         sales_hidden: true,
       });

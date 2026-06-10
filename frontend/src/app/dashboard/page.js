@@ -80,6 +80,7 @@ export default function DashboardPage() {
   const totalSales   = sales.reduce((s,r) => s + parseFloat(r.total_amount||0), 0);
   const totalLtrs    = sales.reduce((s,r) => s + parseFloat(r.total_ltrs||0), 0);
   const totalTxns    = sales.reduce((s,r) => s + parseInt(r.txn_count||0), 0);
+  const salesMasked  = !!data?.sales_masked; // blind drop: open shift, non-owner
   const unreadAlerts = (data?.alerts || []).filter(a => !a.acknowledged_at);
 
   // Payment pie
@@ -124,13 +125,25 @@ export default function DashboardPage() {
       <div className="grid-4" style={{marginBottom:'1.5rem'}}>
         <div className="stat-card">
           <div className="stat-label">{tc('dash_page.todays_sales',"Today's Sales")}</div>
-          <div className="stat-value amount">{fmt(totalSales)}</div>
-          <div className="stat-sub">{totalTxns} {tc('dash_page.transactions','transactions')}</div>
+          {salesMasked ? (
+            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>
+              🔒 {tc('dash_page.hidden_open','Hidden during open shift')}
+            </div>
+          ) : (<>
+            <div className="stat-value amount">{fmt(totalSales)}</div>
+            <div className="stat-sub">{totalTxns} {tc('dash_page.transactions','transactions')}</div>
+          </>)}
         </div>
         <div className="stat-card">
           <div className="stat-label">{tc('dash_page.total_litres','Total Litres')}</div>
-          <div className="stat-value" style={{color:'var(--petrol)'}}>{fmtL(totalLtrs)} L</div>
-          <div className="stat-sub">{fuelData.length} {tc('dash_page.fuel_types','fuel types')}</div>
+          {salesMasked ? (
+            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>
+              🔒 {tc('dash_page.hidden_open','Hidden during open shift')}
+            </div>
+          ) : (<>
+            <div className="stat-value" style={{color:'var(--petrol)'}}>{fmtL(totalLtrs)} L</div>
+            <div className="stat-sub">{fuelData.length} {tc('dash_page.fuel_types','fuel types')}</div>
+          </>)}
         </div>
         <div className="stat-card">
           <div className="stat-label">{tc('dash_page.open_shifts','Open Shifts')}</div>
@@ -149,12 +162,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
+      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
         <div className="card">
           <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>
             {tc('dash_page.sales_by_fuel','Sales by Fuel Type (incl. Lubes)')}
           </div>
-          {fuelData.length > 0 ? (
+          {salesMasked ? (
+            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40,fontSize:13,fontWeight:600}}>🔒 {tc('dash_page.hidden_open','Hidden during open shift')}</div>
+          ) : fuelData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={fuelData} margin={{top:0,right:0,left:-20,bottom:0}}>
                 <XAxis dataKey="name" tick={{fontSize:11}}/>
@@ -172,7 +187,9 @@ export default function DashboardPage() {
 
         <div className="card">
           <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>{tc('dash_page.by_payment','By Payment Mode')}</div>
-          {paymentData.length > 0 ? (
+          {salesMasked ? (
+            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40,fontSize:13,fontWeight:600}}>🔒 {tc('dash_page.hidden_open','Hidden during open shift')}</div>
+          ) : paymentData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <PieChart>
                 <Pie data={paymentData} dataKey="value" nameKey="name"
