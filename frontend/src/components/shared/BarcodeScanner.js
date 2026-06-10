@@ -3,7 +3,7 @@
 // camera overlay and calls onScan(code) on the first detected barcode.
 // Uses the native BarcodeDetector API (Android Chrome). Falls back to a clear
 // message where unsupported (e.g. iOS Safari) so the user types the code.
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Camera, CameraOff } from 'lucide-react';
 
 const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'];
@@ -11,8 +11,11 @@ const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr
 export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
   const videoRef  = useRef(null);
   const streamRef = useRef(null);
+  const onScanRef = useRef(onScan);
   const [scanning, setScanning] = useState(false);
   const [err, setErr] = useState('');
+
+  useEffect(() => { onScanRef.current = onScan; });
 
   const stop = () => {
     if (streamRef.current) {
@@ -35,22 +38,6 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
     }
   };
 
-  const begin = (stream) => {
-    streamRef.current = stream;
-    setScanning(true);
-    setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 0);
-    const detector = new window.BarcodeDetector({ formats: FORMATS });
-    const tick = async () => {
-      if (!streamRef.current || !videoRef.current) return;
-      try {
-        const codes = await detector.detect(videoRef.current);
-        if (codes.length && codes[0].rawValue) { const code = codes[0].rawValue; stop(); onScan(code); return; }
-      } catch { /* frame not ready */ }
-      if (streamRef.current) requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  };
-
   const start = async () => {
     setErr('');
     if (typeof window === 'undefined' || !('BarcodeDetector' in window)) {
@@ -62,17 +49,45 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
       return;
     }
     try {
-      begin(await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }));
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      setScanning(true);  // the effect below attaches the stream + starts detection
     } catch (e) {
-      // Laptops without a rear camera reject facingMode:environment → retry with any camera
       if (e && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
-        try { begin(await navigator.mediaDevices.getUserMedia({ video: true })); return; }
-        catch (e2) { setErr(reason(e2)); stop(); return; }
+        try { streamRef.current = await navigator.mediaDevices.getUserMedia({ video: true }); setScanning(true); return; }
+        catch (e2) { setErr(reason(e2)); }
+        return;
       }
       setErr(reason(e));
-      stop();
     }
   };
+
+  // Attach the stream to the <video> (now mounted) and run detection.
+  useEffect(() => {
+    if (!scanning || !streamRef.current || !videoRef.current) return;
+    const video = videoRef.current;
+    video.srcObject = streamRef.current;
+    const detector = new window.BarcodeDetector({ formats: FORMATS });
+    let raf, cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        if (video.readyState >= 2) {            // HAVE_CURRENT_DATA — frames available
+          const codes = await detector.detect(video);
+          if (codes.length && codes[0].rawValue) {
+            const code = codes[0].rawValue;
+            cancelled = true;
+            stop();
+            onScanRef.current && onScanRef.current(code);
+            return;
+          }
+        }
+      } catch { /* frame not ready */ }
+      raf = requestAnimationFrame(tick);
+    };
+    video.play?.().catch(() => {});
+    raf = requestAnimationFrame(tick);
+    return () => { cancelled = true; if (raf) cancelAnimationFrame(raf); };
+  }, [scanning]);
 
   return (
     <>
@@ -89,7 +104,7 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.88)', zIndex: 2000,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ position: 'relative', width: '100%', maxWidth: 480, borderRadius: 12, overflow: 'hidden', background: '#000' }}>
-            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: '62vh', objectFit: 'cover' }}/>
+            <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', maxHeight: '62vh', objectFit: 'cover', display: 'block' }}/>
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
               border: '3px solid #FF6B00', width: '72%', height: 96, borderRadius: 6, pointerEvents: 'none' }}/>
           </div>
