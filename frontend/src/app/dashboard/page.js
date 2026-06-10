@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [prices,    setPrices]    = useState([]);
   const [corps,     setCorps]     = useState([]);
   const [cashInt,   setCashInt]   = useState([]);
+  const [tankLive,  setTankLive]  = useState([]);
   const [loading,   setLoading]   = useState(true);
 
   const { on } = useSocket(stationId, null);
@@ -44,7 +45,7 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     if (!stationId) return;
     try {
-      const [d, bs, p, c, ci] = await Promise.all([
+      const [d, bs, p, c, ci, tl] = await Promise.all([
         getOwnerDashboard(stationId, today),
         api.get(`/deliveries/book-stock/${stationId}`).catch(() => []),
         getCurrentPrices(stationId),
@@ -52,12 +53,14 @@ export default function DashboardPage() {
         user?.role==='owner'
           ? api.get('/dashboard/cash-integrity', {params:{station_id:stationId, days:90}}).catch(()=>[])
           : Promise.resolve([]),
+        api.get('/tank-reco/live', {params:{station_id:stationId}}).catch(()=>[]),
       ]);
       setData(d);
       setBookStock(Array.isArray(bs) ? bs : []);
       setPrices(Array.isArray(p) ? p : []);
       setCorps(Array.isArray(c) ? c : []);
       setCashInt(Array.isArray(ci) ? ci : []);
+      setTankLive(Array.isArray(tl) ? tl : []);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
   }, [stationId, today, user?.role]);
@@ -207,6 +210,42 @@ export default function DashboardPage() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Live Tank Status — real-time wet-stock variance vs book between dips */}
+      {tankLive.length>0 && (
+        <div className="card" style={{marginBottom:'1.5rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
+            <div style={{fontWeight:700,fontSize:14}}>💧 Live Tank Status
+              <span style={{fontSize:11,fontWeight:400,color:'var(--text-3)',marginLeft:6}}>· variance since last dip · 🟢 within limit / 🔴 over</span>
+            </div>
+            <a href="/stock-reco" style={{fontSize:12,color:'var(--brand)',textDecoration:'none',fontWeight:600}}>Reconcile →</a>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:10}} className="stack-mobile">
+            {tankLive.map(tk=>{
+              const mins = tk.last_reading_at ? Math.round((Date.now()-new Date(tk.last_reading_at).getTime())/60000) : null;
+              const stale = mins!=null && mins > 720; // >12h old
+              const ago = mins==null ? 'no reading' : mins<60 ? `${mins} min ago` : mins<1440 ? `${Math.round(mins/60)} h ago` : `${Math.round(mins/1440)} d ago`;
+              const dot = tk.status==='loss'||tk.status==='gain' ? '#dc2626' : tk.status==='ok' ? '#16a34a' : '#94a3b8';
+              return (
+                <div key={tk.tank_id} style={{border:'1px solid var(--border)',borderLeft:`4px solid ${dot}`,borderRadius:10,padding:'0.7rem 0.85rem'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+                    <div style={{fontWeight:700,fontSize:13}}>T{tk.tank_number} <span style={{fontWeight:400,color:'var(--text-3)',fontSize:11}}>{tk.fuel_type}</span></div>
+                    <div style={{fontSize:11,color:stale?'#dc2626':'var(--text-3)'}}>{stale?'⚠ ':''}{ago}</div>
+                  </div>
+                  <div style={{fontSize:18,fontWeight:800,margin:'2px 0'}}>
+                    {tk.current_vol!=null?Number(tk.current_vol).toLocaleString('en-IN',{maximumFractionDigits:0}):'—'}<span style={{fontSize:11,fontWeight:400,color:'var(--text-3)'}}> L{tk.fill_pct!=null?` · ${tk.fill_pct}%`:''}</span>
+                  </div>
+                  <div style={{fontSize:12.5,fontWeight:600,color:dot}}>
+                    {tk.variance_ltrs==null
+                      ? (tk.status==='baseline'?'Baseline set':'No data')
+                      : `${tk.status==='loss'?'🔴 Loss':tk.status==='gain'?'🔴 Gain':'🟢 OK'} ${tk.variance_ltrs>0?'+':''}${Number(tk.variance_ltrs).toFixed(1)} L`}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

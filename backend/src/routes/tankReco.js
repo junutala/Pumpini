@@ -110,6 +110,71 @@ async function finalizeShiftReco(shift_id, userId, io) {
   return { stored, breaches: breaches.length };
 }
 
+// Live tank status: compare the latest TWO dip readings and surface the
+// unexplained variance between them (physical change vs book change =
+// deliveries − sales in that window). Works for ATG sensors polling every few
+// minutes AND for manual dips — last_reading_at tells the owner how fresh it is.
+async function computeLiveTankStatus(station_id) {
+  if (!station_id) return [];
+  const { rows: setRows } = await pool.query(
+    `SELECT stock_tol_pct_petrol, stock_tol_pct_diesel, stock_tol_floor_ltrs
+     FROM station_settings WHERE station_id=$1`, [station_id]);
+  const settings = setRows[0] || {};
+  const floor = parseFloat(settings.stock_tol_floor_ltrs ?? 20);
+
+  const { rows } = await pool.query(`
+    SELECT t.id AS tank_id, t.tank_number, t.fuel_type, t.capacity_ltrs,
+      lr.volume_ltrs AS current_vol, lr.recorded_at AS current_at,
+      pr.volume_ltrs AS prev_vol,    pr.recorded_at AS prev_at,
+      COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
+         JOIN nozzles n ON n.id=de.nozzle_id
+         WHERE n.tank_id=t.id AND pr.recorded_at IS NOT NULL
+           AND de.occurred_at > pr.recorded_at AND de.occurred_at <= lr.recorded_at),0) AS sales,
+      COALESCE((SELECT SUM(fd.quantity_ltrs) FROM fuel_deliveries fd
+         WHERE fd.tank_id=t.id AND pr.recorded_at IS NOT NULL
+           AND fd.delivered_at > pr.recorded_at AND fd.delivered_at <= lr.recorded_at),0) AS deliveries
+    FROM tanks t
+    LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings
+      WHERE tank_id=t.id ORDER BY recorded_at DESC LIMIT 1) lr ON TRUE
+    LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings
+      WHERE tank_id=t.id ORDER BY recorded_at DESC OFFSET 1 LIMIT 1) pr ON TRUE
+    WHERE t.station_id=$1 ORDER BY t.tank_number`, [station_id]);
+
+  return rows.map(r => {
+    const hasCurrent = r.current_vol != null;
+    const hasPrev    = r.prev_vol != null;
+    const currentVol = hasCurrent ? parseFloat(r.current_vol) : null;
+    const capacity   = r.capacity_ltrs ? parseFloat(r.capacity_ltrs) : null;
+    const fillPct    = (hasCurrent && capacity) ? +(currentVol / capacity * 100).toFixed(1) : null;
+    let variance = null, tolerance = null, beyond = false, status = 'no_data';
+    if (hasCurrent && hasPrev) {
+      const prevVol    = parseFloat(r.prev_vol);
+      const sales      = parseFloat(r.sales || 0);
+      const deliveries = parseFloat(r.deliveries || 0);
+      const book       = prevVol + deliveries - sales;
+      variance = +(currentVol - book).toFixed(2);
+      const throughput = sales + deliveries;   // windowed → tolerate on throughput, not tank size
+      const tolPct = tolPctForFuel(settings, r.fuel_type);
+      tolerance = +Math.max(floor, throughput * tolPct / 100).toFixed(2);
+      beyond = Math.abs(variance) > tolerance;
+      status = beyond ? (variance < 0 ? 'loss' : 'gain') : 'ok';
+    } else if (hasCurrent) {
+      status = 'baseline'; // only one reading so far — nothing to compare against yet
+    }
+    return {
+      tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
+      capacity_ltrs: capacity, current_vol: currentVol, fill_pct: fillPct,
+      last_reading_at: r.current_at || null,
+      variance_ltrs: variance, tolerance_ltrs: tolerance, beyond_tolerance: beyond, status,
+    };
+  });
+}
+
+// GET /api/tank-reco/live?station_id= — real-time per-tank variance + freshness
+router.get('/live', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try { res.json(await computeLiveTankStatus(req.query.station_id)); } catch (e) { next(e); }
+});
+
 // GET /api/tank-reco/shift/:shift_id — live preview (no write)
 router.get('/shift/:shift_id', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
@@ -153,3 +218,4 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 
 module.exports = router;
 module.exports.finalizeShiftReco = finalizeShiftReco;
+module.exports.computeLiveTankStatus = computeLiveTankStatus;

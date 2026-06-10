@@ -3,6 +3,7 @@ const router    = require('express').Router();
 const pool      = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const { computeLiveTankStatus } = require('./tankReco');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -78,6 +79,10 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     const priceMap = {};
     pricesRes.rows.forEach(r => { if (!priceMap[r.fuel_type]) priceMap[r.fuel_type] = r.price; });
 
+    // Live wet-stock variance (between the last two dips) — not blind-drop sensitive
+    let tankStatus = [];
+    try { tankStatus = await computeLiveTankStatus(station_id); } catch { /* ignore */ }
+
     const s = salesRes.rows[0];
     const contextLines = [
       `Date: ${today}`,
@@ -98,6 +103,18 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
         ? stockRes.rows.map(t =>
             `${t.fuel_type} (Tank ${t.tank_number}): ${parseFloat(t.current_stock).toFixed(0)}L / ${parseFloat(t.capacity_ltrs).toFixed(0)}L`
           ).join('\n')
+        : 'No tank data',
+      '',
+      '--- Live Tank Variance (vs book, since last dip) ---',
+      'Negative variance beyond tolerance = possible evaporation/leakage/pilferage. Note the last-dip time; if it is old, the reading is stale.',
+      tankStatus.length
+        ? tankStatus.map(tk => {
+            const v = tk.variance_ltrs;
+            const dip = tk.last_reading_at ? new Date(tk.last_reading_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never';
+            return `Tank ${tk.tank_number} (${tk.fuel_type}): ${tk.current_vol != null ? Math.round(tk.current_vol) + 'L' : 'no reading'}${tk.fill_pct != null ? ` (${tk.fill_pct}%)` : ''}` +
+              (v != null ? `, variance ${v > 0 ? '+' : ''}${v.toFixed(1)}L — ${tk.beyond_tolerance ? (v < 0 ? 'OVER tolerance (LOSS)' : 'OVER tolerance (gain)') : 'within limit'}` : ', awaiting a second dip') +
+              `, last dip ${dip}`;
+          }).join('\n')
         : 'No tank data',
       '',
       '--- Current Fuel Prices ---',
