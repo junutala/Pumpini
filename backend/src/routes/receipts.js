@@ -2,9 +2,10 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess, requireCorporateAccess } = require('../middleware/stationAccess');
 
 // GET /api/receipts?station_id=&corporate_id=&limit=
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, corporate_id, limit = 50 } = req.query;
     let q = `
@@ -29,7 +30,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // POST /api/receipts — record a receipt, reduce outstanding
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   const {
     corporate_id, station_id, receipt_date, amount,
     payment_type, reference_no, invoice_id, remarks,
@@ -92,7 +93,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // GET /api/receipts/summary/:corporate_id — outstanding calc with receipts deducted
-router.get('/summary/:corporate_id', authenticate, async (req, res, next) => {
+router.get('/summary/:corporate_id', authenticate, requireCorporateAccess('corporate_id'), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { corporate_id } = req.params;
