@@ -18,7 +18,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     const isOwner = req.user.role === 'owner'; // blind drop: non-owners don't get open-shift sales
 
     // Fetch live station context
-    const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes] = await Promise.all([
+    const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes, cashIntRes] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(de.amount), 0)                                                     AS total_sales,
@@ -56,6 +56,22 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
         ORDER BY fuel_type, effective_from DESC`,
         [station_id]
       ),
+      // Cash integrity (owner only): per-operator undercash over the last 30 days.
+      // A clean operator is over/exact, never under — repeated undercash = suspect.
+      isOwner ? pool.query(`
+        SELECT u.name AS operator,
+          COUNT(*)::int                                              AS recons,
+          COUNT(*) FILTER (WHERE r.cash_actual < r.cash_expected)::int AS undercash,
+          COALESCE(SUM(CASE WHEN r.cash_actual < r.cash_expected
+                            THEN r.cash_expected - r.cash_actual ELSE 0 END),0) AS total_short
+        FROM shift_reconciliation r
+        JOIN shifts s ON s.id = r.shift_id
+        JOIN users  u ON u.id = r.attendant_id
+        WHERE s.station_id = $1 AND r.manager_confirmed = TRUE
+          AND r.reconciled_at >= NOW() - make_interval(days => 30)
+        GROUP BY u.name HAVING COUNT(*) > 0
+        ORDER BY undercash DESC, total_short DESC LIMIT 10`,
+        [station_id]) : Promise.resolve({ rows: [] }),
     ]);
 
     // Latest price per fuel type
@@ -93,6 +109,14 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       alertsRes.rows.length
         ? alertsRes.rows.map(a => `[${a.severity}] ${a.message}`).join('\n')
         : 'None',
+      ...(isOwner ? [
+        '',
+        '--- Cash Integrity (last 30 days, OWNER ONLY) ---',
+        'A clean operator is over or exact at shift end, never under. Repeated undercash (declaring less than the meter expected) is a red flag for skimming, even if the shortfall was made good on the spot.',
+        cashIntRes.rows.length
+          ? cashIntRes.rows.map(c => `${c.operator}: ${c.undercash}/${c.recons} shifts undercash, total short ₹${parseFloat(c.total_short).toLocaleString('en-IN')}`).join('\n')
+          : 'No confirmed reconciliations in the last 30 days.',
+      ] : []),
     ].join('\n');
 
     const langNote = {

@@ -265,22 +265,39 @@ router.get('/cash-integrity', authenticate, requireStationAccess({ required: tru
     const { station_id } = req.query;
     const days = Math.min(365, Math.max(1, parseInt(req.query.days || 90)));
     const { rows } = await pool.query(`
+      WITH confirmed AS (
+        SELECT r.attendant_id, r.cash_actual, r.cash_expected, r.reconciled_at
+        FROM shift_reconciliation r
+        JOIN shifts s ON s.id = r.shift_id
+        WHERE s.station_id = $1
+          AND r.manager_confirmed = TRUE
+          AND r.reconciled_at >= NOW() - make_interval(days => $2)
+      ),
+      agg AS (
+        SELECT attendant_id,
+          COUNT(*)::int                                                        AS total_recons,
+          COUNT(*) FILTER (WHERE cash_actual < cash_expected)::int             AS undercash_count,
+          COUNT(*) FILTER (WHERE cash_actual > cash_expected)::int             AS overcash_count,
+          COALESCE(SUM(CASE WHEN cash_actual < cash_expected
+                            THEN cash_expected - cash_actual ELSE 0 END),0)    AS total_short,
+          MAX(CASE WHEN cash_actual < cash_expected THEN reconciled_at END)    AS last_short_at
+        FROM confirmed GROUP BY attendant_id
+      ),
+      last AS (
+        SELECT DISTINCT ON (attendant_id) attendant_id,
+          reconciled_at                  AS last_recon_at,
+          cash_actual                    AS last_cash_actual,
+          cash_expected                  AS last_cash_expected,
+          (cash_actual - cash_expected)  AS last_variance
+        FROM confirmed ORDER BY attendant_id, reconciled_at DESC
+      )
       SELECT u.id AS attendant_id, u.name AS attendant_name,
-        COUNT(*)::int                                                          AS total_recons,
-        COUNT(*) FILTER (WHERE r.cash_actual < r.cash_expected)::int           AS undercash_count,
-        COUNT(*) FILTER (WHERE r.cash_actual > r.cash_expected)::int           AS overcash_count,
-        COALESCE(SUM(CASE WHEN r.cash_actual < r.cash_expected
-                          THEN r.cash_expected - r.cash_actual ELSE 0 END),0)  AS total_short,
-        MAX(CASE WHEN r.cash_actual < r.cash_expected THEN r.reconciled_at END) AS last_short_at
-      FROM shift_reconciliation r
-      JOIN shifts s ON s.id = r.shift_id
-      JOIN users  u ON u.id = r.attendant_id
-      WHERE s.station_id = $1
-        AND r.manager_confirmed = TRUE
-        AND r.reconciled_at >= NOW() - make_interval(days => $2)
-      GROUP BY u.id, u.name
-      HAVING COUNT(*) > 0
-      ORDER BY undercash_count DESC, total_short DESC`,
+        a.total_recons, a.undercash_count, a.overcash_count, a.total_short, a.last_short_at,
+        l.last_recon_at, l.last_cash_actual, l.last_cash_expected, l.last_variance
+      FROM agg a
+      JOIN users u ON u.id = a.attendant_id
+      LEFT JOIN last l ON l.attendant_id = a.attendant_id
+      ORDER BY a.undercash_count DESC, a.total_short DESC`,
       [station_id, days]);
     res.json(rows);
   } catch (err) { next(err); }

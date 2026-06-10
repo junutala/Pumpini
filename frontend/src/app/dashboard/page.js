@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [bookStock, setBookStock] = useState([]);
   const [prices,    setPrices]    = useState([]);
   const [corps,     setCorps]     = useState([]);
+  const [cashInt,   setCashInt]   = useState([]);
   const [loading,   setLoading]   = useState(true);
 
   const { on } = useSocket(stationId, null);
@@ -43,19 +44,23 @@ export default function DashboardPage() {
   const load = useCallback(async () => {
     if (!stationId) return;
     try {
-      const [d, bs, p, c] = await Promise.all([
+      const [d, bs, p, c, ci] = await Promise.all([
         getOwnerDashboard(stationId, today),
         api.get(`/deliveries/book-stock/${stationId}`).catch(() => []),
         getCurrentPrices(stationId),
         api.get('/corporate', {params:{station_id:stationId}}).catch(()=>[]),
+        user?.role==='owner'
+          ? api.get('/dashboard/cash-integrity', {params:{station_id:stationId, days:90}}).catch(()=>[])
+          : Promise.resolve([]),
       ]);
       setData(d);
       setBookStock(Array.isArray(bs) ? bs : []);
       setPrices(Array.isArray(p) ? p : []);
       setCorps(Array.isArray(c) ? c : []);
+      setCashInt(Array.isArray(ci) ? ci : []);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
-  }, [stationId, today]);
+  }, [stationId, today, user?.role]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => on('dispense:new', () => load()), [on, load]);
@@ -160,6 +165,51 @@ export default function DashboardPage() {
           <div className="stat-sub">{unreadAlerts.length ? tc('dash_page.action_needed','Action needed') : tc('dash_page.all_clear','All clear ✓')}</div>
         </div>
       </div>
+
+      {/* Cash Integrity — owner oversight: each operator's last shift-end report + undercash count */}
+      {user?.role==='owner' && cashInt.length>0 && (
+        <div className="card" style={{marginBottom:'1.5rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
+            <div style={{fontWeight:700,fontSize:14}}>🛡 Cash Integrity
+              <span style={{fontSize:11,fontWeight:400,color:'var(--text-3)',marginLeft:6}}>· last 90 days · over or exact, never under</span>
+            </div>
+            <a href="/cash-integrity" style={{fontSize:12,color:'var(--brand)',textDecoration:'none',fontWeight:600}}>View all →</a>
+          </div>
+          <div className="table-wrap">
+            <table className="dms-table">
+              <thead><tr>
+                <th>Operator</th><th>Last shift-end report</th>
+                <th style={{textAlign:'center'}}>Undercash</th><th style={{textAlign:'center'}}>Flag</th>
+              </tr></thead>
+              <tbody>
+                {cashInt.slice(0,6).map(r=>{
+                  const v = parseFloat(r.last_variance||0);
+                  const suspect = r.undercash_count>=3 || (r.total_recons>=4 && r.undercash_count/r.total_recons>0.4);
+                  return (
+                    <tr key={r.attendant_id} style={suspect?{background:'#fef2f2'}:undefined}>
+                      <td style={{fontWeight:600}}>{r.attendant_name}</td>
+                      <td style={{fontSize:13}}>
+                        {r.last_recon_at ? (
+                          <>
+                            <span style={{fontWeight:600,color:v<0?'#dc2626':v>0?'#16a34a':'var(--text-2)'}}>
+                              {v<0?`Short ₹${Math.abs(v).toLocaleString('en-IN')}`:v>0?`Over ₹${Math.abs(v).toLocaleString('en-IN')}`:'Exact'}
+                            </span>
+                            <span style={{color:'var(--text-3)',marginLeft:6}}>· {new Date(r.last_recon_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>
+                          </>
+                        ) : '—'}
+                      </td>
+                      <td style={{textAlign:'center',fontWeight:700,color:r.undercash_count?'#dc2626':'var(--text-3)'}}>{r.undercash_count}/{r.total_recons}</td>
+                      <td style={{textAlign:'center',fontSize:12}}>
+                        {suspect?<span style={{color:'#dc2626',fontWeight:700}}>Suspect</span>:r.undercash_count>0?<span style={{color:'#d97706'}}>Watch</span>:<span style={{color:'#16a34a'}}>Clean</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Charts */}
       <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
