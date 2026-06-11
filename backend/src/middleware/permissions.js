@@ -104,6 +104,12 @@ function clearPermCache(userId, stationId) {
   for (const k of cache.keys()) if (k.startsWith(`${userId}:`)) cache.delete(k);
 }
 
+// Clear every user's cached perms for one outlet — call when the outlet's PLAN
+// changes so a tier switch takes effect on the next page load (no 5-min wait).
+function clearStationPermCache(stationId) {
+  for (const k of cache.keys()) if (k.endsWith(`:${stationId}`)) cache.delete(k);
+}
+
 const requirePerm = (module) => async (req, res, next) => {
   try {
     const stationId = req.query.station_id || req.body.station_id || req.params.station_id;
@@ -117,4 +123,4 @@ const requirePerm = (module) => async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getUserPermissions, clearPermCache, requirePerm };
+module.exports = { getUserPermissions, clearPermCache, clearStationPermCache, requirePerm };

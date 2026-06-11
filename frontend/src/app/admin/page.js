@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
          CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox } from 'lucide-react';
@@ -547,6 +547,45 @@ export default function AdminPage(){
                   </div>
                 );
               })}
+            </div>
+
+            {/* ── Tier comparison matrix (demo / explainer) ── */}
+            <div style={{marginTop:'2rem',background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
+              <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid #eee'}}>
+                <div style={{fontSize:16,fontWeight:800}}>Tier comparison</div>
+                <div style={{fontSize:12,color:'#888',marginTop:2}}>What each tier includes vs. withholds (reflects the selections above). Great for walking a customer through the upgrade story.</div>
+              </div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+                  <thead>
+                    <tr style={{background:'#faf9f7'}}>
+                      <th style={{textAlign:'left',padding:'8px 12px',fontWeight:700,color:'#555',position:'sticky',left:0,background:'#faf9f7'}}>Function</th>
+                      {['starter','pro','enterprise'].map(pn=>{const[pb,pt]=PLAN_COLORS[pn];return(
+                        <th key={pn} style={{padding:'8px 12px',textAlign:'center',color:pt,fontWeight:800,minWidth:110}}>
+                          {pn.toUpperCase()}
+                          <div style={{fontSize:11,fontWeight:600,opacity:.8}}>{(planFeat[pn]||[]).length} functions</div>
+                        </th>
+                      );})}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...new Set(modules.map(m=>m.category))].map(cat=>(
+                      <Fragment key={cat}>
+                        <tr><td colSpan={4} style={{padding:'8px 12px 2px',fontSize:10.5,fontWeight:800,color:'#999',textTransform:'uppercase',letterSpacing:.4}}>{cat}</td></tr>
+                        {modules.filter(m=>m.category===cat).map(m=>(
+                          <tr key={m.code} style={{borderTop:'1px solid #f1efea'}}>
+                            <td style={{padding:'6px 12px',position:'sticky',left:0,background:'#fff'}}>{m.label||m.code}</td>
+                            {['starter','pro','enterprise'].map(pn=>{
+                              const on=(planFeat[pn]||[]).includes(m.code);const[,pt]=PLAN_COLORS[pn];
+                              return <td key={pn} style={{padding:'6px 12px',textAlign:'center',color:on?pt:'#d1cfca',fontWeight:on?800:400,fontSize:on?14:13}}>{on?'✓':'—'}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

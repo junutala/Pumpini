@@ -440,6 +440,7 @@ router.post('/station-subscriptions', authAdmin, async (req, res, next) => {
        VALUES($1,$2,$3,$4,$5) RETURNING *`,
       [station_id, plan, status, start_date || new Date().toISOString().slice(0,10), end_date||null]
     );
+    try { require('../middleware/permissions').clearStationPermCache(station_id); } catch {}
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -466,6 +467,7 @@ router.patch('/station-subscriptions/:id', authAdmin, async (req, res, next) => 
         [rows[0].station_id, rows[0].plan, nextStart.toISOString().slice(0,10)]
       );
     }
+    if (rows[0]) { try { require('../middleware/permissions').clearStationPermCache(rows[0].station_id); } catch {} }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
