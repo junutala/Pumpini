@@ -95,7 +95,19 @@ router.post('/', authenticate, authorize('owner', 'manager'), requireStationAcce
   try {
     const { station_id, amount, deposit_date, bank_account, reference_no, notes } = req.body;
     const amt = parseFloat(amount);
-    if (!amt || amt <= 0) return res.status(400).json({ error: 'Deposit amount must be greater than 0' });
+    if (!amt || amt <= 0 || amt > 100000000) return res.status(400).json({ error: 'Deposit amount must be greater than 0' });
+    // Duplicate-tap guard: the same user recording the same amount for the same
+    // station within 2 minutes is almost certainly a network-retry double-submit.
+    const { rows: dup } = await pool.query(
+      `SELECT id FROM cash_deposits
+       WHERE station_id=$1 AND deposited_by=$2 AND amount=$3
+         AND created_at > NOW() - INTERVAL '2 minutes'
+       LIMIT 1`,
+      [station_id, req.user.id, amt]);
+    if (dup.length) {
+      const { rows: ex } = await pool.query('SELECT * FROM cash_deposits WHERE id=$1', [dup[0].id]);
+      return res.status(201).json(ex[0]); // idempotent: return the existing row
+    }
     const { rows } = await pool.query(
       `INSERT INTO cash_deposits(station_id, amount, deposit_date, bank_account, reference_no, notes, deposited_by)
        VALUES($1,$2,COALESCE($3,CURRENT_DATE),$4,$5,$6,$7) RETURNING *`,

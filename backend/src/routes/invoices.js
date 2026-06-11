@@ -13,39 +13,73 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       cgst_amount, sgst_amount, total_amount, line_items
     } = req.body;
 
-    const { rows } = await pool.query(
-      `INSERT INTO gst_invoices(
-         station_id, corporate_id, invoice_number, invoice_date,
-         period_from, period_to, subtotal, cgst_rate, sgst_rate,
-         cgst_amount, sgst_amount, total_amount, line_items, created_by
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       ON CONFLICT(invoice_number) DO UPDATE SET
-         total_amount=$12, line_items=$13
-       RETURNING *`,
-      [station_id, corporate_id, invoice_number, invoice_date,
-       period_from, period_to, subtotal, cgst_rate, sgst_rate,
-       cgst_amount, sgst_amount, total_amount,
-       JSON.stringify(line_items), req.user.id]
-    );
+    // One transaction for invoice + line-item marking + sequence bump. The old
+    // ON CONFLICT(invoice_number) upsert could silently OVERWRITE another
+    // station's invoice on a number collision — now a cross-station collision
+    // is a 409, and a same-station resend is an idempotent update.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Mark transactions as invoiced
-    if (line_items && line_items.length) {
-      const ids = line_items.map(t => t.id).filter(Boolean);
-      if (ids.length) {
-        await pool.query(
-          `UPDATE dispense_events SET is_invoiced=TRUE, invoice_id=$1 WHERE id = ANY($2::uuid[])`,
-          [rows[0].id, ids]
-        );
+      const { rows: existing } = await client.query(
+        'SELECT id, station_id FROM gst_invoices WHERE invoice_number=$1 FOR UPDATE',
+        [invoice_number]
+      );
+      if (existing.length && existing[0].station_id !== station_id) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: `Invoice number ${invoice_number} is already in use.` });
       }
-    }
 
-    // Increment invoice sequence
-    await pool.query(
-      `UPDATE station_settings SET invoice_seq = COALESCE(invoice_seq,1)+1 WHERE station_id=$1`,
-      [station_id]
-    );
+      let invoice;
+      if (existing.length) {
+        const { rows } = await client.query(
+          `UPDATE gst_invoices SET total_amount=$1, line_items=$2 WHERE id=$3 RETURNING *`,
+          [total_amount, JSON.stringify(line_items), existing[0].id]
+        );
+        invoice = rows[0];
+      } else {
+        const { rows } = await client.query(
+          `INSERT INTO gst_invoices(
+             station_id, corporate_id, invoice_number, invoice_date,
+             period_from, period_to, subtotal, cgst_rate, sgst_rate,
+             cgst_amount, sgst_amount, total_amount, line_items, created_by
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           RETURNING *`,
+          [station_id, corporate_id, invoice_number, invoice_date,
+           period_from, period_to, subtotal, cgst_rate, sgst_rate,
+           cgst_amount, sgst_amount, total_amount,
+           JSON.stringify(line_items), req.user.id]
+        );
+        invoice = rows[0];
+      }
 
-    res.status(201).json(rows[0]);
+      // Mark transactions as invoiced — scoped to THIS station so a crafted
+      // line_items payload can't flag another outlet's sales as billed.
+      if (line_items && line_items.length) {
+        const ids = line_items.map(t => t.id).filter(Boolean);
+        if (ids.length) {
+          await client.query(
+            `UPDATE dispense_events SET is_invoiced=TRUE, invoice_id=$1
+             WHERE id = ANY($2::uuid[]) AND station_id=$3`,
+            [invoice.id, ids, station_id]
+          );
+        }
+      }
+
+      await client.query(
+        `UPDATE station_settings SET invoice_seq = COALESCE(invoice_seq,1)+1 WHERE station_id=$1`,
+        [station_id]
+      );
+
+      await client.query('COMMIT');
+      res.status(201).json(invoice);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      if (e.code === '23505') {
+        return res.status(409).json({ error: `Invoice number ${invoice_number} is already in use.` });
+      }
+      throw e;
+    } finally { client.release(); }
   } catch (err) { next(err); }
 });
 

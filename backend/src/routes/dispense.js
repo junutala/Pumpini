@@ -24,6 +24,14 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       vehicle_number, latitude, longitude, corporate_id,
     } = req.body;
 
+    // Sanity bounds — a fat-fingered 999999 litres would pollute every report,
+    // reconciliation and Tally export downstream. Largest tanker compartment
+    // delivery is ~20,000 L; a single vehicle fill is far below that.
+    const qty = Number(quantity_ltrs);
+    if (!Number.isFinite(qty) || qty <= 0 || qty > 20000) {
+      return res.status(400).json({ error: 'Invalid quantity. Enter litres between 0 and 20,000.' });
+    }
+
     // Get current fuel price for this nozzle
     const { rows: priceRows } = await pool.query(
       `SELECT fp.price, n.fuel_type FROM nozzles n

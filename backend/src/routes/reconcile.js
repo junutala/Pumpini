@@ -47,6 +47,19 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
       return res.status(403).json({ error: 'Only the attendant can submit their own cash. A manager verifies it on handover — they cannot submit it for the attendant.' });
     }
 
+    // Counted cash must be a sane non-negative number — this is real money.
+    const cashNum = Number(cash_actual);
+    if (!Number.isFinite(cashNum) || cashNum < 0 || cashNum > 10000000) {
+      return res.status(400).json({ error: 'Invalid cash amount.' });
+    }
+
+    // Submissions only while the shift is open — a closed shift's books are final.
+    const { rows: sh } = await pool.query('SELECT status FROM shifts WHERE id=$1', [shift_id]);
+    if (!sh.length) return res.status(404).json({ error: 'Shift not found' });
+    if (sh[0].status !== 'open') {
+      return res.status(400).json({ error: 'This shift is already closed.' });
+    }
+
     // Compute totals — store but do NOT expose to attendant
     // Settlement = fuel (dispense_events) + bay lube sales (product_invoices)
     // for this attendant/shift, bucketed by the same 4 payment modes.
@@ -79,17 +92,23 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
     const openingCash  = parseFloat(saRows[0]?.opening_cash || 0);
     const cashExpected = +(parseFloat(t.cash_expected) + openingCash).toFixed(2);
 
+    // Re-submission is allowed only while UNCONFIRMED — once the manager has
+    // verified the drop, the row is final (the WHERE makes the update a no-op).
     const { rows } = await pool.query(
       `INSERT INTO shift_reconciliation(
          shift_id, attendant_id, total_sales, cash_expected, cash_actual,
          upi_total, credit_total, card_total, remarks, manager_confirmed
        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,FALSE)
        ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
-         cash_actual=$5, remarks=$9, reconciled_at=NOW(), manager_confirmed=FALSE
+         cash_actual=$5, remarks=$9, reconciled_at=NOW()
+       WHERE shift_reconciliation.manager_confirmed = FALSE
        RETURNING *`,
-      [shift_id, attendant_id, t.total_sales, cashExpected, cash_actual,
+      [shift_id, attendant_id, t.total_sales, cashExpected, cashNum,
        t.upi_total, t.credit_total, t.card_total, remarks||null]
     );
+    if (!rows.length) {
+      return res.status(409).json({ error: 'This reconciliation was already confirmed by the manager and cannot be changed.' });
+    }
 
     // Return ONLY what attendant needs — no sales totals, no expected, no variance
     res.status(201).json({
