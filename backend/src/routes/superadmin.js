@@ -489,6 +489,14 @@ router.get('/plans', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Function catalog — the modules a plan can include (and responsibilities grant).
+router.get('/modules', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('SELECT code, category, label FROM permission_modules ORDER BY category, label');
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 router.post('/plans', authAdmin, async (req, res, next) => {
   try {
     const { name, price_per_month, features } = req.body;

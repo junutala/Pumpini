@@ -20,15 +20,17 @@ export function PermissionProvider({ children }) {
       setLoading(false);
       return;
     }
+    if (user.role === 'owner') setPermissions(['ALL']); // optimistic; fetch refines (gated plan)
     api.get(`/templates/user-permissions?user_id=${user.id}&station_id=${stationId}`)
-      .then(res => setPermissions(res.permissions || []))
-      .catch(() => setPermissions([]))
+      .then(res => setPermissions(res.permissions || (user.role === 'owner' ? ['ALL'] : [])))
+      .catch(() => setPermissions(user.role === 'owner' ? ['ALL'] : []))
       .finally(() => setLoading(false));
   }, [user?.id, stationId]);
 
   const can = (module) => {
     if (!user) return false;
-    if (user.role === 'owner') return true;
+    // 'ALL' is the fail-open sentinel (no plan configured). Once a plan is
+    // configured, even the owner is capped to the plan's modules.
     if (permissions.includes('ALL')) return true;
     return permissions.includes(module);
   };

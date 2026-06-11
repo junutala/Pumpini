@@ -158,6 +158,8 @@ export default function AdminPage(){
   const [owners,setOwners]       = useState([]);
   const [stations,setStations]   = useState([]);
   const [plans,setPlans]         = useState([]);
+  const [modules,setModules]     = useState([]);   // function catalog
+  const [planFeat,setPlanFeat]   = useState({});   // planName -> [module codes]
   const [alertDefs,setAlertDefs] = useState([]);
   const [stationSubs,setStationSubs]   = useState({});
   const [groupMembers,setGroupMembers] = useState({});
@@ -189,17 +191,27 @@ export default function AdminPage(){
   },[]);
 
   const reload = async()=>{
-    const [s,g,o,st,pl,ad] = await Promise.all([
+    const [s,g,o,st,pl,ad,md] = await Promise.all([
       adminFetch('/platform-stats'),
       adminFetch('/groups'),
       adminFetch('/owners'),
       adminFetch('/stations'),
       adminFetch('/plans'),
       adminFetch('/alert-definitions'),
+      adminFetch('/modules'),
     ]);
     setStats(s); setGroups(Array.isArray(g)?g:[]); setOwners(Array.isArray(o)?o:[]);
     setStations(Array.isArray(st)?st:[]); setPlans(Array.isArray(pl)?pl:[]);
     setAlertDefs(Array.isArray(ad)?ad:[]);
+    const mods = Array.isArray(md)?md:[]; setModules(mods);
+    // Seed plan→features selection with only RECOGNISED module codes (ignore old free text)
+    const codes = new Set(mods.map(m=>m.code));
+    const pf = {};
+    (Array.isArray(pl)?pl:[]).forEach(p=>{
+      let f = p.features; if(typeof f==='string'){ try{ f=JSON.parse(f); }catch{ f=[]; } }
+      pf[p.name] = (Array.isArray(f)?f:[]).filter(x=>codes.has(x));
+    });
+    setPlanFeat(pf);
     loadLeads();
   };
 
@@ -501,23 +513,33 @@ export default function AdminPage(){
                         <input style={{...inp}} type="number" placeholder="e.g. 999" defaultValue={plan?.price_per_month||''} id={`price-${planName}`}/>
                       </div>
                       <div style={{marginBottom:'0.75rem'}}>
-                        <div style={{fontSize:12,fontWeight:600,color:'#555',marginBottom:6}}>Features</div>
-                        <div style={{maxHeight:180,overflowY:'auto'}}>
-                          {features.map((feat,i)=>(
-                            <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'5px 8px',background:'#f8f7f5',borderRadius:6,marginBottom:4,fontSize:13}}>
-                              <span>{feat}</span>
-                              <button style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626',padding:2}}
-                                onClick={async()=>{const nf=features.filter((_,fi)=>fi!==i);await adminFetch(plan?`/plans/${plan.id}`:`/plans`,{method:plan?'PATCH':'POST',body:JSON.stringify({name:planName,features:nf,price_per_month:plan?.price_per_month||0})});reload();}}><X size={12}/></button>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                          <div style={{fontSize:12,fontWeight:600,color:'#555'}}>Functions included ({(planFeat[planName]||[]).length}/{modules.length})</div>
+                          <div style={{display:'flex',gap:8}}>
+                            <button style={{fontSize:11,background:'none',border:'none',color:'#1A5F7A',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:modules.map(m=>m.code)}))}>All</button>
+                            <button style={{fontSize:11,background:'none',border:'none',color:'#991b1b',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:[]}))}>None</button>
+                          </div>
+                        </div>
+                        <div style={{maxHeight:260,overflowY:'auto',border:'1px solid #eee',borderRadius:8,padding:'6px 8px'}}>
+                          {[...new Set(modules.map(m=>m.category))].map(cat=>(
+                            <div key={cat} style={{marginBottom:6}}>
+                              <div style={{fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',margin:'4px 0 2px'}}>{cat}</div>
+                              {modules.filter(m=>m.category===cat).map(m=>{
+                                const on=(planFeat[planName]||[]).includes(m.code);
+                                return (
+                                  <label key={m.code} style={{display:'flex',alignItems:'center',gap:6,fontSize:12.5,padding:'2px 0',cursor:'pointer'}}>
+                                    <input type="checkbox" checked={on} onChange={()=>setPlanFeat(p=>{const cur=p[planName]||[];return {...p,[planName]: on?cur.filter(c=>c!==m.code):[...cur,m.code]};})}/>
+                                    {m.label||m.code}
+                                  </label>
+                                );
+                              })}
                             </div>
                           ))}
                         </div>
-                        <div style={{display:'flex',gap:6,marginTop:6}}>
-                          <input style={{...inp,flex:1}} placeholder="Add feature..." id={`feat-${planName}`}/>
-                          <button style={btn()} onClick={async()=>{const el=document.getElementById(`feat-${planName}`);if(!el.value.trim())return;const nf=[...features,el.value.trim()];await adminFetch(plan?`/plans/${plan.id}`:`/plans`,{method:plan?'PATCH':'POST',body:JSON.stringify({name:planName,features:nf,price_per_month:plan?.price_per_month||0})});el.value='';reload();}}><Plus size={13}/></button>
-                        </div>
+                        <div style={{fontSize:11,color:'#888',marginTop:4}}>Outlets on this plan can only use the ticked functions. Leave all unticked = no gating (fail-open).</div>
                       </div>
                       <button style={{...btn(),width:'100%',justifyContent:'center'}}
-                        onClick={async()=>{const price=document.getElementById(`price-${planName}`).value;await adminFetch(plan?`/plans/${plan.id}`:`/plans`,{method:plan?'PATCH':'POST',body:JSON.stringify({name:planName,price_per_month:parseFloat(price)||0,features})});reload();showToast('Saved!');}}>Save {planName.toUpperCase()}</button>
+                        onClick={async()=>{const price=document.getElementById(`price-${planName}`).value;await adminFetch('/plans',{method:'POST',body:JSON.stringify({name:planName,price_per_month:parseFloat(price)||0,features:planFeat[planName]||[]})});reload();showToast('Saved!');}}>Save {planName.toUpperCase()}</button>
                     </div>
                   </div>
                 );

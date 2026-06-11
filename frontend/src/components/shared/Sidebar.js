@@ -15,7 +15,7 @@ const NAV_GROUPS = [
   {
     label: 'Dashboard',
     items: [
-      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:null,            roles:['owner'] },
+      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner'] },
       { key:'dashboard',  href:'/dashboard',       icon:LayoutDashboard,perm:null },
       { key:'live',       href:'/live',            icon:Activity,       perm:'dispense.view' },
       { key:'alerts',     href:'/alerts',          icon:Bell,           perm:'alerts.view' },
@@ -34,26 +34,26 @@ const NAV_GROUPS = [
       { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
       { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
       { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
-      { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'reconcile.manage' },
+      { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'stock.reconcile' },
       { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'shifts.manage' },
       { key:'invoices',   href:'/invoices',        icon:FileText,       perm:'invoice.generate' },
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
       { key:'creditnotes',href:'/credit-notes',    icon:RotateCcw,      perm:'invoice.generate' },
-      { key:'pettycash',  href:'/petty-cash',      icon:Wallet,         perm:'reconcile.manage' },
-      { key:'deposits',   href:'/deposits',        icon:Banknote,       perm:'reconcile.manage' },
-      { key:'cashintegrity', href:'/cash-integrity', icon:ShieldAlert,  perm:null, roles:['owner'] },
+      { key:'pettycash',  href:'/petty-cash',      icon:Wallet,         perm:'pettycash.manage' },
+      { key:'deposits',   href:'/deposits',        icon:Banknote,       perm:'deposits.manage' },
+      { key:'cashintegrity', href:'/cash-integrity', icon:ShieldAlert,  perm:'cash.integrity', roles:['owner'] },
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
-      { key:'tally',      href:'/tally',           icon:Calculator,     perm:'invoice.generate' },
+      { key:'tally',      href:'/tally',           icon:Calculator,     perm:'tally.export' },
     ]
   },
   {
     label: 'Lubes',
     items: [
-      { key:'lube_catalogue', href:'/products/catalogue', icon:Package,      perm:'shifts.manage' },
-      { key:'lube_stock',     href:'/products/stock',     icon:Layers,       perm:'shifts.manage' },
-      { key:'lube_pos',       href:'/products/pos',       icon:ShoppingCart, perm:'shifts.manage' },
-      { key:'lube_invoices',  href:'/products/history',   icon:Receipt,      perm:'shifts.manage' },
+      { key:'lube_catalogue', href:'/products/catalogue', icon:Package,      perm:'lubes.manage' },
+      { key:'lube_stock',     href:'/products/stock',     icon:Layers,       perm:'lubes.manage' },
+      { key:'lube_pos',       href:'/products/pos',       icon:ShoppingCart, perm:'lubes.manage' },
+      { key:'lube_invoices',  href:'/products/history',   icon:Receipt,      perm:'lubes.manage' },
     ]
   },
   {
@@ -114,7 +114,9 @@ export default function Sidebar({ open, onClose }) {
 
   const isVisible = (item) => {
     if (item.roles && !item.roles.includes(user?.role)) return false;
-    if (item.perm  && !can(item.perm) && user?.role !== 'owner') return false;
+    // Owner is now gated by can() too — but can() returns true via the 'ALL'
+    // sentinel until a plan is configured, so nothing hides until then.
+    if (item.perm  && !can(item.perm)) return false;
     return true;
   };
 

@@ -429,3 +429,30 @@ ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS tally_company_name VARCHAR
 
 -- Admin refinements (Jun 2026): lead state (for State LOV in leads screen)
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(60);
+
+-- ═════════════════════════════════════════════
+--  ACCESS MODEL — Plan(outlet) ∩ Responsibility(user)
+-- ═════════════════════════════════════════════
+-- New feature modules so plans/responsibilities can include the newer functions.
+INSERT INTO permission_modules(code, category, label) VALUES
+  ('lubes.manage',     'Lubes',     'Lubes & Products'),
+  ('pettycash.manage', 'Cash',      'Petty Cash'),
+  ('deposits.manage',  'Cash',      'Bank Deposits'),
+  ('cash.integrity',   'Cash',      'Cash Integrity'),
+  ('stock.reconcile',  'Stock',     'Wet-stock Reconciliation'),
+  ('tally.export',     'Accounts',  'Tally Export'),
+  ('ai_chat.use',      'AI',        'AI Assistant'),
+  ('group.view',       'Dashboard', 'Group Dashboard'),
+  ('settings.manage',  'Admin',     'Station Settings')
+ON CONFLICT (code) DO NOTHING;
+
+-- Preserve access for users on custom responsibility templates: the split-out
+-- feature modules inherit from the umbrella perm the template already had.
+INSERT INTO template_permissions(template_id, module_code)
+  SELECT tp.template_id, x.m FROM template_permissions tp
+  CROSS JOIN (VALUES ('pettycash.manage'),('deposits.manage'),('stock.reconcile')) x(m)
+  WHERE tp.module_code='reconcile.manage' ON CONFLICT DO NOTHING;
+INSERT INTO template_permissions(template_id, module_code)
+  SELECT template_id, 'lubes.manage' FROM template_permissions WHERE module_code='shifts.manage' ON CONFLICT DO NOTHING;
+INSERT INTO template_permissions(template_id, module_code)
+  SELECT template_id, 'tally.export' FROM template_permissions WHERE module_code='invoice.generate' ON CONFLICT DO NOTHING;
