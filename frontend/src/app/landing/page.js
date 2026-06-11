@@ -593,7 +593,7 @@ export default function LandingPage() {
               ))}
             </div>
             <div style={{marginTop:'1rem',fontSize:12,color:'#888'}}>
-              Powered by Sarvam AI — India's sovereign AI platform for Indian languages
+              Understands 6 Indian languages — voice entry built for how India speaks.
             </div>
           </div>
           <div style={{background:'#0F1923',borderRadius:20,padding:'2rem',position:'relative'}}>
