@@ -8,7 +8,7 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator, UserCog
+  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -66,7 +66,6 @@ const NAV_GROUPS = [
   {
     label: 'Settings',
     items: [
-      { key:'responsibilities', href:'/users/templates', icon:UserCog,  perm:null, roles:['owner','manager'] },
       { key:'settings',   href:'/settings',        icon:Settings,       perm:'settings.manage' },
     ]
   },
@@ -78,7 +77,6 @@ const NAV_LABELS = {
   dipstick:'Dipstick',      deliveries:'Deliveries', corporate:'Credit Customers',
   group:'Group View',       reports:'Reports',       alerts:'Alerts',
   invoices:'Credit Invoices',  receipts:'Credit Receipts', settings:'Settings',
-  responsibilities:'Responsibilities',
   creditnotes:'Credit Notes',
   pettycash:'Petty Cash',
   deposits:'Bank Deposits',

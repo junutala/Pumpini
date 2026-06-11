@@ -166,6 +166,7 @@ export default function AdminPage(){
   const [groupStations,setGroupStations] = useState({});
   const [selStation,setSelStation]     = useState('');
   const [stationUsers,setStationUsers] = useState([]);
+  const [stTemplates,setStTemplates]   = useState([]);   // responsibilities for selected bunk
   const [leads,setLeads]               = useState([]);
   const [leadSort,setLeadSort]         = useState({ field:'created_at', dir:'desc' });
   const [hideClosed,setHideClosed]     = useState(false);
@@ -234,6 +235,8 @@ export default function AdminPage(){
   const loadGroupMembers  = async gid => { const r=await adminFetch(`/groups/${gid}/members-list`); setGroupMembers(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadGroupStations = async gid => { const r=await adminFetch(`/groups/${gid}/stations`); setGroupStations(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadStationUsers  = async sid => { if(!sid)return; const r=await adminFetch(`/station-users/${sid}`); setStationUsers(Array.isArray(r)?r:[]); };
+  const loadStTemplates   = async sid => { if(!sid){setStTemplates([]);return;} const r=await adminFetch(`/templates?station_id=${sid}`); setStTemplates(Array.isArray(r)?r:[]); };
+  const assignResp        = async (user_id, template_id) => { await adminFetch('/templates/assign',{method:'POST',body:JSON.stringify({user_id,template_id:template_id||null,station_id:selStation})}); loadStationUsers(selStation); showToast('Responsibility updated.'); };
 
   const save = async(url,method='POST')=>{
     setLoading(true);
@@ -597,29 +600,63 @@ export default function AdminPage(){
             <div style={{display:'flex',gap:12,alignItems:'flex-end',marginBottom:'1.5rem',flexWrap:'wrap'}}>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4,color:'#555'}}>Select Petrol Bunk</label>
-                <select style={{...inp,width:260}} value={selStation} onChange={e=>{setSelStation(e.target.value);loadStationUsers(e.target.value);}}>
+                <select style={{...inp,width:260}} value={selStation} onChange={e=>{setSelStation(e.target.value);loadStationUsers(e.target.value);loadStTemplates(e.target.value);}}>
                   <option value="">Select a petrol bunk...</option>
                   {stations.map(s=><option key={s.id} value={s.id}>{s.name} — {s.city||''}</option>)}
                 </select>
               </div>
               {selStation&&<button style={btn()} onClick={()=>openModal('stationUser',{station_id:selStation})}><UserPlus size={14}/>Add User</button>}
             </div>
+
+            {/* Responsibilities (role templates) for this bunk */}
+            {selStation&&(
+              <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1rem 1.25rem',marginBottom:'1.5rem'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <div style={{fontWeight:700,fontSize:14}}>Responsibilities <span style={{fontWeight:400,color:'#888',fontSize:12}}>· function sets you assign to users (capped by the bunk’s plan)</span></div>
+                  <button style={btn('#f0fff4','#15803d')} onClick={()=>openModal('responsibility',{station_id:selStation,permissions:[]})}><Plus size={13}/>New Responsibility</button>
+                </div>
+                {stTemplates.length===0
+                  ? <div style={{color:'#aaa',fontSize:13}}>No responsibilities yet. Users fall back to their system-role defaults.</div>
+                  : <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {stTemplates.map(t=>(
+                        <div key={t.id} style={{display:'flex',alignItems:'center',gap:8,background:'#f8f7f5',borderRadius:8,padding:'6px 10px',fontSize:13}}>
+                          <span style={{fontWeight:600}}>{t.name}</span>
+                          <span style={{color:'#888',fontSize:11}}>{(t.permissions||[]).length} fn · {t.user_count||0} user(s)</span>
+                          {!t.is_system&&<>
+                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#1A5F7A'}} title="Edit"
+                              onClick={()=>openModal('responsibility',{id:t.id,station_id:selStation,name:t.name,description:t.description,permissions:t.permissions||[]})}><Edit2 size={13}/></button>
+                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b'}} title="Delete"
+                              onClick={()=>{ if(confirm(`Delete responsibility "${t.name}"?`)) adminFetch(`/templates/${t.id}`,{method:'DELETE'}).then(()=>{loadStTemplates(selStation);showToast('Deleted.');}); }}><Trash2 size={13}/></button>
+                          </>}
+                        </div>
+                      ))}
+                    </div>
+                }
+              </div>
+            )}
             {!selStation
               ? <div style={{background:'#fff',borderRadius:12,border:'1px dashed #ddd',padding:'3rem',textAlign:'center',color:'#aaa'}}>Select a petrol bunk above</div>
               : <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
                   <table style={{width:'100%',borderCollapse:'collapse'}}>
                     <thead><tr style={{background:'#f8f7f5'}}>
-                      {['Name','Mobile','Role','Status','Actions'].map(h=>(
+                      {['Name','Mobile','Role','Responsibility','Status','Actions'].map(h=>(
                         <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>
-                      {stationUsers.length===0&&<tr><td colSpan={5} style={{textAlign:'center',padding:'2rem',color:'#aaa'}}>No users yet</td></tr>}
+                      {stationUsers.length===0&&<tr><td colSpan={6} style={{textAlign:'center',padding:'2rem',color:'#aaa'}}>No users yet</td></tr>}
                       {stationUsers.map(u=>(
                         <tr key={u.id} style={{borderBottom:'1px solid #f0f0f0'}}>
                           <td style={{padding:'11px 14px',fontWeight:600}}>{u.name}</td>
                           <td style={{padding:'11px 14px',fontFamily:'monospace',fontSize:13}}>{(u.phone||'').replace('+91','')}</td>
                           <td style={{padding:'11px 14px'}}><span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:600,background:'#ede9fe',color:'#5b21b6',textTransform:'capitalize'}}>{u.role}</span></td>
+                          <td style={{padding:'11px 14px'}}>
+                            <select value={u.template_id||''} onChange={e=>assignResp(u.id,e.target.value)}
+                              style={{padding:'4px 8px',borderRadius:7,border:'1px solid #e5e7eb',fontSize:12,background:'#fff',cursor:'pointer'}}>
+                              <option value="">Default (role)</option>
+                              {stTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                          </td>
                           <td style={{padding:'11px 14px'}}><span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:600,background:u.is_active?'#dcfce7':'#fee2e2',color:u.is_active?'#15803d':'#991b1b'}}>{u.is_active?'Active':'Inactive'}</span></td>
                           <td style={{padding:'11px 14px'}}>
                             <div style={{display:'flex',gap:5}}>
@@ -813,6 +850,39 @@ export default function AdminPage(){
             onClick={async()=>{ setLoading(true); const r=await adminFetch(`/groups/${modal.data.group_id}/stations`,{method:'POST',body:JSON.stringify({station_id:form.station_id})}); setLoading(false); if(r.error){alert(r.error);return;} loadGroupStations(modal.data.group_id); closeModal(); reload(); showToast('Bunk added.'); }}>
             {loading?'Adding…':'Add Bunk to Group'}
           </button>
+        </Modal>
+      )}
+
+      {modal?.type==='responsibility'&&(
+        <Modal title={form.id?'Edit Responsibility':'New Responsibility'} onClose={closeModal}>
+          <Field label="Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)} placeholder="e.g. Cashier"/></Field>
+          <Field label="Description"><input style={inp} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
+          <div style={{fontSize:12,fontWeight:600,color:'#555',margin:'8px 0 6px'}}>Functions ({(form.permissions||[]).length}/{modules.length})</div>
+          <div style={{maxHeight:300,overflowY:'auto',border:'1px solid #eee',borderRadius:8,padding:'6px 8px'}}>
+            {[...new Set(modules.map(m=>m.category))].map(cat=>(
+              <div key={cat} style={{marginBottom:6}}>
+                <div style={{fontSize:10,fontWeight:700,color:'#999',textTransform:'uppercase',margin:'4px 0 2px'}}>{cat}</div>
+                {modules.filter(m=>m.category===cat).map(m=>{
+                  const on=(form.permissions||[]).includes(m.code);
+                  return (
+                    <label key={m.code} style={{display:'flex',alignItems:'center',gap:6,fontSize:12.5,padding:'2px 0',cursor:'pointer'}}>
+                      <input type="checkbox" checked={on} onChange={()=>setForm(p=>{const cur=p.permissions||[];return {...p,permissions: on?cur.filter(c=>c!==m.code):[...cur,m.code]};})}/>
+                      {m.label||m.code}
+                    </label>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42,marginTop:10}} disabled={loading||!form.name}
+            onClick={async()=>{
+              setLoading(true);
+              const body=JSON.stringify({station_id:selStation,name:form.name,description:form.description||'',permissions:form.permissions||[]});
+              const r= form.id ? await adminFetch(`/templates/${form.id}`,{method:'PATCH',body}) : await adminFetch('/templates',{method:'POST',body});
+              setLoading(false);
+              if(r&&r.error){alert(r.error);return;}
+              closeModal(); loadStTemplates(selStation); showToast('Saved.');
+            }}>{loading?'Saving…':form.id?'Save Responsibility':'Create Responsibility'}</button>
         </Modal>
       )}
 

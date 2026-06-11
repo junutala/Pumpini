@@ -497,6 +497,93 @@ router.get('/modules', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Responsibilities (role templates) — admin console ─────
+// Mirrors the user-side editor but with admin auth. Writes role_templates +
+// template_permissions and user_role_assignments.template_id — exactly what the
+// permission resolver (middleware/permissions.js) reads.
+router.get('/templates', authAdmin, async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(`
+      SELECT rt.id, rt.station_id, rt.name, rt.description, rt.is_system,
+        array_agg(tp.module_code ORDER BY tp.module_code) FILTER (WHERE tp.module_code IS NOT NULL) AS permissions,
+        COUNT(DISTINCT ura.user_id)::int AS user_count
+      FROM role_templates rt
+      LEFT JOIN template_permissions tp ON tp.template_id = rt.id
+      LEFT JOIN user_role_assignments ura ON ura.template_id = rt.id
+      WHERE rt.station_id = $1
+      GROUP BY rt.id ORDER BY rt.is_system DESC, rt.name`, [station_id]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/templates', authAdmin, async (req, res, next) => {
+  const { station_id, name, description, permissions = [] } = req.body;
+  if (!station_id || !name) return res.status(400).json({ error: 'station_id and name are required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO role_templates(station_id,name,description) VALUES($1,$2,$3) RETURNING *`,
+      [station_id, name, description || null]);
+    for (const perm of permissions) {
+      await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [rows[0].id, perm]);
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ ...rows[0], permissions });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+router.patch('/templates/:id', authAdmin, async (req, res, next) => {
+  const { name, description, permissions } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `UPDATE role_templates SET name=COALESCE($1,name), description=COALESCE($2,description)
+         WHERE id=$3 AND is_system=FALSE RETURNING *`,
+      [name ?? null, description ?? null, req.params.id]);
+    if (!rows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'Cannot edit a system responsibility' }); }
+    if (Array.isArray(permissions)) {
+      await client.query('DELETE FROM template_permissions WHERE template_id=$1', [req.params.id]);
+      for (const perm of permissions) {
+        await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [req.params.id, perm]);
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ ...rows[0], permissions: permissions || [] });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+router.delete('/templates/:id', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query('DELETE FROM role_templates WHERE id=$1 AND is_system=FALSE RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(403).json({ error: 'Cannot delete a system responsibility' });
+    res.json({ deleted: true });
+  } catch (err) { next(err); }
+});
+
+// Assign a responsibility to a user (empty template_id clears it → role default).
+router.post('/templates/assign', authAdmin, async (req, res, next) => {
+  try {
+    const { user_id, template_id, station_id } = req.body;
+    if (!user_id || !station_id) return res.status(400).json({ error: 'user_id and station_id are required' });
+    if (template_id) {
+      await pool.query(
+        `INSERT INTO user_role_assignments(user_id,template_id,station_id)
+         VALUES($1,$2,$3)
+         ON CONFLICT(user_id,station_id) DO UPDATE SET template_id=$2, assigned_at=NOW()`,
+        [user_id, template_id, station_id]);
+    } else {
+      await pool.query('DELETE FROM user_role_assignments WHERE user_id=$1 AND station_id=$2', [user_id, station_id]);
+    }
+    try { require('../middleware/permissions').clearPermCache(user_id, station_id); } catch {}
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+});
+
 router.post('/plans', authAdmin, async (req, res, next) => {
   try {
     const { name, price_per_month, features } = req.body;
@@ -574,11 +661,11 @@ router.get('/station-users/:station_id', authAdmin, async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT u.id, u.name, u.phone, u.email, u.role, u.is_active,
-             ur.permissions
+             ura.template_id, rt.name AS template_name
       FROM users u
       JOIN station_users su ON su.user_id = u.id
       LEFT JOIN user_role_assignments ura ON ura.user_id = u.id AND ura.station_id = $1
-      LEFT JOIN role_templates ur ON ur.id = ura.role_id
+      LEFT JOIN role_templates rt ON rt.id = ura.template_id
       WHERE su.station_id = $1 AND u.role != 'owner'
       ORDER BY u.name`,
       [req.params.station_id]
