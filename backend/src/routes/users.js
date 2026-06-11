@@ -2,20 +2,43 @@ const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
+const { getAccessibleStationIds, canAccessStation } = require('../middleware/stationAccess');
+
+// A user is manageable only if they share one of the requester's stations —
+// directly (station_users) or as a credit customer linked to one. Without this,
+// any owner/manager could PATCH or force-logout ANY user in the system by id.
+async function canManageUser(requesterId, targetUserId) {
+  const ids = await getAccessibleStationIds(requesterId);
+  if (!ids.length) return false;
+  const { rows } = await pool.query(
+    `SELECT 1
+       WHERE EXISTS (SELECT 1 FROM station_users
+                      WHERE user_id=$1 AND station_id = ANY($2::uuid[]))
+          OR EXISTS (SELECT 1 FROM users u
+                      JOIN corporate_station_links csl ON csl.corporate_id = u.corporate_id
+                      WHERE u.id=$1 AND csl.station_id = ANY($2::uuid[]))
+       LIMIT 1`,
+    [targetUserId, ids]
+  );
+  return rows.length > 0;
+}
 
 router.get('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
     const { station_id, role } = req.query;
-    let q = `SELECT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.created_at,u.must_change_password
-             FROM users u`;
-    const p = [];
-    if (station_id) {
-      p.push(station_id);
-      q += ` JOIN station_users su ON su.user_id=u.id WHERE su.station_id=$${p.length}`;
-      if (role) { p.push(role); q += ` AND u.role=$${p.length}`; }
-    } else if (role) {
-      p.push(role); q += ` WHERE u.role=$${p.length}`;
+    // Always scoped to the requester's own stations — a station_id is verified,
+    // and omitting it falls back to "all MY stations", never "everyone".
+    if (station_id && !(await canAccessStation(req.user.id, station_id))) {
+      return res.status(403).json({ error: 'You do not have access to this station.' });
     }
+    const scopeIds = station_id ? [station_id] : await getAccessibleStationIds(req.user.id);
+    if (!scopeIds.length) return res.json([]);
+    const p = [scopeIds];
+    let q = `SELECT DISTINCT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.created_at,u.must_change_password
+             FROM users u
+             JOIN station_users su ON su.user_id=u.id
+             WHERE su.station_id = ANY($1::uuid[])`;
+    if (role) { p.push(role); q += ` AND u.role=$${p.length}`; }
     q += ' ORDER BY u.name';
     const { rows } = await pool.query(q, p);
     res.json(rows);
@@ -24,6 +47,9 @@ router.get('/', authenticate, authorize('owner','manager'), async (req, res, nex
 
 router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    if (!(await canManageUser(req.user.id, req.params.id))) {
+      return res.status(403).json({ error: 'You do not have access to this user.' });
+    }
     const { name, email, language, is_active, password } = req.body;
     const sets = []; const p = [];
     if (name !== undefined)      { p.push(name);      sets.push(`name=$${p.length}`); }
@@ -47,6 +73,9 @@ router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res
 // (within the 30s auth cache). Owner/manager only.
 router.post('/:id/force-logout', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    if (!(await canManageUser(req.user.id, req.params.id))) {
+      return res.status(403).json({ error: 'You do not have access to this user.' });
+    }
     await bumpTokenVersion(req.params.id);
     res.json({ ok: true });
   } catch (err) { next(err); }
