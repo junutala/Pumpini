@@ -71,18 +71,19 @@ async function getUserPermissions(userId, stationId) {
   const { rows: mods } = await pool.query('SELECT code FROM permission_modules');
   const catalog = mods.map(m => m.code);
 
-  // Responsibility (user-level grant).
+  // Responsibility (user-level grant). A responsibility, IF ASSIGNED, applies to
+  // everyone — including owners (ownership ≠ access; lets a financial owner be
+  // limited to e.g. a dashboard). Otherwise owner = the whole catalog, other
+  // roles = their defaults.
+  const { rows: tp } = await pool.query(`
+    SELECT DISTINCT tp.module_code
+    FROM user_role_assignments ura
+    JOIN template_permissions tp ON tp.template_id = ura.template_id
+    WHERE ura.user_id = $1 AND ura.station_id = $2`, [userId, stationId]);
   let resp;
-  if (role === 'owner') {
-    resp = catalog;                          // owner = everything the catalog offers…
-  } else {
-    const { rows: tp } = await pool.query(`
-      SELECT DISTINCT tp.module_code
-      FROM user_role_assignments ura
-      JOIN template_permissions tp ON tp.template_id = ura.template_id
-      WHERE ura.user_id = $1 AND ura.station_id = $2`, [userId, stationId]);
-    resp = tp.length ? tp.map(r => r.module_code) : (roleDefaults[role] || ['dashboard.view']);
-  }
+  if (tp.length)            resp = tp.map(r => r.module_code);
+  else if (role === 'owner') resp = catalog;
+  else                       resp = roleDefaults[role] || ['dashboard.view'];
 
   // Plan (outlet ceiling). Effective = Responsibility ∩ Plan.
   const planMods = await getPlanModules(stationId, catalog);

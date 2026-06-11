@@ -519,7 +519,7 @@ router.get('/templates', authAdmin, async (req, res, next) => {
       FROM role_templates rt
       LEFT JOIN template_permissions tp ON tp.template_id = rt.id
       LEFT JOIN user_role_assignments ura ON ura.template_id = rt.id
-      WHERE rt.station_id = $1
+      WHERE rt.station_id = $1 OR rt.station_id IS NULL   -- include global system responsibilities
       GROUP BY rt.id ORDER BY rt.is_system DESC, rt.name`, [station_id]);
     res.json(rows);
   } catch (err) { next(err); }
@@ -674,8 +674,8 @@ router.get('/station-users/:station_id', authAdmin, async (req, res, next) => {
       JOIN station_users su ON su.user_id = u.id
       LEFT JOIN user_role_assignments ura ON ura.user_id = u.id AND ura.station_id = $1
       LEFT JOIN role_templates rt ON rt.id = ura.template_id
-      WHERE su.station_id = $1 AND u.role != 'owner'
-      ORDER BY u.name`,
+      WHERE su.station_id = $1
+      ORDER BY u.role='owner' DESC, u.name`,
       [req.params.station_id]
     );
     res.json(rows);
