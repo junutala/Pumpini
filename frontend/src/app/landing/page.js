@@ -214,14 +214,16 @@ const PLANS = [
       'Unlimited nozzles & tanks',
       'Up to 15 users',
       'Voice POS entry',
-      '6 language support',
-      'Shifts & reconciliation',
-      'GST invoices',
-      'Credit customers',
-      'Lubes & products',
-      'Real-time dashboard',
+      '6 Indian languages',
+      'Blind-drop shift reconciliation',
+      'Wet-stock (tank dip) reconciliation',
+      'Cash integrity monitoring',
+      'Bank deposit tracking',
+      'Credit customers & GST invoices',
+      'Lubes & products (barcode)',
+      'Tally Prime export',
+      'AI assistant + live dashboard',
       'Geo-fencing security',
-      'WhatsApp alerts',
     ],
   },
   {
@@ -235,9 +237,9 @@ const PLANS = [
       'Everything in PRO',
       'Group dashboard',
       'Multi-station reports',
-      'Corporate fleet portal',
+      'Corporate PAN fleet portal',
+      'Manager-driven blind drop',
       'Priority support',
-      'Custom invoice prefix',
       'Advanced analytics',
     ],
   },
@@ -510,6 +512,52 @@ export default function LandingPage() {
         `}</style>
       </section>
 
+      {/* ── Tagline explainer: Control every drop. Track every rupee. ── */}
+      <section style={{padding:'5rem 5%',background:'#F4F7FA'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'3rem'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem',color:'#0F1923'}}>
+              <span style={{color:'#1A5F7A'}}>Control every drop.</span>{' '}
+              <span style={{color:'#FF6B00'}}>Track every rupee.</span>
+            </h2>
+            <p style={{fontSize:16,color:'#666',maxWidth:640,margin:'0 auto'}}>
+              Two promises, one system — the fuel in your tanks and the cash in your drawer,
+              both watched from open to close.
+            </p>
+          </div>
+          <div className="pmp-2col" style={{display:'grid',gap:'2rem'}}>
+            <div style={{background:'#fff',borderRadius:16,padding:'2rem',border:'1px solid #e5e7eb'}}>
+              <div style={{fontSize:32,marginBottom:'0.75rem'}}>💧</div>
+              <h3 style={{fontSize:20,fontWeight:800,marginBottom:'0.5rem',color:'#1A5F7A'}}>Control every drop</h3>
+              <p style={{fontSize:14.5,color:'#555',lineHeight:1.7,marginBottom:'1rem'}}>
+                Every litre is accounted for, from dip to nozzle. Tank-dip reconciliation
+                catches evaporation, leakage and pilferage — live, not just at month-end.
+              </p>
+              <ul style={{listStyle:'none',padding:0,margin:0,fontSize:14,color:'#333',lineHeight:2}}>
+                <li>✅ Wet-stock (tank dip) reconciliation</li>
+                <li>✅ Live tank variance — green within limit, red over</li>
+                <li>✅ Per-shift &amp; cumulative drift alerts</li>
+                <li>✅ Deliveries, dipstick &amp; meter, tied together</li>
+              </ul>
+            </div>
+            <div style={{background:'#fff',borderRadius:16,padding:'2rem',border:'1px solid #e5e7eb'}}>
+              <div style={{fontSize:32,marginBottom:'0.75rem'}}>₹</div>
+              <h3 style={{fontSize:20,fontWeight:800,marginBottom:'0.5rem',color:'#FF6B00'}}>Track every rupee</h3>
+              <p style={{fontSize:14.5,color:'#555',lineHeight:1.7,marginBottom:'1rem'}}>
+                Cash is followed from the operator&apos;s hand to the bank. Blind-drop
+                reconciliation keeps the sale honest; every shortfall and deposit is on record.
+              </p>
+              <ul style={{listStyle:'none',padding:0,margin:0,fontSize:14,color:'#333',lineHeight:2}}>
+                <li>✅ Blind-drop shift reconciliation</li>
+                <li>✅ Cash integrity — who&apos;s short, how often</li>
+                <li>✅ Bank deposit tracking with aging alerts</li>
+                <li>✅ Credit dues, receipts &amp; Tally export</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Voice POS Highlight ── */}
       <section style={{background:'#fff7ed',padding:'5rem 5%',borderTop:'3px solid #FF6B00'}}>
         <div className="pmp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',
@@ -769,8 +817,7 @@ export default function LandingPage() {
           </h2>
           <p style={{fontSize:16,color:'rgba(255,255,255,.6)',marginBottom:'2rem'}}>
             Leave your details and our team will reach out to activate your
-            15-day free trial. Prefer not to share your personal number? Just
-            give us your bunk manager&apos;s contact.
+            15-day free trial.
           </p>
 
           <form onSubmit={submitLead} style={{background:'#fff',borderRadius:16,padding:'1.75rem',

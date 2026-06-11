@@ -572,7 +572,7 @@ router.delete('/station-users/:id', authAdmin, async (req, res, next) => {
 });
 
 // ── Leads / Enquiries ─────────────────────────────────────
-const LEAD_FIELDS = ['name','station_name','city','phone','email','message','source','status','notes'];
+const LEAD_FIELDS = ['name','station_name','city','state','phone','email','message','source','status','notes'];
 
 router.get('/leads', authAdmin, async (req, res, next) => {
   try {
@@ -589,12 +589,12 @@ router.post('/leads', authAdmin, async (req, res, next) => {
       return res.status(400).json({ error: 'Name and phone are required.' });
     }
     const { rows } = await pool.query(
-      `INSERT INTO leads(name, station_name, city, phone, email, message, source, status, notes)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO leads(name, station_name, city, state, phone, email, message, source, status, notes)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
-        req.body.name.trim(), req.body.station_name || null, req.body.city || null,
+        req.body.name.trim(), req.body.station_name || null, req.body.city || null, req.body.state || null,
         req.body.phone.trim(), req.body.email || null, req.body.message || null,
-        req.body.source || 'whatsapp', req.body.status || 'new', req.body.notes || null,
+        req.body.source || 'website', req.body.status || 'new', req.body.notes || null,
       ]
     );
     res.status(201).json(rows[0]);

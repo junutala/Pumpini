@@ -426,3 +426,6 @@ CREATE TABLE IF NOT EXISTS tally_ledger_map (
   UNIQUE(station_id, touchpoint_key)
 );
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS tally_company_name VARCHAR(150);
+
+-- Admin refinements (Jun 2026): lead state (for State LOV in leads screen)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS state VARCHAR(60);

@@ -10,7 +10,7 @@ const { sendWhatsApp } = require('../services/whatsappService');
 // POST /api/leads
 router.post('/', async (req, res, next) => {
   try {
-    const { name, station_name, city, phone, email, message, company } = req.body;
+    const { name, station_name, city, state, phone, email, message, company } = req.body;
 
     // Honeypot — bots fill hidden "company" field; humans never see it.
     if (company) return res.status(201).json({ ok: true });
@@ -20,12 +20,13 @@ router.post('/', async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO leads(name, station_name, city, phone, email, message, source)
-       VALUES($1,$2,$3,$4,$5,$6,'website') RETURNING id`,
+      `INSERT INTO leads(name, station_name, city, state, phone, email, message, source)
+       VALUES($1,$2,$3,$4,$5,$6,$7,'website') RETURNING id`,
       [
         String(name).trim().slice(0, 120),
         station_name ? String(station_name).trim().slice(0, 160) : null,
         city ? String(city).trim().slice(0, 80) : null,
+        state ? String(state).trim().slice(0, 60) : null,
         String(phone).trim().slice(0, 20),
         email ? String(email).trim().slice(0, 160) : null,
         message ? String(message).trim().slice(0, 1000) : null,

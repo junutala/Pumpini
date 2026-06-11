@@ -165,6 +165,8 @@ export default function AdminPage(){
   const [selStation,setSelStation]     = useState('');
   const [stationUsers,setStationUsers] = useState([]);
   const [leads,setLeads]               = useState([]);
+  const [leadSort,setLeadSort]         = useState({ field:'created_at', dir:'desc' });
+  const [hideClosed,setHideClosed]     = useState(false);
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
   const [loading,setLoading] = useState(false);
@@ -205,6 +207,18 @@ export default function AdminPage(){
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
+  const LEAD_CLOSED = ['converted','lost'];
+  const sortLeads = (field)=> setLeadSort(s=>({ field, dir: s.field===field && s.dir==='asc' ? 'desc' : 'asc' }));
+  const sortedLeads = [...leads]
+    .filter(l=> !hideClosed || !LEAD_CLOSED.includes(l.status))
+    .sort((a,b)=>{
+      const f = leadSort.field; let va, vb;
+      if (f==='status') { va = LEAD_STATUS.findIndex(x=>x[0]===a.status); vb = LEAD_STATUS.findIndex(x=>x[0]===b.status); }
+      else { va = (a[f]||'').toString().toLowerCase(); vb = (b[f]||'').toString().toLowerCase(); }
+      if (va<vb) return leadSort.dir==='asc'?-1:1;
+      if (va>vb) return leadSort.dir==='asc'?1:-1;
+      return 0;
+    });
   const loadGroupMembers  = async gid => { const r=await adminFetch(`/groups/${gid}/members-list`); setGroupMembers(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadGroupStations = async gid => { const r=await adminFetch(`/groups/${gid}/stations`); setGroupStations(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadStationUsers  = async sid => { if(!sid)return; const r=await adminFetch(`/station-users/${sid}`); setStationUsers(Array.isArray(r)?r:[]); };
@@ -604,19 +618,27 @@ export default function AdminPage(){
         {tab==='leads'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Leads <span style={{fontSize:14,color:'#888',fontWeight:500}}>({leads.length})</span></h1>
-              <button style={btn()} onClick={()=>openModal('lead',{source:'whatsapp',status:'new'})}><Plus size={15}/>Add Lead</button>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Leads <span style={{fontSize:14,color:'#888',fontWeight:500}}>({sortedLeads.length})</span></h1>
+              <div style={{display:'flex',gap:14,alignItems:'center'}}>
+                <label style={{fontSize:12.5,color:'#666',display:'flex',alignItems:'center',gap:5,cursor:'pointer'}}>
+                  <input type="checkbox" checked={hideClosed} onChange={e=>setHideClosed(e.target.checked)}/> Hide closed
+                </label>
+                <button style={btn()} onClick={()=>openModal('lead',{source:'website',status:'new'})}><Plus size={15}/>Add Lead</button>
+              </div>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',minWidth:920}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:980}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {['Date','Name','Phone','Bunk','City','Source','Status','Notes',''].map((h,i)=>(
-                    <th key={i} style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
+                  {[['Date','created_at'],['Name','name'],['Phone',null],['Bunk','station_name'],['City','city'],['State','state'],['Source','source'],['Status','status'],['Notes',null],['',null]].map(([h,field],i)=>(
+                    <th key={i} onClick={()=>field&&sortLeads(field)}
+                      style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de',cursor:field?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'}}>
+                      {h}{field&&leadSort.field===field?(leadSort.dir==='asc'?' ▲':' ▼'):''}
+                    </th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {leads.length===0&&<tr><td colSpan={9} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>No leads yet</td></tr>}
-                  {leads.map(l=>{
+                  {sortedLeads.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>No leads</td></tr>}
+                  {sortedLeads.map(l=>{
                     const m = LEAD_STATUS.find(x=>x[0]===l.status) || ['','','#f3f4f6','#374151'];
                     const sb = m[2], st = m[3];
                     return (
@@ -626,6 +648,7 @@ export default function AdminPage(){
                         <td style={{padding:'10px 12px',fontFamily:'monospace',fontSize:13,whiteSpace:'nowrap'}}>{l.phone}</td>
                         <td style={{padding:'10px 12px',fontSize:13}}>{l.station_name||'—'}</td>
                         <td style={{padding:'10px 12px',fontSize:13}}>{l.city||'—'}</td>
+                        <td style={{padding:'10px 12px',fontSize:13}}>{l.state||'—'}</td>
                         <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 7px',borderRadius:99,background:'#f1f5f9',color:'#475569',textTransform:'capitalize'}}>{l.source}</span></td>
                         <td style={{padding:'10px 12px'}}>
                           <select value={l.status} onChange={e=>patchLead(l.id,{status:e.target.value})}
@@ -836,9 +859,20 @@ export default function AdminPage(){
         <Modal title="Add Lead" onClose={closeModal}>
           <Field label="Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
           <Field label="Mobile" required><input style={inp} value={form.phone||''} onChange={e=>f('phone',e.target.value)} placeholder="+91…"/></Field>
+          <Field label="Petrol Bunk"><input style={inp} value={form.station_name||''} onChange={e=>f('station_name',e.target.value)}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Petrol Bunk"><input style={inp} value={form.station_name||''} onChange={e=>f('station_name',e.target.value)}/></Field>
-            <Field label="City"><input style={inp} value={form.city||''} onChange={e=>f('city',e.target.value)}/></Field>
+            <Field label="State">
+              <select style={inp} value={form.state||''} onChange={e=>{ f('state',e.target.value); f('city',''); }}>
+                <option value="">Select…</option>
+                {INDIAN_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            <Field label="City">
+              <select style={inp} value={form.city||''} onChange={e=>f('city',e.target.value)} disabled={!form.state}>
+                <option value="">{form.state?'Select…':'Pick state first'}</option>
+                {getCities(form.state).map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
             <Field label="Source">
