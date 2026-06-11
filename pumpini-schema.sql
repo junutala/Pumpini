@@ -470,3 +470,12 @@ CREATE INDEX IF NOT EXISTS idx_shift_recon_shift          ON shift_reconciliatio
 CREATE INDEX IF NOT EXISTS idx_shift_attendants_shift     ON shift_attendants(shift_id, attendant_id);
 CREATE INDEX IF NOT EXISTS idx_product_invoices_shift     ON product_invoices(shift_id, attendant_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_station_sent        ON alerts(station_id, sent_at DESC);
+
+-- ──────────────────────────────────────────────────────────────
+-- Owner-only sale void (Jun 2026). Soft void: row kept for the audit trail,
+-- excluded from every aggregate. Run on the live DB BEFORE deploying the code.
+-- ──────────────────────────────────────────────────────────────
+ALTER TABLE dispense_events ADD COLUMN IF NOT EXISTS is_voided   BOOLEAN DEFAULT FALSE;
+ALTER TABLE dispense_events ADD COLUMN IF NOT EXISTS voided_by   UUID REFERENCES users(id);
+ALTER TABLE dispense_events ADD COLUMN IF NOT EXISTS voided_at   TIMESTAMPTZ;
+ALTER TABLE dispense_events ADD COLUMN IF NOT EXISTS void_reason TEXT;

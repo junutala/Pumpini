@@ -18,8 +18,9 @@ const MODE_COLORS = { cash:'#16a34a', upi:'#2563eb', credit:'#9333ea', card:'#ea
 export default function LiveEventsPage() {
   const { t } = useTranslation();
   const tc = (k,d) => { const v=t(k); return v===k?d:v; };
-  const { station } = useAuth();
+  const { user, station } = useAuth();
   const stationId = typeof station==='object'?station?.id:station;
+  const isOwner   = user?.role === 'owner';
 
   const [events,setEvents]   = useState([]);
   const [shifts,setShifts]   = useState([]);
@@ -38,16 +39,33 @@ export default function LiveEventsPage() {
     const rows = Array.isArray(evs)?evs:[];
     setEvents(rows);
     setShifts(Array.isArray(shs)?shs:[]);
+    const live = rows.filter(r => !r.is_voided); // voided rows show struck-through but never count
     setStats({
-      total:  rows.reduce((s,r)=>s+parseFloat(r.amount||0),0),
-      litres: rows.reduce((s,r)=>s+parseFloat(r.quantity_ltrs||0),0),
-      txns:   rows.length,
+      total:  live.reduce((s,r)=>s+parseFloat(r.amount||0),0),
+      litres: live.reduce((s,r)=>s+parseFloat(r.quantity_ltrs||0),0),
+      txns:   live.length,
     });
   };
 
   useEffect(()=>{ loadRecent(); },[stationId]);
   useRefreshOnFocus(loadRecent);
   
+  // Owner-only void: reason is mandatory; the entry stays visible struck-through.
+  const voidEntry = async (ev) => {
+    const reason = window.prompt(`Void this ${ev.fuel_type} sale by ${ev.attendant_name||'attendant'}?\n\nEnter the reason (required):`);
+    if (reason === null) return;            // cancelled
+    if (!reason.trim()) return alert('A reason is required to void a sale.');
+    try {
+      await api.post(`/dispense/${ev.id}/void`, { reason: reason.trim() });
+      await loadRecent();                   // re-pull list + totals
+    } catch (err) {
+      alert(err?.error || err?.message || 'Could not void this entry.');
+    }
+  };
+
+  // A voided entry comes back via socket — just refresh the list.
+  useEffect(()=>{ return on('dispense:voided', () => loadRecent()); },[on]);
+
   // Real-time new events
   useEffect(()=>{
     return on('dispense:new', ev => {
@@ -137,20 +155,23 @@ export default function LiveEventsPage() {
                   <th>{tc('live_page.amount','Amount')}</th>
                   <th>{tc('live_page.mode','Mode')}</th>
                   <th>{tc('live_page.vehicle','Vehicle')}</th>
+                  {isOwner && <th></th>}
                 </tr>
               </thead>
               <tbody>
                 {events.length===0 && (
-                  <tr><td colSpan={9} style={{textAlign:'center',color:'var(--text-3)',padding:'3rem'}}>
+                  <tr><td colSpan={isOwner?10:9} style={{textAlign:'center',color:'var(--text-3)',padding:'3rem'}}>
                     <Activity size={32} style={{margin:'0 auto 8px',opacity:.3}}/>
                     <div>{tc('live_page.no_events','No events yet. Transactions will appear here in real time.')}</div>
                   </td></tr>
                 )}
                 {events.map((ev,i)=>(
                   <tr key={ev.id} style={{
-                    background: flash===ev.id ? '#fff3e0' : i===0&&!flash ? 'var(--surface-2)' : '',
+                    background: ev.is_voided ? '#fafafa' : flash===ev.id ? '#fff3e0' : i===0&&!flash ? 'var(--surface-2)' : '',
                     transition: 'background .5s',
-                  }}>
+                    textDecoration: ev.is_voided ? 'line-through' : 'none',
+                    opacity: ev.is_voided ? .45 : 1,
+                  }} title={ev.is_voided ? `VOIDED: ${ev.void_reason||''}` : undefined}>
                     <td className="num" style={{color:'var(--text-3)',fontSize:12}}>{ev.event_seq}</td>
                     <td style={{fontSize:12,fontFamily:'var(--font-mono)',whiteSpace:'nowrap'}}>{toIST(ev.occurred_at)}</td>
                     <td style={{fontWeight:500}}>{ev.attendant_name||'—'}</td>
@@ -178,6 +199,19 @@ export default function LiveEventsPage() {
                       </span>
                     </td>
                     <td style={{fontSize:12,fontFamily:'var(--font-mono)'}}>{ev.vehicle_number||'—'}</td>
+                    {isOwner && (
+                      <td>
+                        {ev.is_voided
+                          ? <span style={{fontSize:10,fontWeight:800,color:'#dc2626',letterSpacing:.5}}>VOID</span>
+                          : ev.shift_status === 'open' && (
+                              <button onClick={()=>voidEntry(ev)}
+                                style={{fontSize:11,fontWeight:700,color:'#dc2626',background:'none',
+                                  border:'1px solid #fca5a5',borderRadius:6,padding:'2px 8px',cursor:'pointer'}}>
+                                Void
+                              </button>
+                            )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

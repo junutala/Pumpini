@@ -102,7 +102,8 @@ router.get('/summary/:corporate_id', authenticate, requireCorporateAccess('corpo
     // Total credit sales
     let salesQ = `SELECT COALESCE(SUM(amount),0) AS total_sales
       FROM dispense_events
-      WHERE corporate_id=$1 AND payment_mode='credit'`;
+      WHERE corporate_id=$1 AND payment_mode='credit'
+        AND NOT COALESCE(is_voided,FALSE)`;
     if (station_id) { p.push(station_id); salesQ += ` AND station_id=$${p.length}`; }
 
     // Total receipts

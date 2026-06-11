@@ -46,6 +46,7 @@ router.get('/:id/dashboard', authenticate, async (req, res, next) => {
       JOIN station_group_members sgm ON sgm.station_id = s.id
       JOIN station_groups stg ON stg.id = sgm.station_group_id
       LEFT JOIN dispense_events de ON de.station_id = s.id AND de.occurred_at::date = $2
+        AND NOT COALESCE(de.is_voided,FALSE)
       LEFT JOIN shifts sh ON sh.station_id = s.id AND sh.date = $2
       LEFT JOIN alerts al ON al.station_id = s.id
       WHERE stg.owner_group_id = $1

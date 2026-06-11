@@ -19,6 +19,7 @@ async function sendDailySummaries() {
       JOIN corporate_drivers cd ON cd.id = ct.driver_id
       JOIN dispense_events de ON de.id = ct.dispense_event_id
       WHERE ct.corporate_id=$1 AND de.occurred_at::date=$2
+        AND NOT COALESCE(de.is_voided,FALSE)
       ORDER BY de.occurred_at`, [corp.id, today]);
 
     if (!txns.length) continue;

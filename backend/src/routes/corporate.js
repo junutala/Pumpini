@@ -78,6 +78,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
           SELECT SUM(de.amount) FROM dispense_events de
           WHERE de.corporate_id=ca.id AND de.station_id=csl.station_id
             AND de.payment_mode='credit' AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+            AND NOT COALESCE(de.is_voided,FALSE)
         ),0) AS current_outstanding
       FROM corporate_accounts ca
       JOIN corporate_station_links csl ON csl.corporate_id = ca.id
@@ -104,7 +105,7 @@ router.get('/all', authenticate, authorize('owner','manager'), async (req, res, 
       FROM corporate_accounts ca
       LEFT JOIN corporate_station_links csl ON csl.corporate_id = ca.id
       LEFT JOIN stations s ON s.id = csl.station_id
-      LEFT JOIN dispense_events de ON de.corporate_id = ca.id
+      LEFT JOIN dispense_events de ON de.corporate_id = ca.id AND NOT COALESCE(de.is_voided,FALSE)
       WHERE ca.merged_into_id IS NULL
         AND ( ca.created_by_station = ANY($1::uuid[])
            OR EXISTS (SELECT 1 FROM corporate_station_links l
@@ -243,6 +244,7 @@ router.get('/:id/links', authenticate, requireCorporateAccess(), async (req, res
           SELECT SUM(de.amount) FROM dispense_events de
           WHERE de.corporate_id=csl.corporate_id AND de.station_id=csl.station_id
             AND de.payment_mode='credit' AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+            AND NOT COALESCE(de.is_voided,FALSE)
         ),0) AS current_outstanding
       FROM corporate_station_links csl
       JOIN stations s ON s.id = csl.station_id
@@ -415,6 +417,7 @@ router.get('/:id/statement', authenticate, requireCorporateAccess(), async (req,
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
       WHERE de.corporate_id = $1 AND de.payment_mode = 'credit'
+        AND NOT COALESCE(de.is_voided,FALSE)
     `;
     const p = [req.params.id];
     if (station_id) { p.push(station_id); q += ` AND de.station_id=$${p.length}`; }
@@ -461,6 +464,7 @@ router.get('/:id', authenticate, requireCorporateAccess(), async (req, res, next
            SELECT SUM(de.amount) FROM dispense_events de
            WHERE de.corporate_id=ca.id AND de.payment_mode='credit'
              AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
+             AND NOT COALESCE(de.is_voided,FALSE)
          ),0) AS current_outstanding
        FROM corporate_accounts ca WHERE ca.id=$1`,
       [req.params.id]

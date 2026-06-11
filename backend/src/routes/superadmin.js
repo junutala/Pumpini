@@ -41,8 +41,8 @@ router.get('/platform-stats', authAdmin, async (req, res, next) => {
       pool.query('SELECT COUNT(*)::int AS count FROM stations'),
       pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
       pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
-      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE'),
-      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE)"),
+      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE AND NOT COALESCE(is_voided,FALSE)'),
+      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE) AND NOT COALESCE(is_voided,FALSE)"),
     ]);
     res.json({
       total_groups:   groups.rows[0].count,
@@ -403,6 +403,7 @@ router.get('/groups/:id/dashboard', authAdmin, async (req, res, next) => {
       JOIN station_group_members sgm ON sgm.station_id = s.id
       JOIN station_groups stg ON stg.id = sgm.station_group_id
       LEFT JOIN dispense_events de ON de.station_id=s.id AND de.occurred_at::date=$2
+        AND NOT COALESCE(de.is_voided,FALSE)
       LEFT JOIN shifts sh ON sh.station_id=s.id AND sh.date=$2
       WHERE stg.owner_group_id=$1
       GROUP BY s.id ORDER BY s.name`,

@@ -16,7 +16,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
       FROM shifts s
       LEFT JOIN users u ON u.id = s.manager_id
       LEFT JOIN shift_attendants sa ON sa.shift_id = s.id
-      LEFT JOIN dispense_events de ON de.shift_id = s.id
+      LEFT JOIN dispense_events de ON de.shift_id = s.id AND NOT COALESCE(de.is_voided,FALSE)
       WHERE 1=1
     `;
     const p = [];
@@ -70,8 +70,8 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
       JOIN users u ON u.id = sa.attendant_id
       LEFT JOIN rfid_tags r ON r.id = sa.rfid_tag_id
       LEFT JOIN nozzles n ON n.id = sa.nozzle_id
-      LEFT JOIN dispense_events de ON de.shift_id = sa.shift_id 
-        AND de.attendant_id = sa.attendant_id
+      LEFT JOIN dispense_events de ON de.shift_id = sa.shift_id
+        AND de.attendant_id = sa.attendant_id AND NOT COALESCE(de.is_voided,FALSE)
       WHERE sa.shift_id = $1
       GROUP BY sa.id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`,
       [req.params.id]);
@@ -118,6 +118,16 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
     if (!nozzle_id)    return res.status(400).json({ error: 'Nozzle is required' });
+    // Opening float must be stated explicitly (₹0 is fine) — a forgotten float
+    // silently becomes 0 and shows up that evening as a phantom OVERAGE of the
+    // float amount, undermining the blind-drop variance.
+    if (opening_cash === undefined || opening_cash === null || opening_cash === '') {
+      return res.status(400).json({ error: 'Opening cash (float) is required — enter 0 if no float is given.' });
+    }
+    const floatNum = Number(opening_cash);
+    if (!Number.isFinite(floatNum) || floatNum < 0 || floatNum > 1000000) {
+      return res.status(400).json({ error: 'Invalid opening cash amount.' });
+    }
 
     // Check nozzle not already assigned in this shift
     const { rows: nozzleCheck } = await pool.query(

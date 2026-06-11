@@ -252,6 +252,43 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
 
     if (!items || !items.length) return res.status(400).json({ error:'No items provided' });
 
+    // Credit limit applies to LUBE credit too — without this, a corporate capped
+    // for fuel could take unlimited oil on credit. Outstanding = uninvoiced fuel
+    // credit + prior credit lube invoices (conservative: lube payments aren't
+    // netted here, so the gate errs toward blocking, never over-extending).
+    if (payment_mode === 'credit') {
+      if (!customer_id) return res.status(400).json({ error: 'Credit sale requires a credit customer.' });
+      const saleTotal = items.reduce((s, i) => {
+        const taxable = parseFloat(i.quantity) * parseFloat(i.unit_price);
+        return s + taxable * (1 + parseFloat(i.gst_rate || 18) / 100);
+      }, 0);
+      const { rows: limitRows } = await pool.query(
+        `SELECT credit_limit FROM corporate_station_links
+         WHERE corporate_id=$1 AND station_id=$2 AND is_active=TRUE LIMIT 1`,
+        [customer_id, station_id]);
+      if (!limitRows.length) {
+        return res.status(400).json({ error: 'This credit customer is not linked to this station.' });
+      }
+      const creditLimit = Number(limitRows[0].credit_limit) || 0;
+      const { rows: outRows } = await pool.query(
+        `SELECT
+           COALESCE((SELECT SUM(amount) FROM dispense_events
+             WHERE corporate_id=$1 AND station_id=$2 AND payment_mode='credit'
+               AND (is_invoiced IS NULL OR is_invoiced=FALSE)
+               AND NOT COALESCE(is_voided,FALSE)),0)
+         + COALESCE((SELECT SUM(grand_total) FROM product_invoices
+             WHERE customer_id=$1 AND station_id=$2 AND payment_mode='credit'),0)
+           AS outstanding`,
+        [customer_id, station_id]);
+      const outstanding = Number(outRows[0].outstanding) || 0;
+      if (saleTotal > creditLimit - outstanding) {
+        return res.status(400).json({
+          error: `Credit limit exceeded. Available credit is ₹${(creditLimit - outstanding).toFixed(2)} but this sale is ₹${saleTotal.toFixed(2)}.`,
+          credit_limit: creditLimit, outstanding,
+        });
+      }
+    }
+
     // Enforce: a require-barcode product must have a barcode tied before selling
     const pids = items.map(i => i.product_id).filter(Boolean);
     if (pids.length) {

@@ -72,7 +72,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
          FROM dispense_events
          WHERE corporate_id = $1 AND station_id = $2
            AND payment_mode = 'credit'
-           AND (is_invoiced IS NULL OR is_invoiced = FALSE)`,
+           AND (is_invoiced IS NULL OR is_invoiced = FALSE)
+           AND NOT COALESCE(is_voided,FALSE)`,
         [corporate_id, station_id]
       );
       const outstanding = Number(outRows[0].outstanding) || 0;
@@ -150,6 +151,56 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     }
 
     res.status(201).json(event);
+  } catch (err) { next(err); }
+});
+
+// POST /api/dispense/:id/void — OWNER ONLY.
+// Deliberately not manager: blind drop exists to break the attendant–manager
+// nexus, and a manager-side void would hand it straight back (record a cash
+// sale, void it, split the cash). The owner is the only neutral party.
+// Voids are soft (row kept, struck through in lists), need a reason, are only
+// allowed while the shift is open, and raise an alert so they're on record.
+router.post('/:id/void', authenticate, authorize('owner'),
+  requireStationVia('SELECT station_id FROM dispense_events WHERE id=$1', 'id'),
+  async (req, res, next) => {
+  try {
+    const reason = (req.body?.reason || '').trim();
+    if (!reason) return res.status(400).json({ error: 'A reason is required to void a sale.' });
+
+    const { rows: evt } = await pool.query(
+      `SELECT de.*, s.status AS shift_status
+       FROM dispense_events de LEFT JOIN shifts s ON s.id = de.shift_id
+       WHERE de.id=$1`, [req.params.id]);
+    if (!evt.length) return res.status(404).json({ error: 'Entry not found' });
+    const e = evt[0];
+    if (e.is_voided) return res.status(409).json({ error: 'This entry is already voided.' });
+    if (e.shift_status && e.shift_status !== 'open') {
+      return res.status(400).json({ error: 'The shift is closed — its books are final. Use an adjustment entry instead.' });
+    }
+    if (e.is_invoiced) {
+      return res.status(400).json({ error: 'This sale is already on a GST invoice. Issue a credit note instead.' });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE dispense_events
+       SET is_voided=TRUE, voided_by=$2, voided_at=NOW(), void_reason=$3
+       WHERE id=$1 RETURNING *`,
+      [req.params.id, req.user.id, reason]);
+
+    // On the record: every void is an alert the owner group can see later.
+    try {
+      await require('../services/alertService').sendAlert({
+        station_id: e.station_id,
+        alert_type: 'sale_voided',
+        severity: 'warning',
+        message: `Sale entry voided by owner: ${Number(e.quantity_ltrs)}L ${e.fuel_type} (${e.payment_mode}). Reason: ${reason}`,
+        channels: [],
+        io: req.io,
+      });
+    } catch (err) { /* alert failure must not block the void */ }
+
+    req.io?.to(`station:${e.station_id}`).emit('dispense:voided', { id: e.id, shift_id: e.shift_id });
+    res.json(rows[0]);
   } catch (err) { next(err); }
 });
 

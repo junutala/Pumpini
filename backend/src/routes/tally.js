@@ -45,6 +45,7 @@ async function dailyFigures(station_id, date, isOwner = false) {
       SELECT de.fuel_type, de.payment_mode, COALESCE(SUM(de.amount),0) AS amt
       FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
       WHERE s.station_id=$1 AND de.occurred_at::date=$2${openShiftGate}
+        AND NOT COALESCE(de.is_voided,FALSE)
       GROUP BY de.fuel_type, de.payment_mode`, [station_id, date]),
     pool.query(`
       SELECT payment_mode,

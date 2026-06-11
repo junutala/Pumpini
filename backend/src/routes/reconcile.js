@@ -72,7 +72,7 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
         COALESCE(SUM(CASE WHEN payment_mode='card'   THEN amount ELSE 0 END),0) AS card_total
       FROM (
         SELECT amount, payment_mode FROM dispense_events
-          WHERE shift_id=$1 AND attendant_id=$2
+          WHERE shift_id=$1 AND attendant_id=$2 AND NOT COALESCE(is_voided,FALSE)
         UNION ALL
         SELECT grand_total AS amount, payment_mode FROM product_invoices
           WHERE shift_id=$1 AND attendant_id=$2
@@ -176,7 +176,8 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
       const { rows: cr } = await client.query(`
         SELECT COALESCE(SUM(amount),0) AS credit_value
         FROM dispense_events
-        WHERE shift_id=$1 AND attendant_id=$2 AND payment_mode='credit'`, [shift_id, attendant_id]);
+        WHERE shift_id=$1 AND attendant_id=$2 AND payment_mode='credit'
+          AND NOT COALESCE(is_voided,FALSE)`, [shift_id, attendant_id]);
       const creditValue = parseFloat(cr[0].credit_value || 0);
 
       const cardVal   = parseFloat(card_total || 0);

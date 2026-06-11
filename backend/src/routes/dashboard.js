@@ -22,6 +22,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
         JOIN shifts s ON s.id = de.shift_id
         WHERE de.station_id=$1 AND de.occurred_at::date = $2
           AND (s.status='closed' OR $3=TRUE)
+          AND NOT COALESCE(de.is_voided,FALSE)
         GROUP BY de.fuel_type, de.payment_mode`, [station_id, date, isOwner]),
 
       // Open shifts
@@ -99,6 +100,7 @@ router.get('/manager', authenticate, requireStationAccess({ required: true }), a
         LEFT JOIN rfid_tags r ON r.id = sa.rfid_tag_id
         LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         LEFT JOIN dispense_events de ON de.attendant_id = sa.attendant_id AND de.shift_id = sa.shift_id
+          AND NOT COALESCE(de.is_voided,FALSE)
         WHERE sa.shift_id=$1
         GROUP BY sa.attendant_id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`, [shift_id]),
 
@@ -137,17 +139,20 @@ router.get('/corporate/:id', authenticate, requireCorporateAccess(), async (req,
         JOIN corporate_drivers cd ON cd.id = ct.driver_id
         JOIN dispense_events de ON de.id = ct.dispense_event_id
         WHERE ct.corporate_id=$1 AND de.occurred_at::date=$2
+          AND NOT COALESCE(de.is_voided,FALSE)
         ORDER BY de.occurred_at DESC`, [id, today]),
       pool.query(`
         SELECT SUM(ct.amount) AS month_total, COUNT(*)::int AS txn_count
         FROM corporate_transactions ct
         JOIN dispense_events de ON de.id = ct.dispense_event_id
-        WHERE ct.corporate_id=$1 AND de.occurred_at::date >= $2`, [id, monthStart]),
+        WHERE ct.corporate_id=$1 AND de.occurred_at::date >= $2
+          AND NOT COALESCE(de.is_voided,FALSE)`, [id, monthStart]),
       pool.query(`
         SELECT cd.*, SUM(ct.amount) AS month_spend
         FROM corporate_drivers cd
         LEFT JOIN corporate_transactions ct ON ct.driver_id = cd.id
         LEFT JOIN dispense_events de ON de.id = ct.dispense_event_id AND de.occurred_at::date >= $2
+          AND NOT COALESCE(de.is_voided,FALSE)
         WHERE cd.corporate_id=$1 AND cd.is_active=TRUE
         GROUP BY cd.id ORDER BY cd.name`, [id, monthStart]),
     ]);
@@ -208,6 +213,7 @@ router.get('/my-consolidated', authenticate, async (req, res, next) => {
         FROM dispense_events de
         LEFT JOIN stations s ON s.id = de.station_id
         WHERE de.corporate_id = ANY($1) AND de.payment_mode='credit'
+          AND NOT COALESCE(de.is_voided,FALSE)
         ORDER BY de.occurred_at DESC LIMIT 500`, [ids]),
       pool.query(`
         SELECT pi.created_at AS date, pi.grand_total AS amount, pi.invoice_number,

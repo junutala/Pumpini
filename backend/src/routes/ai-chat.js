@@ -33,7 +33,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
           COUNT(*)                                                                        AS txn_count
         FROM dispense_events de
         JOIN shifts s ON s.id = de.shift_id
-        WHERE s.station_id = $1 AND s.date = $2 AND (s.status='closed' OR $3)`,
+        WHERE s.station_id = $1 AND s.date = $2 AND (s.status='closed' OR $3)
+          AND NOT COALESCE(de.is_voided,FALSE)`,
         [station_id, today, isOwner]
       ),
       pool.query(`
