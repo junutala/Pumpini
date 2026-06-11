@@ -36,12 +36,15 @@ const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g,
 const ymd = d => String(d).replace(/-/g, '').slice(0, 8);
 
 // Per-touchpoint rupee figures for a date (for the UI + the export).
-async function dailyFigures(station_id, date) {
+// Blind drop: non-owners exporting "today" must not see open-shift fuel sales
+// (credit is never masked) — otherwise the export becomes a mid-shift peek.
+async function dailyFigures(station_id, date, isOwner = false) {
+  const openShiftGate = isOwner ? '' : ` AND (s.status='closed' OR de.payment_mode='credit')`;
   const [fuel, lube, receipts, deposits, overage] = await Promise.all([
     pool.query(`
       SELECT de.fuel_type, de.payment_mode, COALESCE(SUM(de.amount),0) AS amt
       FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
-      WHERE s.station_id=$1 AND de.occurred_at::date=$2
+      WHERE s.station_id=$1 AND de.occurred_at::date=$2${openShiftGate}
       GROUP BY de.fuel_type, de.payment_mode`, [station_id, date]),
     pool.query(`
       SELECT payment_mode,
@@ -202,7 +205,7 @@ router.get('/touchpoints', authenticate, requireStationAccess({ required: true }
     const { station_id } = req.query;
     const date = req.query.date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const [figures, map, st] = await Promise.all([
-      dailyFigures(station_id, date),
+      dailyFigures(station_id, date, req.user.role === 'owner'),
       loadMap(station_id),
       pool.query('SELECT tally_company_name FROM station_settings WHERE station_id=$1', [station_id]),
     ]);
@@ -241,7 +244,7 @@ router.get('/export', authenticate, requireStationAccess({ required: true }), as
     const { station_id } = req.query;
     const date = req.query.date || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const [figures, map, st] = await Promise.all([
-      dailyFigures(station_id, date),
+      dailyFigures(station_id, date, req.user.role === 'owner'),
       loadMap(station_id),
       pool.query('SELECT tally_company_name FROM station_settings WHERE station_id=$1', [station_id]),
     ]);

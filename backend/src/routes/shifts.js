@@ -238,14 +238,20 @@ router.patch('/:id/close', authenticate, authorize('owner','manager'), requireSt
 router.get('/:id/events', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
-      SELECT de.*, u.name AS attendant_name, n.nozzle_number, r.tag_uid
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number, r.tag_uid,
+             sh.status AS shift_status
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
       LEFT JOIN rfid_tags r ON r.id = de.rfid_tag_id
+      LEFT JOIN shifts sh ON sh.id = de.shift_id
       WHERE de.shift_id = $1
       ORDER BY de.event_seq`, [req.params.id]);
-    res.json(rows);
+    // Blind drop: non-owners don't see sale amounts while the shift is open
+    const isOwner = req.user.role === 'owner';
+    const out = rows.map(r => (!isOwner && r.shift_status === 'open')
+      ? { ...r, amount: null, quantity_ltrs: null, sales_hidden: true } : r);
+    res.json(out);
   } catch (err) { next(err); }
 });
 
