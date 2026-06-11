@@ -377,13 +377,22 @@ export default function AdminPage(){
 
                   {/* Bunks sub-grid */}
                   <div style={{background:'#f0f9ff',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.75rem'}}>
-                    <div style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase',marginBottom:6}}>Petrol Bunks</div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>Petrol Bunks</span>
+                      <button style={{...btn('#f0fff4','#15803d'),height:24,padding:'0 8px',fontSize:11}}
+                        onClick={()=>{ loadGroupStations(g.id); openModal('addBunk',{group_id:g.id,group_name:g.name}); }}><Plus size={11}/>Add</button>
+                    </div>
                     {groupStations[g.id]
                       ? groupStations[g.id].length===0
                         ? <div style={{color:'#aaa',fontSize:11}}>No bunks</div>
                         : groupStations[g.id].map(s=>(
-                          <div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0'}}>
-                            <span style={{fontWeight:600}}>{s.name}</span><SubBadge plan={s.plan} status={s.sub_status}/>
+                          <div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0',borderBottom:'1px solid #e0eefb'}}>
+                            <span style={{fontWeight:600}}>{s.name}</span>
+                            <div style={{display:'flex',alignItems:'center',gap:6}}>
+                              <SubBadge plan={s.plan} status={s.sub_status}/>
+                              <button style={{fontSize:10,padding:'1px 6px',background:'#fee2e2',border:'none',borderRadius:4,cursor:'pointer',color:'#991b1b'}}
+                                onClick={()=>adminFetch(`/groups/${g.id}/stations/${s.id}`,{method:'DELETE'}).then(()=>{loadGroupStations(g.id);reload();showToast('Bunk removed.');})}>Remove</button>
+                            </div>
                           </div>
                         ))
                       : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupStations(g.id)}>Click to view</button>
@@ -459,7 +468,7 @@ export default function AdminPage(){
                       <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date||<span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>Active</span>}</td>
                       <td style={{padding:'11px 14px'}}>
                         <div style={{display:'flex',gap:5}}>
-                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company})}><Edit2 size={12}/>Edit</button>
+                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company,owner_id:(s.owner_ids&&s.owner_ids[0])||'',owner_group_id:s.owner_group_id||''})}><Edit2 size={12}/>Edit</button>
                           <button style={btn('#fff7ed','#9a3412')} onClick={()=>{setForm({station_id:s.id,plan:s.plan||'pro',status:s.sub_status||'active',start_date:s.start_date||todayIST(),end_date:s.end_date||''});setModal({type:'editSub',data:s});}}><Calendar size={12}/>Plan</button>
                         </div>
                       </td>
@@ -750,12 +759,20 @@ export default function AdminPage(){
             </Field>
             <Field label="GSTN"><input style={inp} value={form.gst_number||''} onChange={e=>f('gst_number',e.target.value.toUpperCase())}/></Field>
           </div>
-          <Field label="Assign Owner">
-            <select style={inp} value={form.owner_id||''} onChange={e=>f('owner_id',e.target.value)}>
-              <option value="">Select owner...</option>
-              {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </Field>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <Field label="Assign Owner">
+              <select style={inp} value={form.owner_id||''} onChange={e=>f('owner_id',e.target.value)}>
+                <option value="">Select owner...</option>
+                {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Owner Group">
+              <select style={inp} value={form.owner_group_id||''} onChange={e=>f('owner_group_id',e.target.value)}>
+                <option value="">No group (independent)</option>
+                {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </Field>
+          </div>
           {modal.type==='station'&&(
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <Field label="Plan">
@@ -767,6 +784,22 @@ export default function AdminPage(){
             </div>
           )}
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42,marginTop:4}} onClick={()=>save(modal.type==='editStation'?`/stations/${form.id}`:'/stations',modal.type==='editStation'?'PATCH':'POST')} disabled={loading}>{loading?'Saving...':modal.type==='editStation'?'Save Changes':'Create Bunk'}</button>
+        </Modal>
+      )}
+
+      {modal?.type==='addBunk'&&(
+        <Modal title={`Add Bunk — ${modal.data.group_name}`} onClose={closeModal}>
+          <Field label="Petrol Bunk">
+            <select style={inp} value={form.station_id||''} onChange={e=>f('station_id',e.target.value)}>
+              <option value="">Select a bunk…</option>
+              {stations.map(s=><option key={s.id} value={s.id}>{s.name}{s.owner_group_id&&s.owner_group_id!==modal.data.group_id?' · in another group':''}</option>)}
+            </select>
+          </Field>
+          <div style={{fontSize:12,color:'#888',marginBottom:10}}>A bunk belongs to one group — adding it here moves it from any other group.</div>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading||!form.station_id}
+            onClick={async()=>{ setLoading(true); const r=await adminFetch(`/groups/${modal.data.group_id}/stations`,{method:'POST',body:JSON.stringify({station_id:form.station_id})}); setLoading(false); if(r.error){alert(r.error);return;} loadGroupStations(modal.data.group_id); closeModal(); reload(); showToast('Bunk added.'); }}>
+            {loading?'Adding…':'Add Bunk to Group'}
+          </button>
         </Modal>
       )}
 

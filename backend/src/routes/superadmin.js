@@ -197,7 +197,10 @@ router.get('/stations', authAdmin, async (req, res, next) => {
       SELECT s.*,
         ss.gstn, ss.owner_whatsapp,
         array_agg(DISTINCT u.name) FILTER (WHERE u.role='owner') AS owners,
-        array_agg(DISTINCT u.id)   FILTER (WHERE u.role='owner') AS owner_ids
+        array_agg(DISTINCT u.id)   FILTER (WHERE u.role='owner') AS owner_ids,
+        (SELECT sg.owner_group_id FROM station_group_members sgm
+           JOIN station_groups sg ON sg.id = sgm.station_group_id
+          WHERE sgm.station_id = s.id LIMIT 1) AS owner_group_id
       FROM stations s
       LEFT JOIN station_settings ss ON ss.station_id = s.id
       LEFT JOIN station_users su ON su.station_id = s.id
@@ -254,17 +257,75 @@ router.post('/stations', authAdmin, async (req, res, next) => {
 });
 
 router.patch('/stations/:id', authAdmin, async (req, res, next) => {
+  const { name, address, gst_number, oil_company, city, state, owner_id, owner_group_id } = req.body;
+  const sid = req.params.id;
+  const client = await pool.connect();
   try {
-    const { name, address, gst_number, oil_company, city, state } = req.body;
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE stations SET
          name=COALESCE($1,name), address=COALESCE($2,address),
          gst_number=COALESCE($3,gst_number), oil_company=COALESCE($4,oil_company),
          city=COALESCE($5,city), state=COALESCE($6,state)
        WHERE id=$7 RETURNING *`,
-      [name, address, gst_number, oil_company, city, state, req.params.id]
+      [name, address, gst_number, oil_company, city, state, sid]
     );
+    // Owner change: swap the OWNER only (leave managers/attendants untouched).
+    if (owner_id !== undefined) {
+      await client.query(
+        `DELETE FROM station_users WHERE station_id=$1
+           AND user_id IN (SELECT id FROM users WHERE role='owner')`, [sid]);
+      if (owner_id) {
+        await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [sid, owner_id]);
+      }
+    }
+    // Owner group change: move the bunk to the chosen group (or detach if blank).
+    if (owner_group_id !== undefined) {
+      await client.query('DELETE FROM station_group_members WHERE station_id=$1', [sid]);
+      if (owner_group_id) {
+        let { rows: sg } = await client.query('SELECT id FROM station_groups WHERE owner_group_id=$1 LIMIT 1', [owner_group_id]);
+        if (!sg.length) {
+          const { rows: newSg } = await client.query('INSERT INTO station_groups(owner_group_id,name) VALUES($1,$2) RETURNING id', [owner_group_id, 'Default Group']);
+          sg = newSg;
+        }
+        await client.query('INSERT INTO station_group_members(station_group_id,station_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [sg[0].id, sid]);
+      }
+    }
+    await client.query('COMMIT');
     res.json(rows[0]);
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+// ── Group ⇄ station links (add/remove bunks to/from an owner group) ──
+router.post('/groups/:id/stations', authAdmin, async (req, res, next) => {
+  const { station_id } = req.body;
+  if (!station_id) return res.status(400).json({ error: 'station_id is required' });
+  const gid = req.params.id;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // One owner group per bunk — clear any existing link first.
+    await client.query('DELETE FROM station_group_members WHERE station_id=$1', [station_id]);
+    let { rows: sg } = await client.query('SELECT id FROM station_groups WHERE owner_group_id=$1 LIMIT 1', [gid]);
+    if (!sg.length) {
+      const { rows: newSg } = await client.query('INSERT INTO station_groups(owner_group_id,name) VALUES($1,$2) RETURNING id', [gid, 'Default Group']);
+      sg = newSg;
+    }
+    await client.query('INSERT INTO station_group_members(station_group_id,station_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [sg[0].id, station_id]);
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+router.delete('/groups/:id/stations/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    await pool.query(
+      `DELETE FROM station_group_members sgm USING station_groups sg
+        WHERE sgm.station_group_id = sg.id AND sg.owner_group_id = $1 AND sgm.station_id = $2`,
+      [req.params.id, req.params.station_id]);
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 
