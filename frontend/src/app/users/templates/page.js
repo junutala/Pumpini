@@ -5,7 +5,7 @@ import AppShell from '../../../components/shared/AppShell';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 
-const CATEGORY_ORDER = ['Dashboard','Shifts','Dispense','Reconciliation','Corporate','Attendance','Stock','Reports','Alerts','Admin'];
+const CATEGORY_ORDER = ['Dashboard','Shifts','Dispense','Reconciliation','Stock','Cash','Lubes','Corporate','Attendance','Accounts','Reports','AI','Alerts','Admin'];
 
 export default function TemplatesPage() {
   const { station } = useAuth();
