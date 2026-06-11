@@ -2,21 +2,31 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
-const { requireStationAccess, requireCorporateAccess } = require('../middleware/stationAccess');
+const {
+  requireStationAccess, requireCorporateAccess,
+  getAccessibleStationIds, canAccessStation, canAccessCorporate,
+} = require('../middleware/stationAccess');
 
 // ── Duplicate check helper ──────────────────────────────────
-const checkDuplicates = async (gstn, phone, excludeId = null) => {
+// stationIds scopes the search to the caller's own outlets: the same real-world
+// customer is a SEPARATE corporate account per owner group, so a duplicate hit
+// must never reveal (or block on) another tenant's customer list.
+const checkDuplicates = async (gstn, phone, excludeId = null, stationIds = null) => {
   const warnings = [];
+  const scope = stationIds ? ' AND csl.station_id = ANY($SCOPE::uuid[])' : '';
   if (gstn) {
+    const p = excludeId ? [gstn, excludeId] : [gstn];
+    if (stationIds) p.push(stationIds);
     const { rows } = await pool.query(
-      `SELECT ca.id, ca.company_name, s.name AS station_name
+      `SELECT DISTINCT ca.id, ca.company_name, s.name AS station_name
        FROM corporate_accounts ca
        JOIN corporate_station_links csl ON csl.corporate_id = ca.id
        JOIN stations s ON s.id = csl.station_id
        WHERE ca.gst_number = $1 AND ca.merged_into_id IS NULL
        ${excludeId ? 'AND ca.id != $2' : ''}
+       ${scope.replace('$SCOPE', `$${p.length}`)}
        LIMIT 3`,
-      excludeId ? [gstn, excludeId] : [gstn]
+      p
     );
     if (rows.length) {
       warnings.push({
@@ -28,15 +38,18 @@ const checkDuplicates = async (gstn, phone, excludeId = null) => {
     }
   }
   if (phone) {
+    const p = excludeId ? [phone, excludeId] : [phone];
+    if (stationIds) p.push(stationIds);
     const { rows } = await pool.query(
-      `SELECT ca.id, ca.company_name, s.name AS station_name
+      `SELECT DISTINCT ca.id, ca.company_name, s.name AS station_name
        FROM corporate_accounts ca
        JOIN corporate_station_links csl ON csl.corporate_id = ca.id
        JOIN stations s ON s.id = csl.station_id
        WHERE ca.contact_phone = $1 AND ca.merged_into_id IS NULL
        ${excludeId ? 'AND ca.id != $2' : ''}
+       ${scope.replace('$SCOPE', `$${p.length}`)}
        LIMIT 3`,
-      excludeId ? [phone, excludeId] : [phone]
+      p
     );
     if (rows.length) {
       warnings.push({
@@ -78,9 +91,11 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
   } catch (err) { next(err); }
 });
 
-// GET /api/corporate/all — all corps across all stations (for superadmin/merge)
+// GET /api/corporate/all — every corp across the CALLER'S stations (merge UI)
 router.get('/all', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    const ids = await getAccessibleStationIds(req.user.id);
+    if (!ids.length) return res.json([]);
     const { rows } = await pool.query(`
       SELECT ca.*,
         array_agg(DISTINCT s.name) AS stations,
@@ -91,16 +106,21 @@ router.get('/all', authenticate, authorize('owner','manager'), async (req, res, 
       LEFT JOIN stations s ON s.id = csl.station_id
       LEFT JOIN dispense_events de ON de.corporate_id = ca.id
       WHERE ca.merged_into_id IS NULL
-      GROUP BY ca.id ORDER BY ca.company_name`);
+        AND ( ca.created_by_station = ANY($1::uuid[])
+           OR EXISTS (SELECT 1 FROM corporate_station_links l
+                       WHERE l.corporate_id = ca.id AND l.station_id = ANY($1::uuid[])) )
+      GROUP BY ca.id ORDER BY ca.company_name`, [ids]);
     res.json(rows);
   } catch (err) { next(err); }
 });
 
-// POST /api/corporate/check-duplicate — real-time duplicate check
+// POST /api/corporate/check-duplicate — real-time duplicate check (own outlets only)
 router.post('/check-duplicate', authenticate, async (req, res, next) => {
   try {
     const { gstn, phone, exclude_id } = req.body;
-    const warnings = await checkDuplicates(gstn, phone, exclude_id);
+    const ids = await getAccessibleStationIds(req.user.id);
+    if (!ids.length) return res.json({ warnings: [] });
+    const warnings = await checkDuplicates(gstn, phone, exclude_id, ids);
     res.json({ warnings });
   } catch (err) { next(err); }
 });
@@ -117,9 +137,17 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 
     const effectiveGstn = gstn || gst_number;
 
+    // The new account (and its credit limit) hangs off a station — the caller
+    // must own that station.
+    if (!station_id) return res.status(400).json({ error: 'station_id is required' });
+    if (!(await canAccessStation(req.user.id, station_id))) {
+      return res.status(403).json({ error: 'You do not have access to this station.' });
+    }
+
     // Duplicate check — block on GSTN match unless force_create
     if (!force_create) {
-      const warnings = await checkDuplicates(effectiveGstn, contact_phone);
+      const ids = await getAccessibleStationIds(req.user.id);
+      const warnings = await checkDuplicates(effectiveGstn, contact_phone, null, ids);
       const errors = warnings.filter(w => w.level === 'error');
       if (errors.length) {
         return res.status(409).json({
@@ -250,6 +278,15 @@ router.post('/merge', authenticate, authorize('owner','manager'), async (req, re
     if (master_id === duplicate_id) {
       return res.status(400).json({ error: 'Cannot merge account with itself' });
     }
+    // Both sides of a merge must belong to the caller's outlets — merging
+    // into (or out of) another tenant's account would move their credit data.
+    const [okMaster, okDup] = await Promise.all([
+      canAccessCorporate(req.user.id, master_id),
+      canAccessCorporate(req.user.id, duplicate_id),
+    ]);
+    if (!okMaster || !okDup) {
+      return res.status(403).json({ error: 'You do not have access to one of these corporate accounts.' });
+    }
 
     const client = await pool.connect();
     try {
@@ -308,9 +345,17 @@ router.post('/merge', authenticate, authorize('owner','manager'), async (req, re
   } catch (err) { next(err); }
 });
 
-// GET /api/corporate/duplicates — list pending duplicate flags
+// A duplicate flag is "mine" when both flagged accounts belong to my outlets.
+const ACCESSIBLE_CORP_SQL = `
+  ( ca.created_by_station = ANY($IDS::uuid[])
+    OR EXISTS (SELECT 1 FROM corporate_station_links l
+                WHERE l.corporate_id = ca.id AND l.station_id = ANY($IDS::uuid[])) )`;
+
+// GET /api/corporate/duplicates — pending duplicate flags within MY outlets
 router.get('/duplicates', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    const ids = await getAccessibleStationIds(req.user.id);
+    if (!ids.length) return res.json([]);
     const { rows } = await pool.query(`
       SELECT cdf.*,
         ca1.company_name AS corp1_name, ca1.gst_number AS corp1_gstn,
@@ -321,7 +366,9 @@ router.get('/duplicates', authenticate, authorize('owner','manager'), async (req
       JOIN corporate_accounts ca1 ON ca1.id = cdf.corp1_id
       JOIN corporate_accounts ca2 ON ca2.id = cdf.corp2_id
       WHERE cdf.status = 'pending'
-      ORDER BY cdf.flagged_at DESC`);
+        AND ${ACCESSIBLE_CORP_SQL.replace(/\$IDS/g, '$1').replace(/ca\./g, 'ca1.')}
+        AND ${ACCESSIBLE_CORP_SQL.replace(/\$IDS/g, '$1').replace(/ca\./g, 'ca2.')}
+      ORDER BY cdf.flagged_at DESC`, [ids]);
     res.json(rows);
   } catch (err) { next(err); }
 });
@@ -329,6 +376,16 @@ router.get('/duplicates', authenticate, authorize('owner','manager'), async (req
 // PATCH /api/corporate/duplicates/:id/dismiss
 router.patch('/duplicates/:id/dismiss', authenticate, authorize('owner','manager'), async (req, res, next) => {
   try {
+    const { rows: flag } = await pool.query(
+      'SELECT corp1_id, corp2_id FROM corporate_duplicate_flags WHERE id=$1', [req.params.id]);
+    if (!flag.length) return res.status(404).json({ error: 'Flag not found' });
+    const [ok1, ok2] = await Promise.all([
+      canAccessCorporate(req.user.id, flag[0].corp1_id),
+      canAccessCorporate(req.user.id, flag[0].corp2_id),
+    ]);
+    if (!ok1 || !ok2) {
+      return res.status(403).json({ error: 'You do not have access to this duplicate flag.' });
+    }
     await pool.query(
       `UPDATE corporate_duplicate_flags SET status='dismissed', resolved_at=NOW() WHERE id=$1`,
       [req.params.id]
