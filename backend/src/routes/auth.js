@@ -26,8 +26,29 @@ const validatePhone = (raw) => {
   return /^[6-9]\d{9}$/.test(ten);
 };
 
+// ── Brute-force throttle ────────────────────────────────────
+// In-memory sliding window keyed by IP + phone: 10 attempts / 15 min. A wrong
+// password at a busy counter never hits this; a script hammering the public
+// login does. (Single-instance deploy → in-memory is sufficient.)
+const _attempts = new Map(); // key -> [timestamps]
+const RL_WINDOW = 15 * 60 * 1000, RL_MAX = 10;
+function rateLimitAuth(req, res, next) {
+  const key = `${req.ip}|${(req.body?.phone || '').toString().slice(-10)}`;
+  const now = Date.now();
+  const hits = (_attempts.get(key) || []).filter(t => now - t < RL_WINDOW);
+  if (hits.length >= RL_MAX) {
+    return res.status(429).json({ error: 'Too many attempts. Please wait 15 minutes and try again.' });
+  }
+  hits.push(now);
+  _attempts.set(key, hits);
+  if (_attempts.size > 10000) { // bound memory
+    for (const [k, v] of _attempts) if (!v.some(t => now - t < RL_WINDOW)) _attempts.delete(k);
+  }
+  next();
+}
+
 // POST /api/auth/login
-router.post('/login', async (req, res, next) => {
+router.post('/login', rateLimitAuth, async (req, res, next) => {
   try {
     const { phone, password } = req.body;
     if (!phone || !password) {
@@ -133,7 +154,7 @@ router.patch('/language', authenticate, async (req, res, next) => {
 
 
 // POST /api/auth/forgot-password — generate temp password, send via WhatsApp
-router.post('/forgot-password', async (req, res, next) => {
+router.post('/forgot-password', rateLimitAuth, async (req, res, next) => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'Mobile number is required' });

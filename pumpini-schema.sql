@@ -456,3 +456,17 @@ INSERT INTO template_permissions(template_id, module_code)
   SELECT template_id, 'lubes.manage' FROM template_permissions WHERE module_code='shifts.manage' ON CONFLICT DO NOTHING;
 INSERT INTO template_permissions(template_id, module_code)
   SELECT template_id, 'tally.export' FROM template_permissions WHERE module_code='invoice.generate' ON CONFLICT DO NOTHING;
+
+-- ──────────────────────────────────────────────────────────────
+-- P0 go-live hardening (Jun 2026): hot-path indexes.
+-- Dashboards poll every ~10s per logged-in user; these queries filter on
+-- exactly these column combinations. Run on the live DB before go-live.
+-- ──────────────────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_shifts_station_status      ON shifts(station_id, status);
+CREATE INDEX IF NOT EXISTS idx_dispense_station_date      ON dispense_events(station_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_dispense_shift_attendant   ON dispense_events(shift_id, attendant_id);
+CREATE INDEX IF NOT EXISTS idx_dispense_corp_outstanding  ON dispense_events(corporate_id, station_id) WHERE payment_mode='credit';
+CREATE INDEX IF NOT EXISTS idx_shift_recon_shift          ON shift_reconciliation(shift_id);
+CREATE INDEX IF NOT EXISTS idx_shift_attendants_shift     ON shift_attendants(shift_id, attendant_id);
+CREATE INDEX IF NOT EXISTS idx_product_invoices_shift     ON product_invoices(shift_id, attendant_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_station_created     ON alerts(station_id, created_at DESC);

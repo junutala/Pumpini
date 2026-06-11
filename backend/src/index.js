@@ -1,5 +1,14 @@
 // src/index.js
 require('dotenv').config();
+
+// Fail fast on misconfiguration: with no/weak JWT_SECRET every signed token is
+// trivially forgeable. Refusing to boot beats discovering it in production.
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 24) {
+  // eslint-disable-next-line no-console
+  console.error('FATAL: JWT_SECRET is missing or shorter than 24 characters. Refusing to start.');
+  process.exit(1);
+}
+
 const express    = require('express');
 const http       = require('http');
 const { Server } = require('socket.io');
@@ -43,6 +52,7 @@ const io     = new Server(server, {
 });
 
 // ── Middleware ──────────────────────────────────────────
+app.set('trust proxy', 1); // Railway proxy → req.ip = real client IP (rate limiter)
 app.use(helmet());
 app.use(cors({
   origin: function(origin, callback) {
@@ -55,10 +65,11 @@ app.use(cors({
       'http://localhost:3001',
     ];
     // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin || allowed.some(a => origin.startsWith(a))) {
+    // Exact match only — startsWith would let pumpini.in.attacker.com through.
+    if (!origin || allowed.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS: ' + origin));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true
@@ -164,6 +175,18 @@ if (process.env.NODE_ENV !== 'test') {
 // Daily summary at 9 PM
 cron.schedule('0 21 * * *', () => {
   sendDailySummaries().catch(err => logger.error('Daily summary error:', err));
+});
+
+// ── Process-level safety nets ────────────────────────────
+// A stray async error must not take 7 live outlets down silently. Rejections
+// are logged and survived; true exceptions log then exit non-zero so Railway
+// restarts a clean process instead of a zombie.
+process.on('unhandledRejection', (reason) => {
+  logger.error('UNHANDLED REJECTION:', reason);
+});
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION — restarting:', err);
+  process.exit(1);
 });
 
 // ── Start Server ─────────────────────────────────────────
