@@ -20,7 +20,7 @@ const adminFetch = (url, opts={}) => {
   }).then(r=>r.json());
 };
 
-const PLAN_COLORS   = { pro:['#dbeafe','#1d4ed8'], enterprise:['#ede9fe','#5b21b6'] };
+const PLAN_COLORS   = { starter:['#dcfce7','#15803d'], pro:['#fff7ed','#9a3412'], enterprise:['#ede9fe','#5b21b6'] };
 const STATUS_COLORS = { active:['#dcfce7','#15803d'], suspended:['#fef9c3','#854d0e'], cancelled:['#fee2e2','#991b1b'] };
 
 // Lead pipeline
@@ -500,7 +500,7 @@ export default function AdminPage(){
           <div>
             <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>Plans</h1>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem'}}>
-              {['pro','enterprise'].map(planName=>{
+              {['starter','pro','enterprise'].map(planName=>{
                 const plan=plans.find(p=>p.name===planName);
                 const features=plan?.features?(typeof plan.features==='string'?JSON.parse(plan.features):plan.features):[];
                 const [pb,pt]=PLAN_COLORS[planName]||['#f3f4f6','#374151'];
@@ -563,7 +563,7 @@ export default function AdminPage(){
               </p>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden',maxWidth:520}}>
-              {['pro','enterprise'].map(planName=>{
+              {['starter','pro','enterprise'].map(planName=>{
                 const on=(planFeat[planName]||[]).includes('ai_chat.use');
                 return (
                   <div key={planName} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1rem 1.25rem',borderBottom:'1px solid #f0f0f0'}}>
@@ -827,7 +827,7 @@ export default function AdminPage(){
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <Field label="Plan">
                 <select style={inp} value={form.plan||'pro'} onChange={e=>f('plan',e.target.value)}>
-                  <option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
+                  <option value="starter">STARTER</option><option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
                 </select>
               </Field>
               <Field label="Start Date"><input style={inp} type="date" value={form.start_date||todayIST()} onChange={e=>f('start_date',e.target.value)}/></Field>
@@ -890,7 +890,7 @@ export default function AdminPage(){
         <Modal title={`Subscription — ${modal.data.name}`} onClose={closeModal}>
           <Field label="Plan">
             <select style={inp} value={form.plan||'pro'} onChange={e=>f('plan',e.target.value)}>
-              <option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
+              <option value="starter">STARTER</option><option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
             </select>
           </Field>
           <Field label="Status">

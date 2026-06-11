@@ -205,43 +205,56 @@ const CMP_MARK = { yes:'✅', partial:'⚠️', no:'❌' };
 
 const PLANS = [
   {
-    name: 'PRO',
-    price: '₹999',
+    name: 'STARTER',
+    price: '₹599',
     period: '/month',
-    color: '#1A5F7A',
+    color: '#16a34a',
     popular: false,
+    tagline: 'Control every drop & rupee — one bunk',
     features: [
       '1 petrol station',
       'Unlimited nozzles & tanks',
-      'Up to 15 users',
-      'Voice POS entry',
-      '6 Indian languages',
+      'Voice POS entry · 6 Indian languages',
       'Blind-drop shift reconciliation',
       'Wet-stock (tank dip) reconciliation',
-      'Cash integrity monitoring',
-      'Bank deposit tracking',
-      'Credit customers & GST invoices',
-      'Lubes & products (barcode)',
-      'Tally Prime export',
-      'AI assistant + live dashboard',
+      'Live tank variance alerts',
+      'Petty cash + bank deposit tracking',
+      'Dipstick & deliveries',
+      'Real-time dashboard & reports',
       'Geo-fencing security',
+    ],
+  },
+  {
+    name: 'PRO',
+    price: '₹999',
+    period: '/month',
+    color: '#FF6B00',
+    popular: true,
+    tagline: 'Run the full business — one bunk',
+    features: [
+      'Everything in Starter',
+      'Credit customers & GST invoices',
+      'Credit receipts & notes',
+      'Lubes & products (barcode)',
+      'Cash integrity monitoring',
+      'Tally Prime export',
+      'AI assistant',
     ],
   },
   {
     name: 'ENTERPRISE',
     price: '₹1,999',
     period: '/month',
-    color: '#FF6B00',
-    popular: true,
+    color: '#1A5F7A',
+    popular: false,
+    tagline: 'For a group of bunks',
     features: [
+      'Everything in Pro',
       'Up to 5 petrol stations',
-      'Everything in PRO',
       'Group dashboard',
       'Multi-station reports',
       'Corporate PAN fleet portal',
-      'Manager-driven blind drop',
       'Priority support',
-      'Advanced analytics',
     ],
   },
 ];
@@ -762,7 +775,7 @@ export default function LandingPage() {
             </h2>
             <p style={{fontSize:15,color:'#666'}}>{c.pricing_sub}</p>
           </div>
-          <div className="pmp-2col" style={{display:'grid',gap:'1.5rem',maxWidth:700,margin:'0 auto'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'1.5rem',maxWidth:1000,margin:'0 auto'}}>
             {PLANS.map(plan => (
               <div key={plan.name} style={{background:'#fff',borderRadius:20,padding:'2rem',
                 border: plan.popular ? `2px solid #FF6B00` : '1px solid #e5e3de',
@@ -777,6 +790,7 @@ export default function LandingPage() {
                 <div style={{fontWeight:900,fontSize:18,color:plan.color,marginBottom:'0.25rem'}}>
                   {plan.name}
                 </div>
+                {plan.tagline && <div style={{fontSize:12,color:'#888',marginBottom:'0.5rem'}}>{plan.tagline}</div>}
                 <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:'1.5rem'}}>
                   <span style={{fontSize:32,fontWeight:900}}>{plan.price}</span>
                   <span style={{fontSize:14,color:'#888'}}>{plan.period}</span>
