@@ -200,12 +200,20 @@ router.get('/stations', authAdmin, async (req, res, next) => {
         array_agg(DISTINCT u.id)   FILTER (WHERE u.role='owner') AS owner_ids,
         (SELECT sg.owner_group_id FROM station_group_members sgm
            JOIN station_groups sg ON sg.id = sgm.station_group_id
-          WHERE sgm.station_id = s.id LIMIT 1) AS owner_group_id
+          WHERE sgm.station_id = s.id LIMIT 1) AS owner_group_id,
+        sub.plan, sub.status AS sub_status, sub.start_date, sub.end_date
       FROM stations s
       LEFT JOIN station_settings ss ON ss.station_id = s.id
       LEFT JOIN station_users su ON su.station_id = s.id
       LEFT JOIN users u ON u.id = su.user_id AND u.role='owner'
-      GROUP BY s.id, ss.gstn, ss.owner_whatsapp
+      LEFT JOIN LATERAL (
+        SELECT plan, status, start_date, end_date
+        FROM station_subscriptions
+        WHERE station_id = s.id
+        ORDER BY (end_date IS NULL) DESC, start_date DESC NULLS LAST
+        LIMIT 1
+      ) sub ON TRUE
+      GROUP BY s.id, ss.gstn, ss.owner_whatsapp, sub.plan, sub.status, sub.start_date, sub.end_date
       ORDER BY s.name`);
     res.json(rows);
   } catch (err) { next(err); }
