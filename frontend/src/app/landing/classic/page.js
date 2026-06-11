@@ -1,12 +1,10 @@
 'use client';
-// Pumpini landing v2 — money-first design for bunk owners.
-// The previous design is preserved at /landing/classic (instant revert:
-// copy classic/page.js over this file and fix the india import path).
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Zap, Mic, Send } from 'lucide-react';
-import { INDIAN_STATES, getCities } from '../../lib/india';
+import { INDIAN_STATES, getCities } from '../../../lib/india';
 
 const LANGS = [
   { code:'en', label:'English',    flag:'🇬🇧' },
@@ -22,6 +20,8 @@ const COPY = {
     hero:    'Control every drop.',
     hero2:   'Track every rupee.',
     sub:     'India\'s most intelligent petrol station management platform — built for owners who want real control, in their own language.',
+    cta:     'Start Free Trial →',
+    demo:    '📱 WhatsApp Demo',
     usp1_t:  '🎙 Voice POS Entry',
     usp1_d:  'Attendants speak transactions in Telugu, Tamil, Hindi or any Indian language. "50 litres petrol cash" — done. No typing needed.',
     usp2_t:  '🌐 6 Indian Languages',
@@ -39,11 +39,15 @@ const COPY = {
     compare_title: 'Why switch to Pumpini?',
     pricing_title: 'Simple pricing. No surprises.',
     pricing_sub:   '15-day free trial · No credit card · Cancel anytime',
+    footer_cta: 'Start your free trial today',
+    footer_sub: 'Join petrol stations across India who trust Pumpini',
   },
   hi: {
     hero:    'हर बूंद पर नियंत्रण।',
     hero2:   'हर रुपया ट्रैक करें।',
     sub:     'भारत का सबसे स्मार्ट पेट्रोल पंप मैनेजमेंट सिस्टम — आपकी भाषा में।',
+    cta:     'मुफ्त ट्रायल शुरू करें →',
+    demo:    '📱 WhatsApp डेमो',
     usp1_t:  '🎙 आवाज़ से POS एंट्री',
     usp1_d:  'अटेंडेंट हिंदी, तेलुगु या किसी भी भाषा में बोलकर एंट्री करें। "50 लीटर पेट्रोल कैश" — बस इतना काफी।',
     usp2_t:  '🌐 6 भारतीय भाषाएँ',
@@ -61,11 +65,15 @@ const COPY = {
     compare_title: 'Pumpini क्यों चुनें?',
     pricing_title: 'सरल मूल्य निर्धारण।',
     pricing_sub:   '15 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
+    footer_cta: 'आज ही मुफ्त ट्रायल शुरू करें',
+    footer_sub: 'भारत भर के पेट्रोल पंप मालिक Pumpini पर भरोसा करते हैं',
   },
   ta: {
     hero:    'ஒவ்வொரு துளியையும் கட்டுப்படுத்துங்கள்.',
     hero2:   'ஒவ்வொரு ரூபாயையும் கண்காணியுங்கள்.',
     sub:     'இந்தியாவின் மிகவும் ஸ்மார்ட் பெட்ரோல் நிலைய மேலாண்மை தளம் — உங்கள் மொழியில்.',
+    cta:     'இலவச சோதனை தொடங்கு →',
+    demo:    '📱 WhatsApp டெமோ',
     usp1_t:  '🎙 குரல் POS உள்ளீடு',
     usp1_d:  'தமிழ் அல்லது எந்த மொழியிலும் பேசி பரிவர்த்தனை பதிவு செய்யுங்கள்.',
     usp2_t:  '🌐 6 இந்திய மொழிகள்',
@@ -83,11 +91,15 @@ const COPY = {
     compare_title: 'Pumpini ஏன் சிறந்தது?',
     pricing_title: 'எளிமையான விலை நிர்ணயம்.',
     pricing_sub:   '15 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
+    footer_cta: 'இன்றே இலவச சோதனை தொடங்குங்கள்',
+    footer_sub: 'இந்தியா முழுவதும் பெட்ரோல் நிலையங்கள் Pumpini-ஐ நம்புகின்றன',
   },
   te: {
     hero:    'ప్రతి చుక్కను నియంత్రించండి.',
     hero2:   'ప్రతి రూపాయిని ట్రాక్ చేయండి.',
     sub:     'భారతదేశంలో అత్యంత తెలివైన పెట్రోల్ బంక్ నిర్వహణ వేదిక — మీ భాషలో.',
+    cta:     'ఉచిత ట్రయల్ ప్రారంభించండి →',
+    demo:    '📱 WhatsApp డెమో',
     usp1_t:  '🎙 వాయిస్ POS ఎంట్రీ',
     usp1_d:  '"50 లీటర్లు పెట్రోల్ నగదు" — తెలుగులో చెప్పండి, ఆటోమేటిగ్గా రికార్డ్ అవుతుంది.',
     usp2_t:  '🌐 6 భారతీయ భాషలు',
@@ -105,11 +117,15 @@ const COPY = {
     compare_title: 'Pumpini ఎందుకు మెరుగైనది?',
     pricing_title: 'సరళమైన ధర నిర్ణయం.',
     pricing_sub:   '15 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
+    footer_cta: 'ఈరోజే ఉచిత ట్రయల్ ప్రారంభించండి',
+    footer_sub: 'భారతదేశం అంతటా పెట్రోల్ బంకులు Pumpini నమ్ముతున్నాయి',
   },
   kn: {
     hero:    'ಪ್ರತಿ ಹನಿಯನ್ನು ನಿಯಂತ್ರಿಸಿ.',
     hero2:   'ಪ್ರತಿ ರೂಪಾಯಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ.',
     sub:     'ಭಾರತದ ಅತ್ಯಂತ ಬುದ್ಧಿವಂತ ಪೆಟ್ರೋಲ್ ಬಂಕ್ ನಿರ್ವಹಣಾ ವೇದಿಕೆ — ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ.',
+    cta:     'ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ →',
+    demo:    '📱 WhatsApp ಡೆಮೋ',
     usp1_t:  '🎙 ವಾಯ್ಸ್ POS ಎಂಟ್ರಿ',
     usp1_d:  'ಕನ್ನಡ ಅಥವಾ ಯಾವುದೇ ಭಾಷೆಯಲ್ಲಿ ಮಾತನಾಡಿ ವ್ಯವಹಾರ ದಾಖಲಿಸಿ.',
     usp2_t:  '🌐 6 ಭಾರತೀಯ ಭಾಷೆಗಳು',
@@ -127,11 +143,15 @@ const COPY = {
     compare_title: 'Pumpini ಏಕೆ ಉತ್ತಮ?',
     pricing_title: 'ಸರಳ ಬೆಲೆ ನಿರ್ಧಾರ.',
     pricing_sub:   '15 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
+    footer_cta: 'ಇಂದೇ ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ',
+    footer_sub: 'ಭಾರತದಾದ್ಯಂತ ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗಳು Pumpini ನಂಬುತ್ತವೆ',
   },
   mr: {
     hero:    'प्रत्येक थेंब नियंत्रित करा.',
     hero2:   'प्रत्येक रुपया ट्रॅक करा.',
     sub:     'भारतातील सर्वात हुशार पेट्रोल पंप व्यवस्थापन प्लॅटफॉर्म — तुमच्या भाषेत.',
+    cta:     'मोफत चाचणी सुरू करा →',
+    demo:    '📱 WhatsApp डेमो',
     usp1_t:  '🎙 आवाज POS एंट्री',
     usp1_d:  'मराठी किंवा कोणत्याही भाषेत बोलून व्यवहार नोंदवा.',
     usp2_t:  '🌐 6 भारतीय भाषा',
@@ -149,6 +169,8 @@ const COPY = {
     compare_title: 'Pumpini का निवडावे?',
     pricing_title: 'सोपे मूल्य निर्धारण.',
     pricing_sub:   '15 दिवस मोफत · क्रेडिट कार्ड नाही',
+    footer_cta: 'आजच मोफत चाचणी सुरू करा',
+    footer_sub: 'भारतभरातील पेट्रोल पंप Pumpini वर विश्वास ठेवतात',
   },
 };
 
@@ -162,6 +184,8 @@ const FEATURES = [
 ];
 
 // Honest comparison vs typical Indian pump software.
+// Values: 'yes' | 'partial' | 'no'  — we concede the basics so the
+// differentiators are believable.
 const COMPARE = [
   ['Billing & GST invoices',            'yes', 'yes'],
   ['Shift & cash reconciliation',       'yes', 'yes'],
@@ -176,12 +200,16 @@ const COMPARE = [
   ['AI assistant — ask your data',      'yes', 'no'],
   ['Real-time live dashboard',          'yes', 'partial'],
 ];
+
 const CMP_MARK = { yes:'✅', partial:'⚠️', no:'❌' };
 
 const PLANS = [
   {
-    name: 'STARTER', price: 599, color: '#1FA856', popular: false,
-    perDay: '₹20 a day', perDayNote: 'two cups of chai',
+    name: 'STARTER',
+    price: '₹599',
+    period: '/month',
+    color: '#16a34a',
+    popular: false,
     tagline: 'Control every drop & rupee — one bunk',
     features: [
       '1 petrol station',
@@ -197,8 +225,11 @@ const PLANS = [
     ],
   },
   {
-    name: 'PRO', price: 999, color: '#FF6B00', popular: true,
-    perDay: '₹33 a day', perDayNote: 'a third of a litre of petrol',
+    name: 'PRO',
+    price: '₹999',
+    period: '/month',
+    color: '#FF6B00',
+    popular: true,
     tagline: 'Run the full business — one bunk',
     features: [
       'Everything in Starter',
@@ -211,8 +242,11 @@ const PLANS = [
     ],
   },
   {
-    name: 'ENTERPRISE', price: 1999, color: '#0E5A8A', popular: false,
-    perDay: '₹66 a day', perDayNote: 'for up to 5 bunks',
+    name: 'ENTERPRISE',
+    price: '₹1,999',
+    period: '/month',
+    color: '#1A5F7A',
+    popular: false,
     tagline: 'For a group of bunks',
     features: [
       'Everything in Pro',
@@ -225,27 +259,18 @@ const PLANS = [
   },
 ];
 
-const fmtINR = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
-
 const leadInp = {
-  width:'100%',padding:'12px 14px',border:'1.5px solid #e5e7eb',borderRadius:10,
-  fontSize:14.5,outline:'none',boxSizing:'border-box',fontFamily:'inherit',color:'#1a1a1a',background:'#fff',
+  width:'100%',padding:'11px 13px',border:'1.5px solid #e5e7eb',borderRadius:10,
+  fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit',color:'#1a1a1a',background:'#fff',
 };
 
 export default function LandingPage() {
-  const [lang,    setLang]     = useState('en');
+  const [lang,    setLang]    = useState('en');
   const [langOpen,setLangOpen] = useState(false);
   const [scrolled,setScrolled] = useState(false);
   const c = COPY[lang] || COPY.en;
 
-  // Leak calculator
-  const [litres, setLitres] = useState(8000);   // daily sale, litres
-  const [leakPct, setLeakPct] = useState(0.5);  // % of turnover leaking
-  const dailyTurnover  = litres * 100;          // avg ₹100/L blended
-  const monthlyLoss    = dailyTurnover * 30 * (leakPct / 100);
-  const roiMultiple    = Math.max(1, Math.round(monthlyLoss / 999));
-
-  // Contact / lead form (wired to /api/leads — do not change)
+  // Contact / lead form
   const [lead, setLead] = useState({ name:'', phone:'', station_name:'', state:'', city:'', message:'', company:'' });
   const [leadState, setLeadState] = useState('idle'); // idle | sending | done | error
   const setL = (k,v) => setLead(p => ({ ...p, [k]: v }));
@@ -276,86 +301,65 @@ export default function LandingPage() {
   const changeLang = (code) => {
     setLang(code);
     setLangOpen(false);
-    if (typeof window !== 'undefined') localStorage.setItem('i18nextLng', code);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('i18nextLng', code);
+    }
   };
 
   return (
-    <div style={{fontFamily:'DM Sans,system-ui,sans-serif',color:'#101418',overflowX:'hidden',background:'#fff'}}>
+    <div style={{fontFamily:'DM Sans,system-ui,sans-serif',color:'#1a1a1a',overflowX:'hidden'}}>
 
+      {/* Responsive grid helpers — inline grid-template-columns can't be
+          overridden by a media query, so two-column sections use these classes. */}
       <style>{`
-        :root{ --ink:#07150E; --ink2:#0C2418; --org:#FF6B00; --grn:#1FA856; --grnL:#4ADE80; --paper:#F7F6F1; }
-        @keyframes lpFadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
-        @keyframes lpPulse  { 0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5)} 50%{box-shadow:0 0 0 7px rgba(74,222,128,0)} }
-        @keyframes lpGlow   { 0%,100%{opacity:.5} 50%{opacity:.9} }
-        .lp-fade1{animation:lpFadeUp .7s ease both}
-        .lp-fade2{animation:lpFadeUp .7s .15s ease both}
-        .lp-fade3{animation:lpFadeUp .7s .3s ease both}
-        .lp-hero  { grid-template-columns: 1.05fr .95fr; }
-        .lp-3q    { grid-template-columns: repeat(3,1fr); }
-        .lp-2col  { grid-template-columns: 1fr 1fr; }
-        .lp-cmp   { grid-template-columns: 1fr 90px 90px; }
-        .lp-form2 { grid-template-columns: 1fr 1fr; }
-        .lp-calc  { grid-template-columns: 1.1fr .9fr; }
-        .lp-hero-text { text-align:left }
-        .lp-hero-badges { justify-content:flex-start }
-        .lp-navlinks { display:flex }
-        @media (max-width:880px){
-          .lp-hero{grid-template-columns:1fr;gap:2.5rem}
-          .lp-hero-text{text-align:center}
-          .lp-hero-badges{justify-content:center}
-          .lp-2col{grid-template-columns:1fr;gap:2rem !important}
-          .lp-calc{grid-template-columns:1fr;gap:2rem !important}
-          .lp-3q{grid-template-columns:1fr;gap:1rem !important}
+        .pmp-2col  { grid-template-columns: 1fr 1fr; }
+        .pmp-cmp   { grid-template-columns: 1fr 90px 90px; }
+        .pmp-form2 { grid-template-columns: 1fr 1fr; }
+        @media (max-width: 860px) {
+          .pmp-2col { grid-template-columns: 1fr; gap: 2.25rem !important; }
         }
-        @media (max-width:760px){ .lp-navlinks{display:none} }
-        @media (max-width:600px){ .lp-cmp{grid-template-columns:1fr 54px 54px} }
-        @media (max-width:460px){ .lp-form2{grid-template-columns:1fr} }
-        .lp-card:hover{ transform:translateY(-5px); box-shadow:0 16px 44px rgba(7,21,14,.12) !important }
-        .lp-card{ transition:transform .25s ease, box-shadow .25s ease }
-        input[type=range].lp-range{ -webkit-appearance:none; width:100%; height:8px; border-radius:99px;
-          background:linear-gradient(90deg,var(--org) 0%,var(--org) var(--fill,50%),#e5e7eb var(--fill,50%)); outline:none }
-        input[type=range].lp-range::-webkit-slider-thumb{ -webkit-appearance:none; width:26px; height:26px;
-          border-radius:50%; background:#fff; border:4px solid var(--org); cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.25) }
-        input[type=range].lp-range::-moz-range-thumb{ width:22px; height:22px; border-radius:50%;
-          background:#fff; border:4px solid var(--org); cursor:pointer }
-        html{scroll-behavior:smooth}
+        @media (max-width: 600px) {
+          .pmp-cmp { grid-template-columns: 1fr 54px 54px; }
+        }
+        @media (max-width: 460px) {
+          .pmp-form2 { grid-template-columns: 1fr; }
+        }
       `}</style>
 
-      {/* ── Navbar — white so the logo sits clean, never obscured ── */}
+      {/* ── Navbar ── */}
       <nav style={{
-        position:'fixed',top:0,left:0,right:0,zIndex:100,background:'#fff',
-        borderBottom:'1px solid rgba(0,0,0,.07)',
-        boxShadow: scrolled ? '0 2px 14px rgba(0,0,0,.09)' : 'none',
+        position:'fixed',top:0,left:0,right:0,zIndex:100,
+        background:'#fff',
+        borderBottom:'1px solid rgba(0,0,0,.08)',
+        boxShadow: scrolled ? '0 2px 12px rgba(0,0,0,.08)' : 'none',
         transition:'box-shadow .3s',padding:'0 5%',
-        display:'flex',alignItems:'center',justifyContent:'space-between',height:66,
+        display:'flex',alignItems:'center',justifyContent:'space-between',height:64,
       }}>
         <Link href="/" style={{display:'flex',alignItems:'center'}} aria-label="Pumpini home">
           <Image src="/pumpini-logo.png" alt="Pumpini — control every drop, track every rupee"
             width={150} height={46} priority style={{objectFit:'contain',display:'block'}}/>
         </Link>
 
-        <div style={{display:'flex',alignItems:'center',gap:'1.4rem'}}>
-          <div className="lp-navlinks" style={{alignItems:'center',gap:'1.6rem'}}>
-            <a href="#leak"     style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>The Leak</a>
-            <a href="#features" style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>Features</a>
-            <a href="#pricing"  style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>Pricing</a>
-            <a href="#contact"  style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>Contact</a>
-          </div>
+        <div style={{display:'flex',alignItems:'center',gap:'2rem'}}>
+          <a href="#features" style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Features</a>
+          <a href="#pricing"  style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Pricing</a>
+          <a href="#contact"  style={{textDecoration:'none',color:'#555',fontSize:14,fontWeight:500}}>Contact</a>
 
           {/* Language switcher */}
           <div style={{position:'relative'}}>
             <button onClick={()=>setLangOpen(p=>!p)}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'7px 12px',
-                background:'rgba(0,0,0,.05)',border:'none',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
+              style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',
+                background:'rgba(0,0,0,.06)',border:'none',borderRadius:8,cursor:'pointer',fontSize:13,fontWeight:500}}>
               {LANGS.find(l=>l.code===lang)?.flag} {LANGS.find(l=>l.code===lang)?.label} ▾
             </button>
             {langOpen && (
               <div style={{position:'absolute',right:0,top:'calc(100% + 6px)',background:'#fff',
-                borderRadius:10,boxShadow:'0 8px 30px rgba(0,0,0,.15)',padding:'0.5rem',minWidth:160,zIndex:200}}>
+                borderRadius:10,boxShadow:'0 8px 30px rgba(0,0,0,.15)',padding:'0.5rem',
+                minWidth:160,zIndex:200}}>
                 {LANGS.map(l=>(
                   <button key={l.code} onClick={()=>changeLang(l.code)}
                     style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 12px',
-                      background:lang===l.code?'#fff3e8':'transparent',border:'none',borderRadius:7,
+                      background:lang===l.code?'#fff7ed':'transparent',border:'none',borderRadius:7,
                       cursor:'pointer',fontSize:13,fontWeight:lang===l.code?700:400,
                       color:lang===l.code?'#FF6B00':'#333',textAlign:'left'}}>
                     {l.flag} {l.label}
@@ -365,10 +369,8 @@ export default function LandingPage() {
             )}
           </div>
 
-          {/* Login — wired to the real app */}
-          <Link href="/login" style={{padding:'9px 22px',background:'#FF6B00',color:'#fff',
-            borderRadius:9,textDecoration:'none',fontWeight:800,fontSize:14,
-            boxShadow:'0 3px 14px rgba(255,107,0,.35)'}}>
+          <Link href="/login" style={{padding:'8px 20px',background:'#FF6B00',color:'#fff',
+            borderRadius:8,textDecoration:'none',fontWeight:700,fontSize:14}}>
             Login
           </Link>
         </div>
@@ -377,364 +379,246 @@ export default function LandingPage() {
       {/* ── Hero ── */}
       <section style={{
         minHeight:'100dvh',
-        background:'radial-gradient(1100px 600px at 85% -10%, rgba(31,168,86,.22), transparent 60%),'+
-                   'radial-gradient(900px 500px at -10% 110%, rgba(255,107,0,.16), transparent 55%),'+
-                   'linear-gradient(160deg, #07150E 0%, #0C2418 55%, #07150E 100%)',
+        background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 50%, #0F1923 100%)',
         display:'flex',alignItems:'center',justifyContent:'center',
-        padding:'100px 5% 70px',position:'relative',overflow:'hidden',
+        padding:'90px 5% 60px',position:'relative',overflow:'hidden',
       }}>
-        {/* faint rupee grid */}
-        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,fontSize:120,fontWeight:900,
-          color:'#fff',display:'flex',flexWrap:'wrap',gap:60,alignContent:'space-between',
-          justifyContent:'space-between',padding:'4%',pointerEvents:'none',userSelect:'none'}}>
-          <span>₹</span><span>⛽</span><span>₹</span><span>⛽</span><span>₹</span>
-        </div>
+        {/* Background decoration */}
+        <div style={{position:'absolute',inset:0,opacity:.04,backgroundImage:
+          'radial-gradient(circle at 20% 80%, #FF6B00 0%, transparent 50%), radial-gradient(circle at 80% 20%, #1A5F7A 0%, transparent 50%)'}}/>
 
-        <div className="lp-hero" style={{maxWidth:1160,width:'100%',display:'grid',gap:'3.5rem',
-          alignItems:'center',position:'relative',zIndex:1}}>
-
-          {/* LEFT — the promise */}
-          <div className="lp-hero-text">
-            <div className="lp-fade1" style={{display:'inline-flex',alignItems:'center',gap:8,
-              background:'rgba(255,107,0,.14)',border:'1px solid rgba(255,107,0,.35)',borderRadius:99,
-              padding:'7px 16px',marginBottom:'1.4rem',fontSize:13,fontWeight:700,color:'#FFA45C'}}>
-              ⛽ Built for Indian petrol bunk owners
+        <div className="pmp-hero" style={{
+          maxWidth:1150,width:'100%',display:'grid',gap:'3rem',
+          alignItems:'center',position:'relative',zIndex:1,
+        }}>
+          {/* ── LEFT: copy ── */}
+          <div className="pmp-hero-text">
+            {/* Badge */}
+            <div style={{display:'inline-flex',alignItems:'center',gap:8,background:'rgba(255,107,0,.15)',
+              border:'1px solid rgba(255,107,0,.3)',borderRadius:99,padding:'6px 16px',
+              marginBottom:'1.5rem',fontSize:13,fontWeight:600,color:'#FF6B00'}}>
+              ⛽ Built for Indian Petrol Stations
             </div>
 
-            <h1 className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
-              color:'#fff',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
+            {/* Headline */}
+            <h1 style={{fontSize:'clamp(2.4rem,5vw,4rem)',fontWeight:900,lineHeight:1.1,
+              color:'#fff',marginBottom:'0.5rem',letterSpacing:'-.03em'}}>
               {c.hero}
             </h1>
-            <h1 className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
-              background:'linear-gradient(90deg,#FFB347,#FF6B00)',
+            <h1 style={{fontSize:'clamp(2.4rem,5vw,4rem)',fontWeight:900,lineHeight:1.1,
+              background:'linear-gradient(90deg,#FF6B00,#f97316)',
               WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
-              marginBottom:'1.4rem',letterSpacing:'-.03em'}}>
+              marginBottom:'1.5rem',letterSpacing:'-.03em'}}>
               {c.hero2}
             </h1>
 
-            <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'rgba(255,255,255,.75)',
-              maxWidth:540,lineHeight:1.65,marginBottom:'2.1rem'}}>
+            <p style={{fontSize:'clamp(1rem,1.6vw,1.15rem)',color:'rgba(255,255,255,.7)',
+              maxWidth:520,lineHeight:1.6,marginBottom:'2rem'}}>
               {c.sub}
             </p>
 
-            <div className="lp-fade3" style={{display:'flex',gap:14,flexWrap:'wrap',marginBottom:'2.2rem'}}>
-              <a href="#leak" style={{padding:'15px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
-                textDecoration:'none',fontWeight:800,fontSize:16,boxShadow:'0 6px 26px rgba(255,107,0,.45)'}}>
-                See where money leaks →
-              </a>
-              <a href="#pricing" style={{padding:'15px 28px',background:'rgba(255,255,255,.08)',color:'#fff',
-                borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
-                border:'1px solid rgba(255,255,255,.25)'}}>
-                Pricing
-              </a>
-            </div>
-
-            <div className="lp-hero-badges lp-fade3" style={{display:'flex',gap:'1.4rem',flexWrap:'wrap',
-              fontSize:13.5,color:'rgba(255,255,255,.55)',fontWeight:600}}>
-              <span>🎙 Voice in 6 languages</span>
-              <span>🔒 Blind-drop cash control</span>
-              <span>📍 GPS-locked POS</span>
-              <span>🧾 GST + Tally</span>
+            {/* Trust badges */}
+            <div className="pmp-hero-badges" style={{display:'flex',gap:'1.5rem',flexWrap:'wrap',
+              fontSize:13,color:'rgba(255,255,255,.5)',fontWeight:500}}>
+              <span>🎙 Voice POS</span>
+              <span>🌐 6 Languages</span>
+              <span>📍 Geo-Fencing</span>
+              <span>🛒 Lubes & Products</span>
             </div>
           </div>
 
-          {/* RIGHT — "today at your bunk" owner phone view */}
-          <div className="lp-fade3" style={{position:'relative',display:'flex',justifyContent:'center'}}>
-            <div aria-hidden style={{position:'absolute',inset:'-8% 6%',background:
-              'radial-gradient(circle, rgba(31,168,86,.4) 0%, transparent 70%)',
-              filter:'blur(46px)',zIndex:0,animation:'lpGlow 5s ease infinite'}}/>
-            <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:392,background:'#fff',
-              borderRadius:22,overflow:'hidden',boxShadow:'0 28px 80px rgba(0,0,0,.5)',
-              border:'1px solid rgba(255,255,255,.14)'}}>
+          {/* ── RIGHT: live AI chat mockup ── */}
+          <div style={{position:'relative',display:'flex',justifyContent:'center'}}>
+            {/* glow */}
+            <div style={{position:'absolute',inset:'-10% 5%',background:
+              'radial-gradient(circle, rgba(255,107,0,.35) 0%, transparent 70%)',
+              filter:'blur(40px)',zIndex:0}}/>
 
-              {/* header */}
-              <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',
-                background:'linear-gradient(120deg,#0C2418,#16402B)'}}>
+            <div style={{
+              position:'relative',zIndex:1,width:'100%',maxWidth:380,
+              background:'#fff',borderRadius:18,overflow:'hidden',
+              boxShadow:'0 24px 70px rgba(0,0,0,.45)',
+              border:'1px solid rgba(255,255,255,.12)',
+            }}>
+              {/* Header */}
+              <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',background:'#FF6B00'}}>
+                <div style={{width:32,height:32,background:'rgba(255,255,255,.2)',borderRadius:8,
+                  display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <Zap size={16} color="#fff" fill="#fff"/>
+                </div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:14.5,fontWeight:800,color:'#fff'}}>Today at your bunk</div>
-                  <div style={{fontSize:11.5,color:'rgba(255,255,255,.65)'}}>Owner view · from your phone</div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#fff'}}>AI Assistant</div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,.8)'}}>Live station data · EN</div>
                 </div>
-                <div style={{display:'flex',alignItems:'center',gap:6,fontSize:11.5,color:'#4ADE80',fontWeight:700}}>
-                  <span style={{width:8,height:8,borderRadius:'50%',background:'#4ADE80',
-                    animation:'lpPulse 2s infinite'}}/>
-                  LIVE
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,
+                  color:'rgba(255,255,255,.85)',fontWeight:600}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'#28c840',
+                    boxShadow:'0 0 0 3px rgba(40,200,64,.3)'}}/>
+                  Live
                 </div>
               </div>
 
-              {/* the money */}
-              <div style={{padding:'18px 18px 6px',background:'#fff'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#8a93a0',textTransform:'uppercase',letterSpacing:.5}}>Sales till now</div>
-                <div style={{fontSize:38,fontWeight:900,color:'#0C2418',letterSpacing:'-.02em',lineHeight:1.15}}>₹2,41,350</div>
-                <div style={{fontSize:13,color:'#1FA856',fontWeight:700,marginBottom:14}}>▲ 2,389 litres · 318 fills</div>
+              {/* Messages */}
+              <div style={{padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,
+                background:'#f8fafc',minHeight:230}}>
+                {/* User question */}
+                <div style={{display:'flex',justifyContent:'flex-end'}}>
+                  <div style={{maxWidth:'80%',padding:'9px 13px',borderRadius:12,borderBottomRightRadius:3,
+                    background:'#FF6B00',color:'#fff',fontSize:13.5,fontWeight:500,lineHeight:1.5}}>
+                    Today&apos;s total sales?
+                  </div>
+                </div>
 
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:14}}>
-                  {[['Cash','₹98,400'],['UPI','₹1,04,800'],['Credit','₹38,150']].map(([k,v])=>(
-                    <div key={k} style={{background:'#F4F7F4',borderRadius:10,padding:'9px 10px'}}>
-                      <div style={{fontSize:11,color:'#8a93a0',fontWeight:700}}>{k}</div>
-                      <div style={{fontSize:14.5,fontWeight:800,color:'#0C2418'}}>{v}</div>
+                {/* AI answer */}
+                <div style={{display:'flex',alignItems:'flex-start',gap:7}}>
+                  <div style={{width:24,height:24,background:'#FF6B00',borderRadius:7,
+                    display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:2}}>
+                    <Zap size={12} color="#fff" fill="#fff"/>
+                  </div>
+                  <div style={{maxWidth:'82%',padding:'10px 13px',borderRadius:12,borderBottomLeftRadius:3,
+                    background:'#fff',color:'#1a1a1a',fontSize:13,lineHeight:1.6,
+                    border:'1px solid #eef1f4',boxShadow:'0 1px 2px rgba(0,0,0,.04)'}}>
+                    Today&apos;s total is <b>₹1,24,850</b> across <b>312 fills</b>. 🚀
+                    <div style={{marginTop:8,display:'flex',flexDirection:'column',gap:3,
+                      fontSize:12.5,color:'#475569'}}>
+                      <span>• Cash <b style={{color:'#16a34a'}}>₹68,400</b></span>
+                      <span>• UPI <b style={{color:'#16a34a'}}>₹42,300</b></span>
+                      <span>• Credit <b style={{color:'#16a34a'}}>₹14,150</b></span>
                     </div>
-                  ))}
-                </div>
-
-                {/* blind drop row — the USP, shown as the staff sees it */}
-                <div style={{display:'flex',alignItems:'center',gap:10,background:'#FFF6EC',
-                  border:'1px dashed #FFB066',borderRadius:12,padding:'11px 13px',marginBottom:10}}>
-                  <span style={{fontSize:20}}>🔒</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12.5,fontWeight:800,color:'#9a3412'}}>Shift 2 — open</div>
-                    <div style={{fontSize:11.5,color:'#b45309'}}>Staff see: amount hidden until shift closes</div>
+                    <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid #f0f2f5',
+                      fontSize:12.5,color:'#475569'}}>
+                      Petrol leads with <b>1,204 L</b> dispensed today.
+                    </div>
                   </div>
-                  <div style={{fontSize:13,fontWeight:900,color:'#9a3412',letterSpacing:2}}>₹ ●●●●●</div>
-                </div>
-
-                <div style={{display:'flex',alignItems:'center',gap:10,background:'#F0FAF3',
-                  border:'1px solid #BBE7C9',borderRadius:12,padding:'11px 13px',marginBottom:10}}>
-                  <span style={{fontSize:18}}>🛢️</span>
-                  <div style={{flex:1,fontSize:12.5,fontWeight:700,color:'#14532d'}}>
-                    Tank variance: <span style={{color:'#1FA856'}}>−34 L · within limit</span>
-                  </div>
-                  <span style={{width:9,height:9,borderRadius:'50%',background:'#1FA856'}}/>
-                </div>
-
-                <div style={{display:'flex',alignItems:'center',gap:10,background:'#FEF2F2',
-                  border:'1px solid #FECACA',borderRadius:12,padding:'11px 13px'}}>
-                  <span style={{fontSize:18}}>🏦</span>
-                  <div style={{flex:1,fontSize:12.5,fontWeight:700,color:'#7f1d1d'}}>
-                    ₹1,42,000 not deposited — 2 days
-                  </div>
-                  <span style={{fontSize:12,fontWeight:900,color:'#dc2626'}}>ALERT</span>
                 </div>
               </div>
 
-              <div style={{padding:'12px 18px 16px',fontSize:11.5,color:'#9aa3ad',background:'#fff'}}>
-                Every number above updates live, in your language, on your phone.
+              {/* Input bar (decorative) */}
+              <div style={{padding:'10px 12px',borderTop:'1px solid #eef1f4',background:'#fff',
+                display:'flex',alignItems:'center',gap:8}}>
+                <div style={{width:34,height:34,borderRadius:8,background:'#f1f5f9',
+                  display:'flex',alignItems:'center',justifyContent:'center',color:'#64748b',flexShrink:0}}>
+                  <Mic size={16}/>
+                </div>
+                <div style={{flex:1,height:34,borderRadius:8,border:'1px solid #e5e7eb',background:'#fff',
+                  display:'flex',alignItems:'center',padding:'0 12px',fontSize:12.5,color:'#9ca3af'}}>
+                  Ask anything… या किसी भी भाषा में
+                </div>
+                <div style={{width:34,height:34,borderRadius:8,background:'#FF6B00',
+                  display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',flexShrink:0}}>
+                  <Send size={15}/>
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Responsive: two columns on desktop, stacked + centered on mobile */}
+        <style>{`
+          .pmp-hero { grid-template-columns: 1.05fr 0.95fr; }
+          .pmp-hero-text { text-align: left; }
+          .pmp-hero-badges { justify-content: flex-start; }
+          @media (max-width: 880px) {
+            .pmp-hero { grid-template-columns: 1fr; gap: 2.5rem; }
+            .pmp-hero-text { text-align: center; }
+            .pmp-hero-badges { justify-content: center; }
+          }
+        `}</style>
       </section>
 
-      {/* ── Three questions every owner asks ── */}
-      <section style={{padding:'5rem 5%',background:'var(--paper)'}}>
+      {/* ── Tagline explainer: Control every drop. Track every rupee. ── */}
+      <section style={{padding:'5rem 5%',background:'#F4F7FA'}}>
         <div style={{maxWidth:1100,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'2.8rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
-              Every night, you ask three questions.
-            </h2>
-            <p style={{fontSize:16,color:'#5b6570'}}>Pumpini answers all three — with proof, not promises.</p>
-          </div>
-          <div className="lp-3q" style={{display:'grid',gap:'1.4rem'}}>
-            {[
-              ['💧','Did every litre sell at the right price?',
-               'Tank dips, meter readings and deliveries tied together. If fuel goes missing, you see it the same day — in litres and in rupees.'],
-              ['💰','Did every rupee reach me?',
-               'Blind-drop reconciliation, deposit tracking, shortfall records by attendant name. Cash has nowhere to hide.'],
-              ['📈','Am I actually making money?',
-               'Sales, credit dues, expenses and bank deposits — one dashboard, one glance, every day. Plus Tally export for your CA.'],
-            ].map(([icon,q,a])=>(
-              <div key={q} className="lp-card" style={{background:'#fff',borderRadius:18,padding:'1.9rem',
-                border:'1px solid #e8e6df',boxShadow:'0 2px 10px rgba(7,21,14,.04)'}}>
-                <div style={{fontSize:38,marginBottom:'0.9rem'}}>{icon}</div>
-                <h3 style={{fontSize:19,fontWeight:850,color:'#0C2418',marginBottom:'0.6rem',lineHeight:1.35}}>{q}</h3>
-                <p style={{fontSize:14.5,color:'#5b6570',lineHeight:1.7,margin:0}}>{a}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── THE LEAK CALCULATOR ── */}
-      <section id="leak" style={{padding:'5.5rem 5%',background:'#fff'}}>
-        <div style={{maxWidth:1080,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'2.6rem'}}>
-            <div style={{display:'inline-block',background:'#FEF2F2',color:'#dc2626',border:'1px solid #FECACA',
-              padding:'5px 14px',borderRadius:99,fontSize:12.5,fontWeight:800,marginBottom:'0.9rem'}}>
-              THE NUMBERS NOBODY SHOWS YOU
-            </div>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
-              How much is your bunk leaking?
-            </h2>
-            <p style={{fontSize:16,color:'#5b6570',maxWidth:620,margin:'0 auto'}}>
-              Short change here, a few litres there, a &ldquo;small adjustment&rdquo; in the night shift.
-              Slide to your daily sale and look at the yearly number.
-            </p>
-          </div>
-
-          <div className="lp-calc" style={{display:'grid',gap:'2.5rem',alignItems:'stretch'}}>
-            {/* controls */}
-            <div style={{background:'var(--paper)',borderRadius:20,padding:'2rem',border:'1px solid #e8e6df'}}>
-              <label style={{fontSize:14,fontWeight:800,color:'#0C2418',display:'block',marginBottom:8}}>
-                Your daily sale
-              </label>
-              <div style={{fontSize:34,fontWeight:900,color:'#0C2418',marginBottom:14}}>
-                {litres.toLocaleString('en-IN')} <span style={{fontSize:18,fontWeight:700,color:'#8a93a0'}}>litres/day</span>
-                <span style={{display:'block',fontSize:14.5,fontWeight:700,color:'#1FA856'}}>≈ {fmtINR(dailyTurnover)} through your counter daily</span>
-              </div>
-              <input className="lp-range" type="range" min={1000} max={40000} step={500} value={litres}
-                onChange={e=>setLitres(Number(e.target.value))}
-                style={{'--fill':`${((litres-1000)/(40000-1000))*100}%`,marginBottom:22}}/>
-
-              <label style={{fontSize:14,fontWeight:800,color:'#0C2418',display:'block',marginBottom:10}}>
-                How much slips away? <span style={{fontWeight:600,color:'#8a93a0'}}>(most owners guess too low)</span>
-              </label>
-              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {[[0.2,'0.2% — “my boys are saints”'],[0.5,'0.5% — typical'],[1,'1% — one bad shift lead']].map(([v,label])=>(
-                  <button key={v} onClick={()=>setLeakPct(v)}
-                    style={{padding:'10px 14px',borderRadius:10,fontSize:13.5,fontWeight:700,cursor:'pointer',
-                      border: leakPct===v ? '2px solid #FF6B00' : '1.5px solid #d8d6cf',
-                      background: leakPct===v ? '#FFF3E8' : '#fff',
-                      color: leakPct===v ? '#9a3412' : '#5b6570'}}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div style={{fontSize:11.5,color:'#9aa3ad',marginTop:18,lineHeight:1.6}}>
-                Assumes a blended ₹100/litre. Leakage = skimmed cash, short change kept, unbilled litres,
-                unwatched credit — the everyday kind, not grand theft.
-              </div>
-            </div>
-
-            {/* result */}
-            <div style={{background:'linear-gradient(160deg,#0C2418,#07150E)',borderRadius:20,padding:'2rem',
-              color:'#fff',display:'flex',flexDirection:'column',justifyContent:'center',position:'relative',overflow:'hidden'}}>
-              <div aria-hidden style={{position:'absolute',top:-60,right:-60,width:220,height:220,borderRadius:'50%',
-                background:'radial-gradient(circle, rgba(220,38,38,.35), transparent 70%)',filter:'blur(10px)'}}/>
-              <div style={{fontSize:13.5,fontWeight:800,color:'rgba(255,255,255,.55)',textTransform:'uppercase',letterSpacing:1}}>
-                Leaking every month
-              </div>
-              <div style={{fontSize:'clamp(2.4rem,4.5vw,3.4rem)',fontWeight:900,color:'#FF8A8A',letterSpacing:'-.02em',margin:'4px 0 2px'}}>
-                {fmtINR(monthlyLoss)}
-              </div>
-              <div style={{fontSize:15,fontWeight:700,color:'rgba(255,255,255,.7)',marginBottom:22}}>
-                = {fmtINR(monthlyLoss*12)} a year. Gone. No receipt.
-              </div>
-
-              <div style={{height:1,background:'rgba(255,255,255,.14)',marginBottom:22}}/>
-
-              <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
-                <div style={{fontSize:13.5,fontWeight:800,color:'rgba(255,255,255,.55)',textTransform:'uppercase',letterSpacing:1}}>
-                  Pumpini Pro
-                </div>
-                <div style={{fontSize:30,fontWeight:900,color:'#4ADE80'}}>₹999<span style={{fontSize:15,fontWeight:700,color:'rgba(255,255,255,.55)'}}>/month</span></div>
-              </div>
-              <div style={{fontSize:15.5,fontWeight:700,color:'#fff',marginTop:10,lineHeight:1.6}}>
-                If Pumpini stops even a fraction of that leak, it pays for itself{' '}
-                <span style={{color:'#4ADE80',fontWeight:900}}>{roiMultiple}× over</span> — every single month.
-              </div>
-              <a href="#contact" style={{marginTop:24,alignSelf:'flex-start',padding:'14px 26px',background:'#FF6B00',
-                color:'#fff',borderRadius:12,textDecoration:'none',fontWeight:800,fontSize:15.5,
-                boxShadow:'0 6px 26px rgba(255,107,0,.4)'}}>
-                Plug the leak — talk to us →
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Blind-drop story — THE USP ── */}
-      <section style={{padding:'5.5rem 5%',background:'var(--ink)',color:'#fff',position:'relative',overflow:'hidden'}}>
-        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,backgroundImage:
-          'radial-gradient(circle at 15% 20%, #FF6B00 0%, transparent 45%), radial-gradient(circle at 85% 85%, #1FA856 0%, transparent 45%)'}}/>
-        <div style={{maxWidth:1080,margin:'0 auto',position:'relative'}}>
           <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <div style={{display:'inline-block',background:'rgba(255,107,0,.16)',color:'#FFA45C',
-              border:'1px solid rgba(255,107,0,.35)',padding:'5px 14px',borderRadius:99,fontSize:12.5,fontWeight:800,marginBottom:'0.9rem'}}>
-              🔒 ONLY ON PUMPINI — BLIND-DROP CASH CONTROL
-            </div>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,marginBottom:'0.6rem'}}>
-              The counter that can&rsquo;t cheat.
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem',color:'#0F1923'}}>
+              <span style={{color:'#1A5F7A'}}>Control every drop.</span>{' '}
+              <span style={{color:'#FF6B00'}}>Track every rupee.</span>
             </h2>
-            <p style={{fontSize:16,color:'rgba(255,255,255,.65)',maxWidth:640,margin:'0 auto',lineHeight:1.7}}>
-              In most bunks, the attendant knows exactly how much cash should be in the drawer —
-              so the drawer always &ldquo;matches&rdquo;. Pumpini flips the game.
+            <p style={{fontSize:16,color:'#666',maxWidth:640,margin:'0 auto'}}>
+              Two promises, one system — the fuel in your tanks and the cash in your drawer,
+              both watched from open to close.
             </p>
           </div>
-
-          <div className="lp-2col" style={{display:'grid',gap:'1.6rem'}}>
-            <div style={{background:'rgba(220,38,38,.08)',border:'1px solid rgba(220,38,38,.3)',
-              borderRadius:18,padding:'1.9rem'}}>
-              <div style={{fontSize:13,fontWeight:900,color:'#FCA5A5',letterSpacing:1,marginBottom:14}}>WITHOUT PUMPINI</div>
-              {[
-                ['👀','Attendant sees the expected total before counting'],
-                ['✂️','Keeps the round-off, shorts the change, pockets the gap'],
-                ['🤷','Drawer “tallies perfectly” every single day'],
-                ['😶','You sense it, but you can never prove it'],
-              ].map(([i,t])=>(
-                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
-                  color:'rgba(255,255,255,.8)',lineHeight:1.55}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
-                </div>
-              ))}
+          <div className="pmp-2col" style={{display:'grid',gap:'2rem'}}>
+            <div style={{background:'#fff',borderRadius:16,padding:'2rem',border:'1px solid #e5e7eb'}}>
+              <div style={{fontSize:32,marginBottom:'0.75rem'}}>💧</div>
+              <h3 style={{fontSize:20,fontWeight:800,marginBottom:'0.5rem',color:'#1A5F7A'}}>Control every drop</h3>
+              <p style={{fontSize:14.5,color:'#555',lineHeight:1.7,marginBottom:'1rem'}}>
+                Every litre is accounted for, from dip to nozzle. Tank-dip reconciliation
+                catches evaporation, leakage and pilferage — live, not just at month-end.
+              </p>
+              <ul style={{listStyle:'none',padding:0,margin:0,fontSize:14,color:'#333',lineHeight:2}}>
+                <li>✅ Wet-stock (tank dip) reconciliation</li>
+                <li>✅ Live tank variance — green within limit, red over</li>
+                <li>✅ Per-shift &amp; cumulative drift alerts</li>
+                <li>✅ Deliveries, dipstick &amp; meter, tied together</li>
+              </ul>
             </div>
-            <div style={{background:'rgba(31,168,86,.1)',border:'1px solid rgba(74,222,128,.35)',
-              borderRadius:18,padding:'1.9rem'}}>
-              <div style={{fontSize:13,fontWeight:900,color:'#4ADE80',letterSpacing:1,marginBottom:14}}>WITH PUMPINI</div>
-              {[
-                ['🙈','Sale total stays hidden while the shift is open — even from managers'],
-                ['✍️','Attendant declares his cash first, then the system reveals the truth'],
-                ['📋','Every shortfall recorded — name, shift, amount, pattern'],
-                ['😌','Honest staff feel protected. The other kind quits on their own.'],
-              ].map(([i,t])=>(
-                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
-                  color:'rgba(255,255,255,.85)',lineHeight:1.55}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
-                </div>
-              ))}
+            <div style={{background:'#fff',borderRadius:16,padding:'2rem',border:'1px solid #e5e7eb'}}>
+              <div style={{fontSize:32,marginBottom:'0.75rem'}}>₹</div>
+              <h3 style={{fontSize:20,fontWeight:800,marginBottom:'0.5rem',color:'#FF6B00'}}>Track every rupee</h3>
+              <p style={{fontSize:14.5,color:'#555',lineHeight:1.7,marginBottom:'1rem'}}>
+                Cash is followed from the operator&apos;s hand to the bank. Blind-drop
+                reconciliation keeps the sale honest; every shortfall and deposit is on record.
+              </p>
+              <ul style={{listStyle:'none',padding:0,margin:0,fontSize:14,color:'#333',lineHeight:2}}>
+                <li>✅ Blind-drop shift reconciliation</li>
+                <li>✅ Cash integrity — who&apos;s short, how often</li>
+                <li>✅ Bank deposit tracking with aging alerts</li>
+                <li>✅ Credit dues, receipts &amp; Tally export</li>
+              </ul>
             </div>
-          </div>
-
-          <div style={{textAlign:'center',marginTop:'2.2rem',fontSize:15.5,fontWeight:700,color:'rgba(255,255,255,.7)'}}>
-            Only the owner sees open-shift sales. Not the manager. Not the shift lead. <span style={{color:'#4ADE80'}}>You.</span>
           </div>
         </div>
       </section>
 
       {/* ── Voice POS Highlight ── */}
-      <section style={{background:'#FFF7ED',padding:'5.5rem 5%',borderTop:'3px solid #FF6B00'}}>
-        <div className="lp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',gap:'4rem',alignItems:'center'}}>
+      <section style={{background:'#fff7ed',padding:'5rem 5%',borderTop:'3px solid #FF6B00'}}>
+        <div className="pmp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',
+          gap:'4rem',alignItems:'center'}}>
           <div>
             <div style={{display:'inline-block',background:'#FF6B00',color:'#fff',
               padding:'4px 12px',borderRadius:99,fontSize:12,fontWeight:700,marginBottom:'1rem'}}>
-              🎙 VOICE POS
+              🆕 NEW FEATURE
             </div>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,lineHeight:1.2,marginBottom:'1rem',color:'#0C2418'}}>
-              Your attendant just{' '}
-              <span style={{color:'#FF6B00'}}>says it</span>. Pumpini writes it.
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,lineHeight:1.2,marginBottom:'1rem'}}>
+              Record transactions by{' '}
+              <span style={{color:'#FF6B00'}}>speaking</span> in your language
             </h2>
             <p style={{fontSize:16,color:'#555',lineHeight:1.7,marginBottom:'1.5rem'}}>
-              No typing, no training, no excuses. He presses the mic and speaks in Telugu, Tamil,
-              Hindi — any Indian language. The entry fills itself and waits for one tap to confirm.
+              Your attendant presses the mic button and says the transaction in Telugu, Tamil, Hindi or any Indian language. 
+              Pumpini understands, fills the form, and waits for confirmation. No typing. No errors.
             </p>
             <div style={{display:'flex',flexDirection:'column',gap:12}}>
               {[
                 ['తెలుగు', '"యాభై లీటర్లు పెట్రోల్ నగదు"', '50L Petrol · Cash'],
                 ['தமிழ்',  '"ஐம்பது லிட்டர் டீசல் UPI"',    '50L Diesel · UPI'],
                 ['हिन्दी', '"पचास लीटर पेट्रोल कैश"',       '50L Petrol · Cash'],
-              ].map(([lg, spoken, parsed]) => (
-                <div key={lg} style={{background:'#fff',borderRadius:12,padding:'0.75rem 1rem',
+              ].map(([lang, spoken, parsed]) => (
+                <div key={lang} style={{background:'#fff',borderRadius:12,padding:'0.75rem 1rem',
                   border:'1px solid #fed7aa',display:'flex',alignItems:'center',gap:12}}>
-                  <span style={{fontSize:11,fontWeight:700,color:'#9a3412',background:'#ffe9d6',
-                    padding:'2px 8px',borderRadius:99,flexShrink:0}}>{lg}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:'#9a3412',background:'#fee2e2',
+                    padding:'2px 8px',borderRadius:99,flexShrink:0}}>{lang}</span>
                   <span style={{fontSize:14,color:'#555',flex:1}}>{spoken}</span>
                   <span style={{fontSize:12,fontWeight:700,color:'#16a34a',
                     background:'#dcfce7',padding:'2px 8px',borderRadius:99,flexShrink:0}}>→ {parsed}</span>
                 </div>
               ))}
             </div>
-            <div style={{marginTop:'1rem',fontSize:12.5,color:'#888'}}>
+            <div style={{marginTop:'1rem',fontSize:12,color:'#888'}}>
               Understands 6 Indian languages — voice entry built for how India speaks.
             </div>
           </div>
-          <div style={{background:'#0C2418',borderRadius:20,padding:'2rem',position:'relative'}}>
+          <div style={{background:'#0F1923',borderRadius:20,padding:'2rem',position:'relative'}}>
             <div style={{textAlign:'center',marginBottom:'1.5rem'}}>
               <div style={{fontSize:13,color:'rgba(255,255,255,.5)',marginBottom:'0.5rem'}}>POS Entry</div>
               <div style={{fontSize:11,color:'rgba(255,255,255,.3)'}}>Dilsukhnagar Bunk · Shift 1</div>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:'1rem'}}>
               {[['N1','Petrol','₹102/L'],['N2','Diesel','₹90/L']].map(([n,f,p])=>(
-                <div key={n} style={{background:'rgba(255,107,0,.18)',border:'2px solid #FF6B00',
+                <div key={n} style={{background:'rgba(255,107,0,.2)',border:'2px solid #FF6B00',
                   borderRadius:10,padding:'0.75rem',textAlign:'center'}}>
-                  <div style={{fontWeight:800,color:'#FFA45C',fontSize:16}}>{n}</div>
+                  <div style={{fontWeight:800,color:'#FF6B00',fontSize:16}}>{n}</div>
                   <div style={{color:'rgba(255,255,255,.7)',fontSize:12}}>{f}</div>
                   <div style={{color:'rgba(255,255,255,.5)',fontSize:11}}>{p}</div>
                 </div>
@@ -748,10 +632,10 @@ export default function LandingPage() {
                 <span style={{fontSize:22}}>🎙</span>
               </div>
               <div style={{color:'rgba(255,255,255,.7)',fontSize:13,fontStyle:'italic'}}>
-                &ldquo;50 లీటర్లు పెట్రోల్ నగదు&rdquo;
+                "50 లీటర్లు పెట్రోల్ నగదు"
               </div>
             </div>
-            <div style={{background:'rgba(74,222,128,.12)',border:'1px solid rgba(74,222,128,.3)',
+            <div style={{background:'rgba(22,163,74,.15)',border:'1px solid rgba(22,163,74,.3)',
               borderRadius:10,padding:'0.75rem',fontSize:12}}>
               <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,.6)',marginBottom:4}}>
                 <span>Quantity</span><span style={{fontWeight:700,color:'#fff'}}>50 Litres</span>
@@ -760,76 +644,116 @@ export default function LandingPage() {
                 <span>Payment</span><span style={{fontWeight:700,color:'#fff'}}>Cash</span>
               </div>
               <div style={{display:'flex',justifyContent:'space-between',color:'rgba(255,255,255,.6)'}}>
-                <span>Amount</span><span style={{fontWeight:700,color:'#4ADE80'}}>₹5,100</span>
+                <span>Amount</span><span style={{fontWeight:700,color:'#16a34a'}}>₹5,100</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Features Grid + geo-fence strip ── */}
-      <section id="features" style={{padding:'5.5rem 5%',background:'var(--paper)'}}>
+      {/* ── Geo-fencing Highlight ── */}
+      <section style={{padding:'5rem 5%',background:'#0F1923',color:'#fff'}}>
+        <div className="pmp-2col" style={{maxWidth:1100,margin:'0 auto',display:'grid',
+          gap:'4rem',alignItems:'center'}}>
+          <div style={{background:'rgba(255,255,255,.05)',borderRadius:20,padding:'2rem',
+            border:'1px solid rgba(255,255,255,.1)',textAlign:'center'}}>
+            <div style={{fontSize:64,marginBottom:'1rem'}}>📍</div>
+            <div style={{width:200,height:200,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.5)',
+              margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'center',position:'relative'}}>
+              <div style={{width:140,height:140,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.3)',
+                display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div style={{width:80,height:80,borderRadius:'50%',border:'2px dashed rgba(255,107,0,.2)',
+                  display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{width:16,height:16,borderRadius:'50%',background:'#FF6B00',
+                    boxShadow:'0 0 0 4px rgba(255,107,0,.3)'}}/>
+                </div>
+              </div>
+              <div style={{position:'absolute',top:'15%',right:'5%',fontSize:20}}>✅</div>
+              <div style={{position:'absolute',bottom:'5%',left:'0%',fontSize:20}}>🚫</div>
+            </div>
+            <div style={{marginTop:'1rem',fontSize:13,color:'rgba(255,255,255,.5)'}}>
+              500m geo-fence around station
+            </div>
+          </div>
+          <div>
+            <div style={{display:'inline-block',background:'rgba(255,107,0,.2)',color:'#FF6B00',
+              padding:'4px 12px',borderRadius:99,fontSize:12,fontWeight:700,marginBottom:'1rem',
+              border:'1px solid rgba(255,107,0,.3)'}}>
+              🆕 GEO-FENCING SECURITY
+            </div>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,lineHeight:1.2,marginBottom:'1rem'}}>
+              POS locked to your{' '}
+              <span style={{color:'#FF6B00'}}>station location</span>
+            </h2>
+            <p style={{fontSize:16,color:'rgba(255,255,255,.7)',lineHeight:1.7,marginBottom:'1.5rem'}}>
+              Staff can only record transactions when physically present at the petrol station. 
+              Set a 500m radius — anyone outside that boundary sees the POS locked.
+            </p>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {[
+                ['🔒', 'Attendant outside boundary → POS locked automatically'],
+                ['⚡', 'Fired someone? Revoke access instantly from admin panel'],
+                ['📍', 'Set station GPS with one click from any device'],
+                ['⚙️',  'Configurable radius: 100m to 2km per station'],
+              ].map(([icon, text]) => (
+                <div key={text} style={{display:'flex',alignItems:'flex-start',gap:12,fontSize:14,
+                  color:'rgba(255,255,255,.8)'}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{icon}</span>
+                  <span>{text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features Grid ── */}
+      <section id="features" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
         <div style={{maxWidth:1100,margin:'0 auto'}}>
           <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem',color:'#0C2418'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
               {c.feat_title}
             </h2>
-            <p style={{fontSize:16,color:'#5b6570'}}>{c.feat_sub}</p>
+            <p style={{fontSize:16,color:'#666'}}>{c.feat_sub}</p>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:'1.5rem'}}>
             {FEATURES.map(feat => (
-              <div key={feat.key} className="lp-card" style={{background:'#fff',borderRadius:16,padding:'1.75rem',
-                border:'1px solid #e8e6df',cursor:'default',boxShadow:'0 2px 10px rgba(7,21,14,.04)'}}>
+              <div key={feat.key} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
+                border:'1px solid #e5e3de',transition:'all .2s',cursor:'default'}}
+                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.boxShadow='0 12px 40px rgba(0,0,0,.1)'; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none'; }}>
                 <div style={{fontSize:36,marginBottom:'1rem'}}>{feat.icon}</div>
-                <h3 style={{fontWeight:800,fontSize:17,marginBottom:'0.5rem',color:'#0C2418'}}>{c[`${feat.key}_t`]}</h3>
-                <p style={{fontSize:14,color:'#5b6570',lineHeight:1.6,margin:0}}>{c[`${feat.key}_d`]}</p>
+                <h3 style={{fontWeight:800,fontSize:17,marginBottom:'0.5rem'}}>{c[`${feat.key}_t`]}</h3>
+                <p style={{fontSize:14,color:'#666',lineHeight:1.6}}>{c[`${feat.key}_d`]}</p>
               </div>
             ))}
-          </div>
-
-          {/* geo-fence strip */}
-          <div className="lp-card" style={{marginTop:'1.5rem',background:'linear-gradient(120deg,#0C2418,#123524)',
-            borderRadius:16,padding:'1.6rem 1.9rem',display:'flex',alignItems:'center',gap:18,flexWrap:'wrap',
-            color:'#fff',border:'1px solid rgba(74,222,128,.2)'}}>
-            <span style={{fontSize:36}}>📍</span>
-            <div style={{flex:1,minWidth:240}}>
-              <div style={{fontWeight:850,fontSize:17,marginBottom:4}}>POS works only inside your bunk&rsquo;s gate.</div>
-              <div style={{fontSize:14,color:'rgba(255,255,255,.65)',lineHeight:1.6}}>
-                GPS geo-fence from 100m to 2km. Outside the boundary, the POS locks itself.
-                Fired someone? One tap and their access is gone — from anywhere.
-              </div>
-            </div>
-            <span style={{fontSize:13,fontWeight:800,color:'#4ADE80',background:'rgba(74,222,128,.12)',
-              border:'1px solid rgba(74,222,128,.3)',padding:'8px 14px',borderRadius:99,whiteSpace:'nowrap'}}>
-              Included in every plan
-            </span>
           </div>
         </div>
       </section>
 
       {/* ── Comparison table ── */}
-      <section style={{padding:'5.5rem 5%',background:'#fff'}}>
+      <section style={{padding:'5rem 5%',background:'#fff'}}>
         <div style={{maxWidth:820,margin:'0 auto'}}>
-          <h2 style={{textAlign:'center',fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.75rem',color:'#0C2418'}}>
+          <h2 style={{textAlign:'center',fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.75rem'}}>
             {c.compare_title}
           </h2>
-          <p style={{textAlign:'center',fontSize:16,color:'#5b6570',fontStyle:'italic',
+          <p style={{textAlign:'center',fontSize:16,color:'#555',fontStyle:'italic',
             maxWidth:620,margin:'0 auto 2.5rem',lineHeight:1.6}}>
             Others leave bunks running high and dry. Pumpini accounts for every
             drop — and every rupee. We match the basics, then go where legacy
             software can&apos;t.
           </p>
-          <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e8e6df',boxShadow:'0 4px 24px rgba(7,21,14,.06)'}}>
-            <div className="lp-cmp" style={{display:'grid',
-              background:'var(--ink2)',color:'#fff',padding:'1rem 1.5rem',fontWeight:700,fontSize:14}}>
+          <div style={{borderRadius:16,overflow:'hidden',border:'1px solid #e5e3de'}}>
+            <div className="pmp-cmp" style={{display:'grid',
+              background:'#0F1923',color:'#fff',padding:'1rem 1.5rem',fontWeight:700,fontSize:14}}>
               <div>Feature</div>
-              <div style={{textAlign:'center',color:'#FFA45C'}}>Pumpini</div>
+              <div style={{textAlign:'center',color:'#FF6B00'}}>Us</div>
               <div style={{textAlign:'center',color:'rgba(255,255,255,.45)'}}>Others</div>
             </div>
             {COMPARE.map(([feat, us, them], i) => (
-              <div key={feat} className="lp-cmp" style={{display:'grid',
-                padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f7f6f1',
-                borderBottom:'1px solid #f0efe9',fontSize:14,alignItems:'center'}}>
+              <div key={feat} className="pmp-cmp" style={{display:'grid',
+                padding:'0.875rem 1.5rem',background: i%2===0?'#fff':'#f8f7f5',
+                borderBottom:'1px solid #f0f0f0',fontSize:14,alignItems:'center'}}>
                 <div style={{fontWeight:500}}>{feat}</div>
                 <div style={{textAlign:'center',fontSize:18}}>{CMP_MARK[us]}</div>
                 <div style={{textAlign:'center',fontSize:18}}>{CMP_MARK[them]}</div>
@@ -843,19 +767,19 @@ export default function LandingPage() {
       </section>
 
       {/* ── Pricing ── */}
-      <section id="pricing" style={{padding:'5.5rem 5%',background:'var(--paper)'}}>
-        <div style={{maxWidth:1000,margin:'0 auto'}}>
+      <section id="pricing" style={{padding:'5rem 5%',background:'#F4F7FA'}}>
+        <div style={{maxWidth:900,margin:'0 auto'}}>
           <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem',color:'#0C2418'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.5rem'}}>
               {c.pricing_title}
             </h2>
-            <p style={{fontSize:15,color:'#5b6570'}}>{c.pricing_sub}</p>
+            <p style={{fontSize:15,color:'#666'}}>{c.pricing_sub}</p>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'1.5rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'1.5rem',maxWidth:1000,margin:'0 auto'}}>
             {PLANS.map(plan => (
-              <div key={plan.name} className="lp-card" style={{background:'#fff',borderRadius:20,padding:'2rem',
-                border: plan.popular ? `2.5px solid #FF6B00` : '1px solid #e8e6df',
-                position:'relative',boxShadow: plan.popular ? '0 10px 44px rgba(255,107,0,.18)' : '0 2px 10px rgba(7,21,14,.04)'}}>
+              <div key={plan.name} style={{background:'#fff',borderRadius:20,padding:'2rem',
+                border: plan.popular ? `2px solid #FF6B00` : '1px solid #e5e3de',
+                position:'relative',boxShadow: plan.popular ? '0 8px 40px rgba(255,107,0,.15)' : 'none'}}>
                 {plan.popular && (
                   <div style={{position:'absolute',top:-13,left:'50%',transform:'translateX(-50%)',
                     background:'#FF6B00',color:'#fff',padding:'4px 16px',borderRadius:99,
@@ -866,61 +790,57 @@ export default function LandingPage() {
                 <div style={{fontWeight:900,fontSize:18,color:plan.color,marginBottom:'0.25rem'}}>
                   {plan.name}
                 </div>
-                <div style={{fontSize:12.5,color:'#8a93a0',marginBottom:'0.6rem'}}>{plan.tagline}</div>
-                <div style={{display:'flex',alignItems:'baseline',gap:4}}>
-                  <span style={{fontSize:34,fontWeight:900,color:'#0C2418'}}>₹{plan.price.toLocaleString('en-IN')}</span>
-                  <span style={{fontSize:14,color:'#888'}}>/month</span>
-                </div>
-                {/* per-day framing — speaks the owner's arithmetic */}
-                <div style={{display:'inline-block',margin:'8px 0 1.2rem',background:'#F0FAF3',color:'#14532d',
-                  border:'1px solid #BBE7C9',padding:'4px 12px',borderRadius:99,fontSize:12.5,fontWeight:800}}>
-                  {plan.perDay} · {plan.perDayNote}
+                {plan.tagline && <div style={{fontSize:12,color:'#888',marginBottom:'0.5rem'}}>{plan.tagline}</div>}
+                <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:'1.5rem'}}>
+                  <span style={{fontSize:32,fontWeight:900}}>{plan.price}</span>
+                  <span style={{fontSize:14,color:'#888'}}>{plan.period}</span>
                 </div>
                 <ul style={{listStyle:'none',padding:0,margin:'0 0 1.5rem',
                   display:'flex',flexDirection:'column',gap:8}}>
                   {plan.features.map(f => (
-                    <li key={f} style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:13.5}}>
-                      <span style={{color:'#1FA856',flexShrink:0,marginTop:1,fontWeight:900}}>✓</span>
+                    <li key={f} style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:13}}>
+                      <span style={{color:'#16a34a',flexShrink:0,marginTop:1}}>✓</span>
                       <span>{f}</span>
                     </li>
                   ))}
                 </ul>
-                <Link href="/login" style={{display:'block',textAlign:'center',padding:'13px',
-                  background: plan.popular ? '#FF6B00' : '#0C2418',color:'#fff',borderRadius:10,
-                  textDecoration:'none',fontWeight:800,fontSize:14.5}}>
+                <Link href="/login" style={{display:'block',textAlign:'center',padding:'12px',
+                  background: plan.popular ? '#FF6B00' : '#0F1923',color:'#fff',borderRadius:10,
+                  textDecoration:'none',fontWeight:700,fontSize:14}}>
                   Start Free Trial
                 </Link>
               </div>
             ))}
           </div>
-          <div style={{textAlign:'center',marginTop:'2rem',fontSize:13.5,color:'#5b6570'}}>
-            Your bunk pumps lakhs through the counter daily — protect it for less than one litre of petrol a day.{' '}
-            <a href="#contact" style={{color:'#FF6B00',fontWeight:700}}>Need more stations? Get in touch →</a>
+          <div style={{textAlign:'center',marginTop:'2rem',fontSize:13,color:'#888'}}>
+            Need more stations or custom pricing?{' '}
+            <a href="#contact" style={{color:'#FF6B00',fontWeight:600}}>
+              Get in touch →
+            </a>
           </div>
         </div>
       </section>
 
-      {/* ── Contact form (wired to /api/leads — fields unchanged) ── */}
-      <section id="contact" style={{padding:'5.5rem 5%',
-        background:'radial-gradient(900px 500px at 80% 0%, rgba(31,168,86,.18), transparent 55%),'+
-                   'linear-gradient(160deg, #07150E 0%, #0C2418 100%)',
+      {/* ── Footer CTA / Contact form ── */}
+      <section id="contact" style={{padding:'5rem 5%',
+        background:'linear-gradient(135deg, #0F1923 0%, #1A2E3B 100%)',
         color:'#fff',textAlign:'center'}}>
         <div style={{maxWidth:560,margin:'0 auto'}}>
-          <div style={{fontSize:46,marginBottom:'1rem'}}>🤝</div>
+          <div style={{fontSize:48,marginBottom:'1rem'}}>🚀</div>
           <h2 style={{fontSize:'clamp(1.8rem,3vw,2.5rem)',fontWeight:900,marginBottom:'0.75rem'}}>
             Get in touch — we&apos;ll set up your free trial
           </h2>
-          <p style={{fontSize:16,color:'rgba(255,255,255,.65)',marginBottom:'2rem'}}>
+          <p style={{fontSize:16,color:'rgba(255,255,255,.6)',marginBottom:'2rem'}}>
             Leave your details and our team will reach out to activate your
-            15-day free trial. No card, no commitment — just your bunk, under control.
+            15-day free trial.
           </p>
 
-          <form onSubmit={submitLead} style={{background:'#fff',borderRadius:18,padding:'1.9rem',
-            textAlign:'left',boxShadow:'0 24px 70px rgba(0,0,0,.4)',position:'relative'}}>
+          <form onSubmit={submitLead} style={{background:'#fff',borderRadius:16,padding:'1.75rem',
+            textAlign:'left',boxShadow:'0 20px 60px rgba(0,0,0,.35)',position:'relative'}}>
             {leadState === 'done' ? (
               <div style={{textAlign:'center',padding:'1.5rem 0'}}>
                 <div style={{fontSize:44,marginBottom:'0.75rem'}}>✅</div>
-                <div style={{fontSize:18,fontWeight:800,color:'#0C2418',marginBottom:6}}>Thank you!</div>
+                <div style={{fontSize:18,fontWeight:800,color:'#0F1923',marginBottom:6}}>Thank you!</div>
                 <div style={{fontSize:14,color:'#555',lineHeight:1.6}}>
                   We&apos;ve received your details and will reach out shortly to set up your free trial.
                 </div>
@@ -934,13 +854,13 @@ export default function LandingPage() {
 
                 <input style={{...leadInp, marginBottom:12}} placeholder="Petrol bunk name" value={lead.station_name}
                   onChange={e=>setL('station_name', e.target.value)}/>
-                <div className="lp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
+                <div className="pmp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
                   <input style={leadInp} placeholder="Your name *" value={lead.name}
                     onChange={e=>setL('name', e.target.value)} required/>
                   <input style={leadInp} type="tel" placeholder="Mobile number *" value={lead.phone}
                     onChange={e=>setL('phone', e.target.value)} required/>
                 </div>
-                <div className="lp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
+                <div className="pmp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
                   <select style={{...leadInp, color: lead.state?'#111':'#9ca3af'}} value={lead.state}
                     onChange={e=>{ setL('state', e.target.value); setL('city',''); }}>
                     <option value="">State</option>
@@ -949,7 +869,7 @@ export default function LandingPage() {
                   <select style={{...leadInp, color: lead.city?'#111':'#9ca3af'}} value={lead.city}
                     onChange={e=>setL('city', e.target.value)} disabled={!lead.state}>
                     <option value="">{lead.state?'City':'Select state first'}</option>
-                    {getCities(lead.state).map(ct=><option key={ct} value={ct} style={{color:'#111'}}>{ct}</option>)}
+                    {getCities(lead.state).map(c=><option key={c} value={c} style={{color:'#111'}}>{c}</option>)}
                   </select>
                 </div>
                 <textarea style={{...leadInp, minHeight:72, resize:'vertical', marginBottom:12}}
@@ -964,7 +884,7 @@ export default function LandingPage() {
                 )}
 
                 <button type="submit" disabled={leadState==='sending'}
-                  style={{width:'100%',height:52,background:'#FF6B00',color:'#fff',border:'none',
+                  style={{width:'100%',height:50,background:'#FF6B00',color:'#fff',border:'none',
                     borderRadius:10,fontSize:16,fontWeight:800,cursor:'pointer',
                     boxShadow:'0 4px 20px rgba(255,107,0,.35)'}}>
                   {leadState==='sending' ? 'Sending…' : 'Get in touch'}
@@ -979,14 +899,14 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer style={{background:'#04100A',color:'rgba(255,255,255,.4)',
+      <footer style={{background:'#080f15',color:'rgba(255,255,255,.4)',
         padding:'1.5rem 5%',display:'flex',justifyContent:'space-between',
         alignItems:'center',flexWrap:'wrap',gap:8,fontSize:13}}>
         <div>
           <span style={{fontWeight:900,color:'#fff'}}>
             <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
           </span>
-          {' '}© 2026 · Control every drop. Track every rupee.
+          {' '}© 2026 · Built for Indian petrol stations
         </div>
         <div style={{display:'flex',gap:'1.5rem'}}>
           <Link href="/login"   style={{color:'rgba(255,255,255,.4)',textDecoration:'none'}}>Login</Link>
