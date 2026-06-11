@@ -33,16 +33,7 @@ router.post('/', async (req, res, next) => {
       ]
     );
 
-    // Best-effort: notify the owner so a hot lead isn't missed.
-    const notifyTo = process.env.LEADS_NOTIFY_PHONE || '+917842178350';
-    sendWhatsApp(
-      notifyTo,
-      `🆕 *New Pumpini enquiry*\n\n` +
-      `👤 ${name}\n📞 ${phone}\n` +
-      `⛽ ${station_name || '—'}\n📍 ${city || '—'}\n` +
-      (message ? `💬 ${message}\n` : '')
-    ).catch(e => logger.warn('lead notify failed: ' + e.message));
-
+    // Lead is captured in the admin Leads screen (WhatsApp notify dropped).
     res.status(201).json({ ok: true, id: rows[0].id });
   } catch (err) { next(err); }
 });

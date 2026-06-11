@@ -259,7 +259,7 @@ export default function AdminPage(){
     {id:'owners',   label:'Owners',            icon:<Users size={14}/>},
     {id:'stations', label:'Petrol Bunks',      icon:<Building2 size={14}/>},
     {id:'plans',    label:'Plans',             icon:<Layers size={14}/>},
-    {id:'alertdefs',label:'Alert Definitions', icon:<Shield size={14}/>},
+    {id:'alertdefs',label:'AI Chat',           icon:<Shield size={14}/>},
     {id:'stationusers',label:'Users & Roles',  icon:<UserPlus size={14}/>},
     {id:'leads',    label:'Leads',             icon:<Inbox size={14}/>},
   ];
@@ -551,51 +551,42 @@ export default function AdminPage(){
         {/* ── Alert Definitions ── */}
         {tab==='alertdefs'&&(
           <div>
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Alert Definitions</h1>
-              <button style={btn()} onClick={()=>openModal('alertDef')}><Plus size={15}/>New Alert</button>
+            <div style={{marginBottom:'1.5rem'}}>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>AI Chat</h1>
+              <p style={{fontSize:13,color:'#888',marginTop:4,maxWidth:560}}>
+                The in-app AI assistant is a plan feature. Enable it for the plans that should include it —
+                outlets on those plans get AI Chat. (WhatsApp chat has been discontinued; operational alerts
+                are now in-app.)
+              </p>
             </div>
-            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
-              <table style={{width:'100%',borderCollapse:'collapse'}}>
-                <thead><tr style={{background:'#f8f7f5'}}>
-                  {['Name','Type','Severity','WhatsApp','Active','Actions'].map(h=>(
-                    <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {alertDefs.length===0&&<tr><td colSpan={6} style={{textAlign:'center',padding:'2rem',color:'#aaa'}}>No alert definitions yet</td></tr>}
-                  {alertDefs.map(a=>(
-                    <tr key={a.id} style={{borderBottom:'1px solid #f0f0f0',opacity:a.is_active?1:0.6}}>
-                      <td style={{padding:'11px 14px',fontWeight:600}}>{a.name}</td>
-                      <td style={{padding:'11px 14px'}}><span style={{fontFamily:'monospace',fontSize:11,background:'#f3f4f6',padding:'2px 6px',borderRadius:4}}>{a.alert_type}</span></td>
-                      <td style={{padding:'11px 14px'}}>
-                        <span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:600,
-                          background:a.severity==='critical'?'#fee2e2':a.severity==='warning'?'#fef9c3':'#dbeafe',
-                          color:a.severity==='critical'?'#991b1b':a.severity==='warning'?'#854d0e':'#1d4ed8'}}>{a.severity}</span>
-                      </td>
-                      <td style={{padding:'11px 14px',textAlign:'center'}}>
-                        <button onClick={()=>adminFetch(`/alert-definitions/${a.id}`,{method:'PATCH',body:JSON.stringify({whatsapp_enabled:!a.whatsapp_enabled})}).then(reload)}
-                          style={{background:'none',border:'none',cursor:'pointer',color:a.whatsapp_enabled?'#16a34a':'#ccc'}}>
-                          {a.whatsapp_enabled?<ToggleRight size={22}/>:<ToggleLeft size={22}/>}
-                        </button>
-                      </td>
-                      <td style={{padding:'11px 14px',textAlign:'center'}}>
-                        <button onClick={()=>adminFetch(`/alert-definitions/${a.id}`,{method:'PATCH',body:JSON.stringify({is_active:!a.is_active})}).then(reload)}
-                          style={{background:'none',border:'none',cursor:'pointer',color:a.is_active?'#16a34a':'#ccc'}}>
-                          {a.is_active?<ToggleRight size={22}/>:<ToggleLeft size={22}/>}
-                        </button>
-                      </td>
-                      <td style={{padding:'11px 14px'}}>
-                        <div style={{display:'flex',gap:5}}>
-                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('alertDef',{id:a.id,name:a.name,description:a.description,alert_type:a.alert_type,severity:a.severity,whatsapp_enabled:a.whatsapp_enabled,is_active:a.is_active})}><Edit2 size={12}/>Edit</button>
-                          <button style={btn('#fee2e2','#991b1b')} onClick={()=>adminFetch(`/alert-definitions/${a.id}`,{method:'DELETE'}).then(()=>{reload();showToast('Deleted.');})}><Trash2 size={12}/>Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden',maxWidth:520}}>
+              {['pro','enterprise'].map(planName=>{
+                const on=(planFeat[planName]||[]).includes('ai_chat.use');
+                return (
+                  <div key={planName} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1rem 1.25rem',borderBottom:'1px solid #f0f0f0'}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14}}>{planName.toUpperCase()}</div>
+                      <div style={{fontSize:12,color:'#888'}}>AI assistant {on?'enabled':'disabled'} for this plan</div>
+                    </div>
+                    <button onClick={async()=>{
+                      const cur=planFeat[planName]||[];
+                      const next= on ? cur.filter(c=>c!=='ai_chat.use') : [...cur,'ai_chat.use'];
+                      setPlanFeat(p=>({...p,[planName]:next}));
+                      const price=(plans.find(pp=>pp.name===planName)?.price_per_month)||0;
+                      await adminFetch('/plans',{method:'POST',body:JSON.stringify({name:planName,price_per_month:price,features:next})});
+                      reload(); showToast(on?'AI Chat disabled':'AI Chat enabled');
+                    }} style={{background:'none',border:'none',cursor:'pointer',color:on?'#16a34a':'#ccc'}}>
+                      {on?<ToggleRight size={30}/>:<ToggleLeft size={30}/>}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
+            <p style={{fontSize:12,color:'#aaa',marginTop:'1rem',maxWidth:520}}>
+              This toggles the “AI Assistant” function on each plan (same as ticking it under Plans). Configure the
+              plan’s full function list under <strong>Plans</strong> first; Responsibilities can further restrict who
+              within an outlet may use the AI chat.
+            </p>
           </div>
         )}
 

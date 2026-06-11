@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send, Mic, MicOff, Loader, Zap, ChevronDown } from 'lucide-react';
 import { sendAiChat } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { usePermissions } from '../../hooks/usePermissions';
 
 const STARTERS = [
   "Today's total sales?",
@@ -13,6 +14,7 @@ const STARTERS = [
 
 export default function FloatingChat() {
   const { user, station } = useAuth();
+  const { can } = usePermissions();
   const stationId = typeof station === 'object' ? station?.id : station;
 
   const [open,       setOpen]       = useState(false);
@@ -113,6 +115,7 @@ export default function FloatingChat() {
   };
 
   if (!user) return null;
+  if (!can('ai_chat.use')) return null; // AI Chat is a plan feature (fail-open via 'ALL')
 
   const lang = getLang();
 

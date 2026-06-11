@@ -192,7 +192,7 @@ const COMPARE = [
   ['Tank stock & nozzle readings',      'yes', 'yes'],
   ['Credit / corporate customers',      'yes', 'yes'],
   ['Cloud + mobile app',                'yes', 'partial'],
-  ['WhatsApp alerts',                   'yes', 'partial'],
+  ['Instant in-app alerts',             'yes', 'partial'],
   ['Voice POS in Indian languages',     'yes', 'no'],
   ['Full app in 6 Indian languages',    'yes', 'no'],
   ['GPS geo-fencing security',          'yes', 'no'],
@@ -800,8 +800,8 @@ export default function LandingPage() {
           </div>
           <div style={{textAlign:'center',marginTop:'2rem',fontSize:13,color:'#888'}}>
             Need more stations or custom pricing?{' '}
-            <a href="https://wa.me/919490704075" style={{color:'#FF6B00',fontWeight:600}}>
-              WhatsApp us →
+            <a href="#contact" style={{color:'#FF6B00',fontWeight:600}}>
+              Get in touch →
             </a>
           </div>
         </div>
@@ -838,13 +838,15 @@ export default function LandingPage() {
                   aria-hidden="true" onChange={e=>setL('company', e.target.value)}
                   style={{position:'absolute',left:'-9999px',width:1,height:1,opacity:0}}/>
 
+                <input style={{...leadInp, marginBottom:12}} placeholder="Petrol bunk name" value={lead.station_name}
+                  onChange={e=>setL('station_name', e.target.value)}/>
                 <div className="pmp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
                   <input style={leadInp} placeholder="Your name *" value={lead.name}
                     onChange={e=>setL('name', e.target.value)} required/>
                   <input style={leadInp} type="tel" placeholder="Mobile number *" value={lead.phone}
                     onChange={e=>setL('phone', e.target.value)} required/>
-                  <input style={leadInp} placeholder="Petrol bunk name" value={lead.station_name}
-                    onChange={e=>setL('station_name', e.target.value)}/>
+                </div>
+                <div className="pmp-form2" style={{display:'grid',gap:12,marginBottom:12}}>
                   <select style={{...leadInp, color: lead.state?'#111':'#9ca3af'}} value={lead.state}
                     onChange={e=>{ setL('state', e.target.value); setL('city',''); }}>
                     <option value="">State</option>
@@ -863,7 +865,7 @@ export default function LandingPage() {
                 {leadState === 'error' && (
                   <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',
                     fontSize:13,marginBottom:12,border:'1px solid #fca5a5'}}>
-                    Something went wrong. Please try again, or message us on WhatsApp.
+                    Something went wrong. Please try again in a moment.
                   </div>
                 )}
 
@@ -898,25 +900,6 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      {/* ── Floating WhatsApp button ── */}
-      <a
-        href="https://wa.me/917842178350?text=Hi%2C%20I%27d%20like%20to%20know%20more%20about%20Pumpini"
-        target="_blank" rel="noopener noreferrer"
-        aria-label="Chat on WhatsApp"
-        style={{
-          position:'fixed',bottom:24,right:24,zIndex:1000,
-          width:58,height:58,borderRadius:'50%',background:'#25D366',
-          display:'flex',alignItems:'center',justifyContent:'center',
-          boxShadow:'0 6px 24px rgba(37,211,102,.5)',
-          textDecoration:'none',transition:'transform .2s',
-        }}
-        onMouseEnter={e=>e.currentTarget.style.transform='scale(1.08)'}
-        onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}
-      >
-        <svg viewBox="0 0 32 32" width="32" height="32" fill="#fff" aria-hidden="true">
-          <path d="M16.04 4C9.4 4 4 9.4 4 16.04c0 2.12.56 4.18 1.6 6L4 28l6.13-1.6a12 12 0 0 0 5.9 1.54h.01C22.67 27.95 28 22.6 28 16.04 28 9.4 22.67 4 16.04 4zm0 21.9h-.01a9.9 9.9 0 0 1-5.05-1.38l-.36-.22-3.74.98 1-3.64-.24-.37a9.86 9.86 0 0 1-1.51-5.26c0-5.46 4.45-9.9 9.92-9.9 2.65 0 5.14 1.04 7.01 2.91a9.82 9.82 0 0 1 2.9 7c0 5.46-4.45 9.88-9.92 9.88zm5.44-7.41c-.3-.15-1.77-.87-2.04-.97-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.18.2-.35.22-.65.07-.3-.15-1.26-.46-2.4-1.48-.89-.79-1.49-1.77-1.66-2.07-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.21-.24-.58-.49-.5-.67-.51l-.57-.01c-.2 0-.52.07-.79.37-.27.3-1.04 1.01-1.04 2.47 0 1.46 1.06 2.87 1.21 3.07.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.69.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.42.25-.69.25-1.28.17-1.41-.07-.13-.27-.2-.57-.35z"/>
-        </svg>
-      </a>
     </div>
   );
 }

@@ -3,6 +3,7 @@ const router    = require('express').Router();
 const pool      = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
 const { computeLiveTankStatus } = require('./tankReco');
 const { computeDepositStatus } = require('./cashDeposits');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -10,7 +11,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/ai-chat
-router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('ai_chat.use'), async (req, res, next) => {
   try {
     const { message, station_id, language = 'en' } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });

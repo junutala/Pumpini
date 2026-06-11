@@ -27,10 +27,10 @@ const roleDefaults = {
   ],
   attendant: [
     'dashboard.view','dispense.entry','dispense.view',
-    'dipstick.entry','dipstick.view','attendance.view','shifts.view',
+    'dipstick.entry','dipstick.view','attendance.view','shifts.view','ai_chat.use',
   ],
   rsa: [
-    'dashboard.view','dispense.entry','dispense.view','corporate.view','shifts.view',
+    'dashboard.view','dispense.entry','dispense.view','corporate.view','shifts.view','ai_chat.use',
   ],
   corporate: [
     'dashboard.view','corporate.view','reports.view','invoice.generate',

@@ -14,6 +14,9 @@ const mailer = nodemailer.createTransport({
 
 // sendAlert({ station_id, alert_type, severity, message, channels, io })
 async function sendAlert({ station_id, alert_type, severity = 'warning', message, channels = ['sms'], io }) {
+  // WhatsApp dropped — alerts are now in-app (alerts table + socket) plus any
+  // SMS/email channel a caller still asks for.
+  channels = (channels || []).filter(c => c !== 'whatsapp');
   // Find owners & managers for this station
   const { rows: recipients } = await pool.query(`
     SELECT u.id, u.name, u.phone, u.email
@@ -44,9 +47,6 @@ async function sendAlert({ station_id, alert_type, severity = 'warning', message
     }
     if (channels.includes('email') && r.email) {
       await sendEmail(r.email, `[Petrol DMS Alert] ${alert_type}`, message).catch(e => logger.warn('Email failed:', e.message));
-    }
-    if (channels.includes('whatsapp') && r.phone) {
-      await sendWhatsApp(r.phone, message).catch(e => logger.warn('WhatsApp failed:', e.message));
     }
   }
 }
