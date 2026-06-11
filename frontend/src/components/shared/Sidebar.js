@@ -29,19 +29,38 @@ const NAV_GROUPS = [
     ]
   },
   {
-    label: 'Manage',
+    label: 'Shift',
     items: [
       { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
-      { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
+    ]
+  },
+  {
+    label: 'Stock',
+    items: [
+      { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'deliveries.view' },
       { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
       { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'stock.reconcile' },
-      { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'shifts.manage' },
+    ]
+  },
+  {
+    label: 'Credit',
+    items: [
       { key:'invoices',   href:'/invoices',        icon:FileText,       perm:'invoice.generate' },
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
       { key:'creditnotes',href:'/credit-notes',    icon:RotateCcw,      perm:'invoice.generate' },
+    ]
+  },
+  {
+    label: 'Cash',
+    items: [
       { key:'pettycash',  href:'/petty-cash',      icon:Wallet,         perm:'pettycash.manage' },
       { key:'deposits',   href:'/deposits',        icon:Banknote,       perm:'deposits.manage' },
       { key:'cashintegrity', href:'/cash-integrity', icon:ShieldAlert,  perm:'cash.integrity', roles:['owner'] },
+    ]
+  },
+  {
+    label: 'Reports',
+    items: [
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
       { key:'tally',      href:'/tally',           icon:Calculator,     perm:'tally.export' },

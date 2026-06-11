@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { Plus, X, UserPlus, RefreshCw, Clock, Users, Activity } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
@@ -16,6 +17,7 @@ const toIST  = ts => ts ? new Date(ts).toLocaleTimeString('en-IN',{timeZone:'Asi
 const toDate = ts => ts ? new Date(ts).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short'}) : '—';
 
 export default function ShiftsPage() {
+  const router = useRouter();
   const { t } = useTranslation();
   const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const { user, station } = useAuth();
@@ -132,7 +134,7 @@ export default function ShiftsPage() {
           </div>
         </div>
         {isManager && (
-          <button className="btn btn-primary" onClick={()=>{setError('');setShowOpen(true);}}>
+          <button className="btn btn-primary" onClick={()=>router.push('/shift-start')}>
             <Plus size={16}/>{tc('shifts_page.open_shift','Open Shift')}
           </button>
         )}
@@ -187,8 +189,8 @@ export default function ShiftsPage() {
                     <UserPlus size={13}/>{tc('shifts_page.add_attendant','Add Attendant')}
                   </button>
                   <button className="btn btn-danger btn-sm"
-                    onClick={e=>{e.stopPropagation(); managerMode ? setRecoShift(shift) : handleClose(shift);}}>
-                    {managerMode ? tc('shifts_page.reconcile_close','Reconcile & Close') : tc('shifts_page.close_shift','Close Shift')}
+                    onClick={e=>{e.stopPropagation(); router.push('/shift-end?shift='+shift.id);}}>
+                    {tc('shifts_page.end_shift','End Shift')}
                   </button>
                 </div>
               )}
