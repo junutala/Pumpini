@@ -469,4 +469,4 @@ CREATE INDEX IF NOT EXISTS idx_dispense_corp_outstanding  ON dispense_events(cor
 CREATE INDEX IF NOT EXISTS idx_shift_recon_shift          ON shift_reconciliation(shift_id);
 CREATE INDEX IF NOT EXISTS idx_shift_attendants_shift     ON shift_attendants(shift_id, attendant_id);
 CREATE INDEX IF NOT EXISTS idx_product_invoices_shift     ON product_invoices(shift_id, attendant_id);
-CREATE INDEX IF NOT EXISTS idx_alerts_station_created     ON alerts(station_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_station_sent        ON alerts(station_id, sent_at DESC);
