@@ -28,6 +28,8 @@ export default function ShiftEndPage() {
   const [managerMode, setManagerMode] = useState(false);
   const [step, setStep]       = useState(0);
   const [dips, setDips]       = useState({});
+  const [dens, setDens]       = useState({});       // tank_id -> density (kg/L)
+  const [temps, setTemps]     = useState({});       // tank_id -> temperature (°C)
   const [dipsDone, setDipsDone] = useState({});
   const [forms, setForms]     = useState({});   // attendant_id -> manager-mode form
   const [recos, setRecos]     = useState({});   // attendant_id -> result (manager) or submitted (pos)
@@ -64,8 +66,17 @@ export default function ShiftEndPage() {
 
   const saveDip = async (tank) => {
     const vol = parseFloat(dips[tank.id]); if (!(vol>=0)) return setErr('Enter a volume');
+    const den = parseFloat(dens[tank.id]); const tmp = parseFloat(temps[tank.id]);
     setBusy('dip'+tank.id); setErr('');
-    try { await api.post('/dipstick', { station_id: stationId, tank_id: tank.id, shift_id: shiftId, reading_type:'closing', volume_ltrs: vol }); setDipsDone(p=>({...p,[tank.id]:true})); }
+    try {
+      await api.post('/dipstick', {
+        station_id: stationId, tank_id: tank.id, shift_id: shiftId,
+        reading_type:'closing', volume_ltrs: vol,
+        density: Number.isFinite(den) ? den : null,
+        temperature_c: Number.isFinite(tmp) ? tmp : null,
+      });
+      setDipsDone(p=>({...p,[tank.id]:true}));
+    }
     catch(e){ setErr(e.response?.data?.error||e.error||'Could not save dip'); }
     setBusy('');
   };
@@ -137,13 +148,19 @@ export default function ShiftEndPage() {
       {step===0 && (
         <div className="card" style={{maxWidth:560}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem'}}>Closing tank dips</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Physical dip per tank — used for the wet-stock variance.</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Physical dip per tank — used for the wet-stock variance. Density &amp; temperature feed the variance intelligence — enter them from your hydrometer check.</div>
           {tanks.map(t=>(
-            <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-              <div style={{width:110,fontSize:13,fontWeight:600}}>T{t.tank_number} <span style={{color:'#888',fontWeight:400}}>{t.fuel_type}</span></div>
-              <input style={{...inp,flex:1}} type="number" step="0.1" placeholder="Closing volume (L)" value={dips[t.id]||''} onChange={e=>setDips(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
-              {dipsDone[t.id] ? <span style={{color:'#16a34a',display:'flex',alignItems:'center',gap:4,fontSize:13,fontWeight:600,width:90}}><Check size={15}/>Saved</span>
-                : <button onClick={()=>saveDip(t)} disabled={busy==='dip'+t.id} style={{width:90,height:36,background:'#475569',color:'#fff',border:'none',borderRadius:8,fontWeight:600,cursor:'pointer',fontSize:13}}>Save</button>}
+            <div key={t.id} style={{marginBottom:10,padding:'8px 10px',border:'1px solid var(--border, #eee)',borderRadius:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:110,fontSize:13,fontWeight:600}}>T{t.tank_number} <span style={{color:'#888',fontWeight:400}}>{t.fuel_type}</span></div>
+                <input style={{...inp,flex:1}} type="number" step="0.1" placeholder="Closing volume (L)" value={dips[t.id]||''} onChange={e=>setDips(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+                {dipsDone[t.id] ? <span style={{color:'#16a34a',display:'flex',alignItems:'center',gap:4,fontSize:13,fontWeight:600,width:90}}><Check size={15}/>Saved</span>
+                  : <button onClick={()=>saveDip(t)} disabled={busy==='dip'+t.id} style={{width:90,height:36,background:'#475569',color:'#fff',border:'none',borderRadius:8,fontWeight:600,cursor:'pointer',fontSize:13}}>Save</button>}
+              </div>
+              <div style={{display:'flex',gap:10,marginTop:6}}>
+                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.0001" placeholder="Density (kg/L) — optional" value={dens[t.id]||''} onChange={e=>setDens(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.1" placeholder="Temp (°C) — optional" value={temps[t.id]||''} onChange={e=>setTemps(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+              </div>
             </div>
           ))}
           <button onClick={()=>setStep(1)} style={{width:'100%',height:44,marginTop:'1rem',background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Next: Reconcile →</button>

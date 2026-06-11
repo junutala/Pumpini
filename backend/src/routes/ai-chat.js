@@ -21,7 +21,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     const isOwner = req.user.role === 'owner'; // blind drop: non-owners don't get open-shift sales
 
     // Fetch live station context
-    const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes, cashIntRes] = await Promise.all([
+    const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes, cashIntRes, densityRes] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(de.amount), 0)                                                     AS total_sales,
@@ -76,6 +76,18 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
         GROUP BY u.name HAVING COUNT(*) > 0
         ORDER BY undercash DESC, total_short DESC LIMIT 10`,
         [station_id]) : Promise.resolve({ rows: [] }),
+      // Density log (last 7 days): feeds quality/variance questions. Density
+      // moving outside the fuel's normal band, or swinging day to day, is an
+      // early adulteration / wrong-decant signal.
+      pool.query(`
+        SELECT t.tank_number, t.fuel_type, dr.density, dr.temperature_c,
+               dr.reading_type, dr.recorded_at
+        FROM dipstick_readings dr
+        JOIN tanks t ON t.id = dr.tank_id
+        WHERE dr.station_id = $1 AND dr.density IS NOT NULL
+          AND dr.recorded_at >= NOW() - make_interval(days => 7)
+        ORDER BY dr.recorded_at DESC LIMIT 20`,
+        [station_id]),
     ]);
 
     // Latest price per fuel type
@@ -122,6 +134,15 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
               `, last dip ${dip}`;
           }).join('\n')
         : 'No tank data',
+      '',
+      '--- Density Log (last 7 days, latest first) ---',
+      'Normal bands at 15°C: petrol ~0.720–0.775 kg/L, diesel ~0.820–0.860 kg/L. Density outside the band or swinging between readings can indicate adulteration or a decant into the wrong tank.',
+      densityRes.rows.length
+        ? densityRes.rows.map(d => {
+            const at = new Date(d.recorded_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return `Tank ${d.tank_number} (${d.fuel_type}) ${d.reading_type}: ${parseFloat(d.density).toFixed(4)} kg/L${d.temperature_c != null ? ` @ ${parseFloat(d.temperature_c).toFixed(1)}°C` : ''} — ${at}`;
+          }).join('\n')
+        : 'No density readings in the last 7 days — remind the team to record density with the daily dip.',
       '',
       '--- Current Fuel Prices ---',
       Object.keys(priceMap).length

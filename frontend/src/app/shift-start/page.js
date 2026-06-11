@@ -29,6 +29,8 @@ export default function ShiftStartPage() {
   const [open, setOpen]       = useState({ shift_number:1, date: today() });
   const [asg, setAsg]         = useState({});       // add-operator form
   const [dips, setDips]       = useState({});       // tank_id -> volume
+  const [dens, setDens]       = useState({});       // tank_id -> density (kg/L)
+  const [temps, setTemps]     = useState({});       // tank_id -> temperature (°C)
   const [dipsDone, setDipsDone] = useState({});     // tank_id -> bool
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
@@ -75,9 +77,17 @@ export default function ShiftStartPage() {
   const saveDip = async (tank) => {
     const vol = parseFloat(dips[tank.id]);
     if (!(vol >= 0)) return setErr('Enter a volume');
+    // Density + temperature feed the wet-stock intelligence model (15°C-corrected
+    // volumes, drift/leak signatures). Optional — but every reading builds history.
+    const den = parseFloat(dens[tank.id]); const tmp = parseFloat(temps[tank.id]);
     setBusy(true); setErr('');
     try {
-      await api.post('/dipstick', { station_id: stationId, tank_id: tank.id, shift_id: shift.id, reading_type:'opening', volume_ltrs: vol });
+      await api.post('/dipstick', {
+        station_id: stationId, tank_id: tank.id, shift_id: shift.id,
+        reading_type:'opening', volume_ltrs: vol,
+        density: Number.isFinite(den) ? den : null,
+        temperature_c: Number.isFinite(tmp) ? tmp : null,
+      });
       setDipsDone(p=>({ ...p, [tank.id]: true }));
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not save dip'); }
     setBusy(false);
@@ -181,15 +191,21 @@ export default function ShiftStartPage() {
       {step===2 && shift && (
         <div className="card" style={{maxWidth:560}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem'}}>Opening tank dips</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Record the physical dip volume per tank to start the wet-stock book for this shift.</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Record the physical dip volume per tank to start the wet-stock book for this shift. Density &amp; temperature feed the variance intelligence — enter them from your hydrometer check.</div>
           {tanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>No tanks configured.</div>}
           {tanks.map(t=>(
-            <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-              <div style={{width:110,fontSize:13,fontWeight:600}}>T{t.tank_number} <span style={{color:'#888',fontWeight:400}}>{t.fuel_type}</span></div>
-              <input style={{...inp,flex:1}} type="number" step="0.1" placeholder="Opening volume (L)" value={dips[t.id]||''} onChange={e=>setDips(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
-              {dipsDone[t.id]
-                ? <span style={{color:'#16a34a',display:'flex',alignItems:'center',gap:4,fontSize:13,fontWeight:600,width:90}}><Check size={15}/>Saved</span>
-                : <button onClick={()=>saveDip(t)} disabled={busy} style={{width:90,height:38,background:'#475569',color:'#fff',border:'none',borderRadius:8,fontWeight:600,cursor:'pointer',fontSize:13}}>Save</button>}
+            <div key={t.id} style={{marginBottom:10,padding:'8px 10px',border:'1px solid var(--border, #eee)',borderRadius:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:110,fontSize:13,fontWeight:600}}>T{t.tank_number} <span style={{color:'#888',fontWeight:400}}>{t.fuel_type}</span></div>
+                <input style={{...inp,flex:1}} type="number" step="0.1" placeholder="Opening volume (L)" value={dips[t.id]||''} onChange={e=>setDips(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+                {dipsDone[t.id]
+                  ? <span style={{color:'#16a34a',display:'flex',alignItems:'center',gap:4,fontSize:13,fontWeight:600,width:90}}><Check size={15}/>Saved</span>
+                  : <button onClick={()=>saveDip(t)} disabled={busy} style={{width:90,height:38,background:'#475569',color:'#fff',border:'none',borderRadius:8,fontWeight:600,cursor:'pointer',fontSize:13}}>Save</button>}
+              </div>
+              <div style={{display:'flex',gap:10,marginTop:6}}>
+                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.0001" placeholder="Density (kg/L) — optional" value={dens[t.id]||''} onChange={e=>setDens(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.1" placeholder="Temp (°C) — optional" value={temps[t.id]||''} onChange={e=>setTemps(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
+              </div>
             </div>
           ))}
           <button onClick={()=>router.push('/shifts')}
