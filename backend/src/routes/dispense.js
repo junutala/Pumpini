@@ -130,8 +130,16 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     );
 
     const event = rows[0];
-    req.io.to(`station:${station_id}`).emit('dispense:new', event);
-    if (shift_id) req.io.to(`shift:${shift_id}`).emit('dispense:new', event);
+    // Blind drop: the shift is open when a sale streams out, so staff rooms get
+    // amount/quantity masked (they could otherwise just sum the live feed).
+    // Owners join the `:owner` rooms (see index.js) and get the full event.
+    const masked = { ...event, amount: null, quantity_ltrs: null, sales_masked: true };
+    req.io.to(`station:${station_id}`).except(`station:${station_id}:owner`).emit('dispense:new', masked);
+    req.io.to(`station:${station_id}:owner`).emit('dispense:new', event);
+    if (shift_id) {
+      req.io.to(`shift:${shift_id}`).except(`shift:${shift_id}:owner`).emit('dispense:new', masked);
+      req.io.to(`shift:${shift_id}:owner`).emit('dispense:new', event);
+    }
 
     res.status(201).json(event);
   } catch (err) { next(err); }

@@ -107,16 +107,45 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 app.use(errorHandler);
 
 // ── Socket.IO ────────────────────────────────────────────
-io.on('connection', (socket) => {
-  logger.info(`Socket connected: ${socket.id}`);
+// Sockets carry live sale data, so they get the same two walls as the REST
+// API: a verified JWT on the handshake, and station-membership checks on every
+// room join. Room model: staff receive masked events via `station:{id}`;
+// owners additionally join `station:{id}:owner` for unmasked events.
+const jwt = require('jsonwebtoken');
+const { canAccessStation } = require('./middleware/stationAccess');
+const pool = require('./db/pool');
 
-  socket.on('join_station', (stationId) => {
-    socket.join(`station:${stationId}`);
-    logger.info(`Socket ${socket.id} joined station:${stationId}`);
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('Authentication required'));
+    socket.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch {
+    next(new Error('Invalid or expired token'));
+  }
+});
+
+io.on('connection', (socket) => {
+  logger.info(`Socket connected: ${socket.id} (user ${socket.user?.id})`);
+
+  socket.on('join_station', async (stationId) => {
+    try {
+      if (!stationId || !(await canAccessStation(socket.user.id, stationId))) return;
+      socket.join(`station:${stationId}`);
+      if (socket.user.role === 'owner') socket.join(`station:${stationId}:owner`);
+      logger.info(`Socket ${socket.id} joined station:${stationId}`);
+    } catch (err) { logger.warn('join_station failed:', err.message); }
   });
 
-  socket.on('join_shift', (shiftId) => {
-    socket.join(`shift:${shiftId}`);
+  socket.on('join_shift', async (shiftId) => {
+    try {
+      if (!shiftId) return;
+      const { rows } = await pool.query('SELECT station_id FROM shifts WHERE id=$1', [shiftId]);
+      if (!rows.length || !(await canAccessStation(socket.user.id, rows[0].station_id))) return;
+      socket.join(`shift:${shiftId}`);
+      if (socket.user.role === 'owner') socket.join(`shift:${shiftId}:owner`);
+    } catch (err) { logger.warn('join_shift failed:', err.message); }
   });
 
   socket.on('disconnect', () => {

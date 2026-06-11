@@ -94,7 +94,11 @@ async function handleFmcEvent(event, io) {
        event.timestamp ? new Date(event.timestamp) : new Date()]
     );
 
-    io.to(`station:${event.station_id}`).emit('dispense:new', dispense[0]);
+    // Blind drop: staff rooms get a masked event; only owners see live amounts.
+    const full = dispense[0];
+    const masked = { ...full, amount: null, quantity_ltrs: null, sales_masked: true };
+    io.to(`station:${event.station_id}`).except(`station:${event.station_id}:owner`).emit('dispense:new', masked);
+    io.to(`station:${event.station_id}:owner`).emit('dispense:new', full);
   } catch (err) {
     logger.error('handleFmcEvent error:', err);
   }
