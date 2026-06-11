@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Zap, Mic, Send } from 'lucide-react';
+import { INDIAN_STATES, getCities } from '../../lib/india';
 
 const LANGS = [
   { code:'en', label:'English',    flag:'🇬🇧' },
@@ -257,7 +258,7 @@ export default function LandingPage() {
   const c = COPY[lang] || COPY.en;
 
   // Contact / lead form
-  const [lead, setLead] = useState({ name:'', phone:'', station_name:'', city:'', message:'', company:'' });
+  const [lead, setLead] = useState({ name:'', phone:'', station_name:'', state:'', city:'', message:'', company:'' });
   const [leadState, setLeadState] = useState('idle'); // idle | sending | done | error
   const setL = (k,v) => setLead(p => ({ ...p, [k]: v }));
 
@@ -844,8 +845,16 @@ export default function LandingPage() {
                     onChange={e=>setL('phone', e.target.value)} required/>
                   <input style={leadInp} placeholder="Petrol bunk name" value={lead.station_name}
                     onChange={e=>setL('station_name', e.target.value)}/>
-                  <input style={leadInp} placeholder="City" value={lead.city}
-                    onChange={e=>setL('city', e.target.value)}/>
+                  <select style={{...leadInp, color: lead.state?'#111':'#9ca3af'}} value={lead.state}
+                    onChange={e=>{ setL('state', e.target.value); setL('city',''); }}>
+                    <option value="">State</option>
+                    {INDIAN_STATES.map(s=><option key={s} value={s} style={{color:'#111'}}>{s}</option>)}
+                  </select>
+                  <select style={{...leadInp, color: lead.city?'#111':'#9ca3af'}} value={lead.city}
+                    onChange={e=>setL('city', e.target.value)} disabled={!lead.state}>
+                    <option value="">{lead.state?'City':'Select state first'}</option>
+                    {getCities(lead.state).map(c=><option key={c} value={c} style={{color:'#111'}}>{c}</option>)}
+                  </select>
                 </div>
                 <textarea style={{...leadInp, minHeight:72, resize:'vertical', marginBottom:12}}
                   placeholder="Anything you'd like to tell us? (optional)" value={lead.message}
