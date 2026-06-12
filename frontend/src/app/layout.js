@@ -1,5 +1,6 @@
 import './globals.css';
 import Providers from '../components/shared/Providers';
+import PwaRegister from '../components/shared/PwaRegister';
 
 export const metadata = {
   metadataBase: new URL('https://pumpini.in'),
@@ -93,6 +94,7 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       </head>
       <body>
+        <PwaRegister />
         <Providers>
           {children}
         </Providers>
