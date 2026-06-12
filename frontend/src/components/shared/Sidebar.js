@@ -9,7 +9,7 @@ import {
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer
+  Thermometer, Hourglass
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -65,6 +65,7 @@ const NAV_GROUPS = [
     items: [
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
+      { key:'credit_reports', href:'/reports/credit', icon:Hourglass,   perm:'reports.view', roles:['owner','manager'] },
       { key:'tally',      href:'/tally',           icon:Calculator,     perm:'tally.export' },
     ]
   },
@@ -105,6 +106,7 @@ const NAV_LABELS = {
   cashintegrity:'Cash Integrity',
   stockreco:'Stock Reco',
   density:'Density Register',
+  credit_reports:'Credit Reports',
   creditdash:'Credit Dashboard',
   lube_catalogue:'Catalogue', lube_stock:'Stock',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',

@@ -224,3 +224,10 @@ table.dms-table td { padding: 10px 14px; color: var(--text-1); }
 /* ── Rupee amount ──────────────────────── */
 .amount { font-family: var(--font-mono); font-weight: 500; }
 .amount::before { content: '₹'; font-family: var(--font-body); font-weight: 400; font-size: 0.9em; margin-right: 1px; }
+
+/* ── Print (statements etc.): page content only ───────────── */
+@media print {
+  .sidebar, .sidebar-overlay, .mobile-topbar, .no-print { display: none !important; }
+  body { background: #fff; }
+  .card { border: none; box-shadow: none; padding: 0; }
+}
