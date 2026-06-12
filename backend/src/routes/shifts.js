@@ -12,7 +12,11 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     let q = `
       SELECT s.*, u.name AS manager_name,
         COUNT(DISTINCT sa.attendant_id)::int AS attendant_count,
-        COALESCE(SUM(de.amount),0) AS total_sales
+        COALESCE(SUM(de.amount),0) AS total_sales,
+        -- Entry mode: manager-driven closes synthesize source='manager' rows,
+        -- POS-in-bay shifts only have live per-fill rows.
+        COUNT(DISTINCT de.id) FILTER (WHERE de.source='manager')::int AS manager_events,
+        COUNT(DISTINCT de.id) FILTER (WHERE de.source IS DISTINCT FROM 'manager')::int AS pos_events
       FROM shifts s
       LEFT JOIN users u ON u.id = s.manager_id
       LEFT JOIN shift_attendants sa ON sa.shift_id = s.id

@@ -170,9 +170,21 @@ export default function ShiftsPage() {
                     {tc('shifts_page.manager','Manager')}: {shift.manager_name}
                   </div>
                 </div>
-                <span className={`badge ${shift.status==='open'?'badge-success':'badge-gray'}`}>
-                  {shift.status}
-                </span>
+                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+                  <span className={`badge ${shift.status==='open'?'badge-success':'badge-gray'}`}>
+                    {shift.status}
+                  </span>
+                  {/* Entry mode: how this shift's sales were recorded */}
+                  {parseInt(shift.manager_events||0)>0 ? (
+                    <span className="badge badge-warning" title={tc('shifts_page.mode_consolidated_hint','Sales entered as one consolidated total per attendant by the manager at close')}>
+                      🧾 {tc('shifts_page.mode_consolidated','Consolidated')}
+                    </span>
+                  ) : parseInt(shift.pos_events||0)>0 ? (
+                    <span className="badge badge-info" title={tc('shifts_page.mode_pos_hint','Each fill recorded live on the POS in the bay')}>
+                      ⛽ {tc('shifts_page.mode_pos','POS live')}
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               {/* Quick stats */}

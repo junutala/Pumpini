@@ -10,6 +10,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import LiveEventsWidget from '../../components/ui/LiveEventsWidget';
+import EarningsMarginTile from '../../components/ui/EarningsMarginTile';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const PAYMENT_COLORS = { cash:'#16a34a', upi:'#2563eb', credit:'#9333ea', card:'#ea580c' };
@@ -191,6 +192,9 @@ export default function DashboardPage() {
           </div>
         </a>
       )}
+
+      {/* Earnings/Margin + live nozzle feed — owner-only purchase economics */}
+      {user?.role==='owner' && <EarningsMarginTile stationId={stationId}/>}
 
       {/* Cash Integrity — owner oversight: each operator's last shift-end report + undercash count */}
       {user?.role==='owner' && cashInt.length>0 && (
@@ -495,8 +499,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Live Events Widget */}
-      <LiveEventsWidget stationId={stationId} maxRows={8}/>
+      {/* Live Events Widget — owners get the live feed inside the earnings tile */}
+      {user?.role!=='owner' && <LiveEventsWidget stationId={stationId} maxRows={8}/>}
 
     </AppShell>
   );
