@@ -8,7 +8,8 @@ import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
-  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator
+  Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
+  Thermometer
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -39,6 +40,7 @@ const NAV_GROUPS = [
     items: [
       { key:'deliveries', href:'/deliveries',      icon:Truck,          perm:'deliveries.view' },
       { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
+      { key:'density',    href:'/density-register',icon:Thermometer,    perm:'dipstick.view' },
       { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'stock.reconcile' },
     ]
   },
@@ -102,6 +104,7 @@ const NAV_LABELS = {
   tally:'Tally Export',
   cashintegrity:'Cash Integrity',
   stockreco:'Stock Reco',
+  density:'Density Register',
   creditdash:'Credit Dashboard',
   lube_catalogue:'Catalogue', lube_stock:'Stock',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',

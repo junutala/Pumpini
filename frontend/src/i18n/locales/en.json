@@ -48,7 +48,8 @@
     "logout": "Logout",
     "grp_dashboard": "Dashboard",
     "grp_manage": "Manage",
-    "bunkview": "Bunk View"
+    "bunkview": "Bunk View",
+    "density": "Density Register"
   },
   "roles": {
     "owner": "Owner",
@@ -886,5 +887,30 @@
     "pw_mismatch": "Passwords do not match",
     "pw_short": "Password must be at least 6 characters",
     "change_ok": "Password changed successfully. Redirecting..."
+  },
+  "density_page": {
+    "info": "ℹ️ Every density observation — shift dips and tanker decants — corrected to 15°C and checked against the fuel’s normal band and the last delivery’s invoice density. Entries come from the shift open/close wizards, the Dipstick page and Deliveries.",
+    "from": "From",
+    "to": "To",
+    "all_tanks": "All tanks",
+    "readings": "Density entries",
+    "out_of_band": "Out of band",
+    "drift": "Differs from invoice",
+    "ok": "OK",
+    "last_entry": "Last entry",
+    "register": "Register",
+    "date": "Date/Time",
+    "source": "Source",
+    "observed": "Observed (kg/L)",
+    "at15": "At 15°C",
+    "invoice_ref": "Invoice density",
+    "variation": "Variation",
+    "status": "Status",
+    "export": "Export CSV",
+    "source_dip": "Dip",
+    "source_delivery": "Tanker decant",
+    "no_rows": "No density entries in this range. Density is captured in the shift open/close dips, the Dipstick page and tanker Deliveries.",
+    "legend_bands": "Normal bands at 15°C: petrol 0.720–0.775 kg/L, diesel 0.820–0.860 kg/L.",
+    "legend_tolerance": "Variation vs invoice beyond ±0.0030 kg/L is flagged — repeated drift can indicate adulteration or a wrong decant."
   }
 }

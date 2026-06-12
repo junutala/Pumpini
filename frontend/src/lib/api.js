@@ -73,6 +73,7 @@ export const markAttendance = (data)   => api.post('/attendance', data);
 export const getDipstick    = (params)    => api.get('/dipstick', { params });
 export const recordDipstick = (data)      => api.post('/dipstick', data);
 export const getTankStock   = (stationId) => api.get(`/dipstick/tanks/${stationId}`);
+export const getDensityRegister = (params) => api.get('/dipstick/density-register', { params });
 
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);
