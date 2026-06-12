@@ -1,0 +1,4 @@
+output/*.html
+output/*.png
+output/qr.png
+__pycache__/
