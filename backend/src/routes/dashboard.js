@@ -309,6 +309,101 @@ router.get('/cash-integrity', authenticate, requireStationAccess({ required: tru
   } catch (err) { next(err); }
 });
 
+// GET /api/dashboard/margin?station_id=&date=
+// Owner-only purchase economics: gross fuel margin for the day. Cost basis is
+// the volume-weighted landed cost (rate × gross vol + freight, over NET litres
+// that reached the tank) of the last 45 days of deliveries per fuel, falling
+// back to the most recent costed delivery ever. Selling side is the day's
+// dispense events. Managers/attendants never see purchase rates.
+router.get('/margin', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    if (req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Margin view is for owners only.' });
+    }
+    const { station_id, date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) } = req.query;
+
+    const [sales, recentCost, latestCost] = await Promise.all([
+      pool.query(`
+        SELECT de.fuel_type,
+               COUNT(*)::int            AS txn_count,
+               SUM(de.quantity_ltrs)    AS litres,
+               SUM(de.amount)           AS revenue
+        FROM dispense_events de
+        WHERE de.station_id = $1 AND de.occurred_at::date = $2
+          AND NOT COALESCE(de.is_voided, FALSE)
+        GROUP BY de.fuel_type`, [station_id, date]),
+
+      // Volume-weighted landed cost over recent deliveries
+      pool.query(`
+        SELECT fuel_type, SUM(cost) / NULLIF(SUM(vol), 0) AS wac, SUM(vol) AS vol
+        FROM (
+          SELECT COALESCE(t.fuel_type, fd.fuel_type) AS fuel_type,
+                 COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs) AS vol,
+                 COALESCE(fd.total_value,
+                          fd.rate_per_ltr * fd.gross_volume_ltrs + COALESCE(fd.freight, 0)) AS cost
+          FROM fuel_deliveries fd
+          LEFT JOIN tanks t ON t.id = fd.tank_id
+          WHERE fd.station_id = $1
+            AND fd.received_at >= NOW() - INTERVAL '45 days'
+        ) x
+        WHERE cost IS NOT NULL AND vol > 0
+        GROUP BY fuel_type`, [station_id]),
+
+      // Fallback: most recent delivery that carried a cost, regardless of age
+      pool.query(`
+        SELECT DISTINCT ON (fuel_type) fuel_type, cost / vol AS unit_cost
+        FROM (
+          SELECT COALESCE(t.fuel_type, fd.fuel_type) AS fuel_type, fd.received_at,
+                 COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs) AS vol,
+                 COALESCE(fd.total_value,
+                          fd.rate_per_ltr * fd.gross_volume_ltrs + COALESCE(fd.freight, 0)) AS cost
+          FROM fuel_deliveries fd
+          LEFT JOIN tanks t ON t.id = fd.tank_id
+          WHERE fd.station_id = $1
+        ) x
+        WHERE cost IS NOT NULL AND vol > 0
+        ORDER BY fuel_type, received_at DESC`, [station_id]),
+    ]);
+
+    const wacMap = {};
+    latestCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.unit_cost), source: 'latest' }; });
+    recentCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.wac), source: 'recent' }; });
+
+    const fuels = sales.rows.map(r => {
+      const litres  = parseFloat(r.litres || 0);
+      const revenue = parseFloat(r.revenue || 0);
+      const c = wacMap[r.fuel_type];
+      const cost   = c ? +(litres * c.wac).toFixed(2) : null;
+      const margin = c ? +(revenue - cost).toFixed(2) : null;
+      return {
+        fuel_type:     r.fuel_type,
+        txn_count:     r.txn_count,
+        litres,
+        revenue,
+        sell_rate_avg: litres > 0 ? +(revenue / litres).toFixed(2) : null,
+        wac:           c ? +c.wac.toFixed(2) : null,
+        wac_source:    c ? c.source : null,
+        cost,
+        margin,
+        margin_per_ltr: c && litres > 0 ? +((revenue - cost) / litres).toFixed(2) : null,
+      };
+    });
+
+    const costed = fuels.filter(f => f.margin != null);
+    res.json({
+      date,
+      fuels,
+      totals: {
+        revenue: fuels.reduce((s, f) => s + f.revenue, 0),
+        cost:    costed.reduce((s, f) => s + f.cost, 0),
+        margin:  costed.reduce((s, f) => s + f.margin, 0),
+        litres:  fuels.reduce((s, f) => s + f.litres, 0),
+      },
+      missing_cost: fuels.filter(f => f.wac == null).map(f => f.fuel_type),
+    });
+  } catch (err) { next(err); }
+});
+
 // GET /api/dashboard/attendant?attendant_id=&shift_id=
 router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {

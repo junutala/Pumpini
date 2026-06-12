@@ -39,6 +39,7 @@ export const getOwnerDashboard   = (stationId, date)     => api.get(`/dashboard/
 export const getManagerDashboard = (stationId, shiftId)  => api.get(`/dashboard/manager?station_id=${stationId}&shift_id=${shiftId}`);
 export const getCorporateDashboard = (id)                => api.get(`/dashboard/corporate/${id}`);
 export const getAttendantDashboard = (aId, shiftId)      => api.get(`/dashboard/attendant?attendant_id=${aId}&shift_id=${shiftId}`);
+export const getFuelMargin = (stationId, date) => api.get('/dashboard/margin', { params: { station_id: stationId, date } });
 
 // Shifts
 export const getShifts       = (params) => api.get('/shifts', { params });

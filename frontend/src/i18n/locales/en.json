@@ -912,5 +912,19 @@
     "no_rows": "No density entries in this range. Density is captured in the shift open/close dips, the Dipstick page and tanker Deliveries.",
     "legend_bands": "Normal bands at 15°C: petrol 0.720–0.775 kg/L, diesel 0.820–0.860 kg/L.",
     "legend_tolerance": "Variation vs invoice beyond ±0.0030 kg/L is flagged — repeated drift can indicate adulteration or a wrong decant."
+  },
+  "margin_tile": {
+    "title": "Earnings — Today",
+    "subtitle": "gross margin vs weighted-avg purchase cost from Deliveries",
+    "gross_earnings": "Gross earnings",
+    "on_revenue": "on revenue",
+    "sell": "Sell",
+    "cost": "Cost",
+    "stale_cost": "No delivery in 45 days — using last known purchase rate",
+    "no_cost": "No purchase rate — add it when recording Deliveries",
+    "no_sales": "No fuel sales yet today",
+    "live_feed": "Live nozzle feed",
+    "no_events": "No dispenses yet today",
+    "view_all": "View all →"
   }
 }
