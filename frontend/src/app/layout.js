@@ -5,7 +5,7 @@ export const metadata = {
   title: 'Pumpini — Control Every Drop',
   description: 'Petrol Station Management System',
   manifest: '/manifest.json',
-  themeColor: '#e07b0c',
+  themeColor: '#0C2418',
 };
 
 export default function RootLayout({ children }) {
