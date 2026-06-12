@@ -362,7 +362,11 @@
     "close_confirm": "Close this shift?",
     "select_attendant_err": "Select an attendant",
     "select_nozzle_err": "Select a nozzle",
-    "nozzle_word": "Nozzle"
+    "nozzle_word": "Nozzle",
+    "mode_consolidated": "Consolidated",
+    "mode_pos": "POS live",
+    "mode_consolidated_hint": "Sales entered as one consolidated total per attendant by the manager at close",
+    "mode_pos_hint": "Each fill recorded live on the POS in the bay"
   },
   "users_page": {
     "title": "Users",

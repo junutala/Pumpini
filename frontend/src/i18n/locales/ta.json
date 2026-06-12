@@ -362,7 +362,11 @@
     "close_confirm": "இந்த ஷிப்டை மூடவா?",
     "select_attendant_err": "பணியாளரைத் தேர்ந்தெடு",
     "select_nozzle_err": "நாஸ்லைத் தேர்ந்தெடு",
-    "nozzle_word": "நாஸ்ல்"
+    "nozzle_word": "நாஸ்ல்",
+    "mode_consolidated": "ஒருங்கிணைந்தது",
+    "mode_pos": "POS நேரடி",
+    "mode_consolidated_hint": "ஷிஃப்ட் மூடும்போது மேனேஜரால் ஒவ்வொரு அட்டெண்டன்ட்டுக்கும் ஒரு ஒருங்கிணைந்த மொத்தமாக விற்பனை பதிவு",
+    "mode_pos_hint": "ஒவ்வொரு நிரப்பலும் பேயில் POS-இல் நேரடியாக பதிவு"
   },
   "users_page": {
     "title": "பயனர்கள்",

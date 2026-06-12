@@ -362,7 +362,11 @@
     "close_confirm": "इस शिफ्ट को बंद करें?",
     "select_attendant_err": "परिचारक चुनें",
     "select_nozzle_err": "नोज़ल चुनें",
-    "nozzle_word": "नोज़ल"
+    "nozzle_word": "नोज़ल",
+    "mode_consolidated": "समेकित",
+    "mode_pos": "POS लाइव",
+    "mode_consolidated_hint": "बिक्री शिफ्ट बंद करते समय मैनेजर द्वारा प्रति अटेंडेंट एक समेकित कुल के रूप में दर्ज",
+    "mode_pos_hint": "हर फिल बे में POS पर लाइव दर्ज"
   },
   "users_page": {
     "title": "उपयोगकर्ता",

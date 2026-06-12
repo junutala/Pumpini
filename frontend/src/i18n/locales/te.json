@@ -362,7 +362,11 @@
     "close_confirm": "ఈ షిఫ్ట్‌ను మూసివేయాలా?",
     "select_attendant_err": "సహాయకుడిని ఎంచుకోండి",
     "select_nozzle_err": "నాజిల్ ఎంచుకోండి",
-    "nozzle_word": "నాజిల్"
+    "nozzle_word": "నాజిల్",
+    "mode_consolidated": "సమీకృతం",
+    "mode_pos": "POS లైవ్",
+    "mode_consolidated_hint": "షిఫ్ట్ ముగింపులో మేనేజర్ ప్రతి అటెండెంట్‌కు ఒక సమీకృత మొత్తంగా అమ్మకాలు నమోదు",
+    "mode_pos_hint": "ప్రతి ఫిల్ బేలో POSలో లైవ్‌గా నమోదు"
   },
   "users_page": {
     "title": "వినియోగదారులు",

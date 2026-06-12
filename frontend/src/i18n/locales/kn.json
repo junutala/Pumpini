@@ -362,7 +362,11 @@
     "close_confirm": "ಈ ಶಿಫ್ಟ್ ಮುಚ್ಚುವುದೇ?",
     "select_attendant_err": "ಸಹಾಯಕರನ್ನು ಆಯ್ಕೆಮಾಡಿ",
     "select_nozzle_err": "ನಾಜಲ್ ಆಯ್ಕೆಮಾಡಿ",
-    "nozzle_word": "ನಾಜಲ್"
+    "nozzle_word": "ನಾಜಲ್",
+    "mode_consolidated": "ಕ್ರೋಢೀಕೃತ",
+    "mode_pos": "POS ಲೈವ್",
+    "mode_consolidated_hint": "ಶಿಫ್ಟ್ ಮುಚ್ಚುವಾಗ ಮ್ಯಾನೇಜರ್ ಪ್ರತಿ ಅಟೆಂಡೆಂಟ್‌ಗೆ ಒಂದು ಕ್ರೋಢೀಕೃತ ಒಟ್ಟು ಮೊತ್ತವಾಗಿ ಮಾರಾಟ ದಾಖಲಿಸಿದ್ದಾರೆ",
+    "mode_pos_hint": "ಪ್ರತಿ ಫಿಲ್ ಬೇಯಲ್ಲಿ POS ನಲ್ಲಿ ಲೈವ್ ಆಗಿ ದಾಖಲಾಗಿದೆ"
   },
   "users_page": {
     "title": "ಬಳಕೆದಾರರು",
