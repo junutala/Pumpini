@@ -1,15 +1,17 @@
 {
-  "name": "Petrol DMS",
-  "short_name": "PetrolDMS",
-  "description": "Dealer Management System for Petrol Stations",
+  "name": "Pumpini",
+  "short_name": "Pumpini",
+  "description": "Control every drop. Track every rupee. AI-powered petrol bunk management.",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#f8f7f5",
-  "theme_color": "#e07b0c",
+  "background_color": "#F7F6F1",
+  "theme_color": "#0C2418",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "categories": ["business", "productivity"]
 }
