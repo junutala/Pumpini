@@ -21,7 +21,7 @@ const COPY = {
   en: {
     hero:    'Control every drop.',
     hero2:   'Track every rupee.',
-    sub:     'India\'s most intelligent petrol station management platform — built for owners who want real control, in their own language.',
+    sub:     'Your counter moves lakhs every day. Pumpini is the owner\'s ledger that never sleeps — every nozzle, every shift, every rupee accounted for, in your language.',
     usp1_t:  '🎙 Voice POS Entry',
     usp1_d:  'Attendants speak transactions in Telugu, Tamil, Hindi or any Indian language. "50 litres petrol cash" — done. No typing needed.',
     usp2_t:  '🌐 6 Indian Languages',
@@ -40,10 +40,10 @@ const COPY = {
     pricing_title: 'Simple pricing. No surprises.',
     pricing_sub:   '15-day free trial · No credit card · Cancel anytime',
     nav_leak:'The Leak', nav_features:'Features', nav_pricing:'Pricing', nav_contact:'Contact', login:'Login', home:'Home',
-    hero_badge:'Built for Indian petrol bunk owners',
+    hero_badge:'The bunk owner\'s control room',
     cta_leak:'See where money leaks →',
     hb1:'Voice in 6 languages', hb2:'Blind-drop cash control', hb3:'GPS-locked POS',
-    ph_title:'Today at your bunk', ph_sub:'Owner view · from your phone', ph_live:'LIVE',
+    ph_title:'Today at your bunk', ph_sub:'What only the owner sees', ph_live:'LIVE',
     ph_sales:'Sales till now', ph_fills:'2,389 litres · 318 fills',
     ph_cash:'Cash', ph_credit:'Credit',
     ph_shift:'Shift 2 — open', ph_hidden:'Staff see: amount hidden until shift closes',
@@ -115,7 +115,7 @@ const COPY = {
   hi: {
     hero:    'हर बूंद पर नियंत्रण।',
     hero2:   'हर रुपया ट्रैक करें।',
-    sub:     'भारत का सबसे स्मार्ट पेट्रोल पंप मैनेजमेंट सिस्टम — आपकी भाषा में।',
+    sub:     'आपके काउंटर से रोज़ लाखों गुज़रते हैं। Pumpini मालिक का वो बहीखाता है जो कभी सोता नहीं — हर नोज़ल, हर शिफ्ट, हर रुपये का हिसाब, आपकी भाषा में।',
     usp1_t:  '🎙 आवाज़ से POS एंट्री',
     usp1_d:  'अटेंडेंट हिंदी, तेलुगु या किसी भी भाषा में बोलकर एंट्री करें। "50 लीटर पेट्रोल कैश" — बस इतना काफी।',
     usp2_t:  '🌐 6 भारतीय भाषाएँ',
@@ -134,10 +134,10 @@ const COPY = {
     pricing_title: 'सरल मूल्य निर्धारण।',
     pricing_sub:   '15 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
     nav_leak:'लीकेज', nav_features:'फ़ीचर्स', nav_pricing:'कीमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
-    hero_badge:'भारतीय पेट्रोल पंप मालिकों के लिए बनाया गया',
+    hero_badge:'पंप मालिक का कंट्रोल रूम',
     cta_leak:'पैसा कहाँ लीक होता है, देखें →',
     hb1:'6 भाषाओं में आवाज़', hb2:'ब्लाइंड-ड्रॉप कैश कंट्रोल', hb3:'GPS-लॉक्ड POS',
-    ph_title:'आज आपके पंप पर', ph_sub:'मालिक का व्यू · आपके फोन से', ph_live:'लाइव',
+    ph_title:'आज आपके पंप पर', ph_sub:'जो सिर्फ मालिक देखता है', ph_live:'लाइव',
     ph_sales:'अब तक की बिक्री', ph_fills:'2,389 लीटर · 318 गाड़ियाँ',
     ph_cash:'कैश', ph_credit:'क्रेडिट',
     ph_shift:'शिफ्ट 2 — चालू', ph_hidden:'स्टाफ को: शिफ्ट बंद होने तक रकम छिपी रहती है',
@@ -209,7 +209,7 @@ const COPY = {
   ta: {
     hero:    'ஒவ்வொரு துளியையும் கட்டுப்படுத்துங்கள்.',
     hero2:   'ஒவ்வொரு ரூபாயையும் கண்காணியுங்கள்.',
-    sub:     'இந்தியாவின் மிகவும் ஸ்மார்ட் பெட்ரோல் நிலைய மேலாண்மை தளம் — உங்கள் மொழியில்.',
+    sub:     'உங்கள் கவுண்டரில் தினமும் லட்சங்கள் நகர்கின்றன. Pumpini என்பது உறங்காத உரிமையாளரின் கணக்குப் புத்தகம் — ஒவ்வொரு நாஸில், ஒவ்வொரு ஷிஃப்ட், ஒவ்வொரு ரூபாய்க்கும் கணக்கு, உங்கள் மொழியில்.',
     usp1_t:  '🎙 குரல் POS உள்ளீடு',
     usp1_d:  'தமிழ் அல்லது எந்த மொழியிலும் பேசி பரிவர்த்தனை பதிவு செய்யுங்கள்.',
     usp2_t:  '🌐 6 இந்திய மொழிகள்',
@@ -228,10 +228,10 @@ const COPY = {
     pricing_title: 'எளிமையான விலை நிர்ணயம்.',
     pricing_sub:   '15 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
     nav_leak:'கசிவு', nav_features:'அம்சங்கள்', nav_pricing:'விலை', nav_contact:'தொடர்பு', login:'உள்நுழைய', home:'முகப்பு',
-    hero_badge:'இந்திய பெட்ரோல் பங்க் உரிமையாளர்களுக்காக உருவாக்கப்பட்டது',
+    hero_badge:'பங்க் உரிமையாளரின் கட்டுப்பாட்டு அறை',
     cta_leak:'பணம் எங்கே கசிகிறது, பாருங்கள் →',
     hb1:'6 மொழிகளில் குரல்', hb2:'பிளைண்ட்-டிராப் பணக் கட்டுப்பாடு', hb3:'GPS பூட்டிய POS',
-    ph_title:'இன்று உங்கள் பங்கில்', ph_sub:'உரிமையாளர் காட்சி · உங்கள் போனில்', ph_live:'நேரலை',
+    ph_title:'இன்று உங்கள் பங்கில்', ph_sub:'உரிமையாளர் மட்டும் பார்ப்பது', ph_live:'நேரலை',
     ph_sales:'இதுவரை விற்பனை', ph_fills:'2,389 லிட்டர் · 318 நிரப்புதல்',
     ph_cash:'பணம்', ph_credit:'கடன்',
     ph_shift:'ஷிப்ட் 2 — திறந்துள்ளது', ph_hidden:'ஊழியர்களுக்கு: ஷிப்ட் முடியும் வரை தொகை மறைவாக',
@@ -303,7 +303,7 @@ const COPY = {
   te: {
     hero:    'ప్రతి చుక్కను నియంత్రించండి.',
     hero2:   'ప్రతి రూపాయిని ట్రాక్ చేయండి.',
-    sub:     'భారతదేశంలో అత్యంత తెలివైన పెట్రోల్ బంక్ నిర్వహణ వేదిక — మీ భాషలో.',
+    sub:     'మీ కౌంటర్ గుండా రోజూ లక్షలు కదులుతాయి. Pumpini అంటే నిద్రపోని యజమాని లెక్కల పుస్తకం — ప్రతి నాజిల్, ప్రతి షిఫ్ట్, ప్రతి రూపాయికి లెక్క, మీ భాషలో.',
     usp1_t:  '🎙 వాయిస్ POS ఎంట్రీ',
     usp1_d:  '"50 లీటర్లు పెట్రోల్ నగదు" — తెలుగులో చెప్పండి, ఆటోమేటిగ్గా రికార్డ్ అవుతుంది.',
     usp2_t:  '🌐 6 భారతీయ భాషలు',
@@ -322,10 +322,10 @@ const COPY = {
     pricing_title: 'సరళమైన ధర నిర్ణయం.',
     pricing_sub:   '15 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
     nav_leak:'లీకేజ్', nav_features:'ఫీచర్లు', nav_pricing:'ధర', nav_contact:'సంప్రదించండి', login:'లాగిన్', home:'హోమ్',
-    hero_badge:'భారతీయ పెట్రోల్ బంక్ యజమానుల కోసం రూపొందించబడింది',
+    hero_badge:'బంక్ యజమాని కంట్రోల్ రూమ్',
     cta_leak:'డబ్బు ఎక్కడ లీక్ అవుతుందో చూడండి →',
     hb1:'6 భాషల్లో వాయిస్', hb2:'బ్లైండ్-డ్రాప్ క్యాష్ కంట్రోల్', hb3:'GPS-లాక్డ్ POS',
-    ph_title:'ఈరోజు మీ బంక్‌లో', ph_sub:'ఓనర్ వ్యూ · మీ ఫోన్ నుండి', ph_live:'లైవ్',
+    ph_title:'ఈరోజు మీ బంక్‌లో', ph_sub:'యజమాని మాత్రమే చూసేది', ph_live:'లైవ్',
     ph_sales:'ఇప్పటివరకు అమ్మకాలు', ph_fills:'2,389 లీటర్లు · 318 ఫిల్స్',
     ph_cash:'నగదు', ph_credit:'క్రెడిట్',
     ph_shift:'షిఫ్ట్ 2 — ఓపెన్', ph_hidden:'సిబ్బందికి: షిఫ్ట్ ముగిసే వరకు మొత్తం కనిపించదు',
@@ -397,7 +397,7 @@ const COPY = {
   kn: {
     hero:    'ಪ್ರತಿ ಹನಿಯನ್ನು ನಿಯಂತ್ರಿಸಿ.',
     hero2:   'ಪ್ರತಿ ರೂಪಾಯಿಯನ್ನು ಟ್ರ್ಯಾಕ್ ಮಾಡಿ.',
-    sub:     'ಭಾರತದ ಅತ್ಯಂತ ಬುದ್ಧಿವಂತ ಪೆಟ್ರೋಲ್ ಬಂಕ್ ನಿರ್ವಹಣಾ ವೇದಿಕೆ — ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ.',
+    sub:     'ನಿಮ್ಮ ಕೌಂಟರ್ ಮೂಲಕ ದಿನವೂ ಲಕ್ಷಗಳು ಹರಿಯುತ್ತವೆ. Pumpini ಎಂದರೆ ನಿದ್ರಿಸದ ಮಾಲೀಕರ ಲೆಕ್ಕದ ಪುಸ್ತಕ — ಪ್ರತಿ ನಾಜಲ್, ಪ್ರತಿ ಶಿಫ್ಟ್, ಪ್ರತಿ ರೂಪಾಯಿಗೆ ಲೆಕ್ಕ, ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ.',
     usp1_t:  '🎙 ವಾಯ್ಸ್ POS ಎಂಟ್ರಿ',
     usp1_d:  'ಕನ್ನಡ ಅಥವಾ ಯಾವುದೇ ಭಾಷೆಯಲ್ಲಿ ಮಾತನಾಡಿ ವ್ಯವಹಾರ ದಾಖಲಿಸಿ.',
     usp2_t:  '🌐 6 ಭಾರತೀಯ ಭಾಷೆಗಳು',
@@ -416,10 +416,10 @@ const COPY = {
     pricing_title: 'ಸರಳ ಬೆಲೆ ನಿರ್ಧಾರ.',
     pricing_sub:   '15 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
     nav_leak:'ಸೋರಿಕೆ', nav_features:'ವೈಶಿಷ್ಟ್ಯಗಳು', nav_pricing:'ಬೆಲೆ', nav_contact:'ಸಂಪರ್ಕ', login:'ಲಾಗಿನ್', home:'ಮುಖಪುಟ',
-    hero_badge:'ಭಾರತೀಯ ಪೆಟ್ರೋಲ್ ಬಂಕ್ ಮಾಲೀಕರಿಗಾಗಿ ನಿರ್ಮಿಸಲಾಗಿದೆ',
+    hero_badge:'ಬಂಕ್ ಮಾಲೀಕರ ಕಂಟ್ರೋಲ್ ರೂಮ್',
     cta_leak:'ಹಣ ಎಲ್ಲಿ ಸೋರುತ್ತದೆ ನೋಡಿ →',
     hb1:'6 ಭಾಷೆಗಳಲ್ಲಿ ಧ್ವನಿ', hb2:'ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ನಗದು ನಿಯಂತ್ರಣ', hb3:'GPS-ಲಾಕ್ POS',
-    ph_title:'ಇಂದು ನಿಮ್ಮ ಬಂಕ್‌ನಲ್ಲಿ', ph_sub:'ಮಾಲೀಕರ ನೋಟ · ನಿಮ್ಮ ಫೋನ್‌ನಿಂದ', ph_live:'ಲೈವ್',
+    ph_title:'ಇಂದು ನಿಮ್ಮ ಬಂಕ್‌ನಲ್ಲಿ', ph_sub:'ಮಾಲೀಕರು ಮಾತ್ರ ನೋಡುವುದು', ph_live:'ಲೈವ್',
     ph_sales:'ಇಲ್ಲಿಯವರೆಗಿನ ಮಾರಾಟ', ph_fills:'2,389 ಲೀಟರ್ · 318 ಭರ್ತಿ',
     ph_cash:'ನಗದು', ph_credit:'ಕ್ರೆಡಿಟ್',
     ph_shift:'ಶಿಫ್ಟ್ 2 — ತೆರೆದಿದೆ', ph_hidden:'ಸಿಬ್ಬಂದಿಗೆ: ಶಿಫ್ಟ್ ಮುಗಿಯುವವರೆಗೆ ಮೊತ್ತ ಮರೆಯಾಗಿರುತ್ತದೆ',
@@ -491,7 +491,7 @@ const COPY = {
   mr: {
     hero:    'प्रत्येक थेंब नियंत्रित करा.',
     hero2:   'प्रत्येक रुपया ट्रॅक करा.',
-    sub:     'भारतातील सर्वात हुशार पेट्रोल पंप व्यवस्थापन प्लॅटफॉर्म — तुमच्या भाषेत.',
+    sub:     'तुमच्या काउंटरवरून रोज लाखो जातात. Pumpini म्हणजे कधीही न झोपणारी मालकाची वही — प्रत्येक नोझल, प्रत्येक शिफ्ट, प्रत्येक रुपयाचा हिशेब, तुमच्या भाषेत.',
     usp1_t:  '🎙 आवाज POS एंट्री',
     usp1_d:  'मराठी किंवा कोणत्याही भाषेत बोलून व्यवहार नोंदवा.',
     usp2_t:  '🌐 6 भारतीय भाषा',
@@ -510,10 +510,10 @@ const COPY = {
     pricing_title: 'सोपे मूल्य निर्धारण.',
     pricing_sub:   '15 दिवस मोफत · क्रेडिट कार्ड नाही',
     nav_leak:'गळती', nav_features:'वैशिष्ट्ये', nav_pricing:'किंमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
-    hero_badge:'भारतीय पेट्रोल पंप मालकांसाठी बनवलेले',
+    hero_badge:'पंप मालकाची कंट्रोल रूम',
     cta_leak:'पैसा कुठे गळतो ते पहा →',
     hb1:'6 भाषांमध्ये आवाज', hb2:'ब्लाइंड-ड्रॉप कॅश कंट्रोल', hb3:'GPS-लॉक POS',
-    ph_title:'आज तुमच्या पंपावर', ph_sub:'मालकाचा व्ह्यू · तुमच्या फोनवरून', ph_live:'लाइव्ह',
+    ph_title:'आज तुमच्या पंपावर', ph_sub:'फक्त मालक पाहतो ते', ph_live:'लाइव्ह',
     ph_sales:'आतापर्यंतची विक्री', ph_fills:'2,389 लिटर · 318 गाड्या',
     ph_cash:'रोख', ph_credit:'क्रेडिट',
     ph_shift:'शिफ्ट 2 — सुरू', ph_hidden:'कर्मचाऱ्यांना: शिफ्ट बंद होईपर्यंत रक्कम लपलेली',
@@ -668,14 +668,15 @@ export default function LandingPage() {
     <div style={{fontFamily:'DM Sans,system-ui,sans-serif',color:'#101418',overflowX:'hidden',background:'#fff'}}>
 
       <style>{`
-        :root{ --ink:#07150E; --ink2:#0C2418; --org:#FF6B00; --grn:#1FA856; --grnL:#4ADE80; --paper:#F7F6F1; }
+        :root{ --ink:#07150E; --ink2:#0C2418; --org:#FF6B00; --grn:#1FA856; --grnL:#4ADE80; --cyn:#4DC3E8; --paper:#F7F6F1; }
         @keyframes lpFadeUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
         @keyframes lpPulse  { 0%,100%{box-shadow:0 0 0 0 rgba(74,222,128,.5)} 50%{box-shadow:0 0 0 7px rgba(74,222,128,0)} }
         @keyframes lpGlow   { 0%,100%{opacity:.5} 50%{opacity:.9} }
         .lp-fade1{animation:lpFadeUp .7s ease both}
         .lp-fade2{animation:lpFadeUp .7s .15s ease both}
         .lp-fade3{animation:lpFadeUp .7s .3s ease both}
-        .lp-hero  { grid-template-columns: 1.05fr .95fr; }
+        .lp-hero  { grid-template-columns: .95fr 1.05fr; }
+        @media (min-width:881px){ .lp-hero-text{ order:2 } }
         .lp-3q    { grid-template-columns: repeat(3,1fr); }
         .lp-2col  { grid-template-columns: 1fr 1fr; }
         .lp-cmp   { grid-template-columns: 1fr 90px 90px; }
@@ -762,32 +763,25 @@ export default function LandingPage() {
       {/* ── Hero ── */}
       <section style={{
         minHeight:'100dvh',
-        background:'radial-gradient(1100px 600px at 85% -10%, rgba(31,168,86,.22), transparent 60%),'+
-                   'radial-gradient(900px 500px at -10% 110%, rgba(255,107,0,.16), transparent 55%),'+
-                   'linear-gradient(160deg, #07150E 0%, #0C2418 55%, #07150E 100%)',
+        background:'radial-gradient(1100px 600px at 88% -10%, rgba(77,195,232,.16), transparent 60%),'+
+                   'radial-gradient(900px 500px at -10% 110%, rgba(255,107,0,.10), transparent 55%),'+
+                   'repeating-linear-gradient(180deg, #F7F6F1 0px, #F7F6F1 46px, #ECEAE1 47px)',
         display:'flex',alignItems:'center',justifyContent:'center',
         padding:'100px 5% 70px',position:'relative',overflow:'hidden',
       }}>
-        {/* faint rupee grid */}
-        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,fontSize:120,fontWeight:900,
-          color:'#fff',display:'flex',flexWrap:'wrap',gap:60,alignContent:'space-between',
-          justifyContent:'space-between',padding:'4%',pointerEvents:'none',userSelect:'none'}}>
-          <span>₹</span><span>⛽</span><span>₹</span><span>⛽</span><span>₹</span>
-        </div>
-
         <div className="lp-hero" style={{maxWidth:1160,width:'100%',display:'grid',gap:'3.5rem',
           alignItems:'center',position:'relative',zIndex:1}}>
 
           {/* LEFT — the promise */}
           <div className="lp-hero-text">
             <div className="lp-fade1" style={{display:'inline-flex',alignItems:'center',gap:8,
-              background:'rgba(255,107,0,.14)',border:'1px solid rgba(255,107,0,.35)',borderRadius:99,
-              padding:'7px 16px',marginBottom:'1.4rem',fontSize:13,fontWeight:700,color:'#FFA45C'}}>
+              background:'rgba(77,195,232,.13)',border:'1px solid rgba(14,116,144,.35)',borderRadius:99,
+              padding:'7px 16px',marginBottom:'1.4rem',fontSize:13,fontWeight:700,color:'#0E7490'}}>
               ⛽ {c.hero_badge}
             </div>
 
             <h1 className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
-              color:'#fff',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
+              color:'#0C2418',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
               {c.hero}
             </h1>
             <h1 className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
@@ -797,7 +791,7 @@ export default function LandingPage() {
               {c.hero2}
             </h1>
 
-            <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'rgba(255,255,255,.75)',
+            <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'#475259',
               maxWidth:540,lineHeight:1.65,marginBottom:'2.1rem'}}>
               {c.sub}
             </p>
@@ -807,15 +801,15 @@ export default function LandingPage() {
                 textDecoration:'none',fontWeight:800,fontSize:16,boxShadow:'0 6px 26px rgba(255,107,0,.45)'}}>
                 {c.cta_leak}
               </a>
-              <a href="#pricing" style={{padding:'15px 28px',background:'rgba(255,255,255,.08)',color:'#fff',
+              <a href="#pricing" style={{padding:'15px 28px',background:'transparent',color:'#0C2418',
                 borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
-                border:'1px solid rgba(255,255,255,.25)'}}>
+                border:'1.5px solid #0C2418'}}>
                 {c.nav_pricing}
               </a>
             </div>
 
             <div className="lp-hero-badges lp-fade3" style={{display:'flex',gap:'1.4rem',flexWrap:'wrap',
-              fontSize:13.5,color:'rgba(255,255,255,.55)',fontWeight:600}}>
+              fontSize:13.5,color:'#5b6570',fontWeight:600}}>
               <span>🎙 {c.hb1}</span>
               <span>🔒 {c.hb2}</span>
               <span>📍 {c.hb3}</span>
@@ -826,11 +820,11 @@ export default function LandingPage() {
           {/* RIGHT — "today at your bunk" owner phone view */}
           <div className="lp-fade3" style={{position:'relative',display:'flex',justifyContent:'center'}}>
             <div aria-hidden style={{position:'absolute',inset:'-8% 6%',background:
-              'radial-gradient(circle, rgba(31,168,86,.4) 0%, transparent 70%)',
+              'radial-gradient(circle, rgba(77,195,232,.38) 0%, transparent 70%)',
               filter:'blur(46px)',zIndex:0,animation:'lpGlow 5s ease infinite'}}/>
             <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:392,background:'#fff',
-              borderRadius:22,overflow:'hidden',boxShadow:'0 28px 80px rgba(0,0,0,.5)',
-              border:'1px solid rgba(255,255,255,.14)'}}>
+              borderRadius:22,overflow:'hidden',boxShadow:'0 24px 64px rgba(7,21,14,.18)',
+              border:'1px solid #e3e1d8'}}>
 
               {/* header */}
               <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',
@@ -899,28 +893,59 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Three questions every owner asks ── */}
-      <section style={{padding:'5rem 5%',background:'var(--paper)'}}>
-        <div style={{maxWidth:1100,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'2.8rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
-              {c.q_title}
+      {/* ── Blind-drop story — THE USP ── */}
+      <section style={{padding:'5.5rem 5%',background:'var(--ink)',color:'#fff',position:'relative',overflow:'hidden'}}>
+        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,backgroundImage:
+          'radial-gradient(circle at 15% 20%, #FF6B00 0%, transparent 45%), radial-gradient(circle at 85% 85%, #1FA856 0%, transparent 45%)'}}/>
+        <div style={{maxWidth:1080,margin:'0 auto',position:'relative'}}>
+          <div style={{textAlign:'center',marginBottom:'3rem'}}>
+            <div style={{display:'inline-block',background:'rgba(255,107,0,.16)',color:'#FFA45C',
+              border:'1px solid rgba(255,107,0,.35)',padding:'5px 14px',borderRadius:99,fontSize:12.5,fontWeight:800,marginBottom:'0.9rem'}}>
+              🔒 {c.bd_badge}
+            </div>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,marginBottom:'0.6rem'}}>
+              {c.bd_title}
             </h2>
-            <p style={{fontSize:16,color:'#5b6570'}}>{c.q_sub}</p>
+            <p style={{fontSize:16,color:'rgba(255,255,255,.65)',maxWidth:640,margin:'0 auto',lineHeight:1.7}}>
+              {c.bd_sub}
+            </p>
           </div>
-          <div className="lp-3q" style={{display:'grid',gap:'1.4rem'}}>
-            {[
-              ['💧', c.q1, c.a1],
-              ['💰', c.q2, c.a2],
-              ['📈', c.q3, c.a3],
-            ].map(([icon,q,a])=>(
-              <div key={q} className="lp-card" style={{background:'#fff',borderRadius:18,padding:'1.9rem',
-                border:'1px solid #e8e6df',boxShadow:'0 2px 10px rgba(7,21,14,.04)'}}>
-                <div style={{fontSize:38,marginBottom:'0.9rem'}}>{icon}</div>
-                <h3 style={{fontSize:19,fontWeight:850,color:'#0C2418',marginBottom:'0.6rem',lineHeight:1.35}}>{q}</h3>
-                <p style={{fontSize:14.5,color:'#5b6570',lineHeight:1.7,margin:0}}>{a}</p>
-              </div>
-            ))}
+
+          <div className="lp-2col" style={{display:'grid',gap:'1.6rem'}}>
+            <div style={{background:'rgba(220,38,38,.08)',border:'1px solid rgba(220,38,38,.3)',
+              borderRadius:18,padding:'1.9rem'}}>
+              <div style={{fontSize:13,fontWeight:900,color:'#FCA5A5',letterSpacing:1,marginBottom:14}}>{c.bd_wo}</div>
+              {[
+                ['👀', c.bd_wo1],
+                ['✂️', c.bd_wo2],
+                ['🤷', c.bd_wo3],
+                ['😶', c.bd_wo4],
+              ].map(([i,t])=>(
+                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
+                  color:'rgba(255,255,255,.8)',lineHeight:1.55}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{background:'rgba(31,168,86,.1)',border:'1px solid rgba(74,222,128,.35)',
+              borderRadius:18,padding:'1.9rem'}}>
+              <div style={{fontSize:13,fontWeight:900,color:'#4ADE80',letterSpacing:1,marginBottom:14}}>{c.bd_w}</div>
+              {[
+                ['🙈', c.bd_w1],
+                ['✍️', c.bd_w2],
+                ['📋', c.bd_w3],
+                ['😌', c.bd_w4],
+              ].map(([i,t])=>(
+                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
+                  color:'rgba(255,255,255,.85)',lineHeight:1.55}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{textAlign:'center',marginTop:'2.2rem',fontSize:15.5,fontWeight:700,color:'rgba(255,255,255,.7)'}}>
+            {c.bd_close} <span style={{color:'#4ADE80'}}>{c.bd_you}</span>
           </div>
         </div>
       </section>
@@ -1012,59 +1037,28 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Blind-drop story — THE USP ── */}
-      <section style={{padding:'5.5rem 5%',background:'var(--ink)',color:'#fff',position:'relative',overflow:'hidden'}}>
-        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,backgroundImage:
-          'radial-gradient(circle at 15% 20%, #FF6B00 0%, transparent 45%), radial-gradient(circle at 85% 85%, #1FA856 0%, transparent 45%)'}}/>
-        <div style={{maxWidth:1080,margin:'0 auto',position:'relative'}}>
-          <div style={{textAlign:'center',marginBottom:'3rem'}}>
-            <div style={{display:'inline-block',background:'rgba(255,107,0,.16)',color:'#FFA45C',
-              border:'1px solid rgba(255,107,0,.35)',padding:'5px 14px',borderRadius:99,fontSize:12.5,fontWeight:800,marginBottom:'0.9rem'}}>
-              🔒 {c.bd_badge}
-            </div>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,marginBottom:'0.6rem'}}>
-              {c.bd_title}
+      {/* ── Three questions every owner asks ── */}
+      <section style={{padding:'5rem 5%',background:'var(--paper)'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:'2.8rem'}}>
+            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
+              {c.q_title}
             </h2>
-            <p style={{fontSize:16,color:'rgba(255,255,255,.65)',maxWidth:640,margin:'0 auto',lineHeight:1.7}}>
-              {c.bd_sub}
-            </p>
+            <p style={{fontSize:16,color:'#5b6570'}}>{c.q_sub}</p>
           </div>
-
-          <div className="lp-2col" style={{display:'grid',gap:'1.6rem'}}>
-            <div style={{background:'rgba(220,38,38,.08)',border:'1px solid rgba(220,38,38,.3)',
-              borderRadius:18,padding:'1.9rem'}}>
-              <div style={{fontSize:13,fontWeight:900,color:'#FCA5A5',letterSpacing:1,marginBottom:14}}>{c.bd_wo}</div>
-              {[
-                ['👀', c.bd_wo1],
-                ['✂️', c.bd_wo2],
-                ['🤷', c.bd_wo3],
-                ['😶', c.bd_wo4],
-              ].map(([i,t])=>(
-                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
-                  color:'rgba(255,255,255,.8)',lineHeight:1.55}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{background:'rgba(31,168,86,.1)',border:'1px solid rgba(74,222,128,.35)',
-              borderRadius:18,padding:'1.9rem'}}>
-              <div style={{fontSize:13,fontWeight:900,color:'#4ADE80',letterSpacing:1,marginBottom:14}}>{c.bd_w}</div>
-              {[
-                ['🙈', c.bd_w1],
-                ['✍️', c.bd_w2],
-                ['📋', c.bd_w3],
-                ['😌', c.bd_w4],
-              ].map(([i,t])=>(
-                <div key={t} style={{display:'flex',gap:12,alignItems:'flex-start',marginBottom:12,fontSize:14.5,
-                  color:'rgba(255,255,255,.85)',lineHeight:1.55}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{i}</span><span>{t}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{textAlign:'center',marginTop:'2.2rem',fontSize:15.5,fontWeight:700,color:'rgba(255,255,255,.7)'}}>
-            {c.bd_close} <span style={{color:'#4ADE80'}}>{c.bd_you}</span>
+          <div className="lp-3q" style={{display:'grid',gap:'1.4rem'}}>
+            {[
+              ['💧', c.q1, c.a1],
+              ['💰', c.q2, c.a2],
+              ['📈', c.q3, c.a3],
+            ].map(([icon,q,a])=>(
+              <div key={q} className="lp-card" style={{background:'#fff',borderRadius:18,padding:'1.9rem',
+                border:'1px solid #e8e6df',boxShadow:'0 2px 10px rgba(7,21,14,.04)'}}>
+                <div style={{fontSize:38,marginBottom:'0.9rem'}}>{icon}</div>
+                <h3 style={{fontSize:19,fontWeight:850,color:'#0C2418',marginBottom:'0.6rem',lineHeight:1.35}}>{q}</h3>
+                <p style={{fontSize:14.5,color:'#5b6570',lineHeight:1.7,margin:0}}>{a}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
