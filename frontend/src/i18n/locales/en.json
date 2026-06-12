@@ -915,7 +915,7 @@
   },
   "margin_tile": {
     "title": "Earnings — Today",
-    "subtitle": "gross margin vs weighted-avg purchase cost from Deliveries",
+    "subtitle": "fuel vs weighted-avg delivery cost · dry stock vs buying price",
     "gross_earnings": "Gross earnings",
     "on_revenue": "on revenue",
     "sell": "Sell",
@@ -925,6 +925,12 @@
     "no_sales": "No fuel sales yet today",
     "live_feed": "Live nozzle feed",
     "no_events": "No dispenses yet today",
-    "view_all": "View all →"
+    "view_all": "View all →",
+    "fuel": "Fuel",
+    "dry": "Dry stock",
+    "items": "items",
+    "invoices": "invoices",
+    "shift_total": "Shift total",
+    "dry_uncosted": "Some items have no buying price — set it in Catalogue"
   }
 }

@@ -322,7 +322,26 @@ router.get('/margin', authenticate, requireStationAccess({ required: true }), as
     }
     const { station_id, date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) } = req.query;
 
-    const [sales, recentCost, latestCost] = await Promise.all([
+    // Dry-stock line cost: weighted average of costed stock receipts for the
+    // product, falling back to the catalogue buying price (0 = not set).
+    const DRY_COST_LATERAL = `
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(
+          (SELECT SUM(sr.quantity * sr.buying_price) / NULLIF(SUM(sr.quantity), 0)
+             FROM stock_receipts sr
+            WHERE sr.product_id = pii.product_id AND sr.buying_price > 0),
+          NULLIF(p.buying_price, 0)
+        ) AS unit_cost
+        FROM products p WHERE p.id = pii.product_id
+      ) pc ON TRUE`;
+    const DRY_AGG = `
+      COALESCE(SUM(pii.quantity * pii.unit_price), 0)                                            AS revenue,
+      COALESCE(SUM(pii.quantity), 0)                                                             AS units,
+      COALESCE(SUM(CASE WHEN pc.unit_cost IS NOT NULL THEN pii.quantity * pii.unit_price END), 0) AS costed_revenue,
+      COALESCE(SUM(CASE WHEN pc.unit_cost IS NOT NULL THEN pii.quantity * pc.unit_cost END), 0)   AS cost,
+      COUNT(*) FILTER (WHERE pc.unit_cost IS NULL)::int                                           AS uncosted_lines`;
+
+    const [sales, recentCost, latestCost, drySales, dryReturns] = await Promise.all([
       pool.query(`
         SELECT de.fuel_type,
                COUNT(*)::int            AS txn_count,
@@ -363,6 +382,23 @@ router.get('/margin', authenticate, requireStationAccess({ required: true }), as
         ) x
         WHERE cost IS NOT NULL AND vol > 0
         ORDER BY fuel_type, received_at DESC`, [station_id]),
+
+      // Dry stock (lubes/shop POS): taxable revenue vs product cost, today
+      pool.query(`
+        SELECT ${DRY_AGG}, COUNT(DISTINCT pi.id)::int AS invoice_count
+        FROM product_invoice_items pii
+        JOIN product_invoices pi ON pi.id = pii.invoice_id
+        ${DRY_COST_LATERAL}
+        WHERE pi.station_id = $1
+          AND COALESCE(pi.invoice_date::date, pi.created_at::date) = $2`, [station_id, date]),
+
+      // Returns issued today reverse both revenue and cost
+      pool.query(`
+        SELECT ${DRY_AGG}
+        FROM product_credit_note_items pii
+        JOIN product_credit_notes pi ON pi.id = pii.credit_note_id
+        ${DRY_COST_LATERAL}
+        WHERE pi.station_id = $1 AND pi.created_at::date = $2`, [station_id, date]),
     ]);
 
     const wacMap = {};
@@ -390,14 +426,31 @@ router.get('/margin', authenticate, requireStationAccess({ required: true }), as
     });
 
     const costed = fuels.filter(f => f.margin != null);
+    const fuelRevenue = fuels.reduce((s, f) => s + f.revenue, 0);
+    const fuelMargin  = costed.reduce((s, f) => s + f.margin, 0);
+
+    // Dry stock: sales minus returns, margin only over costed lines
+    const ds = drySales.rows[0], dr = dryReturns.rows[0];
+    const dry = {
+      revenue:        +(parseFloat(ds.revenue) - parseFloat(dr.revenue)).toFixed(2),
+      units:          +(parseFloat(ds.units) - parseFloat(dr.units)).toFixed(2),
+      invoice_count:  ds.invoice_count,
+      cost:           +(parseFloat(ds.cost) - parseFloat(dr.cost)).toFixed(2),
+      margin:         +((parseFloat(ds.costed_revenue) - parseFloat(ds.cost))
+                      - (parseFloat(dr.costed_revenue) - parseFloat(dr.cost))).toFixed(2),
+      uncosted_lines: ds.uncosted_lines + dr.uncosted_lines,
+    };
+
     res.json({
       date,
       fuels,
+      dry,
       totals: {
-        revenue: fuels.reduce((s, f) => s + f.revenue, 0),
-        cost:    costed.reduce((s, f) => s + f.cost, 0),
-        margin:  costed.reduce((s, f) => s + f.margin, 0),
-        litres:  fuels.reduce((s, f) => s + f.litres, 0),
+        revenue:     +(fuelRevenue + dry.revenue).toFixed(2),
+        margin:      +(fuelMargin + dry.margin).toFixed(2),
+        fuel_margin: +fuelMargin.toFixed(2),
+        dry_margin:  dry.margin,
+        litres:      fuels.reduce((s, f) => s + f.litres, 0),
       },
       missing_cost: fuels.filter(f => f.wac == null).map(f => f.fuel_type),
     });
