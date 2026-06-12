@@ -72,6 +72,70 @@ export default function CreditDashboardPage() {
   const [consolLoading, setConsolLoading] = useState(false);
   const isCustomer = !corpId && user?.role === 'corporate';
 
+  // ── Self-service documents: statement / ageing / invoice copies ──
+  const [tab, setTab]             = useState('overview');
+  const [stmt, setStmt]           = useState(null);
+  const [stmtLoading, setStmtLoading] = useState(false);
+  const [myAgeing, setMyAgeing]   = useState(null);
+  const [invoices, setInvoices]   = useState(null);
+  // Staff (owner "view as") must name the account; customers get their own.
+  const staffParams = user?.role !== 'corporate' ? { corporate_id: effectiveCorpId } : {};
+
+  const loadStmt = async () => {
+    if (!effectiveCorpId) return;
+    setStmtLoading(true);
+    try {
+      const s = await api.get(`/credit-reports/statement/${effectiveCorpId}`, {
+        params: { date_from: dateFrom, date_to: dateTo },
+      });
+      setStmt(s);
+    } catch (e) { console.error(e); }
+    finally { setStmtLoading(false); }
+  };
+
+  useEffect(() => {
+    if (!effectiveCorpId) return;
+    if (tab === 'statement') loadStmt();
+    if (tab === 'ageing' && !myAgeing)
+      api.get('/credit-reports/my-ageing', { params: staffParams }).then(setMyAgeing).catch(console.error);
+    if (tab === 'invoices' && !invoices)
+      api.get('/credit-reports/my-invoices', { params: staffParams }).then(setInvoices).catch(console.error);
+  }, [tab, effectiveCorpId, dateFrom, dateTo]); // eslint-disable-line
+
+  // Invoice copy: render a minimal printable document in a new window
+  const printInvoice = (inv, kind) => {
+    let items = kind === 'lube' ? (inv.items || [])
+      : (Array.isArray(inv.line_items) ? inv.line_items : (() => { try { return JSON.parse(inv.line_items || '[]'); } catch { return []; } })());
+    const rowsHtml = kind === 'lube'
+      ? items.map(i => `<tr><td>${i.name || ''}</td><td class="r">${i.qty} ${i.unit || ''}</td><td class="r">₹${fmt(i.unit_price)}</td><td class="r">${i.gst_rate}%</td><td class="r">₹${fmt(i.total)}</td></tr>`).join('')
+      : items.map(i => `<tr><td>${i.occurred_at ? toIST(i.occurred_at) : ''}</td><td>${i.vehicle_number || '—'}</td><td>${i.fuel_type || ''}</td><td class="r">${fmtL(i.quantity_ltrs)}</td><td class="r">₹${fmt(i.rate_per_ltr)}</td><td class="r">₹${fmt(i.amount)}</td></tr>`).join('');
+    const headHtml = kind === 'lube'
+      ? '<tr><th>Item</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">GST</th><th class="r">Amount</th></tr>'
+      : '<tr><th>Date</th><th>Vehicle</th><th>Fuel</th><th class="r">Qty (L)</th><th class="r">Rate/L</th><th class="r">Amount</th></tr>';
+    const total = kind === 'lube' ? inv.grand_total : inv.total_amount;
+    const gst = kind === 'lube'
+      ? `CGST ₹${fmt(inv.total_cgst)} · SGST ₹${fmt(inv.total_sgst)}`
+      : `CGST ₹${fmt(inv.cgst_amount)} · SGST ₹${fmt(inv.sgst_amount)}`;
+    const w = window.open('', '_blank');
+    if (!w) return alert('Allow pop-ups to print the invoice copy.');
+    w.document.write(`<!doctype html><html><head><title>${inv.invoice_number}</title><style>
+      body{font-family:system-ui,sans-serif;margin:24px;color:#111}
+      h2{margin:0} .muted{color:#666;font-size:13px}
+      table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:left} .r{text-align:right}
+      .tot{margin-top:12px;text-align:right;font-size:15px}
+    </style></head><body>
+      <h2>${inv.station_name || ''}</h2>
+      <div class="muted">Invoice <b>${inv.invoice_number}</b> · ${toIST(inv.invoice_date || inv.created_at)}
+        ${kind === 'fuel' && inv.period_from ? ` · Period ${inv.period_from} – ${inv.period_to}` : ''}</div>
+      <div class="muted">${tc('credit_page.bill_to', 'Bill to')}: <b>${corp?.company_name || inv.customer_name || ''}</b></div>
+      <table><thead>${headHtml}</thead><tbody>${rowsHtml}</tbody></table>
+      <div class="tot">${gst}<br/><b>Total: ₹${fmt(total)}</b></div>
+    </body></html>`);
+    w.document.close();
+    w.print();
+  };
+
   useEffect(()=>{
     if (view !== 'consolidated' || consol) return;
     setConsolLoading(true);
@@ -208,16 +272,35 @@ export default function CreditDashboardPage() {
           <h1 className="page-title">{corp.company_name}</h1>
           <div style={{fontSize:13,color:'var(--text-3)'}}>{tc('credit_page.subtitle','Credit Account Dashboard')}</div>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <DateRangePicker
-            from={dateFrom} to={dateTo}
-            onChange={(f,t)=>{ setDateFrom(f); setDateTo(t); }}/>
-          <button className="btn btn-secondary" onClick={exportCSV}>
-            <Download size={15}/>{tc('credit_page.export_csv','Export CSV')}
-          </button>
+        <div style={{display:'flex',gap:8,alignItems:'center'}} className="no-print">
+          {['overview','statement'].includes(tab) && (
+            <DateRangePicker
+              from={dateFrom} to={dateTo}
+              onChange={(f,t)=>{ setDateFrom(f); setDateTo(t); }}/>
+          )}
+          {tab==='overview' && (
+            <button className="btn btn-secondary" onClick={exportCSV}>
+              <Download size={15}/>{tc('credit_page.export_csv','Export CSV')}
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Self-service tabs: the documents a credit customer needs without calling the bunk */}
+      <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}} className="no-print">
+        {[
+          ['overview',  tc('credit_page.tab_overview','Overview')],
+          ['statement', tc('credit_page.tab_statement','Statement')],
+          ['ageing',    tc('credit_page.tab_ageing','My Dues by Age')],
+          ['invoices',  tc('credit_page.tab_invoices','Invoices')],
+        ].map(([id,label])=>(
+          <button key={id} className={`btn ${tab===id?'btn-primary':'btn-secondary'} btn-sm`} onClick={()=>setTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab==='overview' && (<>
       {/* Credit utilisation */}
       <div className="card" style={{marginBottom:'1.5rem'}}>
         <div style={{fontWeight:600,fontSize:14,marginBottom:'1rem'}}>{tc('credit_page.credit_util','Credit Utilisation')}</div>
@@ -329,6 +412,181 @@ export default function CreditDashboardPage() {
           </table>
         </div>
       </div>
+      </>)}
+
+      {/* ── Statement of account: running balance incl. payments & credit notes ── */}
+      {tab==='statement' && (
+        <div className="card">
+          {stmtLoading && <div style={{textAlign:'center',padding:'2rem',color:'var(--text-3)'}}>{tc('credit_page.loading','Loading...')}</div>}
+          {!stmtLoading && stmt && (<>
+            <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:10,marginBottom:'1rem',paddingBottom:'0.75rem',borderBottom:'1px solid var(--border)'}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:16}}>{tc('credit_page.stmt_title','Statement of Account')}</div>
+                <div style={{fontSize:12,color:'var(--text-3)'}}>{corp.company_name} · {dateFrom} – {dateTo}</div>
+              </div>
+              <div style={{display:'flex',gap:10,alignItems:'center'}}>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:11,color:'var(--text-3)',fontWeight:600,textTransform:'uppercase'}}>{tc('credit_page.closing_balance','Closing balance')}</div>
+                  <div style={{fontSize:22,fontWeight:900,color:stmt.closing_balance>0?'var(--danger)':'var(--success)'}}>₹{fmt(stmt.closing_balance)}</div>
+                </div>
+                <button className="btn btn-secondary btn-sm no-print" onClick={()=>window.print()}>{tc('credit_page.print','Print')}</button>
+              </div>
+            </div>
+            <div className="table-wrap">
+              <table className="dms-table">
+                <thead><tr>
+                  <th>{tc('credit_page.date','Date')}</th><th>{tc('credit_page.bunk','Bunk')}</th>
+                  <th>{tc('credit_page.particulars','Particulars')}</th>
+                  <th>{tc('credit_page.debit','Debit')}</th><th>{tc('credit_page.credit','Credit')}</th>
+                  <th>{tc('credit_page.balance','Balance')}</th>
+                </tr></thead>
+                <tbody>
+                  <tr style={{background:'var(--surface-2)'}}>
+                    <td></td><td></td>
+                    <td style={{fontWeight:700}}>{tc('credit_page.opening_balance','Opening balance')}</td>
+                    <td></td><td></td>
+                    <td className="num" style={{fontWeight:700}}>₹{fmt(stmt.opening_balance)}</td>
+                  </tr>
+                  {stmt.lines.length===0 && (
+                    <tr><td colSpan={6} style={{textAlign:'center',color:'var(--text-3)',padding:'1.5rem'}}>{tc('credit_page.no_txns','No transactions for selected period')}</td></tr>
+                  )}
+                  {stmt.lines.map((l,i)=>(
+                    <tr key={i}>
+                      <td style={{fontSize:12,whiteSpace:'nowrap'}}>{new Date(l.date).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short'})}</td>
+                      <td style={{fontSize:12}}>{l.station_name||'—'}</td>
+                      <td style={{fontSize:13}}>
+                        <span className={`badge ${l.type==='payment'?'badge-success':l.type==='credit_note'?'badge-info':'badge-gray'}`} style={{marginRight:6,textTransform:'capitalize'}}>{(l.type||'').replace('_',' ')}</span>
+                        {l.description}{l.ref?` · ${l.ref}`:''}
+                      </td>
+                      <td className="num">{l.debit>0?`₹${fmt(l.debit)}`:'—'}</td>
+                      <td className="num" style={{color:l.credit>0?'var(--success)':undefined}}>{l.credit>0?`₹${fmt(l.credit)}`:'—'}</td>
+                      <td className="num" style={{fontWeight:600}}>₹{fmt(l.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>)}
+        </div>
+      )}
+
+      {/* ── My dues by age ── */}
+      {tab==='ageing' && (
+        <>
+          {!myAgeing && <div className="card" style={{textAlign:'center',padding:'2rem',color:'var(--text-3)'}}>{tc('credit_page.loading','Loading...')}</div>}
+          {myAgeing && (<>
+            <div className="grid-4" style={{marginBottom:'1.5rem'}}>
+              {[
+                [tc('credit_page.total_due','Total due'), myAgeing.totals.outstanding, 'var(--brand)'],
+                ['0–30', myAgeing.totals.b0_30, 'var(--text-1)'],
+                ['31–60 / 61–90', myAgeing.totals.b31_60 + myAgeing.totals.b61_90, 'var(--warning)'],
+                ['90+', myAgeing.totals.b90_plus, 'var(--danger)'],
+              ].map(([l,v,c])=>(
+                <div key={l} className="stat-card">
+                  <div className="stat-label">{l}</div>
+                  <div className="stat-value" style={{fontSize:'1.25rem',color:c}}>₹{fmt(v)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="card">
+              <div style={{fontWeight:600,fontSize:14,marginBottom:'0.75rem'}}>{tc('credit_page.ageing_title','Outstanding by age, per bunk')}</div>
+              <div className="table-wrap">
+                <table className="dms-table">
+                  <thead><tr>
+                    <th>{tc('credit_page.bunk','Bunk')}</th><th>{tc('credit_page.outstanding','Outstanding')}</th>
+                    <th>0–30</th><th>31–60</th><th>61–90</th><th>90+</th>
+                    <th>{tc('credit_page.oldest','Oldest')}</th>
+                  </tr></thead>
+                  <tbody>
+                    {myAgeing.rows.length===0 && (
+                      <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>{tc('credit_page.all_clear','No dues — account fully settled ✓')}</td></tr>
+                    )}
+                    {myAgeing.rows.map(r=>(
+                      <tr key={r.station_id} style={r.b90_plus>0?{background:'rgba(239,68,68,.05)'}:undefined}>
+                        <td style={{fontWeight:600}}>{r.station_name}
+                          {r.unapplied_credit>0 && <span style={{fontSize:11,color:'var(--success)',marginLeft:6}}>{tc('credit_page.advance','Advance')} ₹{fmt(r.unapplied_credit)}</span>}
+                        </td>
+                        <td className="num" style={{fontWeight:700}}>{r.outstanding>0?`₹${fmt(r.outstanding)}`:<span style={{color:'var(--success)'}}>✓</span>}</td>
+                        {[r.b0_30,r.b31_60,r.b61_90,r.b90_plus].map((v,i)=>(
+                          <td key={i} className="num" style={v>0&&i===3?{color:'var(--danger)',fontWeight:700}:v>0?{fontWeight:600}:{color:'var(--text-3)'}}>{v>0?`₹${fmt(v)}`:'—'}</td>
+                        ))}
+                        <td style={{fontSize:12,color:r.oldest_days>90?'var(--danger)':'var(--text-2)'}}>{r.oldest_days!=null?`${r.oldest_days} ${tc('credit_page.days','days')}`:'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{fontSize:11.5,color:'var(--text-3)',marginTop:8}}>
+                {tc('credit_page.ageing_note','Payments are adjusted against the oldest dues first.')}
+              </div>
+            </div>
+          </>)}
+        </>
+      )}
+
+      {/* ── Invoice copies ── */}
+      {tab==='invoices' && (
+        <>
+          {!invoices && <div className="card" style={{textAlign:'center',padding:'2rem',color:'var(--text-3)'}}>{tc('credit_page.loading','Loading...')}</div>}
+          {invoices && (<>
+            <div className="card" style={{marginBottom:'1.5rem'}}>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:'0.75rem'}}>{tc('credit_page.fuel_invoices','Fuel Invoices (GST)')}</div>
+              <div className="table-wrap">
+                <table className="dms-table">
+                  <thead><tr>
+                    <th>{tc('credit_page.invoice_no','Invoice #')}</th><th>{tc('credit_page.date','Date')}</th>
+                    <th>{tc('credit_page.bunk','Bunk')}</th><th>{tc('credit_page.period','Period')}</th>
+                    <th>{tc('credit_page.amount','Amount')}</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {invoices.fuel.length===0 && (
+                      <tr><td colSpan={6} style={{textAlign:'center',color:'var(--text-3)',padding:'1.5rem'}}>{tc('credit_page.no_invoices','No invoices yet')}</td></tr>
+                    )}
+                    {invoices.fuel.map(inv=>(
+                      <tr key={inv.id}>
+                        <td style={{fontFamily:'var(--font-mono)',fontWeight:600}}>{inv.invoice_number}</td>
+                        <td style={{fontSize:12}}>{new Date(inv.invoice_date||inv.created_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'})}</td>
+                        <td style={{fontSize:12}}>{inv.station_name||'—'}</td>
+                        <td style={{fontSize:12}}>{inv.period_from?`${inv.period_from} – ${inv.period_to}`:'—'}</td>
+                        <td className="num" style={{fontWeight:700}}>₹{fmt(inv.total_amount)}</td>
+                        <td><button className="btn btn-secondary btn-sm" onClick={()=>printInvoice(inv,'fuel')}>{tc('credit_page.view_print','View / Print')}</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card">
+              <div style={{fontWeight:600,fontSize:14,marginBottom:'0.75rem'}}>{tc('credit_page.lube_invoices','Lubes / Shop Invoices')}</div>
+              <div className="table-wrap">
+                <table className="dms-table">
+                  <thead><tr>
+                    <th>{tc('credit_page.invoice_no','Invoice #')}</th><th>{tc('credit_page.date','Date')}</th>
+                    <th>{tc('credit_page.bunk','Bunk')}</th><th>{tc('credit_page.items','Items')}</th>
+                    <th>{tc('credit_page.amount','Amount')}</th><th></th>
+                  </tr></thead>
+                  <tbody>
+                    {invoices.lube.length===0 && (
+                      <tr><td colSpan={6} style={{textAlign:'center',color:'var(--text-3)',padding:'1.5rem'}}>{tc('credit_page.no_invoices','No invoices yet')}</td></tr>
+                    )}
+                    {invoices.lube.map(inv=>(
+                      <tr key={inv.id}>
+                        <td style={{fontFamily:'var(--font-mono)',fontWeight:600}}>{inv.invoice_number}</td>
+                        <td style={{fontSize:12}}>{new Date(inv.invoice_date||inv.created_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'})}</td>
+                        <td style={{fontSize:12}}>{inv.station_name||'—'}</td>
+                        <td style={{fontSize:12}}>{(inv.items||[]).length}</td>
+                        <td className="num" style={{fontWeight:700}}>₹{fmt(inv.grand_total)}</td>
+                        <td><button className="btn btn-secondary btn-sm" onClick={()=>printInvoice(inv,'lube')}>{tc('credit_page.view_print','View / Print')}</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>)}
+        </>
+      )}
     </AppShell>
   );
 }
