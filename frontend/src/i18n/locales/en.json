@@ -935,6 +935,7 @@
     "items": "items",
     "invoices": "invoices",
     "shift_total": "Shift total",
-    "dry_uncosted": "Some items have no buying price — set it in Catalogue"
+    "dry_uncosted": "Some items have no buying price — set it in Catalogue",
+    "last_updated": "Last updated"
   }
 }

@@ -26,6 +26,7 @@ export default function EarningsMarginTile({ stationId, maxRows = 10 }) {
   const [margin, setMargin] = useState(null);
   const [events, setEvents] = useState([]);
   const [flash, setFlash]   = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(null);
   const { on } = useSocket(stationId, null);
 
   const load = useCallback(async () => {
@@ -36,7 +37,7 @@ export default function EarningsMarginTile({ stationId, maxRows = 10 }) {
       api.get('/dispense', { params: { station_id: stationId, date_from: today, date_to: today + 'T23:59:59', limit: maxRows } }).catch(() => []),
       api.get('/products/invoices', { params: { station_id: stationId, from: today, to: today } }).catch(() => []),
     ]);
-    if (m) setMargin(m);
+    if (m) { setMargin(m); setUpdatedAt(new Date()); }
     // One feed for everything sold today: POS dispenses, manager shift totals
     // (source='manager') and dry-stock invoices, newest first.
     const fuel = (Array.isArray(ev) ? ev : []).map(r => ({ ...r, kind: 'fuel', at: r.occurred_at }));
@@ -75,9 +76,16 @@ export default function EarningsMarginTile({ stationId, maxRows = 10 }) {
             · {tc('margin_tile.subtitle', 'fuel vs weighted-avg delivery cost · dry stock vs buying price')}
           </span>
         </div>
-        <Link href="/live" style={{ fontSize: 12, color: 'var(--brand)', textDecoration: 'none', fontWeight: 600 }}>
-          {tc('margin_tile.view_all', 'View all →')}
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {updatedAt && (
+            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              {tc('margin_tile.last_updated', 'Last updated')} {toIST(updatedAt)}
+            </span>
+          )}
+          <Link href="/live" style={{ fontSize: 12, color: 'var(--brand)', textDecoration: 'none', fontWeight: 600 }}>
+            {tc('margin_tile.view_all', 'View all →')}
+          </Link>
+        </div>
       </div>
 
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: `minmax(160px,auto) repeat(${cols}, 1fr)`, gap: 10, marginBottom: '1rem' }}>
