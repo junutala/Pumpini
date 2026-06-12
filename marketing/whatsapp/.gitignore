@@ -1,0 +1,4 @@
+output/*.html
+output/*.png
+!output/pumpini-whatsapp-*.png
+__pycache__/
