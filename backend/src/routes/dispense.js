@@ -4,7 +4,7 @@ const pool    = require('../db/pool');
 const multer  = require('multer');
 const path    = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 const upload = multer({
