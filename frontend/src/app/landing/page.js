@@ -39,10 +39,33 @@ const COPY = {
     compare_title: 'Why switch to Pumpini?',
     pricing_title: 'Simple pricing. No surprises.',
     pricing_sub:   '15-day free trial · No credit card · Cancel anytime',
-    nav_leak:'The Leak', nav_features:'Features', nav_pricing:'Pricing', nav_contact:'Contact', login:'Login', home:'Home',
-    hero_badge:'The bunk owner\'s control room',
-    cta_leak:'See where money leaks →',
-    hb1:'Voice in 6 languages', hb2:'Blind-drop cash control', hb3:'GPS-locked POS',
+    nav_leak:'Pumpini AI', nav_features:'Features', nav_pricing:'Pricing', nav_contact:'Contact', login:'Login', home:'Home',
+    hero_badge:'AI-powered control room for your bunk',
+    cta_leak:'Meet your AI manager →',
+    cards_t:'Three things your friends\' bunks don\'t have.',
+    cards_sub:'Lead with these at the next dealers\' meet.',
+    c1_t:'Ask. It answers.', c1_chip:'AI assistant',
+    c1_d:'“How much diesel did we sell yesterday? Who owes me the most?” Ask in your language — Pumpini AI answers from your bunk\'s own data.',
+    c2_t:'Wet & dry. Both covered.', c2_chip:'Complete coverage',
+    c2_d:'Tank dips, density, deliveries, nozzle readings — and lubes, barcodes, GST stock. Most software picks one side. Pumpini runs both.',
+    c3_t:'Cash counted honestly.', c3_chip:'No-hints cash check',
+    c3_d:'Your staff counts and declares the cash first — the expected total stays hidden until then. No target to “match”, nothing to pocket.',
+    ai_badge:'PUMPINI AI', ai_lang:'Works in all 6 languages',
+    ai_title:'An AI manager that never sleeps, never takes leave.',
+    ai_sub:'Ask it anything. It also tells you what you didn\'t think to ask.',
+    ai_q:'How is diesel doing this month?',
+    ai_a:'Diesel: 41,200 L sold, ₹1.84 lakh gross margin — up 6% on last month. One alert: Tank 2 variance is drifting. Want details?',
+    ai_alerts_t:'It taps your shoulder before you ask:',
+    ai_al1:'⛽ Tank 2 lost 180 L beyond normal evaporation this week — the pattern points to Tuesday night shifts.',
+    ai_al2:'💸 Cash shortfalls repeat on one attendant\'s shifts — 4 times this month, same ₹300–500 range.',
+    ai_al3:'🧾 A credit customer is at 92% of limit and paying slower. Time to call.',
+    ai_note:'Stock loss, cash shortage, evaporation, credit risk — Pumpini AI hunts the pattern and tells you in plain words.',
+    ez_title:'Easy to use. And it covers everything.',
+    ez_sub:'Every other option makes you choose. Pumpini doesn\'t.',
+    ez_x:'Easier to use →', ez_y:'↑ Covers more',
+    ez_d1:'Old desktop software', ez_d2:'Simple billing apps', ez_d3:'Diary & registers',
+    ez_we_sub:'AI + voice + full coverage',
+    hb1:'Voice in 6 languages', hb2:'AI assistant inside', hb3:'GPS-locked POS',
     ph_title:'Today at your bunk', ph_sub:'What only the owner sees', ph_live:'LIVE',
     ph_sales:'Sales till now', ph_fills:'2,389 litres · 318 fills',
     ph_cash:'Cash', ph_credit:'Credit',
@@ -50,26 +73,8 @@ const COPY = {
     ph_tank:'Tank variance:', ph_tankok:'−34 L · within limit',
     ph_deposit:'₹1,42,000 not deposited — 2 days', ph_alert:'ALERT',
     ph_note:'Every number above updates live, in your language, on your phone.',
-    q_title:'Every night, you ask three questions.',
-    q_sub:'Pumpini answers all three — with proof, not promises.',
-    q1:'Did every litre sell at the right price?',
-    a1:'Tank dips, meter readings and deliveries tied together. If fuel goes missing, you see it the same day — in litres and in rupees.',
-    q2:'Did every rupee reach me?',
-    a2:'Blind-drop reconciliation, deposit tracking, shortfall records by attendant name. Cash has nowhere to hide.',
-    q3:'Am I actually making money?',
-    a3:'Sales, credit dues, expenses and bank deposits — one dashboard, one glance, every day. Plus Tally export for your CA.',
-    lk_badge:'THE NUMBERS NOBODY SHOWS YOU',
-    lk_title:'How much is your bunk leaking?',
-    lk_sub:'Short change here, a few litres there, a “small adjustment” in the night shift. Slide to your daily sale and look at the yearly number.',
-    lk_daily:'Your daily sale', lk_lpd:'litres/day',
-    lk_through:'≈ {amt} through your counter daily',
-    lk_slip:'How much slips away?', lk_slipnote:'(most owners guess too low)',
-    lk_b1:'0.2% — “my boys are saints”', lk_b2:'0.5% — typical', lk_b3:'1% — one bad shift lead',
-    lk_note:'Assumes a blended ₹100/litre. Leakage = skimmed cash, short change kept, unbilled litres, unwatched credit — the everyday kind, not grand theft.',
-    lk_month:'Leaking every month', lk_year:'= {amt} a year. Gone. No receipt.',
-    lk_roi:'If Pumpini stops even a fraction of that leak, it pays for itself {x}× over — every single month.',
-    permo:'/month', lk_cta:'Plug the leak — talk to us →',
-    bd_badge:'ONLY ON PUMPINI — BLIND-DROP CASH CONTROL',
+    permo:'/month',
+    bd_badge:'ONLY ON PUMPINI — THE HONEST CASH COUNT',
     bd_title:'The counter that can’t cheat.',
     bd_sub:'In most bunks, the attendant knows exactly how much cash should be in the drawer — so the drawer always “matches”. Pumpini flips the game.',
     bd_wo:'WITHOUT PUMPINI', bd_w:'WITH PUMPINI',
@@ -133,10 +138,33 @@ const COPY = {
     compare_title: 'Pumpini क्यों चुनें?',
     pricing_title: 'सरल मूल्य निर्धारण।',
     pricing_sub:   '15 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
-    nav_leak:'लीकेज', nav_features:'फ़ीचर्स', nav_pricing:'कीमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
-    hero_badge:'पंप मालिक का कंट्रोल रूम',
-    cta_leak:'पैसा कहाँ लीक होता है, देखें →',
-    hb1:'6 भाषाओं में आवाज़', hb2:'ब्लाइंड-ड्रॉप कैश कंट्रोल', hb3:'GPS-लॉक्ड POS',
+    nav_leak:'Pumpini AI', nav_features:'फ़ीचर्स', nav_pricing:'कीमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
+    hero_badge:'आपके पंप का AI-पावर्ड कंट्रोल रूम',
+    cta_leak:'अपने AI मैनेजर से मिलिए →',
+    cards_t:'तीन चीज़ें जो आपके दोस्तों के पंप पर नहीं हैं।',
+    cards_sub:'अगली डीलर्स मीटिंग में शुरुआत इन्हीं से कीजिए।',
+    c1_t:'पूछिए। जवाब हाज़िर।', c1_chip:'AI असिस्टेंट',
+    c1_d:'“कल कितना डीज़ल बिका? सबसे ज़्यादा उधारी किसकी है?” अपनी भाषा में पूछिए — Pumpini AI आपके पंप के अपने डेटा से जवाब देता है।',
+    c2_t:'वेट और ड्राई। दोनों कवर।', c2_chip:'पूरा कवरेज',
+    c2_d:'टैंक डिप, डेंसिटी, डिलीवरी, नोज़ल रीडिंग — और लुब्स, बारकोड, GST स्टॉक भी। बाकी सॉफ्टवेयर एक तरफ चुनते हैं। Pumpini दोनों चलाता है।',
+    c3_t:'कैश की ईमानदार गिनती।', c3_chip:'बिना-हिंट कैश चेक',
+    c3_d:'स्टाफ पहले कैश गिनकर बताता है — तब तक अपेक्षित रकम छिपी रहती है। “मैच” करने का कोई टारगेट नहीं, जेब में डालने का कोई रास्ता नहीं।',
+    ai_badge:'PUMPINI AI', ai_lang:'सभी 6 भाषाओं में',
+    ai_title:'एक AI मैनेजर जो न सोता है, न छुट्टी लेता है।',
+    ai_sub:'कुछ भी पूछिए। और जो पूछना याद न रहे, वह खुद बता देता है।',
+    ai_q:'इस महीने डीज़ल कैसा चल रहा है?',
+    ai_a:'डीज़ल: 41,200 लीटर बिका, ₹1.84 लाख ग्रॉस मार्जिन — पिछले महीने से 6% ऊपर। एक अलर्ट: टैंक 2 का वेरिएंस बढ़ रहा है। डिटेल देखें?',
+    ai_alerts_t:'पूछने से पहले ही कंधा थपथपाता है:',
+    ai_al1:'⛽ टैंक 2 से इस हफ्ते सामान्य वाष्पीकरण से 180 L ज़्यादा घटा — पैटर्न मंगलवार की नाइट शिफ्ट की ओर इशारा करता है।',
+    ai_al2:'💸 एक अटेंडेंट की शिफ्ट में कैश बार-बार कम — इस महीने 4 बार, हर बार ₹300–500।',
+    ai_al3:'🧾 एक क्रेडिट ग्राहक लिमिट के 92% पर है और भुगतान धीमा कर रहा है। फोन करने का समय।',
+    ai_note:'स्टॉक लॉस, कैश की कमी, वाष्पीकरण, क्रेडिट रिस्क — Pumpini AI पैटर्न खोजकर सीधी भाषा में बताता है।',
+    ez_title:'चलाने में आसान। और सब कुछ कवर।',
+    ez_sub:'बाकी सब आपसे एक चुनवाते हैं। Pumpini नहीं।',
+    ez_x:'आसान →', ez_y:'↑ ज़्यादा कवरेज',
+    ez_d1:'पुराने डेस्कटॉप सॉफ्टवेयर', ez_d2:'सिंपल बिलिंग ऐप्स', ez_d3:'डायरी और रजिस्टर',
+    ez_we_sub:'AI + वॉयस + पूरा कवरेज',
+    hb1:'6 भाषाओं में आवाज़', hb2:'AI असिस्टेंट साथ में', hb3:'GPS-लॉक्ड POS',
     ph_title:'आज आपके पंप पर', ph_sub:'जो सिर्फ मालिक देखता है', ph_live:'लाइव',
     ph_sales:'अब तक की बिक्री', ph_fills:'2,389 लीटर · 318 गाड़ियाँ',
     ph_cash:'कैश', ph_credit:'क्रेडिट',
@@ -144,26 +172,8 @@ const COPY = {
     ph_tank:'टैंक वेरिएंस:', ph_tankok:'−34 L · सीमा में',
     ph_deposit:'₹1,42,000 जमा नहीं हुआ — 2 दिन', ph_alert:'अलर्ट',
     ph_note:'ऊपर का हर आंकड़ा लाइव अपडेट होता है — आपकी भाषा में, आपके फोन पर।',
-    q_title:'हर रात आप तीन सवाल पूछते हैं।',
-    q_sub:'Pumpini तीनों के जवाब देता है — वादों से नहीं, सबूत से।',
-    q1:'क्या हर लीटर सही दाम पर बिका?',
-    a1:'टैंक डिप, मीटर रीडिंग और डिलीवरी — सब आपस में जुड़े। फ्यूल गायब हुआ तो उसी दिन पता चलेगा — लीटर और रुपये, दोनों में।',
-    q2:'क्या हर रुपया मुझ तक पहुंचा?',
-    a2:'ब्लाइंड-ड्रॉप मिलान, डिपॉज़िट ट्रैकिंग, नाम सहित शॉर्टफॉल रिकॉर्ड। कैश के छिपने की कोई जगह नहीं।',
-    q3:'क्या मैं सच में कमा रहा हूँ?',
-    a3:'बिक्री, उधारी, खर्चे और बैंक डिपॉज़िट — एक डैशबोर्ड, एक नज़र, हर दिन। साथ में CA के लिए Tally एक्सपोर्ट।',
-    lk_badge:'वो आंकड़े जो कोई नहीं दिखाता',
-    lk_title:'आपके पंप से कितना लीक हो रहा है?',
-    lk_sub:'कहीं कम छुट्टे, कहीं कुछ लीटर, नाइट शिफ्ट में “छोटा सा एडजस्टमेंट”। स्लाइडर अपनी रोज़ की बिक्री पर लाइए और साल का आंकड़ा देखिए।',
-    lk_daily:'आपकी रोज़ की बिक्री', lk_lpd:'लीटर/दिन',
-    lk_through:'≈ {amt} रोज़ आपके काउंटर से गुज़रता है',
-    lk_slip:'कितना हाथ से निकल जाता है?', lk_slipnote:'(ज़्यादातर मालिक कम आंकते हैं)',
-    lk_b1:'0.2% — “मेरे लड़के देवता हैं”', lk_b2:'0.5% — आम तौर पर', lk_b3:'1% — एक बेईमान शिफ्ट इंचार्ज',
-    lk_note:'औसत ₹100/लीटर मानकर। लीकेज = दबाया गया कैश, रखे गए छुट्टे, बिना बिल के लीटर, बेखबर उधारी — रोज़मर्रा वाली, कोई बड़ी चोरी नहीं।',
-    lk_month:'हर महीने लीक', lk_year:'= साल के {amt}। गायब। कोई रसीद नहीं।',
-    lk_roi:'अगर Pumpini उस लीक का छोटा सा हिस्सा भी रोक दे, तो वह हर महीने अपनी कीमत {x} गुना वसूल कर देता है।',
-    permo:'/महीना', lk_cta:'लीक बंद करें — हमसे बात करें →',
-    bd_badge:'सिर्फ PUMPINI पर — ब्लाइंड-ड्रॉप कैश कंट्रोल',
+    permo:'/महीना',
+    bd_badge:'सिर्फ PUMPINI पर — कैश की ईमानदार गिनती',
     bd_title:'वो काउंटर जो धोखा नहीं दे सकता।',
     bd_sub:'ज़्यादातर पंपों पर अटेंडेंट को ठीक-ठीक पता होता है कि दराज़ में कितना कैश होना चाहिए — इसलिए दराज़ हमेशा “मैच” करती है। Pumpini खेल पलट देता है।',
     bd_wo:'PUMPINI के बिना', bd_w:'PUMPINI के साथ',
@@ -227,10 +237,33 @@ const COPY = {
     compare_title: 'Pumpini ஏன் சிறந்தது?',
     pricing_title: 'எளிமையான விலை நிர்ணயம்.',
     pricing_sub:   '15 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
-    nav_leak:'கசிவு', nav_features:'அம்சங்கள்', nav_pricing:'விலை', nav_contact:'தொடர்பு', login:'உள்நுழைய', home:'முகப்பு',
-    hero_badge:'பங்க் உரிமையாளரின் கட்டுப்பாட்டு அறை',
-    cta_leak:'பணம் எங்கே கசிகிறது, பாருங்கள் →',
-    hb1:'6 மொழிகளில் குரல்', hb2:'பிளைண்ட்-டிராப் பணக் கட்டுப்பாடு', hb3:'GPS பூட்டிய POS',
+    nav_leak:'Pumpini AI', nav_features:'அம்சங்கள்', nav_pricing:'விலை', nav_contact:'தொடர்பு', login:'உள்நுழைய', home:'முகப்பு',
+    hero_badge:'உங்கள் பங்கின் AI கட்டுப்பாட்டு அறை',
+    cta_leak:'உங்கள் AI மேலாளரை சந்தியுங்கள் →',
+    cards_t:'உங்கள் நண்பர்களின் பங்குகளில் இல்லாத மூன்று விஷயங்கள்.',
+    cards_sub:'அடுத்த டீலர்ஸ் மீட்டிங்கில் இவற்றிலிருந்து தொடங்குங்கள்.',
+    c1_t:'கேளுங்கள். பதில் தயார்.', c1_chip:'AI உதவியாளர்',
+    c1_d:'“நேற்று எவ்வளவு டீசல் விற்றது? யாரிடம் அதிக கடன்?” உங்கள் மொழியில் கேளுங்கள் — Pumpini AI உங்கள் பங்கின் சொந்த தரவிலிருந்து பதிலளிக்கிறது.',
+    c2_t:'வெட் & டிரை. இரண்டும் கவர்.', c2_chip:'முழு கவரேஜ்',
+    c2_d:'டேங்க் டிப், அடர்த்தி, டெலிவரி, நாஸில் ரீடிங் — மேலும் லூப்ஸ், பார்கோடு, GST ஸ்டாக். மற்ற மென்பொருட்கள் ஒரு பக்கம்தான். Pumpini இரண்டையும் நடத்துகிறது.',
+    c3_t:'பணம் நேர்மையாக எண்ணப்படும்.', c3_chip:'ஹின்ட் இல்லா பணச் சரிபார்ப்பு',
+    c3_d:'ஊழியர் முதலில் பணத்தை எண்ணி அறிவிக்கிறார் — அதுவரை எதிர்பார்க்கும் தொகை மறைந்திருக்கும். “மேட்ச்” செய்ய இலக்கு இல்லை, பாக்கெட்டில் போட வழி இல்லை.',
+    ai_badge:'PUMPINI AI', ai_lang:'6 மொழிகளிலும்',
+    ai_title:'தூங்காத, விடுப்பு எடுக்காத AI மேலாளர்.',
+    ai_sub:'எதையும் கேளுங்கள். கேட்க மறந்ததையும் அதுவே சொல்லும்.',
+    ai_q:'இந்த மாதம் டீசல் எப்படி போகிறது?',
+    ai_a:'டீசல்: 41,200 L விற்பனை, ₹1.84 லட்சம் மொத்த மார்ஜின் — கடந்த மாதத்தை விட 6% அதிகம். ஒரு அலர்ட்: டேங்க் 2 வேரியன்ஸ் அதிகரிக்கிறது. விவரம் வேண்டுமா?',
+    ai_alerts_t:'நீங்கள் கேட்கும் முன்பே தோளில் தட்டுகிறது:',
+    ai_al1:'⛽ டேங்க் 2-ல் இந்த வாரம் இயல்பான ஆவியாதலை விட 180 L அதிக இழப்பு — பேட்டர்ன் செவ்வாய் இரவு ஷிஃப்டைக் காட்டுகிறது.',
+    ai_al2:'💸 ஒரு ஊழியரின் ஷிஃப்டுகளில் பணம் திரும்பத் திரும்பக் குறைகிறது — இந்த மாதம் 4 முறை, ஒவ்வொன்றும் ₹300–500.',
+    ai_al3:'🧾 ஒரு கடன் வாடிக்கையாளர் வரம்பின் 92%-ல் — கட்டணமும் தாமதம். அழைக்க வேண்டிய நேரம்.',
+    ai_note:'ஸ்டாக் இழப்பு, பணப் பற்றாக்குறை, ஆவியாதல், கடன் ரிஸ்க் — Pumpini AI பேட்டர்னைக் கண்டுபிடித்து எளிய வார்த்தைகளில் சொல்கிறது.',
+    ez_title:'பயன்படுத்த எளிது. எல்லாமே கவர்.',
+    ez_sub:'மற்றவை ஒன்றைத் தேர்வு செய்ய வைக்கும். Pumpini வேண்டாம் என்கிறது.',
+    ez_x:'எளிமை →', ez_y:'↑ அதிக கவரேஜ்',
+    ez_d1:'பழைய டெஸ்க்டாப் மென்பொருள்', ez_d2:'சிம்பிள் பில்லிங் ஆப்கள்', ez_d3:'டைரி & ரெஜிஸ்டர்',
+    ez_we_sub:'AI + குரல் + முழு கவரேஜ்',
+    hb1:'6 மொழிகளில் குரல்', hb2:'AI உதவியாளர் உள்ளே', hb3:'GPS பூட்டிய POS',
     ph_title:'இன்று உங்கள் பங்கில்', ph_sub:'உரிமையாளர் மட்டும் பார்ப்பது', ph_live:'நேரலை',
     ph_sales:'இதுவரை விற்பனை', ph_fills:'2,389 லிட்டர் · 318 நிரப்புதல்',
     ph_cash:'பணம்', ph_credit:'கடன்',
@@ -238,26 +271,8 @@ const COPY = {
     ph_tank:'டேங்க் வேறுபாடு:', ph_tankok:'−34 L · வரம்புக்குள்',
     ph_deposit:'₹1,42,000 வங்கியில் செலுத்தப்படவில்லை — 2 நாட்கள்', ph_alert:'எச்சரிக்கை',
     ph_note:'மேலே உள்ள ஒவ்வொரு எண்ணும் நேரடியாக புதுப்பிக்கப்படுகிறது — உங்கள் மொழியில், உங்கள் போனில்.',
-    q_title:'ஒவ்வொரு இரவும் நீங்கள் மூன்று கேள்விகள் கேட்கிறீர்கள்.',
-    q_sub:'Pumpini மூன்றுக்கும் பதில் தருகிறது — வாக்குறுதி அல்ல, ஆதாரத்துடன்.',
-    q1:'ஒவ்வொரு லிட்டரும் சரியான விலையில் விற்றதா?',
-    a1:'டேங்க் டிப், மீட்டர் ரீடிங், டெலிவரி — அனைத்தும் இணைந்தவை. எரிபொருள் காணாமல் போனால் அன்றே தெரியும் — லிட்டரிலும் ரூபாயிலும்.',
-    q2:'ஒவ்வொரு ரூபாயும் என்னிடம் வந்ததா?',
-    a2:'பிளைண்ட்-டிராப் சரிபார்ப்பு, டெபாசிட் கண்காணிப்பு, பெயருடன் பற்றாக்குறை பதிவு. பணம் மறைய இடமில்லை.',
-    q3:'நான் உண்மையில் சம்பாதிக்கிறேனா?',
-    a3:'விற்பனை, கடன் நிலுவை, செலவுகள், வங்கி டெபாசிட் — ஒரே டாஷ்போர்டு, ஒரே பார்வை, தினமும். CA-வுக்கு Tally ஏற்றுமதியும் உண்டு.',
-    lk_badge:'யாரும் காட்டாத எண்கள்',
-    lk_title:'உங்கள் பங்கில் எவ்வளவு கசிகிறது?',
-    lk_sub:'அங்கே கொஞ்சம் சில்லறை, இங்கே சில லிட்டர், இரவு ஷிப்டில் “சிறிய சரிசெய்தல்”. உங்கள் தினசரி விற்பனைக்கு நகர்த்தி ஆண்டு எண்ணைப் பாருங்கள்.',
-    lk_daily:'உங்கள் தினசரி விற்பனை', lk_lpd:'லிட்டர்/நாள்',
-    lk_through:'≈ {amt} தினமும் உங்கள் கவுண்டர் வழியாக',
-    lk_slip:'எவ்வளவு கைநழுவுகிறது?', lk_slipnote:'(பெரும்பாலான உரிமையாளர்கள் குறைவாக யூகிக்கிறார்கள்)',
-    lk_b1:'0.2% — “என் பசங்க புனிதர்கள்”', lk_b2:'0.5% — வழக்கமானது', lk_b3:'1% — ஒரு மோசமான ஷிப்ட் தலைவர்',
-    lk_note:'சராசரி ₹100/லிட்டர் கணக்கில். கசிவு = மறைத்த பணம், வைத்துக்கொண்ட சில்லறை, பில் இல்லாத லிட்டர்கள், கவனிக்காத கடன் — அன்றாட வகை, பெரிய திருட்டு அல்ல.',
-    lk_month:'ஒவ்வொரு மாதமும் கசிவு', lk_year:'= ஆண்டுக்கு {amt}. போய்விட்டது. ரசீது இல்லை.',
-    lk_roi:'Pumpini அந்தக் கசிவில் ஒரு பகுதியை நிறுத்தினாலே, ஒவ்வொரு மாதமும் தன் விலையை {x} மடங்கு ஈட்டுகிறது.',
-    permo:'/மாதம்', lk_cta:'கசிவை அடைக்க — எங்களிடம் பேசுங்கள் →',
-    bd_badge:'PUMPINI-யில் மட்டும் — பிளைண்ட்-டிராப் பணக் கட்டுப்பாடு',
+    permo:'/மாதம்',
+    bd_badge:'PUMPINI-ல் மட்டும் — நேர்மையான பணக் கணக்கு',
     bd_title:'ஏமாற்ற முடியாத கவுண்டர்.',
     bd_sub:'பெரும்பாலான பங்குகளில், டிராயரில் எவ்வளவு பணம் இருக்க வேண்டும் என்று ஊழியருக்கு துல்லியமாகத் தெரியும் — அதனால் டிராயர் எப்போதும் “சரியாக” இருக்கும். Pumpini விளையாட்டையே மாற்றுகிறது.',
     bd_wo:'PUMPINI இல்லாமல்', bd_w:'PUMPINI உடன்',
@@ -321,10 +336,33 @@ const COPY = {
     compare_title: 'Pumpini ఎందుకు మెరుగైనది?',
     pricing_title: 'సరళమైన ధర నిర్ణయం.',
     pricing_sub:   '15 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
-    nav_leak:'లీకేజ్', nav_features:'ఫీచర్లు', nav_pricing:'ధర', nav_contact:'సంప్రదించండి', login:'లాగిన్', home:'హోమ్',
-    hero_badge:'బంక్ యజమాని కంట్రోల్ రూమ్',
-    cta_leak:'డబ్బు ఎక్కడ లీక్ అవుతుందో చూడండి →',
-    hb1:'6 భాషల్లో వాయిస్', hb2:'బ్లైండ్-డ్రాప్ క్యాష్ కంట్రోల్', hb3:'GPS-లాక్డ్ POS',
+    nav_leak:'Pumpini AI', nav_features:'ఫీచర్లు', nav_pricing:'ధర', nav_contact:'సంప్రదించండి', login:'లాగిన్', home:'హోమ్',
+    hero_badge:'మీ బంక్ కోసం AI కంట్రోల్ రూమ్',
+    cta_leak:'మీ AI మేనేజర్‌ను కలవండి →',
+    cards_t:'మీ స్నేహితుల బంకుల్లో లేని మూడు విషయాలు.',
+    cards_sub:'వచ్చే డీలర్స్ మీటింగ్‌లో వీటితోనే మొదలుపెట్టండి.',
+    c1_t:'అడగండి. జవాబు సిద్ధం.', c1_chip:'AI అసిస్టెంట్',
+    c1_d:'“నిన్న ఎంత డీజిల్ అమ్ముడైంది? ఎవరి బాకీ ఎక్కువ?” మీ భాషలో అడగండి — Pumpini AI మీ బంక్ సొంత డేటా నుంచి జవాబిస్తుంది.',
+    c2_t:'వెట్ & డ్రై. రెండూ కవర్.', c2_chip:'పూర్తి కవరేజ్',
+    c2_d:'ట్యాంక్ డిప్, డెన్సిటీ, డెలివరీలు, నాజిల్ రీడింగ్‌లు — పైగా లూబ్స్, బార్‌కోడ్, GST స్టాక్ కూడా. మిగతా సాఫ్ట్‌వేర్ ఒక వైపే. Pumpini రెండూ నడుపుతుంది.',
+    c3_t:'క్యాష్ నిజాయితీ లెక్క.', c3_chip:'హింట్ లేని క్యాష్ చెక్',
+    c3_d:'స్టాఫ్ ముందుగా క్యాష్ లెక్కించి చెబుతారు — అప్పటివరకు రావాల్సిన మొత్తం కనిపించదు. “మ్యాచ్” చేయడానికి టార్గెట్ లేదు, జేబులో వేసుకునే దారి లేదు.',
+    ai_badge:'PUMPINI AI', ai_lang:'6 భాషల్లోనూ',
+    ai_title:'నిద్రపోని, సెలవు తీసుకోని AI మేనేజర్.',
+    ai_sub:'ఏదైనా అడగండి. అడగడం మర్చిపోయింది కూడా అదే చెబుతుంది.',
+    ai_q:'ఈ నెల డీజిల్ ఎలా నడుస్తోంది?',
+    ai_a:'డీజిల్: 41,200 L అమ్మకం, ₹1.84 లక్షల గ్రాస్ మార్జిన్ — గత నెల కంటే 6% ఎక్కువ. ఒక అలర్ట్: ట్యాంక్ 2 వేరియన్స్ పెరుగుతోంది. వివరాలు కావాలా?',
+    ai_alerts_t:'మీరు అడిగే ముందే భుజం తడుతుంది:',
+    ai_al1:'⛽ ట్యాంక్ 2లో ఈ వారం సాధారణ ఆవిరికి మించి 180 L తగ్గింది — ప్యాటర్న్ మంగళవారం నైట్ షిఫ్ట్‌ను చూపుతోంది.',
+    ai_al2:'💸 ఒక అటెండెంట్ షిఫ్టుల్లో క్యాష్ మళ్లీ మళ్లీ తక్కువ — ఈ నెల 4 సార్లు, ప్రతిసారీ ₹300–500.',
+    ai_al3:'🧾 ఒక క్రెడిట్ కస్టమర్ లిమిట్‌లో 92% వద్ద — చెల్లింపులూ నెమ్మదించాయి. ఫోన్ చేయాల్సిన సమయం.',
+    ai_note:'స్టాక్ నష్టం, క్యాష్ కొరత, ఆవిరి, క్రెడిట్ రిస్క్ — Pumpini AI ప్యాటర్న్ పట్టుకుని సూటిగా చెబుతుంది.',
+    ez_title:'వాడటం సులభం. అన్నీ కవర్.',
+    ez_sub:'మిగతావి ఒకటే ఎంచుకోమంటాయి. Pumpini ఒప్పుకోదు.',
+    ez_x:'సులభం →', ez_y:'↑ ఎక్కువ కవరేజ్',
+    ez_d1:'పాత డెస్క్‌టాప్ సాఫ్ట్‌వేర్', ez_d2:'సింపుల్ బిల్లింగ్ యాప్‌లు', ez_d3:'డైరీ & రిజిస్టర్లు',
+    ez_we_sub:'AI + వాయిస్ + పూర్తి కవరేజ్',
+    hb1:'6 భాషల్లో వాయిస్', hb2:'లోపలే AI అసిస్టెంట్', hb3:'GPS-లాక్డ్ POS',
     ph_title:'ఈరోజు మీ బంక్‌లో', ph_sub:'యజమాని మాత్రమే చూసేది', ph_live:'లైవ్',
     ph_sales:'ఇప్పటివరకు అమ్మకాలు', ph_fills:'2,389 లీటర్లు · 318 ఫిల్స్',
     ph_cash:'నగదు', ph_credit:'క్రెడిట్',
@@ -332,26 +370,8 @@ const COPY = {
     ph_tank:'ట్యాంక్ వేరియన్స్:', ph_tankok:'−34 L · పరిమితిలో',
     ph_deposit:'₹1,42,000 డిపాజిట్ కాలేదు — 2 రోజులు', ph_alert:'అలర్ట్',
     ph_note:'పైన ఉన్న ప్రతి సంఖ్య లైవ్‌గా అప్‌డేట్ అవుతుంది — మీ భాషలో, మీ ఫోన్‌లో.',
-    q_title:'ప్రతి రాత్రి మీరు మూడు ప్రశ్నలు అడుగుతారు.',
-    q_sub:'Pumpini మూడింటికీ సమాధానం ఇస్తుంది — మాటలతో కాదు, రుజువుతో.',
-    q1:'ప్రతి లీటరు సరైన ధరకు అమ్ముడైందా?',
-    a1:'ట్యాంక్ డిప్, మీటర్ రీడింగ్, డెలివరీలు — అన్నీ కలిసి. ఇంధనం మాయమైతే అదే రోజు తెలుస్తుంది — లీటర్లలో, రూపాయల్లో.',
-    q2:'ప్రతి రూపాయి నాకు చేరిందా?',
-    a2:'బ్లైండ్-డ్రాప్ సరిచూపు, డిపాజిట్ ట్రాకింగ్, పేరుతో సహా షార్ట్‌ఫాల్ రికార్డులు. డబ్బు దాచుకోవడానికి చోటు లేదు.',
-    q3:'నేను నిజంగా సంపాదిస్తున్నానా?',
-    a3:'అమ్మకాలు, బాకీలు, ఖర్చులు, బ్యాంక్ డిపాజిట్లు — ఒకే డాష్‌బోర్డ్, ఒకే చూపు, ప్రతిరోజూ. మీ CA కోసం Tally ఎగుమతి కూడా.',
-    lk_badge:'ఎవరూ చూపని లెక్కలు',
-    lk_title:'మీ బంక్ నుండి ఎంత లీక్ అవుతోంది?',
-    lk_sub:'అక్కడ కొంచెం చిల్లర, ఇక్కడ కొన్ని లీటర్లు, నైట్ షిఫ్ట్‌లో “చిన్న సర్దుబాటు”. స్లైడర్‌ను మీ రోజువారీ అమ్మకానికి జరిపి, సంవత్సరపు లెక్క చూడండి.',
-    lk_daily:'మీ రోజువారీ అమ్మకం', lk_lpd:'లీటర్లు/రోజు',
-    lk_through:'≈ {amt} ప్రతిరోజూ మీ కౌంటర్ గుండా',
-    lk_slip:'ఎంత చేజారిపోతుంది?', lk_slipnote:'(చాలామంది ఓనర్లు తక్కువ అంచనా వేస్తారు)',
-    lk_b1:'0.2% — “మా అబ్బాయిలు దేవుళ్ళు”', lk_b2:'0.5% — సాధారణం', lk_b3:'1% — ఒక్క చెడ్డ షిఫ్ట్ లీడ్',
-    lk_note:'సగటు ₹100/లీటరు ప్రకారం. లీకేజ్ = దాచిన నగదు, ఉంచుకున్న చిల్లర, బిల్లు లేని లీటర్లు, చూడని అప్పు — రోజువారీ రకం, పెద్ద దొంగతనం కాదు.',
-    lk_month:'ప్రతి నెలా లీకేజ్', lk_year:'= సంవత్సరానికి {amt}. పోయింది. రసీదు లేదు.',
-    lk_roi:'Pumpini ఆ లీక్‌లో కొంత భాగాన్ని ఆపినా, ప్రతి నెలా తన ఖర్చును {x} రెట్లు తిరిగి సంపాదిస్తుంది.',
-    permo:'/నెల', lk_cta:'లీక్ ఆపండి — మాతో మాట్లాడండి →',
-    bd_badge:'PUMPINI లోనే — బ్లైండ్-డ్రాప్ క్యాష్ కంట్రోల్',
+    permo:'/నెల',
+    bd_badge:'PUMPINIలో మాత్రమే — నిజాయితీ క్యాష్ లెక్క',
     bd_title:'మోసం చేయలేని కౌంటర్.',
     bd_sub:'చాలా బంకుల్లో, డ్రాయర్‌లో ఎంత నగదు ఉండాలో అటెండర్‌కు కచ్చితంగా తెలుసు — అందుకే డ్రాయర్ ఎప్పుడూ “సరిపోతుంది”. Pumpini ఆటనే మార్చేస్తుంది.',
     bd_wo:'PUMPINI లేకుండా', bd_w:'PUMPINI తో',
@@ -415,10 +435,33 @@ const COPY = {
     compare_title: 'Pumpini ಏಕೆ ಉತ್ತಮ?',
     pricing_title: 'ಸರಳ ಬೆಲೆ ನಿರ್ಧಾರ.',
     pricing_sub:   '15 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
-    nav_leak:'ಸೋರಿಕೆ', nav_features:'ವೈಶಿಷ್ಟ್ಯಗಳು', nav_pricing:'ಬೆಲೆ', nav_contact:'ಸಂಪರ್ಕ', login:'ಲಾಗಿನ್', home:'ಮುಖಪುಟ',
-    hero_badge:'ಬಂಕ್ ಮಾಲೀಕರ ಕಂಟ್ರೋಲ್ ರೂಮ್',
-    cta_leak:'ಹಣ ಎಲ್ಲಿ ಸೋರುತ್ತದೆ ನೋಡಿ →',
-    hb1:'6 ಭಾಷೆಗಳಲ್ಲಿ ಧ್ವನಿ', hb2:'ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ನಗದು ನಿಯಂತ್ರಣ', hb3:'GPS-ಲಾಕ್ POS',
+    nav_leak:'Pumpini AI', nav_features:'ವೈಶಿಷ್ಟ್ಯಗಳು', nav_pricing:'ಬೆಲೆ', nav_contact:'ಸಂಪರ್ಕ', login:'ಲಾಗಿನ್', home:'ಮುಖಪುಟ',
+    hero_badge:'ನಿಮ್ಮ ಬಂಕ್‌ಗೆ AI ಕಂಟ್ರೋಲ್ ರೂಮ್',
+    cta_leak:'ನಿಮ್ಮ AI ಮ್ಯಾನೇಜರ್ ಭೇಟಿಯಾಗಿ →',
+    cards_t:'ನಿಮ್ಮ ಸ್ನೇಹಿತರ ಬಂಕ್‌ಗಳಲ್ಲಿ ಇಲ್ಲದ ಮೂರು ವಿಷಯಗಳು.',
+    cards_sub:'ಮುಂದಿನ ಡೀಲರ್ಸ್ ಮೀಟಿಂಗ್‌ನಲ್ಲಿ ಇವುಗಳಿಂದಲೇ ಶುರು ಮಾಡಿ.',
+    c1_t:'ಕೇಳಿ. ಉತ್ತರ ಸಿದ್ಧ.', c1_chip:'AI ಸಹಾಯಕ',
+    c1_d:'“ನಿನ್ನೆ ಎಷ್ಟು ಡೀಸೆಲ್ ಮಾರಾಟವಾಯಿತು? ಯಾರ ಬಾಕಿ ಹೆಚ್ಚು?” ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ ಕೇಳಿ — Pumpini AI ನಿಮ್ಮ ಬಂಕ್‌ನ ಸ್ವಂತ ಡೇಟಾದಿಂದ ಉತ್ತರಿಸುತ್ತದೆ.',
+    c2_t:'ವೆಟ್ & ಡ್ರೈ. ಎರಡೂ ಕವರ್.', c2_chip:'ಪೂರ್ಣ ಕವರೇಜ್',
+    c2_d:'ಟ್ಯಾಂಕ್ ಡಿಪ್, ಸಾಂದ್ರತೆ, ಡೆಲಿವರಿ, ನಾಜಲ್ ರೀಡಿಂಗ್ — ಜೊತೆಗೆ ಲೂಬ್ಸ್, ಬಾರ್‌ಕೋಡ್, GST ಸ್ಟಾಕ್ ಕೂಡ. ಉಳಿದ ಸಾಫ್ಟ್‌ವೇರ್ ಒಂದು ಕಡೆ ಮಾತ್ರ. Pumpini ಎರಡನ್ನೂ ನಡೆಸುತ್ತದೆ.',
+    c3_t:'ಕ್ಯಾಶ್ ಪ್ರಾಮಾಣಿಕ ಲೆಕ್ಕ.', c3_chip:'ಹಿಂಟ್ ಇಲ್ಲದ ಕ್ಯಾಶ್ ಚೆಕ್',
+    c3_d:'ಸ್ಟಾಫ್ ಮೊದಲು ಕ್ಯಾಶ್ ಎಣಿಸಿ ಘೋಷಿಸುತ್ತಾರೆ — ಅಲ್ಲಿಯವರೆಗೆ ನಿರೀಕ್ಷಿತ ಮೊತ್ತ ಮರೆಯಾಗಿರುತ್ತದೆ. “ಮ್ಯಾಚ್” ಮಾಡಲು ಟಾರ್ಗೆಟ್ ಇಲ್ಲ, ಜೇಬಿಗೆ ಹಾಕುವ ದಾರಿ ಇಲ್ಲ.',
+    ai_badge:'PUMPINI AI', ai_lang:'ಎಲ್ಲ 6 ಭಾಷೆಗಳಲ್ಲೂ',
+    ai_title:'ನಿದ್ರಿಸದ, ರಜೆ ಹಾಕದ AI ಮ್ಯಾನೇಜರ್.',
+    ai_sub:'ಏನು ಬೇಕಾದರೂ ಕೇಳಿ. ಕೇಳಲು ಮರೆತದ್ದನ್ನೂ ಅದೇ ಹೇಳುತ್ತದೆ.',
+    ai_q:'ಈ ತಿಂಗಳು ಡೀಸೆಲ್ ಹೇಗೆ ನಡೆಯುತ್ತಿದೆ?',
+    ai_a:'ಡೀಸೆಲ್: 41,200 L ಮಾರಾಟ, ₹1.84 ಲಕ್ಷ ಗ್ರಾಸ್ ಮಾರ್ಜಿನ್ — ಕಳೆದ ತಿಂಗಳಿಗಿಂತ 6% ಹೆಚ್ಚು. ಒಂದು ಅಲರ್ಟ್: ಟ್ಯಾಂಕ್ 2 ವೇರಿಯನ್ಸ್ ಏರುತ್ತಿದೆ. ವಿವರ ಬೇಕೆ?',
+    ai_alerts_t:'ನೀವು ಕೇಳುವ ಮೊದಲೇ ಹೆಗಲು ತಟ್ಟುತ್ತದೆ:',
+    ai_al1:'⛽ ಟ್ಯಾಂಕ್ 2ರಲ್ಲಿ ಈ ವಾರ ಸಾಮಾನ್ಯ ಆವಿಯಾಗುವಿಕೆ ಮೀರಿ 180 L ಕಡಿಮೆ — ಪ್ಯಾಟರ್ನ್ ಮಂಗಳವಾರದ ನೈಟ್ ಶಿಫ್ಟ್ ತೋರಿಸುತ್ತದೆ.',
+    ai_al2:'💸 ಒಬ್ಬ ಅಟೆಂಡೆಂಟ್‌ನ ಶಿಫ್ಟ್‌ಗಳಲ್ಲಿ ಕ್ಯಾಶ್ ಮತ್ತೆ ಮತ್ತೆ ಕಡಿಮೆ — ಈ ತಿಂಗಳು 4 ಬಾರಿ, ಪ್ರತಿ ಬಾರಿ ₹300–500.',
+    ai_al3:'🧾 ಒಬ್ಬ ಕ್ರೆಡಿಟ್ ಗ್ರಾಹಕ ಲಿಮಿಟ್‌ನ 92% ತಲುಪಿದ್ದಾರೆ — ಪಾವತಿಯೂ ನಿಧಾನ. ಕರೆ ಮಾಡುವ ಸಮಯ.',
+    ai_note:'ಸ್ಟಾಕ್ ನಷ್ಟ, ಕ್ಯಾಶ್ ಕೊರತೆ, ಆವಿಯಾಗುವಿಕೆ, ಕ್ರೆಡಿಟ್ ರಿಸ್ಕ್ — Pumpini AI ಪ್ಯಾಟರ್ನ್ ಹಿಡಿದು ಸರಳ ಮಾತಿನಲ್ಲಿ ಹೇಳುತ್ತದೆ.',
+    ez_title:'ಬಳಸಲು ಸುಲಭ. ಎಲ್ಲವೂ ಕವರ್.',
+    ez_sub:'ಉಳಿದವು ಒಂದನ್ನೇ ಆರಿಸಲು ಹೇಳುತ್ತವೆ. Pumpini ಒಪ್ಪುವುದಿಲ್ಲ.',
+    ez_x:'ಸುಲಭ →', ez_y:'↑ ಹೆಚ್ಚು ಕವರೇಜ್',
+    ez_d1:'ಹಳೆಯ ಡೆಸ್ಕ್‌ಟಾಪ್ ಸಾಫ್ಟ್‌ವೇರ್', ez_d2:'ಸಿಂಪಲ್ ಬಿಲ್ಲಿಂಗ್ ಆ್ಯಪ್‌ಗಳು', ez_d3:'ಡೈರಿ & ರಿಜಿಸ್ಟರ್',
+    ez_we_sub:'AI + ಧ್ವನಿ + ಪೂರ್ಣ ಕವರೇಜ್',
+    hb1:'6 ಭಾಷೆಗಳಲ್ಲಿ ಧ್ವನಿ', hb2:'ಒಳಗೇ AI ಸಹಾಯಕ', hb3:'GPS-ಲಾಕ್ POS',
     ph_title:'ಇಂದು ನಿಮ್ಮ ಬಂಕ್‌ನಲ್ಲಿ', ph_sub:'ಮಾಲೀಕರು ಮಾತ್ರ ನೋಡುವುದು', ph_live:'ಲೈವ್',
     ph_sales:'ಇಲ್ಲಿಯವರೆಗಿನ ಮಾರಾಟ', ph_fills:'2,389 ಲೀಟರ್ · 318 ಭರ್ತಿ',
     ph_cash:'ನಗದು', ph_credit:'ಕ್ರೆಡಿಟ್',
@@ -426,26 +469,8 @@ const COPY = {
     ph_tank:'ಟ್ಯಾಂಕ್ ವ್ಯತ್ಯಾಸ:', ph_tankok:'−34 L · ಮಿತಿಯೊಳಗೆ',
     ph_deposit:'₹1,42,000 ಠೇವಣಿ ಆಗಿಲ್ಲ — 2 ದಿನ', ph_alert:'ಎಚ್ಚರಿಕೆ',
     ph_note:'ಮೇಲಿನ ಪ್ರತಿ ಸಂಖ್ಯೆ ಲೈವ್ ಆಗಿ ಅಪ್‌ಡೇಟ್ ಆಗುತ್ತದೆ — ನಿಮ್ಮ ಭಾಷೆಯಲ್ಲಿ, ನಿಮ್ಮ ಫೋನ್‌ನಲ್ಲಿ.',
-    q_title:'ಪ್ರತಿ ರಾತ್ರಿ ನೀವು ಮೂರು ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳುತ್ತೀರಿ.',
-    q_sub:'Pumpini ಮೂರಕ್ಕೂ ಉತ್ತರಿಸುತ್ತದೆ — ಭರವಸೆಯಲ್ಲ, ಪುರಾವೆಯೊಂದಿಗೆ.',
-    q1:'ಪ್ರತಿ ಲೀಟರ್ ಸರಿಯಾದ ಬೆಲೆಗೆ ಮಾರಾಟವಾಯಿತೇ?',
-    a1:'ಟ್ಯಾಂಕ್ ಡಿಪ್, ಮೀಟರ್ ರೀಡಿಂಗ್, ಡೆಲಿವರಿ — ಎಲ್ಲವೂ ಜೋಡಣೆ. ಇಂಧನ ಕಾಣೆಯಾದರೆ ಅದೇ ದಿನ ಗೊತ್ತಾಗುತ್ತದೆ — ಲೀಟರ್ ಮತ್ತು ರೂಪಾಯಿಯಲ್ಲಿ.',
-    q2:'ಪ್ರತಿ ರೂಪಾಯಿ ನನಗೆ ತಲುಪಿತೇ?',
-    a2:'ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ಹೊಂದಾಣಿಕೆ, ಠೇವಣಿ ಟ್ರ್ಯಾಕಿಂಗ್, ಹೆಸರು ಸಹಿತ ಕೊರತೆ ದಾಖಲೆ. ನಗದಿಗೆ ಅಡಗಲು ಜಾಗವಿಲ್ಲ.',
-    q3:'ನಾನು ನಿಜವಾಗಿ ಲಾಭ ಮಾಡುತ್ತಿದ್ದೇನೆಯೇ?',
-    a3:'ಮಾರಾಟ, ಬಾಕಿ, ಖರ್ಚು, ಬ್ಯಾಂಕ್ ಠೇವಣಿ — ಒಂದೇ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್, ಒಂದೇ ನೋಟ, ಪ್ರತಿದಿನ. ನಿಮ್ಮ CA ಗೆ Tally ರಫ್ತು ಸಹ.',
-    lk_badge:'ಯಾರೂ ತೋರಿಸದ ಅಂಕಿಅಂಶ',
-    lk_title:'ನಿಮ್ಮ ಬಂಕ್‌ನಿಂದ ಎಷ್ಟು ಸೋರುತ್ತಿದೆ?',
-    lk_sub:'ಅಲ್ಲಿ ಸ್ವಲ್ಪ ಚಿಲ್ಲರೆ, ಇಲ್ಲಿ ಕೆಲವು ಲೀಟರ್, ರಾತ್ರಿ ಶಿಫ್ಟ್‌ನಲ್ಲಿ “ಸಣ್ಣ ಹೊಂದಾಣಿಕೆ”. ಸ್ಲೈಡರ್ ಅನ್ನು ನಿಮ್ಮ ದೈನಂದಿನ ಮಾರಾಟಕ್ಕೆ ತಂದು ವರ್ಷದ ಅಂಕಿ ನೋಡಿ.',
-    lk_daily:'ನಿಮ್ಮ ದೈನಂದಿನ ಮಾರಾಟ', lk_lpd:'ಲೀಟರ್/ದಿನ',
-    lk_through:'≈ {amt} ಪ್ರತಿದಿನ ನಿಮ್ಮ ಕೌಂಟರ್ ಮೂಲಕ',
-    lk_slip:'ಎಷ್ಟು ಕೈತಪ್ಪುತ್ತದೆ?', lk_slipnote:'(ಹೆಚ್ಚಿನ ಮಾಲೀಕರು ಕಡಿಮೆ ಅಂದಾಜಿಸುತ್ತಾರೆ)',
-    lk_b1:'0.2% — “ನನ್ನ ಹುಡುಗರು ಸಂತರು”', lk_b2:'0.5% — ಸಾಮಾನ್ಯ', lk_b3:'1% — ಒಬ್ಬ ಕೆಟ್ಟ ಶಿಫ್ಟ್ ಮುಖ್ಯಸ್ಥ',
-    lk_note:'ಸರಾಸರಿ ₹100/ಲೀಟರ್ ಲೆಕ್ಕದಲ್ಲಿ. ಸೋರಿಕೆ = ಮುಚ್ಚಿಟ್ಟ ನಗದು, ಇಟ್ಟುಕೊಂಡ ಚಿಲ್ಲರೆ, ಬಿಲ್ ಇಲ್ಲದ ಲೀಟರ್, ಗಮನಿಸದ ಸಾಲ — ದಿನನಿತ್ಯದ ರೀತಿ, ದೊಡ್ಡ ಕಳ್ಳತನವಲ್ಲ.',
-    lk_month:'ಪ್ರತಿ ತಿಂಗಳ ಸೋರಿಕೆ', lk_year:'= ವರ್ಷಕ್ಕೆ {amt}. ಹೋಯಿತು. ರಸೀದಿ ಇಲ್ಲ.',
-    lk_roi:'Pumpini ಆ ಸೋರಿಕೆಯ ಒಂದು ಭಾಗವನ್ನಾದರೂ ತಡೆದರೆ, ಪ್ರತಿ ತಿಂಗಳು ತನ್ನ ಬೆಲೆಯನ್ನು {x} ಪಟ್ಟು ಗಳಿಸುತ್ತದೆ.',
-    permo:'/ತಿಂಗಳು', lk_cta:'ಸೋರಿಕೆ ನಿಲ್ಲಿಸಿ — ನಮ್ಮೊಂದಿಗೆ ಮಾತನಾಡಿ →',
-    bd_badge:'PUMPINI ನಲ್ಲಿ ಮಾತ್ರ — ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ನಗದು ನಿಯಂತ್ರಣ',
+    permo:'/ತಿಂಗಳು',
+    bd_badge:'PUMPINIಯಲ್ಲಿ ಮಾತ್ರ — ಪ್ರಾಮಾಣಿಕ ಕ್ಯಾಶ್ ಲೆಕ್ಕ',
     bd_title:'ಮೋಸ ಮಾಡಲಾಗದ ಕೌಂಟರ್.',
     bd_sub:'ಹೆಚ್ಚಿನ ಬಂಕ್‌ಗಳಲ್ಲಿ, ಡ್ರಾಯರ್‌ನಲ್ಲಿ ಎಷ್ಟು ನಗದು ಇರಬೇಕು ಎಂದು ಸಿಬ್ಬಂದಿಗೆ ನಿಖರವಾಗಿ ಗೊತ್ತು — ಹಾಗಾಗಿ ಡ್ರಾಯರ್ ಯಾವಾಗಲೂ “ಸರಿಹೊಂದುತ್ತದೆ”. Pumpini ಆಟವನ್ನೇ ಬದಲಾಯಿಸುತ್ತದೆ.',
     bd_wo:'PUMPINI ಇಲ್ಲದೆ', bd_w:'PUMPINI ಜೊತೆ',
@@ -509,10 +534,33 @@ const COPY = {
     compare_title: 'Pumpini का निवडावे?',
     pricing_title: 'सोपे मूल्य निर्धारण.',
     pricing_sub:   '15 दिवस मोफत · क्रेडिट कार्ड नाही',
-    nav_leak:'गळती', nav_features:'वैशिष्ट्ये', nav_pricing:'किंमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
-    hero_badge:'पंप मालकाची कंट्रोल रूम',
-    cta_leak:'पैसा कुठे गळतो ते पहा →',
-    hb1:'6 भाषांमध्ये आवाज', hb2:'ब्लाइंड-ड्रॉप कॅश कंट्रोल', hb3:'GPS-लॉक POS',
+    nav_leak:'Pumpini AI', nav_features:'वैशिष्ट्ये', nav_pricing:'किंमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
+    hero_badge:'तुमच्या पंपासाठी AI कंट्रोल रूम',
+    cta_leak:'तुमच्या AI मॅनेजरला भेटा →',
+    cards_t:'तुमच्या मित्रांच्या पंपांवर नसलेल्या तीन गोष्टी.',
+    cards_sub:'पुढच्या डीलर्स मीटिंगमध्ये याच गोष्टींनी सुरुवात करा.',
+    c1_t:'विचारा. उत्तर तयार.', c1_chip:'AI असिस्टंट',
+    c1_d:'“काल किती डिझेल विकलं? सर्वात जास्त उधारी कोणाची?” तुमच्या भाषेत विचारा — Pumpini AI तुमच्या पंपाच्या स्वतःच्या डेटामधून उत्तर देतं.',
+    c2_t:'वेट आणि ड्राय. दोन्ही कव्हर.', c2_chip:'संपूर्ण कव्हरेज',
+    c2_d:'टँक डिप, डेन्सिटी, डिलिव्हरी, नोझल रीडिंग — शिवाय लूब्स, बारकोड, GST स्टॉकही. बाकीचे सॉफ्टवेअर एकच बाजू निवडतात. Pumpini दोन्ही चालवतं.',
+    c3_t:'कॅशची प्रामाणिक मोजणी.', c3_chip:'हिंट नसलेली कॅश तपासणी',
+    c3_d:'स्टाफ आधी कॅश मोजून जाहीर करतो — तोपर्यंत अपेक्षित रक्कम लपलेली असते. “मॅच” करायला टार्गेट नाही, खिशात घालायला वाट नाही.',
+    ai_badge:'PUMPINI AI', ai_lang:'सहाही भाषांमध्ये',
+    ai_title:'न झोपणारा, रजा न घेणारा AI मॅनेजर.',
+    ai_sub:'काहीही विचारा. विचारायचं राहिलं तेही तोच सांगतो.',
+    ai_q:'या महिन्यात डिझेल कसं चाललंय?',
+    ai_a:'डिझेल: 41,200 L विक्री, ₹1.84 लाख ग्रॉस मार्जिन — गेल्या महिन्यापेक्षा 6% जास्त. एक अलर्ट: टँक 2 चा व्हेरियन्स वाढतोय. तपशील हवा?',
+    ai_alerts_t:'तुम्ही विचारण्याआधीच खांद्यावर थाप देतो:',
+    ai_al1:'⛽ टँक 2 मध्ये या आठवड्यात नेहमीच्या बाष्पीभवनापेक्षा 180 L जास्त घट — पॅटर्न मंगळवारच्या नाईट शिफ्टकडे बोट दाखवतो.',
+    ai_al2:'💸 एका अटेंडंटच्या शिफ्टमध्ये कॅश पुन्हा पुन्हा कमी — या महिन्यात 4 वेळा, दरवेळी ₹300–500.',
+    ai_al3:'🧾 एक क्रेडिट ग्राहक लिमिटच्या 92% वर — पेमेंटही मंदावलंय. फोन करायची वेळ.',
+    ai_note:'स्टॉक लॉस, कॅश तुटवडा, बाष्पीभवन, क्रेडिट रिस्क — Pumpini AI पॅटर्न शोधून सोप्या शब्दांत सांगतो.',
+    ez_title:'वापरायला सोपं. आणि सगळं कव्हर.',
+    ez_sub:'बाकीचे एकच निवडायला लावतात. Pumpini नाही.',
+    ez_x:'सोपं →', ez_y:'↑ जास्त कव्हरेज',
+    ez_d1:'जुने डेस्कटॉप सॉफ्टवेअर', ez_d2:'साधी बिलिंग अ‍ॅप्स', ez_d3:'डायरी आणि रजिस्टर',
+    ez_we_sub:'AI + व्हॉइस + संपूर्ण कव्हरेज',
+    hb1:'6 भाषांमध्ये आवाज', hb2:'आत AI असिस्टंट', hb3:'GPS-लॉक POS',
     ph_title:'आज तुमच्या पंपावर', ph_sub:'फक्त मालक पाहतो ते', ph_live:'लाइव्ह',
     ph_sales:'आतापर्यंतची विक्री', ph_fills:'2,389 लिटर · 318 गाड्या',
     ph_cash:'रोख', ph_credit:'क्रेडिट',
@@ -520,26 +568,8 @@ const COPY = {
     ph_tank:'टाकी तफावत:', ph_tankok:'−34 L · मर्यादेत',
     ph_deposit:'₹1,42,000 जमा नाही — 2 दिवस', ph_alert:'अलर्ट',
     ph_note:'वरील प्रत्येक आकडा लाइव्ह अपडेट होतो — तुमच्या भाषेत, तुमच्या फोनवर.',
-    q_title:'दररोज रात्री तुम्ही तीन प्रश्न विचारता.',
-    q_sub:'Pumpini तिन्हींची उत्तरे देते — आश्वासनाने नाही, पुराव्याने.',
-    q1:'प्रत्येक लिटर योग्य दराने विकले का?',
-    a1:'टाकी डिप, मीटर रीडिंग आणि डिलिव्हरी — सर्व जोडलेले. इंधन गायब झाले तर त्याच दिवशी कळते — लिटर आणि रुपयांत.',
-    q2:'प्रत्येक रुपया माझ्यापर्यंत पोहोचला का?',
-    a2:'ब्लाइंड-ड्रॉप ताळमेळ, ठेव ट्रॅकिंग, नावासह तूट नोंद. रोखीला लपायला जागा नाही.',
-    q3:'मी खरंच कमावतोय का?',
-    a3:'विक्री, उधारी, खर्च आणि बँक ठेवी — एक डॅशबोर्ड, एक नजर, दररोज. शिवाय CA साठी Tally एक्सपोर्ट.',
-    lk_badge:'कोणीही न दाखवणारे आकडे',
-    lk_title:'तुमच्या पंपातून किती गळतंय?',
-    lk_sub:'इथे थोडे सुटे, तिथे काही लिटर, रात्रीच्या शिफ्टमध्ये “छोटी जुळवाजुळव”. स्लायडर तुमच्या रोजच्या विक्रीवर आणा आणि वर्षाचा आकडा पहा.',
-    lk_daily:'तुमची रोजची विक्री', lk_lpd:'लिटर/दिवस',
-    lk_through:'≈ {amt} दररोज तुमच्या काउंटरमधून',
-    lk_slip:'किती हातातून निसटते?', lk_slipnote:'(बहुतेक मालक कमी अंदाज लावतात)',
-    lk_b1:'0.2% — “माझी मुलं देवमाणसं”', lk_b2:'0.5% — नेहमीचे', lk_b3:'1% — एक वाईट शिफ्ट प्रमुख',
-    lk_note:'सरासरी ₹100/लिटर धरून. गळती = दडवलेली रोकड, ठेवलेले सुटे, बिल नसलेले लिटर, दुर्लक्षित उधारी — रोजची, मोठी चोरी नाही.',
-    lk_month:'दर महिन्याची गळती', lk_year:'= वर्षाला {amt}. गेले. पावती नाही.',
-    lk_roi:'Pumpini ने त्या गळतीचा थोडा भाग जरी थांबवला, तरी दर महिन्याला स्वतःची किंमत {x} पट वसूल करते.',
-    permo:'/महिना', lk_cta:'गळती थांबवा — आमच्याशी बोला →',
-    bd_badge:'फक्त PUMPINI वर — ब्लाइंड-ड्रॉप कॅश कंट्रोल',
+    permo:'/महिना',
+    bd_badge:'फक्त PUMPINI वर — कॅशची प्रामाणिक मोजणी',
     bd_title:'फसवू न शकणारा काउंटर.',
     bd_sub:'बहुतेक पंपांवर ड्रॉवरमध्ये किती रोकड असावी हे कर्मचाऱ्याला नेमके माहीत असते — म्हणून ड्रॉवर नेहमी “जुळतो”. Pumpini खेळच बदलून टाकते.',
     bd_wo:'PUMPINI शिवाय', bd_w:'PUMPINI सह',
@@ -610,7 +640,6 @@ const PLANS = [
   { key:'plan_ent',     name:'ENTERPRISE', price: 1999, color:'#0E5A8A', popular:false },
 ];
 
-const fmtINR = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
 
 const leadInp = {
   width:'100%',padding:'12px 14px',border:'1.5px solid #e5e7eb',borderRadius:10,
@@ -622,13 +651,6 @@ export default function LandingPage() {
   const [langOpen,setLangOpen] = useState(false);
   const [scrolled,setScrolled] = useState(false);
   const c = { ...COPY.en, ...(COPY[lang] || {}) }; // English fills any missing key
-
-  // Leak calculator
-  const [litres, setLitres] = useState(8000);   // daily sale, litres
-  const [leakPct, setLeakPct] = useState(0.5);  // % of turnover leaking
-  const dailyTurnover  = litres * 100;          // avg ₹100/L blended
-  const monthlyLoss    = dailyTurnover * 30 * (leakPct / 100);
-  const roiMultiple    = Math.max(1, Math.round(monthlyLoss / 999));
 
   // Contact / lead form (wired to /api/leads — do not change)
   const [lead, setLead] = useState({ name:'', phone:'', station_name:'', state:'', city:'', message:'', company:'' });
@@ -675,13 +697,12 @@ export default function LandingPage() {
         .lp-fade1{animation:lpFadeUp .7s ease both}
         .lp-fade2{animation:lpFadeUp .7s .15s ease both}
         .lp-fade3{animation:lpFadeUp .7s .3s ease both}
-        .lp-hero  { grid-template-columns: .95fr 1.05fr; }
-        @media (min-width:881px){ .lp-hero-text{ order:2 } }
-        .lp-3q    { grid-template-columns: repeat(3,1fr); }
+        .lp-hero  { grid-template-columns: 1.05fr .95fr; }
+        .lp-cards3{ grid-template-columns: repeat(3,1fr); }
+        .lp-ai    { grid-template-columns: 1.05fr .95fr; }
         .lp-2col  { grid-template-columns: 1fr 1fr; }
         .lp-cmp   { grid-template-columns: 1fr 90px 90px; }
         .lp-form2 { grid-template-columns: 1fr 1fr; }
-        .lp-calc  { grid-template-columns: 1.1fr .9fr; }
         .lp-hero-text { text-align:left }
         .lp-hero-badges { justify-content:flex-start }
         .lp-navlinks { display:flex }
@@ -690,20 +711,14 @@ export default function LandingPage() {
           .lp-hero-text{text-align:center}
           .lp-hero-badges{justify-content:center}
           .lp-2col{grid-template-columns:1fr;gap:2rem !important}
-          .lp-calc{grid-template-columns:1fr;gap:2rem !important}
-          .lp-3q{grid-template-columns:1fr;gap:1rem !important}
+          .lp-cards3{grid-template-columns:1fr}
+          .lp-ai{grid-template-columns:1fr}
         }
         @media (max-width:760px){ .lp-navlinks{display:none} }
         @media (max-width:600px){ .lp-cmp{grid-template-columns:1fr 54px 54px} }
         @media (max-width:460px){ .lp-form2{grid-template-columns:1fr} }
         .lp-card:hover{ transform:translateY(-5px); box-shadow:0 16px 44px rgba(7,21,14,.12) !important }
         .lp-card{ transition:transform .25s ease, box-shadow .25s ease }
-        input[type=range].lp-range{ -webkit-appearance:none; width:100%; height:8px; border-radius:99px;
-          background:linear-gradient(90deg,var(--org) 0%,var(--org) var(--fill,50%),#e5e7eb var(--fill,50%)); outline:none }
-        input[type=range].lp-range::-webkit-slider-thumb{ -webkit-appearance:none; width:26px; height:26px;
-          border-radius:50%; background:#fff; border:4px solid var(--org); cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.25) }
-        input[type=range].lp-range::-moz-range-thumb{ width:22px; height:22px; border-radius:50%;
-          background:#fff; border:4px solid var(--org); cursor:pointer }
         html{scroll-behavior:smooth}
       `}</style>
 
@@ -722,7 +737,7 @@ export default function LandingPage() {
 
         <div style={{display:'flex',alignItems:'center',gap:'1.4rem'}}>
           <div className="lp-navlinks" style={{alignItems:'center',gap:'1.6rem'}}>
-            <a href="#leak"     style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>{c.nav_leak}</a>
+            <a href="#ai"     style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>{c.nav_leak}</a>
             <a href="#features" style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>{c.nav_features}</a>
             <a href="#pricing"  style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>{c.nav_pricing}</a>
             <a href="#contact"  style={{textDecoration:'none',color:'#3c4752',fontSize:14,fontWeight:600}}>{c.nav_contact}</a>
@@ -763,25 +778,32 @@ export default function LandingPage() {
       {/* ── Hero ── */}
       <section style={{
         minHeight:'100dvh',
-        background:'radial-gradient(1100px 600px at 88% -10%, rgba(77,195,232,.16), transparent 60%),'+
-                   'radial-gradient(900px 500px at -10% 110%, rgba(255,107,0,.10), transparent 55%),'+
-                   'repeating-linear-gradient(180deg, #F7F6F1 0px, #F7F6F1 46px, #ECEAE1 47px)',
+        background:'radial-gradient(1100px 600px at 85% -10%, rgba(31,168,86,.22), transparent 60%),'+
+                   'radial-gradient(900px 500px at -10% 110%, rgba(255,107,0,.16), transparent 55%),'+
+                   'linear-gradient(160deg, #07150E 0%, #0C2418 55%, #07150E 100%)',
         display:'flex',alignItems:'center',justifyContent:'center',
         padding:'100px 5% 70px',position:'relative',overflow:'hidden',
       }}>
+        {/* faint rupee grid */}
+        <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,fontSize:120,fontWeight:900,
+          color:'#fff',display:'flex',flexWrap:'wrap',gap:60,alignContent:'space-between',
+          justifyContent:'space-between',padding:'4%',pointerEvents:'none',userSelect:'none'}}>
+          <span>₹</span><span>⛽</span><span>₹</span><span>⛽</span><span>₹</span>
+        </div>
+
         <div className="lp-hero" style={{maxWidth:1160,width:'100%',display:'grid',gap:'3.5rem',
           alignItems:'center',position:'relative',zIndex:1}}>
 
           {/* LEFT — the promise */}
           <div className="lp-hero-text">
             <div className="lp-fade1" style={{display:'inline-flex',alignItems:'center',gap:8,
-              background:'rgba(77,195,232,.13)',border:'1px solid rgba(14,116,144,.35)',borderRadius:99,
-              padding:'7px 16px',marginBottom:'1.4rem',fontSize:13,fontWeight:700,color:'#0E7490'}}>
+              background:'rgba(255,107,0,.14)',border:'1px solid rgba(255,107,0,.35)',borderRadius:99,
+              padding:'7px 16px',marginBottom:'1.4rem',fontSize:13,fontWeight:700,color:'#FFA45C'}}>
               ⛽ {c.hero_badge}
             </div>
 
             <h1 className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
-              color:'#0C2418',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
+              color:'#fff',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
               {c.hero}
             </h1>
             <h1 className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
@@ -791,25 +813,25 @@ export default function LandingPage() {
               {c.hero2}
             </h1>
 
-            <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'#475259',
+            <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'rgba(255,255,255,.75)',
               maxWidth:540,lineHeight:1.65,marginBottom:'2.1rem'}}>
               {c.sub}
             </p>
 
             <div className="lp-fade3" style={{display:'flex',gap:14,flexWrap:'wrap',marginBottom:'2.2rem'}}>
-              <a href="#leak" style={{padding:'15px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
+              <a href="#ai" style={{padding:'15px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
                 textDecoration:'none',fontWeight:800,fontSize:16,boxShadow:'0 6px 26px rgba(255,107,0,.45)'}}>
                 {c.cta_leak}
               </a>
-              <a href="#pricing" style={{padding:'15px 28px',background:'transparent',color:'#0C2418',
+              <a href="#pricing" style={{padding:'15px 28px',background:'rgba(255,255,255,.08)',color:'#fff',
                 borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
-                border:'1.5px solid #0C2418'}}>
+                border:'1px solid rgba(255,255,255,.25)'}}>
                 {c.nav_pricing}
               </a>
             </div>
 
             <div className="lp-hero-badges lp-fade3" style={{display:'flex',gap:'1.4rem',flexWrap:'wrap',
-              fontSize:13.5,color:'#5b6570',fontWeight:600}}>
+              fontSize:13.5,color:'rgba(255,255,255,.55)',fontWeight:600}}>
               <span>🎙 {c.hb1}</span>
               <span>🔒 {c.hb2}</span>
               <span>📍 {c.hb3}</span>
@@ -820,11 +842,11 @@ export default function LandingPage() {
           {/* RIGHT — "today at your bunk" owner phone view */}
           <div className="lp-fade3" style={{position:'relative',display:'flex',justifyContent:'center'}}>
             <div aria-hidden style={{position:'absolute',inset:'-8% 6%',background:
-              'radial-gradient(circle, rgba(77,195,232,.38) 0%, transparent 70%)',
+              'radial-gradient(circle, rgba(31,168,86,.4) 0%, transparent 70%)',
               filter:'blur(46px)',zIndex:0,animation:'lpGlow 5s ease infinite'}}/>
             <div style={{position:'relative',zIndex:1,width:'100%',maxWidth:392,background:'#fff',
-              borderRadius:22,overflow:'hidden',boxShadow:'0 24px 64px rgba(7,21,14,.18)',
-              border:'1px solid #e3e1d8'}}>
+              borderRadius:22,overflow:'hidden',boxShadow:'0 28px 80px rgba(0,0,0,.5)',
+              border:'1px solid rgba(255,255,255,.14)'}}>
 
               {/* header */}
               <div style={{display:'flex',alignItems:'center',gap:10,padding:'14px 18px',
@@ -893,6 +915,114 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Three brag cards — AI · wet+dry · honest cash ── */}
+      <section style={{background:'#fff',padding:'4.5rem 1.5rem 4rem'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',textAlign:'center'}}>
+          <h2 style={{fontSize:'clamp(1.8rem,3.2vw,2.5rem)',fontWeight:900,color:'var(--ink2)',marginBottom:8,letterSpacing:'-.02em'}}>{c.cards_t}</h2>
+          <p style={{color:'#5b6570',fontSize:16,marginBottom:'2.4rem'}}>{c.cards_sub}</p>
+          <div className="lp-cards3" style={{display:'grid',gap:'1.2rem',textAlign:'left'}}>
+            {[
+              {e:'🤖', t:c.c1_t, d:c.c1_d, chip:c.c1_chip, col:'#0E7490', bg:'rgba(77,195,232,.10)'},
+              {e:'🛢️', t:c.c2_t, d:c.c2_d, chip:c.c2_chip, col:'#1FA856', bg:'rgba(31,168,86,.09)'},
+              {e:'🔐', t:c.c3_t, d:c.c3_d, chip:c.c3_chip, col:'#FF6B00', bg:'rgba(255,107,0,.08)'},
+            ].map((k,i)=>(
+              <div key={i} className="lp-card" style={{background:k.bg,borderTop:`4px solid ${k.col}`,
+                border:`1px solid ${k.col}26`,borderTopWidth:4,borderTopColor:k.col,borderRadius:18,padding:'1.7rem 1.5rem'}}>
+                <div style={{fontSize:46,lineHeight:1,marginBottom:14}}>{k.e}</div>
+                <h3 style={{fontSize:'1.28rem',fontWeight:900,color:'var(--ink2)',marginBottom:8}}>{k.t}</h3>
+                <p style={{fontSize:14.5,color:'#475259',lineHeight:1.62,marginBottom:16}}>{k.d}</p>
+                <span style={{display:'inline-block',fontSize:11.5,fontWeight:800,letterSpacing:'.06em',
+                  textTransform:'uppercase',color:k.col,background:'#fff',border:`1px solid ${k.col}55`,
+                  borderRadius:99,padding:'4px 11px'}}>{k.chip}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PUMPINI AI — ask anything + pattern alerts ── */}
+      <section id="ai" style={{position:'relative',overflow:'hidden',padding:'5rem 1.5rem',
+        background:'radial-gradient(900px 500px at 12% -5%, rgba(77,195,232,.20), transparent 55%),'+
+                   'radial-gradient(800px 500px at 95% 105%, rgba(255,107,0,.16), transparent 55%),'+
+                   'linear-gradient(160deg, #07150E 0%, #0C2418 60%, #07150E 100%)'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',position:'relative'}}>
+          <div style={{textAlign:'center',marginBottom:'2.6rem'}}>
+            <div style={{display:'inline-block',background:'rgba(77,195,232,.15)',border:'1px solid rgba(77,195,232,.45)',
+              borderRadius:99,padding:'7px 16px',fontSize:12.5,fontWeight:800,letterSpacing:'.08em',color:'#7DD7F0',marginBottom:'1.1rem'}}>
+              ✨ {c.ai_badge}
+            </div>
+            <h2 style={{fontSize:'clamp(1.8rem,3.4vw,2.6rem)',fontWeight:900,color:'#fff',letterSpacing:'-.02em',marginBottom:10}}>{c.ai_title}</h2>
+            <p style={{color:'rgba(255,255,255,.7)',fontSize:16.5,maxWidth:640,margin:'0 auto'}}>{c.ai_sub}</p>
+          </div>
+          <div className="lp-ai" style={{display:'grid',gap:'1.5rem',alignItems:'stretch'}}>
+            {/* chat demo */}
+            <div style={{background:'#fff',borderRadius:20,padding:'1.4rem 1.4rem 1.2rem',boxShadow:'0 24px 70px rgba(0,0,0,.45)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,
+                paddingBottom:12,borderBottom:'1px solid #eef0ee'}}>
+                <span style={{fontWeight:900,color:'var(--ink2)',fontSize:15}}>✨ Pumpini AI</span>
+                <span style={{fontSize:11.5,fontWeight:700,color:'#0E7490',background:'rgba(77,195,232,.12)',
+                  border:'1px solid rgba(14,116,144,.3)',borderRadius:99,padding:'3px 10px'}}>{c.ai_lang}</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'flex-end',marginBottom:12}}>
+                <div style={{maxWidth:'82%',background:'#FFF1E6',border:'1px solid rgba(255,107,0,.25)',
+                  borderRadius:'16px 16px 4px 16px',padding:'10px 14px',fontSize:14.5,fontWeight:600,color:'#7a3c10'}}>
+                  🎙 {c.ai_q}
+                </div>
+              </div>
+              <div style={{display:'flex',marginBottom:6}}>
+                <div style={{maxWidth:'88%',background:'#F2F7F4',border:'1px solid #dfe9e2',
+                  borderRadius:'16px 16px 16px 4px',padding:'11px 14px',fontSize:14.5,lineHeight:1.6,color:'#1d2a22'}}>
+                  {c.ai_a}
+                </div>
+              </div>
+            </div>
+            {/* pattern alerts */}
+            <div style={{display:'flex',flexDirection:'column',gap:12,justifyContent:'center'}}>
+              <div style={{fontWeight:800,color:'#4ADE80',fontSize:14,letterSpacing:'.04em',marginBottom:2}}>{c.ai_alerts_t}</div>
+              {[c.ai_al1,c.ai_al2,c.ai_al3].map((t,i)=>(
+                <div key={i} style={{background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.14)',
+                  borderLeft:'3px solid #FF6B00',borderRadius:12,padding:'13px 15px',fontSize:14,
+                  lineHeight:1.55,color:'rgba(255,255,255,.88)'}}>{t}</div>
+              ))}
+            </div>
+          </div>
+          <p style={{textAlign:'center',color:'rgba(255,255,255,.55)',fontSize:14,marginTop:'2.2rem',maxWidth:720,marginLeft:'auto',marginRight:'auto'}}>
+            {c.ai_note}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Easy to use × covers everything — quadrant illustration ── */}
+      <section style={{background:'var(--paper)',padding:'4.5rem 1.5rem 5rem'}}>
+        <div style={{maxWidth:900,margin:'0 auto',textAlign:'center'}}>
+          <h2 style={{fontSize:'clamp(1.8rem,3.2vw,2.5rem)',fontWeight:900,color:'var(--ink2)',marginBottom:8,letterSpacing:'-.02em'}}>{c.ez_title}</h2>
+          <p style={{color:'#5b6570',fontSize:16,marginBottom:'3rem'}}>{c.ez_sub}</p>
+          <div style={{position:'relative',margin:'0 auto',maxWidth:620,height:360,
+            borderLeft:'3px solid var(--ink2)',borderBottom:'3px solid var(--ink2)',
+            background:'linear-gradient(135deg, rgba(255,107,0,.04), rgba(77,195,232,.08))',borderRadius:'0 0 0 4px'}}>
+            <div style={{position:'absolute',bottom:-32,right:0,fontWeight:800,fontSize:13.5,color:'var(--ink2)'}}>{c.ez_x}</div>
+            <div style={{position:'absolute',top:-30,left:-2,fontWeight:800,fontSize:13.5,color:'var(--ink2)'}}>{c.ez_y}</div>
+            {[
+              {t:c.ez_d1, top:'16%', left:'10%'},
+              {t:c.ez_d3, top:'76%', left:'30%'},
+              {t:c.ez_d2, top:'62%', left:'66%'},
+            ].map((d,i)=>(
+              <div key={i} style={{position:'absolute',top:d.top,left:d.left,textAlign:'center',transform:'translate(-50%,-50%)'}}>
+                <div style={{width:14,height:14,borderRadius:'50%',background:'#9aa3ab',margin:'0 auto 6px',
+                  border:'3px solid #fff',boxShadow:'0 2px 6px rgba(0,0,0,.2)'}}/>
+                <div style={{fontSize:12.5,fontWeight:700,color:'#5b6570',maxWidth:130,lineHeight:1.3}}>{d.t}</div>
+              </div>
+            ))}
+            <div style={{position:'absolute',top:'13%',right:'5%',textAlign:'center'}}>
+              <div style={{display:'inline-block',background:'linear-gradient(135deg,#FF8C3B,#FF6B00)',color:'#fff',
+                fontWeight:900,fontSize:16,borderRadius:99,padding:'9px 20px',
+                boxShadow:'0 10px 30px rgba(255,107,0,.45)',animation:'lpGlow 4s ease infinite'}}>✦ Pumpini</div>
+              <div style={{fontSize:12,fontWeight:800,color:'#FF6B00',marginTop:7}}>{c.ez_we_sub}</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Blind-drop story — THE USP ── */}
       <section style={{padding:'5.5rem 5%',background:'var(--ink)',color:'#fff',position:'relative',overflow:'hidden'}}>
         <div aria-hidden style={{position:'absolute',inset:0,opacity:.05,backgroundImage:
@@ -946,119 +1076,6 @@ export default function LandingPage() {
 
           <div style={{textAlign:'center',marginTop:'2.2rem',fontSize:15.5,fontWeight:700,color:'rgba(255,255,255,.7)'}}>
             {c.bd_close} <span style={{color:'#4ADE80'}}>{c.bd_you}</span>
-          </div>
-        </div>
-      </section>
-
-      {/* ── THE LEAK CALCULATOR ── */}
-      <section id="leak" style={{padding:'5.5rem 5%',background:'#fff'}}>
-        <div style={{maxWidth:1080,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'2.6rem'}}>
-            <div style={{display:'inline-block',background:'#FEF2F2',color:'#dc2626',border:'1px solid #FECACA',
-              padding:'5px 14px',borderRadius:99,fontSize:12.5,fontWeight:800,marginBottom:'0.9rem'}}>
-              {c.lk_badge}
-            </div>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
-              {c.lk_title}
-            </h2>
-            <p style={{fontSize:16,color:'#5b6570',maxWidth:620,margin:'0 auto'}}>
-              {c.lk_sub}
-            </p>
-          </div>
-
-          <div className="lp-calc" style={{display:'grid',gap:'2.5rem',alignItems:'stretch'}}>
-            {/* controls */}
-            <div style={{background:'var(--paper)',borderRadius:20,padding:'2rem',border:'1px solid #e8e6df'}}>
-              <label style={{fontSize:14,fontWeight:800,color:'#0C2418',display:'block',marginBottom:8}}>
-                {c.lk_daily}
-              </label>
-              <div style={{fontSize:34,fontWeight:900,color:'#0C2418',marginBottom:14}}>
-                {litres.toLocaleString('en-IN')} <span style={{fontSize:18,fontWeight:700,color:'#8a93a0'}}>{c.lk_lpd}</span>
-                <span style={{display:'block',fontSize:14.5,fontWeight:700,color:'#1FA856'}}>{c.lk_through.replace('{amt}', fmtINR(dailyTurnover))}</span>
-              </div>
-              <input className="lp-range" type="range" min={1000} max={40000} step={500} value={litres}
-                onChange={e=>setLitres(Number(e.target.value))}
-                style={{'--fill':`${((litres-1000)/(40000-1000))*100}%`,marginBottom:22}}/>
-
-              <label style={{fontSize:14,fontWeight:800,color:'#0C2418',display:'block',marginBottom:10}}>
-                {c.lk_slip} <span style={{fontWeight:600,color:'#8a93a0'}}>{c.lk_slipnote}</span>
-              </label>
-              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                {[[0.2,c.lk_b1],[0.5,c.lk_b2],[1,c.lk_b3]].map(([v,label])=>(
-                  <button key={v} onClick={()=>setLeakPct(v)}
-                    style={{padding:'10px 14px',borderRadius:10,fontSize:13.5,fontWeight:700,cursor:'pointer',
-                      border: leakPct===v ? '2px solid #FF6B00' : '1.5px solid #d8d6cf',
-                      background: leakPct===v ? '#FFF3E8' : '#fff',
-                      color: leakPct===v ? '#9a3412' : '#5b6570'}}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div style={{fontSize:11.5,color:'#9aa3ad',marginTop:18,lineHeight:1.6}}>
-                {c.lk_note}
-              </div>
-            </div>
-
-            {/* result */}
-            <div style={{background:'linear-gradient(160deg,#0C2418,#07150E)',borderRadius:20,padding:'2rem',
-              color:'#fff',display:'flex',flexDirection:'column',justifyContent:'center',position:'relative',overflow:'hidden'}}>
-              <div aria-hidden style={{position:'absolute',top:-60,right:-60,width:220,height:220,borderRadius:'50%',
-                background:'radial-gradient(circle, rgba(220,38,38,.35), transparent 70%)',filter:'blur(10px)'}}/>
-              <div style={{fontSize:13.5,fontWeight:800,color:'rgba(255,255,255,.55)',textTransform:'uppercase',letterSpacing:1}}>
-                {c.lk_month}
-              </div>
-              <div style={{fontSize:'clamp(2.4rem,4.5vw,3.4rem)',fontWeight:900,color:'#FF8A8A',letterSpacing:'-.02em',margin:'4px 0 2px'}}>
-                {fmtINR(monthlyLoss)}
-              </div>
-              <div style={{fontSize:15,fontWeight:700,color:'rgba(255,255,255,.7)',marginBottom:22}}>
-                {c.lk_year.replace('{amt}', fmtINR(monthlyLoss*12))}
-              </div>
-
-              <div style={{height:1,background:'rgba(255,255,255,.14)',marginBottom:22}}/>
-
-              <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
-                <div style={{fontSize:13.5,fontWeight:800,color:'rgba(255,255,255,.55)',textTransform:'uppercase',letterSpacing:1}}>
-                  Pumpini Pro
-                </div>
-                <div style={{fontSize:30,fontWeight:900,color:'#4ADE80'}}>₹999<span style={{fontSize:15,fontWeight:700,color:'rgba(255,255,255,.55)'}}>{c.permo}</span></div>
-              </div>
-              <div style={{fontSize:15.5,fontWeight:700,color:'#fff',marginTop:10,lineHeight:1.6}}>
-                {c.lk_roi.split('{x}')[0]}
-                <span style={{color:'#4ADE80',fontWeight:900}}>{roiMultiple}</span>
-                {c.lk_roi.split('{x}')[1]}
-              </div>
-              <a href="#contact" style={{marginTop:24,alignSelf:'flex-start',padding:'14px 26px',background:'#FF6B00',
-                color:'#fff',borderRadius:12,textDecoration:'none',fontWeight:800,fontSize:15.5,
-                boxShadow:'0 6px 26px rgba(255,107,0,.4)'}}>
-                {c.lk_cta}
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Three questions every owner asks ── */}
-      <section style={{padding:'5rem 5%',background:'var(--paper)'}}>
-        <div style={{maxWidth:1100,margin:'0 auto'}}>
-          <div style={{textAlign:'center',marginBottom:'2.8rem'}}>
-            <h2 style={{fontSize:'clamp(1.8rem,3vw,2.6rem)',fontWeight:900,color:'#0C2418',marginBottom:'0.5rem'}}>
-              {c.q_title}
-            </h2>
-            <p style={{fontSize:16,color:'#5b6570'}}>{c.q_sub}</p>
-          </div>
-          <div className="lp-3q" style={{display:'grid',gap:'1.4rem'}}>
-            {[
-              ['💧', c.q1, c.a1],
-              ['💰', c.q2, c.a2],
-              ['📈', c.q3, c.a3],
-            ].map(([icon,q,a])=>(
-              <div key={q} className="lp-card" style={{background:'#fff',borderRadius:18,padding:'1.9rem',
-                border:'1px solid #e8e6df',boxShadow:'0 2px 10px rgba(7,21,14,.04)'}}>
-                <div style={{fontSize:38,marginBottom:'0.9rem'}}>{icon}</div>
-                <h3 style={{fontSize:19,fontWeight:850,color:'#0C2418',marginBottom:'0.6rem',lineHeight:1.35}}>{q}</h3>
-                <p style={{fontSize:14.5,color:'#5b6570',lineHeight:1.7,margin:0}}>{a}</p>
-              </div>
-            ))}
           </div>
         </div>
       </section>
