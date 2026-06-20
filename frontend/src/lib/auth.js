@@ -9,6 +9,9 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [station, setStation] = useState(null);
+  // The shift the user is currently closing — kept global so a >24h-open banner
+  // and (later) AI chat can reference it app-wide.
+  const [activeShift, setActiveShiftState] = useState(null);
 
   useEffect(() => {
     const token = Cookies.get('token') || sessionStorage.getItem('token');
@@ -22,6 +25,8 @@ export function AuthProvider({ children }) {
         if (savedStation) {
           try { setStation(JSON.parse(savedStation)); } catch {}
         }
+        const savedShift = localStorage.getItem('activeShift');
+        if (savedShift) { try { setActiveShiftState(JSON.parse(savedShift)); } catch {} }
       })
       .catch(() => {
         // Token invalid — clear everything
@@ -67,8 +72,14 @@ export function AuthProvider({ children }) {
     localStorage.setItem('station', JSON.stringify(s));
   };
 
+  const setActiveShift = (s) => {
+    setActiveShiftState(s);
+    if (s) localStorage.setItem('activeShift', JSON.stringify(s));
+    else localStorage.removeItem('activeShift');
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, station, login, logout, switchStation }}>
+    <AuthContext.Provider value={{ user, loading, station, activeShift, setActiveShift, login, logout, switchStation }}>
       {children}
     </AuthContext.Provider>
   );
@@ -77,8 +88,8 @@ export function AuthProvider({ children }) {
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) return {
-    user: null, loading: true, station: null,
-    login: async () => {}, logout: () => {}, switchStation: () => {}
+    user: null, loading: true, station: null, activeShift: null,
+    setActiveShift: () => {}, login: async () => {}, logout: () => {}, switchStation: () => {}
   };
   return ctx;
 };

@@ -1,141 +1,111 @@
 'use client';
-// Shift End — one guided, breadcrumbed screen for closing a shift: closing tank
-// dips → reconcile each operator → review wet-stock variance → close. Adapts to
-// the station's mode (manager-driven keys it all; POS mode confirms operators'
-// submitted reconciliations). Reuses existing endpoints; the close auto-runs the
-// wet-stock reco + deposit aging on the server.
+// End Shift — guided manager-driven close:
+//   Select shift (any open shift; >24h flagged) → Close operators (cash/card/UPI,
+//   sequential, gated) → Closing meters per nozzle → Close (collections vs
+//   wet-meter + bay-dry − credit variance). Sales-of-record = the meter; the
+//   opening for each nozzle auto-carries from the prior shift's closing.
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2})}`;
-const L = n => `${Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:1})} L`;
-const STEPS = ['Closing dips', 'Reconcile', 'Wet-stock', 'Close'];
+const STEPS = ['Select', 'Operators', 'Meters', 'Close'];
+const hoursSince = (t) => t ? (Date.now() - new Date(t).getTime())/3.6e6 : 0;
+const openedLabel = (t) => { const h = hoursSince(t); return h < 1 ? `${Math.round(h*60)}m ago` : h < 24 ? `${h.toFixed(1)}h ago` : `${Math.floor(h/24)}d ${Math.round(h%24)}h ago`; };
 
 export default function ShiftEndPage() {
   const router = useRouter();
-  const { station } = useAuth();
+  const { station, setActiveShift } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
 
-  const [shiftId, setShiftId] = useState('');
-  const [shift, setShift]     = useState(null);
-  const [tanks, setTanks]     = useState([]);
-  const [prices, setPrices]   = useState({});
-  const [managerMode, setManagerMode] = useState(false);
-  const [step, setStep]       = useState(0);
-  const [dips, setDips]       = useState({});
-  const [dens, setDens]       = useState({});       // tank_id -> density (kg/L)
-  const [temps, setTemps]     = useState({});       // tank_id -> temperature (°C)
-  const [dipsDone, setDipsDone] = useState({});
-  const [forms, setForms]     = useState({});   // attendant_id -> manager-mode form
-  const [recos, setRecos]     = useState({});   // attendant_id -> result (manager) or submitted (pos)
-  const [posRecos, setPosRecos] = useState([]); // POS-mode submitted reconciliations
-  const [tankReco, setTankReco] = useState([]);
-  const [busy, setBusy]       = useState('');
-  const [err, setErr]         = useState('');
-  const [done, setDone]       = useState(false);
+  const [step, setStep]   = useState(0);
+  const [open, setOpen]   = useState([]);          // open shifts to pick from
+  const [shift, setShift] = useState(null);        // selected shift (+attendants)
+  const [nozzles, setNozzles] = useState([]);
+  const [forms, setForms] = useState({});          // attendant_id -> {cash,card,upi}
+  const [closed, setClosed] = useState({});        // attendant_id -> true
+  const [meters, setMeters] = useState({});        // nozzle_id -> closing
+  const [fuelCredit, setFuelCredit] = useState('');
+  const [recon, setRecon] = useState(null);
+  const [busy, setBusy]   = useState('');
+  const [err, setErr]     = useState('');
+  const [done, setDone]   = useState(false);
 
+  // Load open shifts (any date — a shift can sit open for days)
   useEffect(() => {
-    const id = typeof window!=='undefined' ? new URLSearchParams(window.location.search).get('shift') : '';
-    if (id) setShiftId(id);
-  }, []);
+    if (!stationId) return;
+    api.get('/shifts', { params:{ station_id: stationId, status:'open' } })
+      .then(r => setOpen(Array.isArray(r)?r:[])).catch(()=>setOpen([]));
+  }, [stationId]);
 
-  useEffect(() => {
-    if (!shiftId || !stationId) return;
-    (async () => {
-      const [d, t, pr, st] = await Promise.all([
-        api.get(`/shifts/${shiftId}`).catch(()=>null),
-        api.get(`/stations/${stationId}/tanks`).catch(()=>[]),
-        api.get('/prices', { params:{ station_id: stationId } }).catch(()=>[]),
-        api.get(`/stations/${stationId}/settings`).catch(()=>({})),
-      ]);
-      setShift(d); setTanks(Array.isArray(t)?t:[]);
-      const pm = {}; (Array.isArray(pr)?pr:[]).forEach(p=>{ pm[p.fuel_type]=parseFloat(p.price); }); setPrices(pm);
-      setManagerMode(!!st?.manager_blind_drop);
-      const seed = {}; (d?.attendants||[]).forEach(a=>{ seed[a.attendant_id]={ closing_reading:'', price_per_ltr:'', test_ltrs:'', card_total:'', upi_total:'', cash_actual:'' }; });
-      setForms(seed);
-    })();
-  }, [shiftId, stationId]);
-
-  const refreshPos = async () => { const r = await api.get(`/reconcile/${shiftId}`).catch(()=>[]); setPosRecos(Array.isArray(r)?r:[]); };
-  useEffect(() => { if (step===1 && !managerMode) refreshPos(); }, [step, managerMode]);
-
-  const saveDip = async (tank) => {
-    const vol = parseFloat(dips[tank.id]); if (!(vol>=0)) return setErr('Enter a volume');
-    const den = parseFloat(dens[tank.id]); const tmp = parseFloat(temps[tank.id]);
-    setBusy('dip'+tank.id); setErr('');
+  const pickShift = async (s) => {
+    setBusy('pick'); setErr('');
     try {
-      await api.post('/dipstick', {
-        station_id: stationId, tank_id: tank.id, shift_id: shiftId,
-        reading_type:'closing', volume_ltrs: vol,
-        density: Number.isFinite(den) ? den : null,
-        temperature_c: Number.isFinite(tmp) ? tmp : null,
-      });
-      setDipsDone(p=>({...p,[tank.id]:true}));
-    }
-    catch(e){ setErr(e.response?.data?.error||e.error||'Could not save dip'); }
+      const [d, nz] = await Promise.all([
+        api.get(`/shifts/${s.id}`),
+        api.get(`/stations/${stationId}/nozzles`).catch(()=>[]),
+      ]);
+      setShift(d); setActiveShift({ id:d.id, shift_number:d.shift_number, start_time:d.start_time, station_id:d.station_id });
+      setNozzles((Array.isArray(nz)?nz:[]).filter(n=>n.is_active));
+      const seed = {}; (d?.attendants||[]).forEach(a=>{ seed[a.attendant_id]={ cash:'', card:'', upi:'' }; });
+      setForms(seed); setClosed({}); setStep(1);
+    } catch(e){ setErr(e.response?.data?.error||e.error||'Could not load shift'); }
     setBusy('');
   };
 
   const setF = (aid,k,v) => setForms(p=>({...p,[aid]:{...p[aid],[k]:v}}));
-  const reconcileMgr = async (a) => {
-    const aid=a.attendant_id, fm=forms[aid];
-    const price = parseFloat(fm.price_per_ltr || prices[a.fuel_type] || 0);
-    if (fm.closing_reading==='') return setErr('Enter the closing meter for '+a.attendant_name);
-    if (!price) return setErr('Enter price/litre for '+a.attendant_name);
-    setBusy('rec'+aid); setErr('');
+  const closeOperator = async (a) => {
+    const fm = forms[a.attendant_id]||{};
+    if (fm.cash==='' && fm.card==='' && fm.upi==='') return setErr(`Enter collections for ${a.attendant_name} (0 where none)`);
+    setBusy('op'+a.attendant_id); setErr('');
     try {
-      const r = await api.post('/reconcile/manager', {
-        shift_id: shiftId, attendant_id: aid, closing_reading: parseFloat(fm.closing_reading), price_per_ltr: price,
-        test_ltrs: parseFloat(fm.test_ltrs||0), card_total: parseFloat(fm.card_total||0), upi_total: parseFloat(fm.upi_total||0),
-        cash_actual: parseFloat(fm.cash_actual||0),
+      await api.post('/reconcile/operator-cash', {
+        shift_id: shift.id, attendant_id: a.attendant_id,
+        cash_total: parseFloat(fm.cash||0), card_total: parseFloat(fm.card||0), upi_total: parseFloat(fm.upi||0),
       });
-      setRecos(p=>({...p,[aid]:r}));
-    } catch(e){ setErr(e.response?.data?.error||e.error||'Reconcile failed'); }
+      setClosed(p=>({...p,[a.attendant_id]:true}));
+    } catch(e){ setErr(e.response?.data?.error||e.error||'Could not close operator'); }
     setBusy('');
   };
-  const confirmPos = async (r) => {
-    setBusy('pos'+r.id);
-    try { await api.patch(`/reconcile/${r.id}/confirm`, {}); refreshPos(); }
-    catch(e){ setErr(e.error||'Confirm failed'); }
-    setBusy('');
-  };
-
-  const loadTankReco = async () => { const r = await api.get(`/tank-reco/shift/${shiftId}`).catch(()=>({})); setTankReco(r?.tanks||[]); };
-  useEffect(() => { if (step===2) loadTankReco(); }, [step]);
 
   const attendants = shift?.attendants || [];
-  const allReconciled = managerMode
-    ? attendants.length>0 && attendants.every(a=>recos[a.attendant_id])
-    : posRecos.length>0 && posRecos.every(r=>r.manager_confirmed);
+  const allClosed = attendants.length>0 && attendants.every(a=>closed[a.attendant_id]);
+
+  const computeMeters = async () => {
+    setBusy('meters'); setErr('');
+    try {
+      const readings = nozzles.map(n=>({ nozzle_id:n.id, closing_reading: meters[n.id] })).filter(r=>r.closing_reading!=='' && r.closing_reading!=null);
+      const r = await api.post('/reconcile/shift-meters', { shift_id: shift.id, readings, fuel_credit: parseFloat(fuelCredit||0) });
+      setRecon(r); setStep(3);
+    } catch(e){ setErr(e.response?.data?.error||e.error||'Could not compute'); }
+    setBusy('');
+  };
 
   const closeShift = async () => {
     setBusy('close');
-    try { await api.patch(`/shifts/${shiftId}/close`, { confirm:true }); setDone(true); }
-    catch(e){ setErr(e.error||'Close failed'); }
+    try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
+    catch(e){ setErr(e.response?.data?.error||e.error||'Close failed'); }
     setBusy('');
   };
-
-  if (!shiftId) return <AppShell><div className="card" style={{padding:'2rem',textAlign:'center',color:'var(--text-3)'}}>No shift selected. Open it from <a href="/shifts" style={{color:'var(--brand)'}}>Shifts</a>.</div></AppShell>;
 
   return (
     <AppShell>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/shifts')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>Shifts</button>
+        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>Dashboard</button>
         <ChevronRight size={14} color="var(--text-3)"/>
-        <span style={{fontWeight:800,fontSize:15}}>Shift End{shift?` — Shift ${shift.shift_number}`:''}</span>
-        {managerMode && <span style={{fontSize:11,fontWeight:700,color:'#9a3412',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:6,padding:'2px 7px'}}>🔒 Manager-driven</span>}
+        <span style={{fontWeight:800,fontSize:15}}>End Shift{shift?` — Shift ${shift.shift_number}`:''}</span>
       </div>
+
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if(!done && i<=step) setStep(i); }}
+          <button key={s} onClick={()=>{ if(!done && shift && i<=step) setStep(i); }} disabled={done || (!shift && i>0)}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
-              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:i<=step?'pointer':'default'}}>
+              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift&&i<=step?'pointer':'default'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
             {s}
           </button>
@@ -144,121 +114,108 @@ export default function ShiftEndPage() {
 
       {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
 
-      {/* STEP 0 — Closing dips */}
+      {/* STEP 0 — Select shift */}
       {step===0 && (
-        <div className="card" style={{maxWidth:560}}>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem'}}>Closing tank dips</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Physical dip per tank — used for the wet-stock variance. Density &amp; temperature feed the variance intelligence — enter them from your hydrometer check.</div>
-          {tanks.map(t=>(
-            <div key={t.id} style={{marginBottom:10,padding:'8px 10px',border:'1px solid var(--border, #eee)',borderRadius:10}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{width:110,fontSize:13,fontWeight:600}}>T{t.tank_number} <span style={{color:'#888',fontWeight:400}}>{t.fuel_type}</span></div>
-                <input style={{...inp,flex:1}} type="number" step="0.1" placeholder="Closing volume (L)" value={dips[t.id]||''} onChange={e=>setDips(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
-                {dipsDone[t.id] ? <span style={{color:'#16a34a',display:'flex',alignItems:'center',gap:4,fontSize:13,fontWeight:600,width:90}}><Check size={15}/>Saved</span>
-                  : <button onClick={()=>saveDip(t)} disabled={busy==='dip'+t.id} style={{width:90,height:36,background:'#475569',color:'#fff',border:'none',borderRadius:8,fontWeight:600,cursor:'pointer',fontSize:13}}>Save</button>}
-              </div>
-              <div style={{display:'flex',gap:10,marginTop:6}}>
-                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.0001" placeholder="Density (kg/L) — optional" value={dens[t.id]||''} onChange={e=>setDens(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
-                <input style={{...inp,flex:1,height:34,fontSize:12.5}} type="number" step="0.1" placeholder="Temp (°C) — optional" value={temps[t.id]||''} onChange={e=>setTemps(p=>({...p,[t.id]:e.target.value}))} disabled={dipsDone[t.id]}/>
-              </div>
-            </div>
-          ))}
-          <button onClick={()=>setStep(1)} style={{width:'100%',height:44,marginTop:'1rem',background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Next: Reconcile →</button>
+        <div className="card" style={{maxWidth:620}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Pick the shift to close</div>
+          {open.length===0 ? <div style={{color:'#aaa',fontSize:13}}>No open shifts.</div>
+            : open.map(s=>{ const stale = hoursSince(s.start_time) > 24; return (
+              <button key={s.id} onClick={()=>pickShift(s)} disabled={busy==='pick'}
+                style={{width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',
+                  background:stale?'#fef2f2':'#f8fafc',border:'1.5px solid '+(stale?'#fca5a5':'#eef0f2'),borderRadius:10,padding:'10px 12px',marginBottom:8,cursor:'pointer'}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:14}}>Shift {s.shift_number} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {s.date} · {s.attendant_count} operator{s.attendant_count===1?'':'s'}</span></div>
+                  <div style={{fontSize:12,color:stale?'#dc2626':'#888',display:'flex',alignItems:'center',gap:4,marginTop:2}}>
+                    <Clock size={12}/> opened {openedLabel(s.start_time)} {stale && <span style={{fontWeight:700}}>· OPEN &gt;24h</span>}
+                  </div>
+                </div>
+                <ChevronRight size={18} color="#bbb"/>
+              </button>
+            ); })}
         </div>
       )}
 
-      {/* STEP 1 — Reconcile */}
-      {step===1 && (
-        <div>
-          {managerMode ? (
-            attendants.map(a=>{
-              const fm=forms[a.attendant_id]||{}, r=recos[a.attendant_id];
-              const v = r ? parseFloat(r.variance) : null; const short = v!=null && v<0;
-              return (
-                <div key={a.attendant_id} className="card" style={{marginBottom:'0.85rem',background:r?(short?'#fef2f2':'#f0fdf4'):undefined}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                    <div style={{fontWeight:700,fontSize:14}}>{a.attendant_name} <span style={{fontWeight:400,color:'#888',fontSize:12}}>N{a.nozzle_number}·{a.fuel_type} · open meter {Number(a.opening_reading||0).toFixed(1)} · float {fmt(a.opening_cash)}</span></div>
-                    {r && <span style={{fontSize:12,fontWeight:700,color:short?'#dc2626':'#16a34a'}}>{short?'Short':v>0?'Over':'Tallied'} {fmt(Math.abs(v))}</span>}
-                  </div>
-                  <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-                    <div><label className="label">Closing meter</label><input style={inp} type="number" step="0.001" value={fm.closing_reading||''} onChange={e=>setF(a.attendant_id,'closing_reading',e.target.value)}/></div>
-                    <div><label className="label">Price/L</label><input style={inp} type="number" step="0.01" placeholder={prices[a.fuel_type]||''} value={fm.price_per_ltr||''} onChange={e=>setF(a.attendant_id,'price_per_ltr',e.target.value)}/></div>
-                    <div><label className="label">Test L</label><input style={inp} type="number" step="0.01" value={fm.test_ltrs||''} onChange={e=>setF(a.attendant_id,'test_ltrs',e.target.value)}/></div>
-                    <div><label className="label">Card ₹</label><input style={inp} type="number" step="0.01" value={fm.card_total||''} onChange={e=>setF(a.attendant_id,'card_total',e.target.value)}/></div>
-                    <div><label className="label">UPI ₹</label><input style={inp} type="number" step="0.01" value={fm.upi_total||''} onChange={e=>setF(a.attendant_id,'upi_total',e.target.value)}/></div>
-                    <div><label className="label">Cash counted ₹</label><input style={inp} type="number" step="0.01" value={fm.cash_actual||''} onChange={e=>setF(a.attendant_id,'cash_actual',e.target.value)}/></div>
-                  </div>
-                  {r && <div style={{fontSize:12.5,marginTop:8}}>Expected {fmt(r.cash_expected)} · Counted {fmt(r.cash_actual)} · <strong style={{color:short?'#dc2626':'#16a34a'}}>{short?'Shortage':v>0?'Overage':'Variance'} {fmt(Math.abs(v))}</strong></div>}
-                  <button onClick={()=>reconcileMgr(a)} disabled={busy==='rec'+a.attendant_id} style={{marginTop:8,height:38,padding:'0 16px',background:r?'#475569':'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>{busy==='rec'+a.attendant_id?'Saving…':r?'Recompute':'Reconcile'}</button>
+      {/* STEP 1 — Close operators */}
+      {step===1 && shift && (
+        <div style={{maxWidth:620}}>
+          {attendants.length===0 && <div className="card" style={{color:'#aaa',fontSize:13}}>No operators on this shift.</div>}
+          {attendants.map(a=>{ const c=closed[a.attendant_id], fm=forms[a.attendant_id]||{}; return (
+            <div key={a.attendant_id} className="card" style={{marginBottom:'0.85rem',background:c?'#f0fdf4':undefined}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:c?0:10}}>
+                <div style={{fontWeight:700,fontSize:14}}>{a.attendant_name} <span style={{fontWeight:400,color:'#888',fontSize:12}}>· float {fmt(a.opening_cash)}</span></div>
+                {c && <span style={{color:'#16a34a',fontSize:12.5,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><CheckCircle size={15}/>Closed · {fmt((parseFloat(fm.cash||0))+(parseFloat(fm.card||0))+(parseFloat(fm.upi||0)))}</span>}
+              </div>
+              {!c && (<>
+                <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+                  <div><label className="label">Cash ₹</label><input style={inp} type="number" step="0.01" value={fm.cash||''} onChange={e=>setF(a.attendant_id,'cash',e.target.value)}/></div>
+                  <div><label className="label">Card ₹</label><input style={inp} type="number" step="0.01" value={fm.card||''} onChange={e=>setF(a.attendant_id,'card',e.target.value)}/></div>
+                  <div><label className="label">UPI ₹</label><input style={inp} type="number" step="0.01" value={fm.upi||''} onChange={e=>setF(a.attendant_id,'upi',e.target.value)}/></div>
                 </div>
-              );
-            })
-          ) : (
-            <div className="card">
-              <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>Operator submissions — confirm cash received</div>
-              {posRecos.length===0 ? <div style={{color:'#aaa',fontSize:13}}>No operator has submitted their cash yet.</div>
-                : posRecos.map(r=>(
-                  <div key={r.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid #f0f0f0',padding:'8px 0'}}>
-                    <div><div style={{fontWeight:600,fontSize:13}}>{r.attendant_name}</div><div style={{fontSize:12,color:'#888'}}>Submitted {fmt(r.cash_actual)}{r.manager_confirmed?` · variance ${fmt(Math.abs((r.cash_actual||0)-(r.cash_expected||0)))}`:''}</div></div>
-                    {r.manager_confirmed ? <span style={{color:'#16a34a',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><CheckCircle size={14}/>Confirmed</span>
-                      : <button onClick={()=>confirmPos(r)} disabled={busy==='pos'+r.id} className="btn btn-secondary btn-sm">Confirm receipt</button>}
-                  </div>
-                ))}
+                <button onClick={()=>closeOperator(a)} disabled={busy==='op'+a.attendant_id} style={{marginTop:10,height:38,padding:'0 16px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>{busy==='op'+a.attendant_id?'Closing…':'Close operator'}</button>
+              </>)}
             </div>
-          )}
-          <button onClick={()=>setStep(2)} disabled={!allReconciled} style={{width:'100%',maxWidth:560,height:44,marginTop:'0.85rem',background:allReconciled?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:allReconciled?'pointer':'not-allowed'}}>
-            {allReconciled?'Next: Wet-stock review →':'Reconcile every operator first'}
+          ); })}
+          <button onClick={()=>setStep(2)} disabled={!allClosed} style={{width:'100%',height:44,marginTop:'0.25rem',background:allClosed?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:allClosed?'pointer':'not-allowed'}}>
+            {allClosed?'Next: Closing meters →':'Close every operator first'}
           </button>
         </div>
       )}
 
-      {/* STEP 2 — Wet-stock */}
-      {step===2 && (
-        <div className="card">
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Wet-stock review</div>
-          <div className="table-wrap">
-            <table className="dms-table">
-              <thead><tr><th>Tank</th><th style={{textAlign:'right'}}>Opening</th><th style={{textAlign:'right'}}>+Deliv</th><th style={{textAlign:'right'}}>−Sales</th><th style={{textAlign:'right'}}>Book</th><th style={{textAlign:'right'}}>Dip</th><th style={{textAlign:'right'}}>Variance</th></tr></thead>
-              <tbody>
-                {tankReco.length===0 && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'1.5rem'}}>Computing…</td></tr>}
-                {tankReco.map(t=>{ const loss=t.has_closing&&t.variance_ltrs<0; return (
-                  <tr key={t.tank_id} style={t.beyond_tolerance?{background:'#fef2f2'}:undefined}>
-                    <td style={{fontWeight:600}}>T{t.tank_number} <span style={{color:'var(--text-3)',fontWeight:400,fontSize:12}}>{t.fuel_type}</span></td>
-                    <td className="num" style={{textAlign:'right'}}>{L(t.opening_ltrs)}</td>
-                    <td className="num" style={{textAlign:'right',color:'#16a34a'}}>{L(t.deliveries_ltrs)}</td>
-                    <td className="num" style={{textAlign:'right'}}>{L(t.sales_ltrs)}</td>
-                    <td className="num" style={{textAlign:'right',fontWeight:600}}>{L(t.book_closing)}</td>
-                    <td className="num" style={{textAlign:'right'}}>{t.has_closing?L(t.actual_closing):'—'}</td>
-                    <td className="num" style={{textAlign:'right',fontWeight:700,color:!t.has_closing?'var(--text-3)':loss?'#dc2626':'#16a34a'}}>{t.has_closing?`${t.variance_ltrs>0?'+':''}${L(t.variance_ltrs)} (${t.variance_pct}%)`:'—'}{t.beyond_tolerance&&<AlertTriangle size={12} style={{marginLeft:4,verticalAlign:'middle'}}/>}</td>
-                  </tr>
-                ); })}
-              </tbody>
-            </table>
+      {/* STEP 2 — Closing meters */}
+      {step===2 && shift && (
+        <div className="card" style={{maxWidth:560}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem'}}>Closing meter readings</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Enter each nozzle's cumulative totalizer. The opening auto-carries from the last shift's closing, so you only key the closing. Optional — leave a nozzle blank to skip it.</div>
+          {nozzles.length===0 && <div style={{color:'#aaa',fontSize:13}}>No nozzles configured.</div>}
+          {nozzles.map(n=>(
+            <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+              <div style={{width:140,fontSize:13,fontWeight:600}}>Nozzle {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span></div>
+              <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Closing totalizer" value={meters[n.id]||''} onChange={e=>setMeters(p=>({...p,[n.id]:e.target.value}))}/>
+            </div>
+          ))}
+          <div style={{marginTop:'1rem',paddingTop:'0.75rem',borderTop:'1px solid #eef0f2'}}>
+            <label className="label">Fuel sold on credit this shift ₹ <span style={{fontWeight:400,color:'#888'}}>(manager's separate recon — netted out here)</span></label>
+            <input style={{...inp,maxWidth:220}} type="number" step="0.01" placeholder="0" value={fuelCredit} onChange={e=>setFuelCredit(e.target.value)}/>
           </div>
-          <button onClick={()=>setStep(3)} style={{width:'100%',height:44,marginTop:'1rem',background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Next: Close shift →</button>
+          <button onClick={computeMeters} disabled={busy==='meters'} style={{width:'100%',height:44,marginTop:'1rem',background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>{busy==='meters'?'Computing…':'Compute & review →'}</button>
         </div>
       )}
 
       {/* STEP 3 — Close */}
-      {step===3 && (
-        <div className="card" style={{maxWidth:460,textAlign:'center'}}>
+      {step===3 && shift && (
+        <div className="card" style={{maxWidth:480}}>
           {done ? (
-            <>
+            <div style={{textAlign:'center'}}>
               <CheckCircle size={48} color="#16a34a" style={{margin:'0.5rem auto'}}/>
               <div style={{fontWeight:800,fontSize:18,marginBottom:6}}>Shift closed</div>
-              <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>Sales recorded, wet-stock reconciled, and the cash is now in “awaiting deposit”.</div>
-              <div style={{display:'flex',gap:8}}>
-                <button onClick={()=>router.push('/shifts')} style={{flex:1,height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Back to Shifts</button>
-                <button onClick={()=>router.push('/deposits')} style={{flex:1,height:44,background:'#f1f5f9',color:'#334155',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Bank Deposits</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{fontWeight:700,fontSize:15,marginBottom:'0.5rem'}}>Ready to close</div>
-              <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>All operators reconciled. Closing the shift finalises sales, runs the wet-stock reconciliation, and moves the cash to “awaiting deposit”.</div>
-              <button onClick={closeShift} disabled={busy==='close'} style={{width:'100%',height:48,background:'#dc2626',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>{busy==='close'?'Closing…':'Close Shift'}</button>
-            </>
-          )}
+              <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>Sales recorded; cash is now in “awaiting deposit”.</div>
+              <button onClick={()=>router.push('/dashboard')} style={{width:'100%',height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>Back to Dashboard</button>
+            </div>
+          ) : (<>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Reconciliation</div>
+            {recon && (() => {
+              const v = Number(recon.variance||0), short = v < -1, over = v > 1;
+              const row = (l,val,bold) => <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13.5,fontWeight:bold?700:400}}><span>{l}</span><span>{fmt(val)}</span></div>;
+              return (
+                <div style={{marginBottom:'1rem'}}>
+                  {row('Wet sales (meter)', recon.wet_sales)}
+                  {row('Bay dry sales', recon.dry_sales)}
+                  {row('Less: credit', -Math.abs(recon.credit))}
+                  <div style={{borderTop:'1px solid #eef0f2',margin:'4px 0'}}/>
+                  {row('Expected collections', recon.expected, true)}
+                  {row('Actual collected (cash+card+UPI)', recon.collections, true)}
+                  <div style={{borderTop:'1px solid #eef0f2',margin:'4px 0'}}/>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 10px',borderRadius:8,marginTop:4,
+                    background: short?'#fef2f2':over?'#fff7ed':'#f0fdf4', color: short?'#991b1b':over?'#9a3412':'#166534'}}>
+                    <span style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>{short&&<AlertTriangle size={15}/>}{short?'Shortage':over?'Overage':'Tallied'}</span>
+                    <span style={{fontWeight:800}}>{fmt(Math.abs(v))}</span>
+                  </div>
+                  {recon.unvalued_readings>0 && <div style={{fontSize:12,color:'#9a3412',marginTop:8}}>{recon.unvalued_readings} reading(s) couldn’t be valued yet (no prior opening / price) — seed with a dummy shift.</div>}
+                </div>
+              );
+            })()}
+            <button onClick={closeShift} disabled={busy==='close' || !allClosed} style={{width:'100%',height:48,background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>{busy==='close'?'Closing…':'Close Shift'}</button>
+          </>)}
         </div>
       )}
     </AppShell>
