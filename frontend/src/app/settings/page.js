@@ -2,7 +2,7 @@
 import ConfirmDialog from '../../components/shared/ConfirmDialog';
 import { useState, useEffect } from 'react';
 import { Save, Plus, X, Building2, IndianRupee, Wifi,
-  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
+  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag } from '../../lib/api';
 import api from '../../lib/api';
@@ -215,6 +215,7 @@ export default function SettingsPage() {
     {id:'prices',  label:'4. Fuel Prices',     icon:<IndianRupee size={14}/>},
     {id:'rfid',    label:'5. RFID Tags',       icon:<Wifi size={14}/>},
     {id:'shifts',  label:'6. Shift Timings',   icon:<RefreshCw size={14}/>},
+    {id:'geofence',label:'7. Geo-Fencing',     icon:<MapPin size={14}/>},
   ];
 
   const [tab,   setTab]   = useState('station');
