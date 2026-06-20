@@ -341,4 +341,137 @@ router.patch('/:id/confirm', authenticate, authorize('owner','manager'), require
   } catch(err) { next(err); }
 });
 
+// ── Collections + meter close (simplified manager-driven flow) ───────────────
+// The operator did nothing in-system. The manager records what each operator
+// handed over (cash + card + UPI) and, once all operators are closed, the
+// per-nozzle closing meters. Sales-of-record = the meter (wet) + bay dry sales;
+// credit is the manager's separate route. Recon = collections vs (wet+dry−credit).
+
+// POST /api/reconcile/operator-cash — record one operator's collections.
+// Creates the shift_reconciliation row the shift close requires. No meter math
+// here (that's shift-level); per-operator variance is not computed in this mode.
+router.post('/operator-cash', authenticate, authorize('owner','manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  try {
+    const { shift_id, attendant_id, cash_total = 0, card_total = 0, upi_total = 0 } = req.body;
+    if (!shift_id || !attendant_id) return res.status(400).json({ error: 'shift_id and attendant_id are required' });
+    const cash = Number(cash_total)||0, card = Number(card_total)||0, upi = Number(upi_total)||0;
+    if ([cash,card,upi].some(v => !Number.isFinite(v) || v < 0 || v > 10000000)) {
+      return res.status(400).json({ error: 'Invalid collection amount.' });
+    }
+    const collected = +(cash + card + upi).toFixed(2);
+    const { rows } = await pool.query(
+      `INSERT INTO shift_reconciliation(
+         shift_id, attendant_id, total_sales, cash_expected, cash_actual,
+         upi_total, credit_total, card_total, manager_confirmed, manager_id,
+         confirmed_at, reconciled_at, mode)
+       VALUES($1,$2,$3,$3,$4,$5,0,$6,TRUE,$7,NOW(),NOW(),'manager_cash')
+       ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
+         total_sales=$3, cash_expected=$3, cash_actual=$4, upi_total=$5,
+         card_total=$6, manager_confirmed=TRUE, manager_id=$7,
+         confirmed_at=NOW(), reconciled_at=NOW(), mode='manager_cash'
+       RETURNING *`,
+      [shift_id, attendant_id, collected, cash, upi, card, req.user.id]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// POST /api/reconcile/shift-meters — save per-nozzle closing meters, derive wet
+// sales (opening = the prior shift's closing for that nozzle), synthesize the wet
+// sales into dispense_events (fuel-wise) for dashboards, and return the recon.
+router.post('/shift-meters', authenticate, authorize('owner','manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  const { shift_id, readings = [], fuel_credit = 0 } = req.body;
+  if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: shRows } = await client.query('SELECT station_id, start_time FROM shifts WHERE id=$1', [shift_id]);
+    if (!shRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
+    const stationId = shRows[0].station_id, startTime = shRows[0].start_time;
+
+    // Replace this shift's readings (idempotent).
+    await client.query('DELETE FROM shift_nozzle_readings WHERE shift_id=$1', [shift_id]);
+    const valid = readings.filter(r => r && r.closing_reading !== '' && r.closing_reading != null);
+    for (const r of valid) {
+      await client.query(
+        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, closing_reading, recorded_by)
+         VALUES($1,$2,$3,$4)`,
+        [shift_id, r.nozzle_id || null, Number(r.closing_reading), req.user.id]);
+    }
+
+    // Wet sales: opening = most recent prior closing for that nozzle (your dummy
+    // shift seeds the first). Untagged readings (no nozzle) can't be valued.
+    let wetSales = 0; const wetByNozzle = []; let unvalued = 0;
+    for (const r of valid) {
+      if (!r.nozzle_id) { unvalued++; continue; }
+      const closing = Number(r.closing_reading);
+      const { rows: nz } = await client.query('SELECT fuel_type FROM nozzles WHERE id=$1', [r.nozzle_id]);
+      const fuelType = nz[0]?.fuel_type;
+      const { rows: prev } = await client.query(
+        `SELECT snr.closing_reading FROM shift_nozzle_readings snr
+         JOIN shifts s ON s.id = snr.shift_id
+         WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3
+         ORDER BY s.start_time DESC LIMIT 1`, [r.nozzle_id, shift_id, startTime]);
+      const opening = prev.length ? Number(prev[0].closing_reading) : null;
+      if (opening == null || !fuelType) { unvalued++; continue; }
+      const litres = Math.max(0, closing - opening);
+      const { rows: pr } = await client.query(
+        `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2 ORDER BY effective_from DESC LIMIT 1`,
+        [stationId, fuelType]);
+      const price = Number(pr[0]?.price || 0);
+      const value = +(litres * price).toFixed(2);
+      wetSales += value;
+      wetByNozzle.push({ nozzle_id: r.nozzle_id, fuel_type: fuelType, opening, closing, litres, price, value });
+    }
+    wetSales = +wetSales.toFixed(2);
+
+    // Collections (all operators) + bay dry sales.
+    const { rows: col } = await client.query(
+      `SELECT COALESCE(SUM(cash_actual),0) cash, COALESCE(SUM(card_total),0) card, COALESCE(SUM(upi_total),0) upi
+       FROM shift_reconciliation WHERE shift_id=$1`, [shift_id]);
+    const cashC = Number(col[0].cash), cardC = Number(col[0].card), upiC = Number(col[0].upi);
+    const collections = +(cashC + cardC + upiC).toFixed(2);
+    const { rows: dry } = await client.query(
+      `SELECT COALESCE(SUM(grand_total) FILTER (WHERE payment_mode<>'credit'),0) noncredit,
+              COALESCE(SUM(grand_total) FILTER (WHERE payment_mode='credit'),0) credit
+       FROM product_invoices WHERE shift_id=$1 AND location='bay'`, [shift_id]);
+    const dryNonCredit = Number(dry[0].noncredit), dryCredit = Number(dry[0].credit);
+
+    const fuelCredit = Number(fuel_credit || 0);
+    const credit   = +(fuelCredit + dryCredit).toFixed(2);
+    const expected = +(wetSales + dryNonCredit - fuelCredit).toFixed(2);
+    const variance = +(collections - expected).toFixed(2);
+
+    // Synthesize wet sales → dispense_events (fuel-wise). Payment split apportioned
+    // by the collection mix (we can't cross fuel×payment without per-txn data).
+    // Idempotent: drop prior synthesized rows first.
+    await client.query(`DELETE FROM dispense_events WHERE shift_id=$1 AND source='manager'`, [shift_id]);
+    const tot = cashC + cardC + upiC;
+    const mix = tot > 0 ? { cash: cashC/tot, card: cardC/tot, upi: upiC/tot } : { cash: 1, card: 0, upi: 0 };
+    for (const w of wetByNozzle) {
+      if (!w.price || w.value <= 0) continue;
+      for (const [mode, frac] of [['cash',mix.cash],['card',mix.card],['upi',mix.upi]]) {
+        const v = +(w.value * frac).toFixed(2);
+        if (v <= 0) continue;
+        await client.query(
+          `INSERT INTO dispense_events(station_id, shift_id, nozzle_id, fuel_type,
+             quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,'manager',NOW())`,
+          [stationId, shift_id, w.nozzle_id, w.fuel_type, +(v / w.price).toFixed(3), w.price, mode]);
+      }
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      wet_sales: wetSales, dry_sales: dryNonCredit, credit, collections, expected, variance,
+      nozzles: wetByNozzle, unvalued_readings: unvalued,
+    });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
 module.exports = router;

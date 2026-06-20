@@ -26,7 +26,7 @@ const NAV_GROUPS = [
     label: 'Shift',
     items: [
       { key:'startshift', href:'/shift-start',     icon:PlayCircle,     perm:'shifts.view' },
-      { key:'endshift',   href:'/shifts',          icon:StopCircle,     perm:'shifts.view' },
+      { key:'endshift',   href:'/shift-end',       icon:StopCircle,     perm:'shifts.view' },
     ]
   },
   {
