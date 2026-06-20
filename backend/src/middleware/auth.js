@@ -73,7 +73,11 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Session expired. Please log in again.' });
     }
     req.user = decoded;
-    next();
+    // Open the RLS identity context (runs the rest of the request on the
+    // non-bypass role as this user). Note: everything ABOVE here — JWT verify +
+    // getAuthState — deliberately ran on the bypass role, before any identity
+    // exists, which is why login/auth keep working.
+    return pool.identityMiddleware(req, res, next);
   } catch (err) { next(err); }
 };
 
