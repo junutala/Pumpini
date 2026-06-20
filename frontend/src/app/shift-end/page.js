@@ -29,6 +29,7 @@ export default function ShiftEndPage() {
   const [forms, setForms] = useState({});          // attendant_id -> {cash,card,upi}
   const [closed, setClosed] = useState({});        // attendant_id -> true
   const [meters, setMeters] = useState({});        // nozzle_id -> closing
+  const [scanning, setScanning] = useState('');    // nozzle_id being OCR'd
   const [fuelCredit, setFuelCredit] = useState('');
   const [recon, setRecon] = useState(null);
   const [busy, setBusy]   = useState('');
@@ -74,6 +75,27 @@ export default function ShiftEndPage() {
 
   const attendants = shift?.attendants || [];
   const allClosed = attendants.length>0 && attendants.every(a=>closed[a.attendant_id]);
+
+  // Snap the totalizer → backend → Claude reads it → fills the field. Manager
+  // confirms on screen; legible=false flags a verify. Image kept for audit.
+  const scanMeter = async (nozzle, file) => {
+    if (!file) return;
+    setScanning(nozzle.id); setErr('');
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1] || '');
+        r.onerror = () => reject(new Error('Could not read image'));
+        r.readAsDataURL(file);
+      });
+      const r = await api.post('/reconcile/ocr-meter', {
+        shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg',
+      });
+      if (r.reading) setMeters(p => ({ ...p, [nozzle.id]: r.reading }));
+      if (!r.legible) setErr(`Nozzle ${nozzle.nozzle_number}: scan unclear${r.notes ? ` (${r.notes})` : ''} — check the reading.`);
+    } catch (e) { setErr(e.response?.data?.error || e.error || 'Scan failed'); }
+    setScanning('');
+  };
 
   const computeMeters = async () => {
     setBusy('meters'); setErr('');
@@ -171,6 +193,10 @@ export default function ShiftEndPage() {
             <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
               <div style={{width:140,fontSize:13,fontWeight:600}}>Nozzle {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span></div>
               <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Closing totalizer" value={meters[n.id]||''} onChange={e=>setMeters(p=>({...p,[n.id]:e.target.value}))}/>
+              <label title="Scan the totalizer" style={{flexShrink:0,width:42,height:38,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:17}}>
+                {scanning===n.id?'…':'📷'}
+                <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+              </label>
             </div>
           ))}
           <div style={{marginTop:'1rem',paddingTop:'0.75rem',borderTop:'1px solid #eef0f2'}}>

@@ -4,6 +4,8 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
+const Anthropic = require('@anthropic-ai/sdk');
+const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/reconcile/denomination  — save denomination count (attendant)
 router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
@@ -472,6 +474,51 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
     });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
+});
+
+// POST /api/reconcile/ocr-meter — read a fuel-pump totalizer photo via Claude
+// vision, store the image for audit, return the extracted digits. The manager
+// confirms the number on screen; legible=false means "verify before trusting".
+router.post('/ocr-meter', authenticate, authorize('owner','manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  try {
+    const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
+    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
+
+    let reading = '', legible = false, notes = '';
+    try {
+      const ai = await aiClient.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
+            { type: 'text', text: 'This image is a fuel dispenser cumulative totalizer — a mechanical/electronic counter showing the total litres dispensed for one nozzle over the pump\'s life. Read its digits exactly, left to right, ignoring separators (keep a decimal point only if clearly shown). Respond with ONLY a JSON object and nothing else: {"reading":"<digits as shown>","legible":<true|false>,"notes":"<short note>"}. Set legible=false if any digit is unclear, mid-roll, glare-obscured, or you are not confident.' },
+          ],
+        }],
+      });
+      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
+      const m = txt.match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : {};
+      reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
+      legible = parsed.legible === true && reading !== '';
+      notes   = String(parsed.notes ?? '');
+    } catch (e) {
+      notes = 'OCR failed: ' + (e.message || 'unknown');
+    }
+
+    // Keep the image for audit (best-effort — works once meter_photos exists).
+    try {
+      await pool.query(
+        `INSERT INTO meter_photos(shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [shift_id, nozzle_id || null, image_base64, media_type, reading || null, legible, req.user.id]);
+    } catch { /* table not yet created / store failed — OCR result still returns */ }
+
+    res.json({ reading, legible, notes });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
