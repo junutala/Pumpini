@@ -66,6 +66,10 @@ export default function POSPage() {
   const [loading,setLoading]   = useState(false);
   const [lubeOpen,setLubeOpen] = useState(false); // bay lube-sale modal
 
+  // Meter (totalizer) scan — opening at shift start, closing at end
+  const [scanningNz, setScanningNz] = useState('');
+  const [scanResult, setScanResult] = useState({}); // nozzle_id -> {reading,legible,phase,mismatch,notes}
+
   // Shift End flow
   // posPhase: 'pos' | 'confirm-end' | 'denomination' | 'locked'
   const [posPhase, setPosPhase]       = useState('pos');
@@ -205,6 +209,24 @@ export default function POSPage() {
     } finally {
       setSubmitLoading(false);
     }
+  };
+
+  const scanPosMeter = async (nz, file) => {
+    if (!file || !activeShift) return;
+    setScanningNz(nz.id);
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1] || '');
+        r.onerror = () => reject(new Error('Could not read image'));
+        r.readAsDataURL(file);
+      });
+      const r = await api.post('/reconcile/pos-meter', { shift_id: activeShift.id, nozzle_id: nz.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      setScanResult(p => ({ ...p, [nz.id]: r }));
+    } catch (e) {
+      setScanResult(p => ({ ...p, [nz.id]: { notes: e.response?.data?.error || e.error || 'Scan failed' } }));
+    }
+    setScanningNz('');
   };
 
   const selectedNozzle = nozzles.find(n => n.id === nozzle);
@@ -603,6 +625,27 @@ export default function POSPage() {
               {voiceHint}
             </div>
           )}
+        </div>
+
+        {/* Meter (totalizer) scan — opening at shift start, closing at end */}
+        <div className="card" style={{marginBottom:'1rem'}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>📷 {tc('pos_page.meter_scan','Meter readings')}</div>
+          <div style={{fontSize:12,color:'var(--text-3)',marginBottom:10}}>{tc('pos_page.meter_scan_hint','Snap your nozzle’s totalizer at shift start and end — it’s recorded and cross-checked against the previous shift.')}</div>
+          {nozzles.filter(n=>n.is_active).map(n=>{
+            const sr = scanResult[n.id];
+            return (
+              <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
+                <div style={{width:110,fontSize:13,fontWeight:600}}>N{n.nozzle_number} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{n.fuel_type}</span></div>
+                <label style={{flexShrink:0,height:36,padding:'0 14px',display:'flex',alignItems:'center',gap:6,background:scanningNz===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanningNz===n.id?'default':'pointer',fontSize:13,fontWeight:600}}>
+                  {scanningNz===n.id?'Reading…':'📷 Scan'}
+                  <input type="file" accept="image/*" capture="environment" disabled={scanningNz===n.id} style={{display:'none'}} onChange={e=>{ scanPosMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+                </label>
+                {sr && sr.reading && <div style={{fontSize:13}}>{sr.phase==='closing'?'Closing':'Opening'} <strong>{sr.reading}</strong> {sr.legible ? <span style={{color:'#16a34a'}}>✓</span> : <span style={{color:'#dc2626'}}>⚠ verify</span>}</div>}
+                {sr && sr.mismatch && <div style={{fontSize:12,color:'#991b1b',width:'100%'}}>⚠️ Doesn’t match last close {sr.mismatch.prior_closing} (Δ {sr.mismatch.delta>0?'+':''}{sr.mismatch.delta})</div>}
+                {sr && !sr.reading && sr.notes && <div style={{fontSize:12,color:'#9a3412'}}>{sr.notes}</div>}
+              </div>
+            );
+          })}
         </div>
 
         {/* Success flash */}
