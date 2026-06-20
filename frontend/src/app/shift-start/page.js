@@ -52,6 +52,18 @@ export default function ShiftStartPage() {
     });
   }, [stationId]);
 
+  // A slot already open for the chosen date can't be opened again — steer the form to a free one.
+  const dateKey = d => String(d).slice(0,10);
+  const takenSlots = new Set(openShifts.filter(s => dateKey(s.date) === open.date).map(s => s.shift_number));
+  const slotTaken = takenSlots.has(open.shift_number);
+  const allTaken = [1,2,3].every(n => takenSlots.has(n));
+  useEffect(() => {
+    if (takenSlots.has(open.shift_number)) {
+      const free = [1,2,3].find(n => !takenSlots.has(n));
+      if (free) setOpen(p => ({ ...p, shift_number: free }));
+    }
+  }, [openShifts, open.date]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const label = n => { const def = defs.find(d=>d.shift_number===n); return def ? `Shift ${n} — ${def.name} (${def.start_time}–${def.end_time})` : `Shift ${n}`; };
   const refreshShift = async (id) => { const d = await api.get(`/shifts/${id}`); setShift(d); setAttendants(d?.attendants||[]); };
 
@@ -155,16 +167,17 @@ export default function ShiftStartPage() {
             <div style={{marginBottom:'1rem'}}>
               <label className="label">Shift slot</label>
               <select style={inp} value={open.shift_number} onChange={e=>setOpen(p=>({...p,shift_number:parseInt(e.target.value)}))}>
-                {[1,2,3].map(n=><option key={n} value={n}>{label(n)}</option>)}
+                {[1,2,3].map(n=><option key={n} value={n} disabled={takenSlots.has(n)}>{label(n)}{takenSlots.has(n)?' — already open':''}</option>)}
               </select>
             </div>
             <div style={{marginBottom:'1.25rem'}}>
               <label className="label">Date</label>
               <input style={inp} type="date" value={open.date} onChange={e=>setOpen(p=>({...p,date:e.target.value}))}/>
             </div>
-            <button onClick={openShift} disabled={busy} style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>
-              {busy?'Opening…':'Open Shift →'}
+            <button onClick={openShift} disabled={busy||slotTaken||allTaken} style={{width:'100%',height:46,background:(slotTaken||allTaken)?'#e5e3de':'#FF6B00',color:(slotTaken||allTaken)?'#888':'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:(busy||slotTaken||allTaken)?'default':'pointer'}}>
+              {busy?'Opening…':allTaken?'All slots open':slotTaken?'This slot is already open':'Open Shift →'}
             </button>
+            {(slotTaken||allTaken) && <div style={{fontSize:12,color:'var(--text-3)',marginTop:8}}>{allTaken?'Every slot for this date is already open — use “Add operators” on the right.':'That slot is open already — pick another slot or use “Add operators” on the right.'}</div>}
           </div>
 
           <div className="card">
@@ -178,7 +191,7 @@ export default function ShiftStartPage() {
                 <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
-                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{s.date} · {s.attendant_count||0} operator{(s.attendant_count||0)===1?'':'s'}{s.start_time?` · opened ${new Date(s.start_time).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})}`:''}</div>
+                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {s.attendant_count||0} operator{(s.attendant_count||0)===1?'':'s'}{s.start_time?` · opened ${new Date(s.start_time).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})}`:''}</div>
                   </div>
                   <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>Add operators →</button>
                 </div>
