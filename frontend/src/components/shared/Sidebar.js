@@ -9,7 +9,7 @@ import {
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass
+  Thermometer, Hourglass, PlayCircle, StopCircle
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -23,17 +23,10 @@ const NAV_GROUPS = [
     ]
   },
   {
-    label: 'Transactions',
-    items: [
-      { key:'pos',        href:'/pos',             icon:ShoppingCart,   perm:'dispense.entry' },
-      { key:'reconcile',  href:'/reconcile',       icon:CheckSquare,    perm:'reconcile.manage' },
-    ]
-  },
-  {
     label: 'Shift',
     items: [
-      { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
-      { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
+      { key:'startshift', href:'/shift-start',     icon:PlayCircle,     perm:'shifts.view' },
+      { key:'endshift',   href:'/shifts',          icon:StopCircle,     perm:'shifts.view' },
     ]
   },
   {
@@ -120,6 +113,7 @@ const NAV_LABELS = {
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',
+  startshift:'Start Shift',  endshift:'End Shift',
 };
 
 const GROUP_KEYS = {

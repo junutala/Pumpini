@@ -121,7 +121,7 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
     } = req.body;
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
-    if (!nozzle_id)    return res.status(400).json({ error: 'Nozzle is required' });
+    // nozzle_id is optional in the manager-driven flow (no nozzle-level detail).
     // Opening float must be stated explicitly (₹0 is fine) — a forgotten float
     // silently becomes 0 and shows up that evening as a phantom OVERAGE of the
     // float amount, undermining the blind-drop variance.
@@ -133,13 +133,15 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
       return res.status(400).json({ error: 'Invalid opening cash amount.' });
     }
 
-    // Check nozzle not already assigned in this shift
-    const { rows: nozzleCheck } = await pool.query(
-      `SELECT id FROM shift_attendants WHERE shift_id=$1 AND nozzle_id=$2`,
-      [req.params.id, nozzle_id]
-    );
-    if (nozzleCheck.length) {
-      return res.status(409).json({ error: 'This nozzle is already assigned to another attendant in this shift' });
+    // Check nozzle not already assigned in this shift (only when a nozzle is given)
+    if (nozzle_id) {
+      const { rows: nozzleCheck } = await pool.query(
+        `SELECT id FROM shift_attendants WHERE shift_id=$1 AND nozzle_id=$2`,
+        [req.params.id, nozzle_id]
+      );
+      if (nozzleCheck.length) {
+        return res.status(409).json({ error: 'This nozzle is already assigned to another attendant in this shift' });
+      }
     }
 
     // Check UPI VPA not already assigned in this shift
@@ -190,7 +192,7 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
          rfid_tag_id=$3, nozzle_id=$4, bank_account=$5,
          upi_vpa=$6, opening_reading=$7, opening_cash=$8
        RETURNING *`,
-      [req.params.id, attendant_id, rfid_tag_id||null, nozzle_id,
+      [req.params.id, attendant_id, rfid_tag_id||null, nozzle_id||null,
        bank_account||null, upi_vpa||null,
        opening_reading||0, opening_cash||0]
     );
