@@ -31,8 +31,12 @@ export default function ShiftStartPage() {
   const [srcConflicts, setSrcConflicts] = useState([]); // manager vs attendant opening
   const [open, setOpen]       = useState({ shift_number:1, date: today() });
   const [asg, setAsg]         = useState({});       // add-operator form
+  const [openShifts, setOpenShifts] = useState([]); // shifts already open at this station
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+
+  const refreshOpen = () => api.get('/shifts', { params:{ station_id: stationId, status:'open' } })
+    .then(os => setOpenShifts(Array.isArray(os)?os:[])).catch(()=>{});
 
   useEffect(() => {
     if (!stationId) return;
@@ -40,9 +44,11 @@ export default function ShiftStartPage() {
       api.get(`/shifts/definitions/${stationId}`).catch(()=>[]),
       api.get(`/users?station_id=${stationId}&role=attendant`).catch(()=>[]),
       api.get(`/stations/${stationId}/nozzles`).catch(()=>[]),
-    ]).then(([d,u,n]) => {
+      api.get('/shifts', { params:{ station_id: stationId, status:'open' } }).catch(()=>[]),
+    ]).then(([d,u,n,os]) => {
       setDefs(Array.isArray(d)?d:[]); setUsers(Array.isArray(u)?u:[]);
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
+      setOpenShifts(Array.isArray(os)?os:[]);
     });
   }, [stationId]);
 
@@ -53,9 +59,17 @@ export default function ShiftStartPage() {
     setBusy(true); setErr('');
     try {
       const s = await api.post('/shifts', { ...open, station_id: stationId });
-      await refreshShift(s.id);
+      await refreshShift(s.id); refreshOpen();
       setStep(1);
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not open shift'); }
+    setBusy(false);
+  };
+
+  // Re-enter an already-open shift to add late operators or capture meters.
+  const resumeShift = async (s) => {
+    setBusy(true); setErr(''); setMeters({}); setMismatches([]); setSrcConflicts([]);
+    try { await refreshShift(s.id); setStep(1); }
+    catch (e) { setErr(e.response?.data?.error || e.error || 'Could not load that shift'); }
     setBusy(false);
   };
 
@@ -65,7 +79,7 @@ export default function ShiftStartPage() {
     setBusy(true); setErr('');
     try {
       await api.post(`/shifts/${shift.id}/assign`, { attendant_id: asg.attendant_id, opening_cash: asg.opening_cash });
-      setAsg({}); await refreshShift(shift.id);
+      setAsg({}); await refreshShift(shift.id); refreshOpen();
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not add operator'); }
     setBusy(false);
   };
@@ -120,11 +134,11 @@ export default function ShiftStartPage() {
       {/* Stepper */}
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if(shift && i<=step) setStep(i); }} disabled={!shift && i>0}
+          <button key={s} onClick={()=>{ if(shift) setStep(i); }} disabled={!shift && i>0}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
-              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift&&i<=step?'pointer':'default'}}>
+              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift?'pointer':'default'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
             {s}
           </button>
@@ -135,21 +149,42 @@ export default function ShiftStartPage() {
 
       {/* STEP 0 — Open */}
       {step===0 && (
-        <div className="card" style={{maxWidth:460}}>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>Open the shift</div>
-          <div style={{marginBottom:'1rem'}}>
-            <label className="label">Shift slot</label>
-            <select style={inp} value={open.shift_number} onChange={e=>setOpen(p=>({...p,shift_number:parseInt(e.target.value)}))}>
-              {[1,2,3].map(n=><option key={n} value={n}>{label(n)}</option>)}
-            </select>
+        <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'440px 1fr',gap:'1.25rem',alignItems:'start'}}>
+          <div className="card">
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>Open a new shift</div>
+            <div style={{marginBottom:'1rem'}}>
+              <label className="label">Shift slot</label>
+              <select style={inp} value={open.shift_number} onChange={e=>setOpen(p=>({...p,shift_number:parseInt(e.target.value)}))}>
+                {[1,2,3].map(n=><option key={n} value={n}>{label(n)}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:'1.25rem'}}>
+              <label className="label">Date</label>
+              <input style={inp} type="date" value={open.date} onChange={e=>setOpen(p=>({...p,date:e.target.value}))}/>
+            </div>
+            <button onClick={openShift} disabled={busy} style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>
+              {busy?'Opening…':'Open Shift →'}
+            </button>
           </div>
-          <div style={{marginBottom:'1.25rem'}}>
-            <label className="label">Date</label>
-            <input style={inp} type="date" value={open.date} onChange={e=>setOpen(p=>({...p,date:e.target.value}))}/>
+
+          <div className="card">
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.5rem'}}>
+              <div style={{fontWeight:700,fontSize:15}}>Currently open shifts</div>
+              {openShifts.length>0 && <span style={{fontSize:12,fontWeight:700,color:'#16a34a',background:'#dcfce7',borderRadius:99,padding:'2px 10px'}}>{openShifts.length} open</span>}
+            </div>
+            {openShifts.length===0
+              ? <div style={{color:'var(--text-3)',fontSize:13,padding:'8px 0'}}>No shifts are open right now.</div>
+              : openShifts.map(s=>(
+                <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:8}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
+                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{s.date} · {s.attendant_count||0} operator{(s.attendant_count||0)===1?'':'s'}{s.start_time?` · opened ${new Date(s.start_time).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})}`:''}</div>
+                  </div>
+                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>Add operators →</button>
+                </div>
+              ))}
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:6,lineHeight:1.5}}>These are read-only here. Tap <strong>Add operators</strong> to bring in late or staggered staff, or to capture opening meters — you can return any time while the shift is open.</div>
           </div>
-          <button onClick={openShift} disabled={busy} style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>
-            {busy?'Opening…':'Open Shift →'}
-          </button>
         </div>
       )}
 
