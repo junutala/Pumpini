@@ -642,6 +642,7 @@ export default function POSPage() {
                 </label>
                 {sr && sr.reading && <div style={{fontSize:13}}>{sr.phase==='closing'?'Closing':'Opening'} <strong>{sr.reading}</strong> {sr.legible ? <span style={{color:'#16a34a'}}>✓</span> : <span style={{color:'#dc2626'}}>⚠ verify</span>}</div>}
                 {sr && sr.mismatch && <div style={{fontSize:12,color:'#991b1b',width:'100%'}}>⚠️ Doesn’t match last close {sr.mismatch.prior_closing} (Δ {sr.mismatch.delta>0?'+':''}{sr.mismatch.delta})</div>}
+                {sr && sr.source_conflict && <div style={{fontSize:12,color:'#92400e',width:'100%'}}>⚠️ Differs from manager’s {sr.source_conflict.manager} (Δ {sr.source_conflict.delta>0?'+':''}{sr.source_conflict.delta})</div>}
                 {sr && !sr.reading && sr.notes && <div style={{fontSize:12,color:'#9a3412'}}>{sr.notes}</div>}
               </div>
             );
