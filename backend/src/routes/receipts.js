@@ -68,8 +68,8 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
              WHEN COALESCE(amount_received,0) + $1 >= total_amount THEN 'paid'
              ELSE 'partial'
            END
-         WHERE id = $2`,
-        [amount, invoice_id]
+         WHERE id = $2 AND station_id = $3`,
+        [amount, invoice_id, station_id]
       );
     }
 

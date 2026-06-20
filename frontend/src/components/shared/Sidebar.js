@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     label: 'Shift',
     items: [
       { key:'shifts',     href:'/shifts',          icon:RefreshCw,      perm:'shifts.view' },
+      { key:'attendance', href:'/attendance',      icon:Calendar,       perm:'attendance.view' },
     ]
   },
   {
@@ -86,6 +87,13 @@ const NAV_GROUPS = [
     ]
   },
   {
+    label: 'Admin',
+    items: [
+      { key:'users',          href:'/users',     icon:Users,       perm:'users.manage',     roles:['owner'] },
+      { key:'responsibilities',href:'/templates',icon:ShieldAlert, perm:'users.manage',     roles:['owner'] },
+    ]
+  },
+  {
     label: 'Settings',
     items: [
       { key:'settings',   href:'/settings',        icon:Settings,       perm:'settings.manage' },
@@ -111,6 +119,7 @@ const NAV_LABELS = {
   lube_catalogue:'Catalogue', lube_stock:'Stock',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
+  users:'Users',             responsibilities:'Responsibilities',
 };
 
 const GROUP_KEYS = {

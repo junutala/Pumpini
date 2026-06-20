@@ -69,6 +69,13 @@ router.get('/:id/dashboard', authenticate, async (req, res, next) => {
 // GET /api/groups/:id/stations — stations in a group
 router.get('/:id/stations', authenticate, async (req, res, next) => {
   try {
+    // Verify user belongs to group (same gate as /:id/dashboard)
+    const { rows: member } = await pool.query(
+      'SELECT 1 FROM owner_group_members WHERE group_id=$1 AND user_id=$2',
+      [req.params.id, req.user.id]
+    );
+    if (!member.length) return res.status(403).json({ error: 'Not a member of this group' });
+
     const { rows } = await pool.query(`
       SELECT s.* FROM stations s
       JOIN station_group_members sgm ON sgm.station_id = s.id

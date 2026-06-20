@@ -3,9 +3,10 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { clearPermCache } = require('../middleware/permissions');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
 // GET /api/templates?station_id=
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(`
@@ -24,7 +25,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // POST /api/templates — create new template
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, name, description, permissions = [] } = req.body;
     const client = await pool.connect();
@@ -50,7 +51,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // PUT /api/templates/:id — update template & permissions
-router.put('/:id', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.put('/:id', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM role_templates WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { name, description, permissions = [] } = req.body;
     const client = await pool.connect();
@@ -76,7 +77,7 @@ router.put('/:id', authenticate, authorize('owner','manager'), async (req, res, 
 });
 
 // DELETE /api/templates/:id
-router.delete('/:id', authenticate, authorize('owner'), async (req, res, next) => {
+router.delete('/:id', authenticate, authorize('owner'), requireStationVia('SELECT station_id FROM role_templates WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       'DELETE FROM role_templates WHERE id=$1 AND is_system=FALSE RETURNING id',
@@ -96,7 +97,7 @@ router.get('/modules', authenticate, async (req, res, next) => {
 });
 
 // POST /api/templates/assign — assign template to user
-router.post('/assign', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/assign', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), requireStationVia('SELECT station_id FROM role_templates WHERE id=$1', 'template_id'), async (req, res, next) => {
   try {
     const { user_id, template_id, station_id } = req.body;
     const { rows } = await pool.query(
@@ -112,7 +113,7 @@ router.post('/assign', authenticate, authorize('owner','manager'), async (req, r
 });
 
 // GET /api/templates/user-permissions?user_id=&station_id=
-router.get('/user-permissions', authenticate, async (req, res, next) => {
+router.get('/user-permissions', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { user_id, station_id } = req.query;
     const { getUserPermissions } = require('../middleware/permissions');
@@ -122,7 +123,7 @@ router.get('/user-permissions', authenticate, async (req, res, next) => {
 });
 
 // GET /api/templates/assignments?station_id= — get all user→template assignments for a station
-router.get('/assignments', authenticate, async (req, res, next) => {
+router.get('/assignments', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(`
