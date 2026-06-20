@@ -28,6 +28,7 @@ export default function ShiftStartPage() {
   const [meters, setMeters]   = useState({});       // nozzle_id -> opening totalizer
   const [scanning, setScanning] = useState('');     // nozzle_id being OCR'd
   const [mismatches, setMismatches] = useState([]); // opening vs prior closing
+  const [srcConflicts, setSrcConflicts] = useState([]); // manager vs attendant opening
   const [open, setOpen]       = useState({ shift_number:1, date: today() });
   const [asg, setAsg]         = useState({});       // add-operator form
   const [busy, setBusy]       = useState(false);
@@ -84,7 +85,7 @@ export default function ShiftStartPage() {
         r.readAsDataURL(file);
       });
       const r = await api.post('/reconcile/ocr-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
-      if (r.reading) { setMeters(p => ({ ...p, [nozzle.id]: r.reading })); setMismatches([]); }
+      if (r.reading) { setMeters(p => ({ ...p, [nozzle.id]: r.reading })); setMismatches([]); setSrcConflicts([]); }
       if (!r.legible) setErr(`Nozzle ${nozzle.nozzle_number}: scan unclear${r.notes ? ` (${r.notes})` : ''} — check the reading.`);
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Scan failed'); }
     setScanning('');
@@ -98,7 +99,9 @@ export default function ShiftStartPage() {
         .filter(r => r.opening_reading !== '' && r.opening_reading != null);
       if (readings.length) {
         const r = await api.post('/reconcile/shift-opening-meters', { shift_id: shift.id, readings });
-        if (r.mismatches?.length) { setMismatches(r.mismatches); setBusy(false); return; }
+        if (r.mismatches?.length || r.source_conflicts?.length) {
+          setMismatches(r.mismatches || []); setSrcConflicts(r.source_conflicts || []); setBusy(false); return;
+        }
       }
       router.push('/dashboard');
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not save opening meters'); }
@@ -192,7 +195,7 @@ export default function ShiftStartPage() {
           {nozzles.map(n=>(
             <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
               <div style={{width:140,fontSize:13,fontWeight:600}}>Nozzle {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span></div>
-              <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Opening totalizer" value={meters[n.id]||''} onChange={e=>{ setMeters(p=>({...p,[n.id]:e.target.value})); setMismatches([]); }}/>
+              <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Opening totalizer" value={meters[n.id]||''} onChange={e=>{ setMeters(p=>({...p,[n.id]:e.target.value})); setMismatches([]); setSrcConflicts([]); }}/>
               <label title="Scan the totalizer" style={{flexShrink:0,width:42,height:38,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:17}}>
                 {scanning===n.id?'…':'📷'}
                 <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
@@ -208,9 +211,17 @@ export default function ShiftStartPage() {
               <div style={{fontSize:12,color:'#9a3412',marginTop:6}}>Investigate, or start anyway if you&apos;ve verified it.</div>
             </div>
           )}
-          <button onClick={mismatches.length ? ()=>router.push('/dashboard') : startLive} disabled={busy}
-            style={{width:'100%',height:46,marginTop:'1rem',background: mismatches.length?'#dc2626':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
-            {busy?'Saving…':mismatches.length?'Start anyway — Shift is live':'Start — Shift is live ✓'}
+          {srcConflicts.length>0 && (
+            <div style={{background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,padding:'10px 12px',marginTop:'0.75rem'}}>
+              <div style={{fontWeight:700,fontSize:13,color:'#92400e',marginBottom:6}}>⚠️ Manager vs attendant opening differs</div>
+              {srcConflicts.map(c=>(
+                <div key={c.nozzle_id} style={{fontSize:12.5,color:'#92400e'}}>Nozzle {c.nozzle_number}: manager {c.manager} vs attendant {c.attendant} (Δ {c.delta>0?'+':''}{c.delta})</div>
+              ))}
+            </div>
+          )}
+          <button onClick={(mismatches.length||srcConflicts.length) ? ()=>router.push('/dashboard') : startLive} disabled={busy}
+            style={{width:'100%',height:46,marginTop:'1rem',background: (mismatches.length||srcConflicts.length)?'#dc2626':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
+            {busy?'Saving…':(mismatches.length||srcConflicts.length)?'Start anyway — Shift is live':'Start — Shift is live ✓'}
           </button>
         </div>
       )}

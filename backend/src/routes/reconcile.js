@@ -7,6 +7,31 @@ const { sendAlert } = require('../services/alertService');
 const Anthropic = require('@anthropic-ai/sdk');
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Store a meter reading in its source column (manager vs POS), recompute the
+// canonical value (manager wins, else POS) used by reconciliation, and report a
+// cross-source conflict when the two sources disagree for the same nozzle/phase.
+async function writeSourceMeter(client, { shift_id, nozzle_id, phase, source, reading, recorded_by }) {
+  const col = `${phase}_${source}`;   // opening_mgr | opening_pos | closing_mgr | closing_pos (controlled inputs)
+  await client.query(
+    `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
+     VALUES($1,$2,$3,$4)
+     ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
+    [shift_id, nozzle_id, reading, recorded_by]);
+  const { rows } = await client.query(
+    `UPDATE shift_nozzle_readings
+       SET opening_reading = COALESCE(opening_mgr, opening_pos),
+           closing_reading = COALESCE(closing_mgr, closing_pos)
+     WHERE shift_id=$1 AND nozzle_id=$2
+     RETURNING opening_mgr, opening_pos, closing_mgr, closing_pos`,
+    [shift_id, nozzle_id]);
+  const r = rows[0] || {};
+  const mgr = r[`${phase}_mgr`], pos = r[`${phase}_pos`];
+  if (mgr != null && pos != null && Math.abs(Number(mgr) - Number(pos)) > 0.5) {
+    return { manager: Number(mgr), attendant: Number(pos), delta: +(Number(pos) - Number(mgr)).toFixed(3) };
+  }
+  return null;
+}
+
 // POST /api/reconcile/denomination  — save denomination count (attendant)
 router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
@@ -395,16 +420,17 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
     if (!shRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
     const stationId = shRows[0].station_id, startTime = shRows[0].start_time;
 
-    // Reset this shift's closings (keep any opening captured at start), then
-    // upsert the new closings onto the same (shift, nozzle) rows.
-    await client.query('UPDATE shift_nozzle_readings SET closing_reading=NULL WHERE shift_id=$1', [shift_id]);
+    // Reset this shift's MANAGER closings (keep opening + any POS closing), then
+    // write the new manager closings; canonical closing = manager else POS.
+    await client.query('UPDATE shift_nozzle_readings SET closing_mgr=NULL, closing_reading=closing_pos WHERE shift_id=$1', [shift_id]);
     const valid = readings.filter(r => r && r.nozzle_id && r.closing_reading !== '' && r.closing_reading != null);
+    const closeConflicts = [];   // manager's closing vs attendant's closing
     for (const r of valid) {
-      await client.query(
-        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, closing_reading, recorded_by)
-         VALUES($1,$2,$3,$4)
-         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET closing_reading=$3, recorded_by=$4`,
-        [shift_id, r.nozzle_id, Number(r.closing_reading), req.user.id]);
+      const c = await writeSourceMeter(client, { shift_id, nozzle_id: r.nozzle_id, phase:'closing', source:'mgr', reading: Number(r.closing_reading), recorded_by: req.user.id });
+      if (c) {
+        const { rows: nz } = await client.query('SELECT nozzle_number FROM nozzles WHERE id=$1', [r.nozzle_id]);
+        closeConflicts.push({ nozzle_id: r.nozzle_id, nozzle_number: nz[0]?.nozzle_number, ...c });
+      }
     }
 
     // Wet sales: opening = most recent prior closing for that nozzle (your dummy
@@ -472,7 +498,7 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
     await client.query('COMMIT');
     res.json({
       wet_sales: wetSales, dry_sales: dryNonCredit, credit, collections, expected, variance,
-      nozzles: wetByNozzle, unvalued_readings: unvalued,
+      nozzles: wetByNozzle, unvalued_readings: unvalued, source_conflicts: closeConflicts,
     });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
@@ -519,18 +545,15 @@ router.post('/pos-meter', authenticate, authorize('owner','manager','attendant')
         [shift_id, nozzle_id, image_base64, media_type, reading || null, legible, req.user.id]);
     } catch { /* meter_photos not present — OCR still returns */ }
 
-    let phase = 'opening', mismatch = null;
+    let phase = 'opening', mismatch = null, source_conflict = null;
     if (reading) {
       const num = Number(reading);
+      // Phase from the POS's OWN prior capture, so the attendant's first scan is
+      // their opening even if the manager already recorded one.
       const { rows: ex } = await client.query(
-        'SELECT opening_reading FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
-      phase = (ex.length && ex[0].opening_reading != null) ? 'closing' : 'opening';
-      const col = phase === 'opening' ? 'opening_reading' : 'closing_reading';
-      await client.query(
-        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
-         VALUES($1,$2,$3,$4)
-         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
-        [shift_id, nozzle_id, num, req.user.id]);
+        'SELECT opening_pos FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
+      phase = (ex.length && ex[0].opening_pos != null) ? 'closing' : 'opening';
+      source_conflict = await writeSourceMeter(client, { shift_id, nozzle_id, phase, source:'pos', reading: num, recorded_by: req.user.id });
       if (phase === 'opening') {
         const { rows: prev } = await client.query(
           `SELECT snr.closing_reading FROM shift_nozzle_readings snr
@@ -542,7 +565,7 @@ router.post('/pos-meter', authenticate, authorize('owner','manager','attendant')
       }
     }
     await client.query('COMMIT');
-    res.json({ reading, legible, notes, phase, mismatch });
+    res.json({ reading, legible, notes, phase, mismatch, source_conflict });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });
@@ -564,14 +587,14 @@ router.post('/shift-opening-meters', authenticate, authorize('owner','manager'),
     const startTime = sh[0].start_time;
 
     const valid = readings.filter(r => r && r.nozzle_id && r.opening_reading !== '' && r.opening_reading != null);
-    const mismatches = [];
+    const mismatches = [];        // opening vs prior shift's closing (handover chain)
+    const sourceConflicts = [];   // manager's opening vs attendant's opening (same nozzle)
     for (const r of valid) {
       const opening = Number(r.opening_reading);
-      await client.query(
-        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, opening_reading, recorded_by)
-         VALUES($1,$2,$3,$4)
-         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET opening_reading=$3, recorded_by=$4`,
-        [shift_id, r.nozzle_id, opening, req.user.id]);
+      const conflict = await writeSourceMeter(client, { shift_id, nozzle_id: r.nozzle_id, phase:'opening', source:'mgr', reading: opening, recorded_by: req.user.id });
+      const { rows: nz } = await client.query('SELECT nozzle_number FROM nozzles WHERE id=$1', [r.nozzle_id]);
+      const nozzleNumber = nz[0]?.nozzle_number;
+      if (conflict) sourceConflicts.push({ nozzle_id: r.nozzle_id, nozzle_number: nozzleNumber, ...conflict });
 
       // The prior shift's closing for this nozzle is what this opening must match.
       const { rows: prev } = await client.query(
@@ -582,15 +605,14 @@ router.post('/shift-opening-meters', authenticate, authorize('owner','manager'),
          ORDER BY s.start_time DESC LIMIT 1`, [r.nozzle_id, shift_id, startTime]);
       const priorClosing = prev.length ? Number(prev[0].closing_reading) : null;
       if (priorClosing != null && Math.abs(opening - priorClosing) > 0.5) {
-        const { rows: nz } = await client.query('SELECT nozzle_number FROM nozzles WHERE id=$1', [r.nozzle_id]);
         mismatches.push({
-          nozzle_id: r.nozzle_id, nozzle_number: nz[0]?.nozzle_number,
+          nozzle_id: r.nozzle_id, nozzle_number: nozzleNumber,
           opening, prior_closing: priorClosing, delta: +(opening - priorClosing).toFixed(3),
         });
       }
     }
     await client.query('COMMIT');
-    res.json({ saved: valid.length, mismatches });
+    res.json({ saved: valid.length, mismatches, source_conflicts: sourceConflicts });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });

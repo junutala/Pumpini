@@ -237,6 +237,14 @@ export default function ShiftEndPage() {
                     <span style={{fontWeight:800}}>{fmt(Math.abs(v))}</span>
                   </div>
                   {recon.unvalued_readings>0 && <div style={{fontSize:12,color:'#9a3412',marginTop:8}}>{recon.unvalued_readings} reading(s) couldn’t be valued yet (no prior opening / price) — seed with a dummy shift.</div>}
+                  {recon.source_conflicts?.length>0 && (
+                    <div style={{background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:8,padding:'8px 10px',marginTop:8}}>
+                      <div style={{fontWeight:700,fontSize:12.5,color:'#92400e',marginBottom:4}}>⚠️ Manager vs attendant closing differs</div>
+                      {recon.source_conflicts.map(c=>(
+                        <div key={c.nozzle_id} style={{fontSize:12,color:'#92400e'}}>Nozzle {c.nozzle_number}: manager {c.manager} vs attendant {c.attendant} (Δ {c.delta>0?'+':''}{c.delta})</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
