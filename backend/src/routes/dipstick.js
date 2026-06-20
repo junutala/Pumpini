@@ -76,16 +76,16 @@ router.get('/density-register', authenticate, requireStationAccess({ required: t
         `SELECT dr.id, dr.recorded_at AS observed_at, 'dip' AS source, dr.reading_type,
                 t.tank_number, t.fuel_type, dr.density, dr.temperature_c,
                 u.name AS recorded_by_name,
-                ld.density AS reference_density, ld.challan_number AS reference_challan
+                ld.density AS reference_density, ld.dc_number AS reference_challan
          FROM dipstick_readings dr
          JOIN tanks t ON t.id = dr.tank_id
          LEFT JOIN users u ON u.id = dr.recorded_by
          LEFT JOIN LATERAL (
-           SELECT fd.density, fd.challan_number
+           SELECT fd.density, fd.dc_number
            FROM fuel_deliveries fd
            WHERE fd.tank_id = dr.tank_id AND fd.density IS NOT NULL
-             AND fd.delivered_at <= dr.recorded_at
-           ORDER BY fd.delivered_at DESC LIMIT 1
+             AND fd.received_at <= dr.recorded_at
+           ORDER BY fd.received_at DESC LIMIT 1
          ) ld ON TRUE
          WHERE dr.station_id = $1 AND dr.density IS NOT NULL
            AND dr.recorded_at >= $2::date
@@ -93,16 +93,16 @@ router.get('/density-register', authenticate, requireStationAccess({ required: t
         [station_id, dateFrom, dateTo]
       ),
       pool.query(
-        `SELECT fd.id, fd.delivered_at AS observed_at, 'delivery' AS source,
+        `SELECT fd.id, fd.received_at AS observed_at, 'delivery' AS source,
                 NULL AS reading_type, t.tank_number, t.fuel_type, fd.density,
                 NULL::numeric AS temperature_c, u.name AS recorded_by_name,
-                fd.challan_number
+                fd.dc_number AS challan_number
          FROM fuel_deliveries fd
          JOIN tanks t ON t.id = fd.tank_id
          LEFT JOIN users u ON u.id = fd.received_by
          WHERE fd.station_id = $1 AND fd.density IS NOT NULL
-           AND fd.delivered_at >= $2::date
-           AND fd.delivered_at <  $3::date + INTERVAL '1 day'`,
+           AND fd.received_at >= $2::date
+           AND fd.received_at <  $3::date + INTERVAL '1 day'`,
         [station_id, dateFrom, dateTo]
       ),
     ]);
