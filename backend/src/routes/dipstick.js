@@ -9,14 +9,21 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
   try {
     const { station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c } = req.body;
 
+    // Re-scope tank to the validated station — a tank_id from another outlet
+    // must not be writable here even though station_id passed the guard.
+    if (tank_id) {
+      const { rows: tk } = await pool.query('SELECT 1 FROM tanks WHERE id=$1 AND station_id=$2', [tank_id, station_id]);
+      if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO dipstick_readings(station_id,tank_id,shift_id,reading_type,dip_cm,volume_ltrs,density,temperature_c,recorded_by)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id]
     );
 
-    // Update tank current stock
-    await pool.query('UPDATE tanks SET current_stock=$1, density=$2 WHERE id=$3', [volume_ltrs, density, tank_id]);
+    // Update tank current stock (station-scoped as a belt-and-suspenders guard)
+    await pool.query('UPDATE tanks SET current_stock=$1, density=$2 WHERE id=$3 AND station_id=$4', [volume_ltrs, density, tank_id, station_id]);
 
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }

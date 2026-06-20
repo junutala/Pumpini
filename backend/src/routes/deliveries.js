@@ -90,6 +90,12 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
              * (1 - 0.00090 * (parseFloat(temperature_c) - 15));
     }
 
+    // Re-scope tank to the validated station — reject a tank_id from another outlet.
+    if (tank_id) {
+      const { rows: tk } = await pool.query('SELECT 1 FROM tanks WHERE id=$1 AND station_id=$2', [tank_id, station_id]);
+      if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO fuel_deliveries(
          station_id,tank_id,shift_id,dc_number,dc_date,received_at,

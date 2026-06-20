@@ -76,7 +76,9 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
 });
 
 // GET /api/dashboard/manager?station_id=&shift_id=
-router.get('/manager', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+// Everything below keys off shift_id, so guard the shift (not just station_id)
+// — same as the /attendant sibling — or a foreign shift_id leaks another outlet.
+router.get('/manager', authenticate, requireStationAccess({ required: true }), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
     const { station_id, shift_id } = req.query;
     const isOwner = req.user.role === 'owner';

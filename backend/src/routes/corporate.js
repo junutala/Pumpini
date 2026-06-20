@@ -220,7 +220,7 @@ router.patch('/:id', authenticate, authorize('owner','manager'), requireCorporat
 // ── Station links ───────────────────────────────────────────
 
 // POST /api/corporate/:id/links — link to a station
-router.post('/:id/links', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
+router.post('/:id/links', authenticate, authorize('owner','manager'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, credit_limit, payment_terms = 30 } = req.body;
     const { rows } = await pool.query(
@@ -256,7 +256,7 @@ router.get('/:id/links', authenticate, requireCorporateAccess(), async (req, res
 });
 
 // PATCH /api/corporate/:id/links/:station_id — update link
-router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
+router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { credit_limit, payment_terms, is_active } = req.body;
     const { rows } = await pool.query(
