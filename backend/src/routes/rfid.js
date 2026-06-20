@@ -1,8 +1,9 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const { rows } = await pool.query(
@@ -16,7 +17,7 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { tag_uid, station_id } = req.body;
     const { rows } = await pool.query(
@@ -30,7 +31,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
   }
 });
 
-router.patch('/:id/reset', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/:id/reset', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM rfid_tags WHERE id=$1', 'id'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `UPDATE rfid_tags SET is_active=TRUE WHERE id=$1 RETURNING *`, [req.params.id]

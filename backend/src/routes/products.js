@@ -153,11 +153,13 @@ router.post('/stock', authenticate, requireStationAccess({ required: true }), as
     const location = req.body.location === 'bay' ? 'bay' : 'shop';
     const locCol   = location === 'bay' ? 'bay_stock' : 'shop_stock';
 
-    // Enforce: a require-barcode product must have a barcode tied before receiving
+    // Re-scope product to the validated station: a product_id from another
+    // outlet must not be receivable here even though station_id passed the guard.
     const { rows: pr } = await pool.query(
-      'SELECT require_barcode, barcode FROM products WHERE id=$1', [product_id]
+      'SELECT require_barcode, barcode FROM products WHERE id=$1 AND station_id=$2', [product_id, station_id]
     );
-    if (pr.length && pr[0].require_barcode && !pr[0].barcode) {
+    if (!pr.length) return res.status(404).json({ error: 'Product not found for this station.' });
+    if (pr[0].require_barcode && !pr[0].barcode) {
       return res.status(400).json({ error: 'Assign a barcode to this product before receiving stock.' });
     }
 
@@ -292,6 +294,14 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
     // Enforce: a require-barcode product must have a barcode tied before selling
     const pids = items.map(i => i.product_id).filter(Boolean);
     if (pids.length) {
+      // Re-scope every line item to this station — reject product_ids from another outlet.
+      const { rows: owned } = await pool.query(
+        'SELECT COUNT(DISTINCT id)::int AS n FROM products WHERE id = ANY($1) AND station_id = $2',
+        [pids, station_id]
+      );
+      if (owned[0].n !== new Set(pids).size) {
+        return res.status(400).json({ error: 'One or more products do not belong to this station.' });
+      }
       const { rows: bad } = await pool.query(
         `SELECT name FROM products WHERE id = ANY($1)
            AND require_barcode = TRUE AND (barcode IS NULL OR barcode = '')`,
