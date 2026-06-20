@@ -12,7 +12,7 @@ import { useAuth } from '../../lib/auth';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
-const STEPS = ['Open', 'Operators'];
+const STEPS = ['Open', 'Operators', 'Opening meters'];
 
 export default function ShiftStartPage() {
   const router = useRouter();
@@ -24,6 +24,10 @@ export default function ShiftStartPage() {
   const [users, setUsers]     = useState([]);       // operators (all attendants — always available)
   const [shift, setShift]     = useState(null);     // the open shift once created
   const [attendants, setAttendants] = useState([]); // assigned operators
+  const [nozzles, setNozzles] = useState([]);
+  const [meters, setMeters]   = useState({});       // nozzle_id -> opening totalizer
+  const [scanning, setScanning] = useState('');     // nozzle_id being OCR'd
+  const [mismatches, setMismatches] = useState([]); // opening vs prior closing
   const [open, setOpen]       = useState({ shift_number:1, date: today() });
   const [asg, setAsg]         = useState({});       // add-operator form
   const [busy, setBusy]       = useState(false);
@@ -34,8 +38,10 @@ export default function ShiftStartPage() {
     Promise.all([
       api.get(`/shifts/definitions/${stationId}`).catch(()=>[]),
       api.get(`/users?station_id=${stationId}&role=attendant`).catch(()=>[]),
-    ]).then(([d,u]) => {
+      api.get(`/stations/${stationId}/nozzles`).catch(()=>[]),
+    ]).then(([d,u,n]) => {
       setDefs(Array.isArray(d)?d:[]); setUsers(Array.isArray(u)?u:[]);
+      setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
     });
   }, [stationId]);
 
@@ -65,6 +71,39 @@ export default function ShiftStartPage() {
 
   const f = (k,v) => setAsg(p=>({ ...p, [k]: v }));
   const assignedIds = new Set(attendants.map(a=>a.attendant_id));
+
+  // Snap the totalizer → backend → Claude reads it → fills the opening field.
+  const scanMeter = async (nozzle, file) => {
+    if (!file) return;
+    setScanning(nozzle.id); setErr('');
+    try {
+      const b64 = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(',')[1] || '');
+        r.onerror = () => reject(new Error('Could not read image'));
+        r.readAsDataURL(file);
+      });
+      const r = await api.post('/reconcile/ocr-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      if (r.reading) { setMeters(p => ({ ...p, [nozzle.id]: r.reading })); setMismatches([]); }
+      if (!r.legible) setErr(`Nozzle ${nozzle.nozzle_number}: scan unclear${r.notes ? ` (${r.notes})` : ''} — check the reading.`);
+    } catch (e) { setErr(e.response?.data?.error || e.error || 'Scan failed'); }
+    setScanning('');
+  };
+
+  // Save opening readings + run the handover check vs the prior shift's closings.
+  const startLive = async () => {
+    setBusy(true); setErr('');
+    try {
+      const readings = nozzles.map(n => ({ nozzle_id: n.id, opening_reading: meters[n.id] }))
+        .filter(r => r.opening_reading !== '' && r.opening_reading != null);
+      if (readings.length) {
+        const r = await api.post('/reconcile/shift-opening-meters', { shift_id: shift.id, readings });
+        if (r.mismatches?.length) { setMismatches(r.mismatches); setBusy(false); return; }
+      }
+      router.push('/dashboard');
+    } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not save opening meters'); }
+    setBusy(false);
+  };
 
   return (
     <AppShell>
@@ -136,11 +175,43 @@ export default function ShiftStartPage() {
                   <div style={{fontSize:12,color:'#888'}}>float ₹{Number(a.opening_cash||0).toLocaleString('en-IN')}</div>
                 </div>
               ))}
-            <button onClick={()=>router.push('/dashboard')} disabled={attendants.length===0}
+            <button onClick={()=>setStep(2)} disabled={attendants.length===0}
               style={{width:'100%',height:46,marginTop:12,background:attendants.length?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:attendants.length?'pointer':'not-allowed'}}>
-              Start — Shift is live ✓
+              Next: Opening meters →
             </button>
           </div>
+        </div>
+      )}
+
+      {/* STEP 2 — Opening meters (handover check) */}
+      {step===2 && shift && (
+        <div className="card" style={{maxWidth:560}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem'}}>Opening meter readings</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Snap each nozzle&apos;s totalizer (or type it). It should match the previous shift&apos;s closing — we flag any that don&apos;t. Optional, but it&apos;s the handover tripwire.</div>
+          {nozzles.length===0 && <div style={{color:'#aaa',fontSize:13}}>No nozzles configured.</div>}
+          {nozzles.map(n=>(
+            <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+              <div style={{width:140,fontSize:13,fontWeight:600}}>Nozzle {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span></div>
+              <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Opening totalizer" value={meters[n.id]||''} onChange={e=>{ setMeters(p=>({...p,[n.id]:e.target.value})); setMismatches([]); }}/>
+              <label title="Scan the totalizer" style={{flexShrink:0,width:42,height:38,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:17}}>
+                {scanning===n.id?'…':'📷'}
+                <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+              </label>
+            </div>
+          ))}
+          {mismatches.length>0 && (
+            <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:10,padding:'10px 12px',marginTop:'0.75rem'}}>
+              <div style={{fontWeight:700,fontSize:13,color:'#991b1b',marginBottom:6}}>⚠️ Handover mismatch — opening ≠ last shift&apos;s closing</div>
+              {mismatches.map(m=>(
+                <div key={m.nozzle_id} style={{fontSize:12.5,color:'#991b1b'}}>Nozzle {m.nozzle_number}: opening {m.opening} vs last close {m.prior_closing} (Δ {m.delta>0?'+':''}{m.delta})</div>
+              ))}
+              <div style={{fontSize:12,color:'#9a3412',marginTop:6}}>Investigate, or start anyway if you&apos;ve verified it.</div>
+            </div>
+          )}
+          <button onClick={mismatches.length ? ()=>router.push('/dashboard') : startLive} disabled={busy}
+            style={{width:'100%',height:46,marginTop:'1rem',background: mismatches.length?'#dc2626':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
+            {busy?'Saving…':mismatches.length?'Start anyway — Shift is live':'Start — Shift is live ✓'}
+          </button>
         </div>
       )}
     </AppShell>
