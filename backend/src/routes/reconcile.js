@@ -366,11 +366,11 @@ router.post('/operator-cash', authenticate, authorize('owner','manager'),
          shift_id, attendant_id, total_sales, cash_expected, cash_actual,
          upi_total, credit_total, card_total, manager_confirmed, manager_id,
          confirmed_at, reconciled_at, mode)
-       VALUES($1,$2,$3,$3,$4,$5,0,$6,TRUE,$7,NOW(),NOW(),'manager_cash')
+       VALUES($1,$2,$3,$3,$4,$5,0,$6,TRUE,$7,NOW(),NOW(),'mgr_cash')
        ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
          total_sales=$3, cash_expected=$3, cash_actual=$4, upi_total=$5,
          card_total=$6, manager_confirmed=TRUE, manager_id=$7,
-         confirmed_at=NOW(), reconciled_at=NOW(), mode='manager_cash'
+         confirmed_at=NOW(), reconciled_at=NOW(), mode='mgr_cash'
        RETURNING *`,
       [shift_id, attendant_id, collected, cash, upi, card, req.user.id]
     );
