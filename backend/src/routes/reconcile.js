@@ -395,14 +395,16 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
     if (!shRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
     const stationId = shRows[0].station_id, startTime = shRows[0].start_time;
 
-    // Replace this shift's readings (idempotent).
-    await client.query('DELETE FROM shift_nozzle_readings WHERE shift_id=$1', [shift_id]);
-    const valid = readings.filter(r => r && r.closing_reading !== '' && r.closing_reading != null);
+    // Reset this shift's closings (keep any opening captured at start), then
+    // upsert the new closings onto the same (shift, nozzle) rows.
+    await client.query('UPDATE shift_nozzle_readings SET closing_reading=NULL WHERE shift_id=$1', [shift_id]);
+    const valid = readings.filter(r => r && r.nozzle_id && r.closing_reading !== '' && r.closing_reading != null);
     for (const r of valid) {
       await client.query(
         `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, closing_reading, recorded_by)
-         VALUES($1,$2,$3,$4)`,
-        [shift_id, r.nozzle_id || null, Number(r.closing_reading), req.user.id]);
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET closing_reading=$3, recorded_by=$4`,
+        [shift_id, r.nozzle_id, Number(r.closing_reading), req.user.id]);
     }
 
     // Wet sales: opening = most recent prior closing for that nozzle (your dummy
@@ -472,6 +474,54 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
       wet_sales: wetSales, dry_sales: dryNonCredit, credit, collections, expected, variance,
       nozzles: wetByNozzle, unvalued_readings: unvalued,
     });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+// POST /api/reconcile/shift-opening-meters — record per-nozzle OPENING totalizer
+// at shift start, and flag any that don't match the prior shift's closing for
+// that nozzle (the two-party handover check: this operator's opening should
+// equal the previous operator's closing).
+router.post('/shift-opening-meters', authenticate, authorize('owner','manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  const { shift_id, readings = [] } = req.body;
+  if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: sh } = await client.query('SELECT start_time FROM shifts WHERE id=$1', [shift_id]);
+    if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
+    const startTime = sh[0].start_time;
+
+    const valid = readings.filter(r => r && r.nozzle_id && r.opening_reading !== '' && r.opening_reading != null);
+    const mismatches = [];
+    for (const r of valid) {
+      const opening = Number(r.opening_reading);
+      await client.query(
+        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, opening_reading, recorded_by)
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET opening_reading=$3, recorded_by=$4`,
+        [shift_id, r.nozzle_id, opening, req.user.id]);
+
+      // The prior shift's closing for this nozzle is what this opening must match.
+      const { rows: prev } = await client.query(
+        `SELECT snr.closing_reading FROM shift_nozzle_readings snr
+         JOIN shifts s ON s.id = snr.shift_id
+         WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3
+           AND snr.closing_reading IS NOT NULL
+         ORDER BY s.start_time DESC LIMIT 1`, [r.nozzle_id, shift_id, startTime]);
+      const priorClosing = prev.length ? Number(prev[0].closing_reading) : null;
+      if (priorClosing != null && Math.abs(opening - priorClosing) > 0.5) {
+        const { rows: nz } = await client.query('SELECT nozzle_number FROM nozzles WHERE id=$1', [r.nozzle_id]);
+        mismatches.push({
+          nozzle_id: r.nozzle_id, nozzle_number: nz[0]?.nozzle_number,
+          opening, prior_closing: priorClosing, delta: +(opening - priorClosing).toFixed(3),
+        });
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ saved: valid.length, mismatches });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });
