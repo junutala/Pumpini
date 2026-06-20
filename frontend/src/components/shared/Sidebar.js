@@ -26,6 +26,7 @@ const NAV_GROUPS = [
     label: 'Shift',
     items: [
       { key:'startshift', href:'/shift-start',     icon:PlayCircle,     perm:'shifts.view' },
+      { key:'pos',        href:'/pos',             icon:ShoppingCart,   perm:'dispense.entry' },
       { key:'endshift',   href:'/shift-end',       icon:StopCircle,     perm:'shifts.view' },
     ]
   },
@@ -113,7 +114,7 @@ const NAV_LABELS = {
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',
-  startshift:'Start Shift',  endshift:'End Shift',
+  startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
 };
 
 const GROUP_KEYS = {

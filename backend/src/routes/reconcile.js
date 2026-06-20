@@ -478,6 +478,75 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
   finally { client.release(); }
 });
 
+// POST /api/reconcile/pos-meter — attendant captures a nozzle's totalizer from
+// the POS. OCR via Claude, store the image, and record it as the OPENING (if none
+// yet for this shift+nozzle) or the CLOSING, flagging a handover mismatch on open.
+router.post('/pos-meter', authenticate, authorize('owner','manager','attendant'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
+  if (!shift_id || !nozzle_id || !image_base64) return res.status(400).json({ error: 'shift_id, nozzle_id and image are required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: sh } = await client.query('SELECT start_time FROM shifts WHERE id=$1', [shift_id]);
+    if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
+    const startTime = sh[0].start_time;
+
+    // OCR the totalizer
+    let reading = '', legible = false, notes = '';
+    try {
+      const ai = await aiClient.messages.create({
+        model: 'claude-haiku-4-5', max_tokens: 300,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
+          { type: 'text', text: 'This image is a fuel dispenser cumulative totalizer (the counter showing total litres dispensed for one nozzle). Read its digits exactly, left to right, ignoring separators (keep a decimal only if clearly shown). Respond with ONLY a JSON object: {"reading":"<digits>","legible":<true|false>,"notes":"<short>"}. legible=false if any digit is unclear, mid-roll, glare-obscured, or you are unsure.' },
+        ] }],
+      });
+      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
+      const m = txt.match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : {};
+      reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
+      legible = parsed.legible === true && reading !== '';
+      notes   = String(parsed.notes ?? '');
+    } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
+
+    // Audit image (best-effort).
+    try {
+      await client.query(
+        `INSERT INTO meter_photos(shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [shift_id, nozzle_id, image_base64, media_type, reading || null, legible, req.user.id]);
+    } catch { /* meter_photos not present — OCR still returns */ }
+
+    let phase = 'opening', mismatch = null;
+    if (reading) {
+      const num = Number(reading);
+      const { rows: ex } = await client.query(
+        'SELECT opening_reading FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
+      phase = (ex.length && ex[0].opening_reading != null) ? 'closing' : 'opening';
+      const col = phase === 'opening' ? 'opening_reading' : 'closing_reading';
+      await client.query(
+        `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
+         VALUES($1,$2,$3,$4)
+         ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
+        [shift_id, nozzle_id, num, req.user.id]);
+      if (phase === 'opening') {
+        const { rows: prev } = await client.query(
+          `SELECT snr.closing_reading FROM shift_nozzle_readings snr
+           JOIN shifts s ON s.id = snr.shift_id
+           WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3 AND snr.closing_reading IS NOT NULL
+           ORDER BY s.start_time DESC LIMIT 1`, [nozzle_id, shift_id, startTime]);
+        const pc = prev.length ? Number(prev[0].closing_reading) : null;
+        if (pc != null && Math.abs(num - pc) > 0.5) mismatch = { prior_closing: pc, delta: +(num - pc).toFixed(3) };
+      }
+    }
+    await client.query('COMMIT');
+    res.json({ reading, legible, notes, phase, mismatch });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
 // POST /api/reconcile/shift-opening-meters — record per-nozzle OPENING totalizer
 // at shift start, and flag any that don't match the prior shift's closing for
 // that nozzle (the two-party handover check: this operator's opening should
