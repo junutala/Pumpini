@@ -170,3 +170,48 @@ receipt images). Confirmed backend allows assign while open and next-day close.
 IF the open-shift screens don't allow loading the opening dipstick after the fact
 (e.g. dip capture is gated to shift-open only), make opening dip enterable on an
 open shift. Revisit only if owner reports he can't load it.
+
+## 11. GO-LIVE LEARNINGS (Kamala, 2026-06-22) → harden before the Vishakhapatnam round
+Context: first production outlet bring-up took ~5h vs the ~30min expected. The
+time went almost entirely into DIAGNOSING first-time-in-prod issues (RLS freshly
+enabled + generic error messages), NOT into building. Most root causes are now
+FIXED and benefit every future outlet. Plan: finish the 2 current implementations,
+then in the ~8-day gap fix Section B before the next 4 (Vizag).
+
+### A. Root causes already FIXED tonight (should not recur)
+- RLS write-path gap: Add Attendant inserts into `users` under a MANAGER's
+  (non-bypass) identity — the only user-creation path not on the admin bypass
+  role — so RLS blocked it. FIX: run that insert on the bypass role
+  (pool.als.run(undefined,…)). LESSON: when RLS is enabled, EVERY write path must
+  be tested under a real manager/attendant identity, not just the admin console.
+- Stale DB connections ("first click fails, retry works"): idle pooler/NAT drops
+  a connection the pool still thinks is alive. FIX: keepAlive + auto-retry on
+  connection-layer errors only (pool.js). Global — protects all outlets incl. POS.
+- Owner fail-open overrode an assigned responsibility (owner saw the FULL sidebar
+  despite Owner_lite). FIX: an assigned responsibility now caps owners too.
+- Margin tile 500'd on a non-existent `stock_receipts` table. FIX: correct table
+  name (product_stock_receipts). Only surfaced when that screen was hit in prod.
+- New users weren't forced to change password (inconsistent with Reset PW).
+  FIX: must_change_password=TRUE on create (station-users + owners).
+
+### B. Hardening to do in the 8-day gap (BEFORE Vizag)
+- [ ] Surface backend error detail in ALL forms (fixed add-attendant only; others
+      still show generic catch-alls). Precise message = minutes, not hours.
+- [ ] Pre-go-live SMOKE TEST checklist, run as EACH role (owner/manager/attendant)
+      under live RLS: add attendant, open+close shift, dipstick, delivery, invoice,
+      dashboard, AI chat. Catches RLS/permission gaps before the client is watching.
+- [ ] Per-outlet SQL/migration checklist (which scripts to run in Supabase, in
+      order). Manual migrations caused repo↔prod DRIFT tonight (users RLS policy,
+      settings.manage top-up). Consider a tiny migration runner / version tracker.
+- [ ] Vercel canonical domain redirect (www → apex). The www/apex origin split
+      cost time on a phantom "login bounce."
+- [ ] CI gate: frontend `npm run build` + backend boot check before merge to main.
+      A broken main blocks ALL outlets; tonight we pushed straight to prod ~10x.
+- [ ] Document the permission model (Role vs Responsibility vs Plan; owner
+      fail-open; owner-only sidebar role-gates). The /admin UI conflates Role and
+      Responsibility — caused the Manager_lite-vs-Owner_lite mis-assignment.
+
+### C. Net
+The 5h was first-time-RLS-in-prod discovery + generic errors, not inherent
+fragility. With Section A fixed and Section B done before Vizag, a fresh outlet
+should be close to the ~30min it ought to be.
