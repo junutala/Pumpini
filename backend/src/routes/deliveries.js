@@ -3,6 +3,8 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const Anthropic = require('@anthropic-ai/sdk');
+const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // GET /api/deliveries/book-stock/:station_id  ← must be before /:id routes
 router.get('/book-stock/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
@@ -156,6 +158,78 @@ router.patch('/:id/verify', authenticate, authorize('owner','manager'), requireS
       [req.user.id, req.params.id]
     );
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// POST /api/deliveries/parse-invoice — read an oil-company TT invoice/DC (photo
+// OR pdf, straight from mobile) and return structured line-items to PRE-FILL the
+// delivery form. Nothing is saved here; the manager verifies + confirms on the
+// form. Mirrors the meter-photo OCR pattern in reconcile.js.
+const INVOICE_OK_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+const INVOICE_PROMPT = `You extract structured data from an Indian oil-company fuel tank-truck delivery invoice / DC challan (IOCL/Indian Oil, HPCL, BPCL, etc.). Input may be a clean PDF or a phone photo, and ONE invoice usually carries MULTIPLE products (one per tanker compartment).
+
+Return ONLY a JSON object (no prose, no markdown) of this exact shape:
+{
+ "oil_company": "IOC|HPCL|BPCL|Essar|Shell|Reliance|Nayara|null",
+ "dc_number": "delivery/invoice number string or null",
+ "dc_date": "YYYY-MM-DD or null",
+ "received_at": "YYYY-MM-DDTHH:MM (from the invoice date + time) or null",
+ "depot_name": "terminal/depot name or null",
+ "tanker_number": "vehicle / TT number or null",
+ "consignee_name": "buyer / consignee station name or null",
+ "consignee_code": "buyer code or null",
+ "seal_number": "seal/lock number(s) or null",
+ "invoice_total_value": number or null,
+ "items": [{
+   "fuel_type": "petrol|diesel|premium_petrol|cng",
+   "product_name": "as printed (HSD-BSV, MS/EBMS, XtraPremium, ...)",
+   "compartment_no": "string or null",
+   "tank_code": "truck tank code (e.g. T003) or null",
+   "quantity_kl": number or null,
+   "gross_volume_ltrs": number (LITRES = KL*1000),
+   "density": number (kg/L @15C, e.g. 0.7522),
+   "rate_per_ltr": number or null,
+   "total_value": number or null,
+   "sample_no": "string or null",
+   "hsn": "string or null"
+ }],
+ "confidence": "high|medium|low",
+ "notes": "anything unclear/unreadable"
+}
+
+Rules:
+- fuel_type: MS / EBMS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; XtraPremium / Speed / Power / branded premium -> "premium_petrol"; CNG -> "cng".
+- gross_volume_ltrs is LITRES: convert KL x 1000.
+- density is kg/L @15C. If printed as kg/m3 (e.g. 752.200 / 837.900) divide by 1000 -> 0.7522 / 0.8379.
+- One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
+
+router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { file_base64, media_type } = req.body;
+    if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
+    if (!INVOICE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
+
+    const fileBlock = media_type === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type, data: file_base64 } }
+      : { type: 'image',    source: { type: 'base64', media_type, data: file_base64 } };
+
+    let msg;
+    try {
+      msg = await ai.messages.create({
+        model: 'claude-sonnet-4-6', max_tokens: 1500,
+        messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] }],
+      });
+    } catch (e) {
+      return res.status(503).json({ error: 'Invoice scanning is unavailable right now — enter the details manually.' });
+    }
+
+    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
+    if (!parsed) return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
+    if (!Array.isArray(parsed.items)) parsed.items = [];
+    res.json(parsed);
   } catch (err) { next(err); }
 });
 
