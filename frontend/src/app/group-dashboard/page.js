@@ -5,6 +5,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import DashboardPage from '../dashboard/page';
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:1});
@@ -13,6 +14,7 @@ export default function GroupDashboardPage() {
   const { user } = useAuth();
   const [groups,setGroups]       = useState([]);
   const [selectedGroup,setSelectedGroup] = useState(null);
+  const [selectedOutlet,setSelectedOutlet] = useState(null); // null = group/global view
   const [data,setData]           = useState(null);
   const [loading,setLoading]     = useState(false);
 
@@ -30,7 +32,7 @@ export default function GroupDashboardPage() {
     finally{ setLoading(false); }
   };
 
-  const handleSelectGroup = (g) => { setSelectedGroup(g); loadGroup(g.id); };
+  const handleSelectGroup = (g) => { setSelectedGroup(g); setSelectedOutlet(null); loadGroup(g.id); };
 
   return (
     <AppShell>
@@ -55,6 +57,21 @@ export default function GroupDashboardPage() {
         </div>
       )}
 
+      {/* Outlet view — Global health (consolidated) vs one bunk's full dashboard */}
+      {data && (
+        <div className="card" style={{display:'flex',alignItems:'center',gap:12,marginBottom:'1.25rem',flexWrap:'wrap',padding:'12px 16px'}}>
+          <label style={{fontSize:12.5,fontWeight:700,color:'var(--text-3)'}}>View</label>
+          <select className="input" style={{maxWidth:320}} value={selectedOutlet||''}
+            onChange={e=>setSelectedOutlet(e.target.value||null)}>
+            <option value="">🌐 All bunks — group health</option>
+            {data.stations.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <span style={{fontSize:12,color:'var(--text-3)'}}>
+            {selectedOutlet ? "Showing this outlet's full dashboard" : 'Pick an outlet to drill into its dashboard'}
+          </span>
+        </div>
+      )}
+
       {groups.length===0 && (
         <div className="card" style={{textAlign:'center',padding:'3rem',color:'var(--text-3)'}}>
           You are not part of any owner group yet. Contact the administrator.
@@ -63,7 +80,12 @@ export default function GroupDashboardPage() {
 
       {loading && <div style={{textAlign:'center',padding:'3rem',color:'var(--text-3)'}}>Loading group data...</div>}
 
-      {data && !loading && (
+      {/* Single-outlet view — reuses the full bunk dashboard (all tiles, incl. future ones) */}
+      {data && !loading && selectedOutlet && (
+        <DashboardPage key={selectedOutlet} stationId={selectedOutlet} embedded />
+      )}
+
+      {data && !loading && !selectedOutlet && (
         <>
           {/* Group KPIs */}
           <div className="grid-4" style={{marginBottom:'1.5rem'}}>

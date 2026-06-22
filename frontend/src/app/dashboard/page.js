@@ -1,6 +1,6 @@
 'use client';
 import DateRangePicker from '../../components/shared/DateRangePicker';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { AlertTriangle, Bell, RefreshCw } from 'lucide-react';
@@ -26,12 +26,16 @@ const toIST = ts => {
 const fmt  = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:0 });
 const fmtL = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:1 });
 
-export default function DashboardPage() {
+export default function DashboardPage({ stationId: stationIdProp, embedded = false } = {}) {
   const { t }             = useTranslation();
   const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const { user, station } = useAuth();
-  const stationId         = typeof station==='object' ? station?.id : station;
+  // stationId can be overridden (e.g. the owner viewing one bunk from the group
+  // dashboard); otherwise it's the logged-in user's active station.
+  const stationId         = stationIdProp || (typeof station==='object' ? station?.id : station);
   const today             = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
+  // When embedded inside another page (group dashboard), skip our own AppShell.
+  const Wrapper           = embedded ? Fragment : AppShell;
 
   const [data,      setData]      = useState(null);
   const [bookStock, setBookStock] = useState([]);
@@ -76,17 +80,17 @@ export default function DashboardPage() {
   useRefreshOnFocus(load);
 
   if (!stationId) return (
-    <AppShell>
+    <Wrapper>
       <div className="card" style={{textAlign:'center',padding:'3rem',color:'var(--text-3)'}}>
         {tc('dash_page.no_station','No station assigned. Contact your administrator.')}
       </div>
-    </AppShell>
+    </Wrapper>
   );
 
   if (loading) return (
-    <AppShell>
+    <Wrapper>
       <div style={{padding:'3rem',textAlign:'center',color:'var(--text-3)'}}>{tc('dash_page.loading','Loading...')}</div>
-    </AppShell>
+    </Wrapper>
   );
 
   // ── Aggregates ────────────────────────────────────────────
@@ -116,7 +120,7 @@ export default function DashboardPage() {
   const tankDisplay = bookStock.length > 0 ? bookStock : (data?.stock || []);
 
   return (
-    <AppShell>
+    <Wrapper>
       {/* Header */}
       <div className="page-header">
         <div>
@@ -526,6 +530,6 @@ export default function DashboardPage() {
       {/* Live Events Widget — owners get the live feed inside the earnings tile */}
       {user?.role!=='owner' && <LiveEventsWidget stationId={stationId} maxRows={8}/>}
 
-    </AppShell>
+    </Wrapper>
   );
 }
