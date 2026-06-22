@@ -80,6 +80,18 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
       GROUP BY sa.id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`,
       [req.params.id]);
 
+    // Attach each operator's nozzles (one operator → many nozzles).
+    const { rows: sanRows } = await pool.query(`
+      SELECT san.attendant_id, san.nozzle_id, san.opening_reading, san.closing_reading,
+             n.nozzle_number, n.fuel_type
+      FROM shift_attendant_nozzles san
+      JOIN nozzles n ON n.id = san.nozzle_id
+      WHERE san.shift_id = $1
+      ORDER BY n.nozzle_number`, [req.params.id]);
+    const nozBy = {};
+    for (const r of sanRows) (nozBy[r.attendant_id] ||= []).push(r);
+    attendants.forEach(a => { a.nozzles = nozBy[a.attendant_id] || []; });
+
     // Blind drop: hide per-attendant sales while the shift is open (non-owners)
     const isOwner = req.user.role === 'owner';
     const hide = !isOwner && rows[0].status === 'open';
@@ -117,10 +129,17 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
   try {
     const {
       attendant_id, rfid_tag_id, nozzle_id,
-      bank_account, upi_vpa, opening_reading, opening_cash
+      bank_account, upi_vpa, opening_reading, opening_cash,
+      nozzles,   // NEW: [{ nozzle_id, opening_reading }] — one operator, many nozzles
     } = req.body;
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
+
+    // Normalise to a nozzle list (back-compat with the single nozzle_id form).
+    const nozzleList = (Array.isArray(nozzles) && nozzles.length
+      ? nozzles
+      : (nozzle_id ? [{ nozzle_id, opening_reading }] : []))
+      .filter(n => n && n.nozzle_id);
     // nozzle_id is optional in the manager-driven flow (no nozzle-level detail).
     // Opening float must be stated explicitly (₹0 is fine) — a forgotten float
     // silently becomes 0 and shows up that evening as a phantom OVERAGE of the
@@ -133,14 +152,15 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
       return res.status(400).json({ error: 'Invalid opening cash amount.' });
     }
 
-    // Check nozzle not already assigned in this shift (only when a nozzle is given)
-    if (nozzle_id) {
-      const { rows: nozzleCheck } = await pool.query(
-        `SELECT id FROM shift_attendants WHERE shift_id=$1 AND nozzle_id=$2`,
-        [req.params.id, nozzle_id]
-      );
-      if (nozzleCheck.length) {
-        return res.status(409).json({ error: 'This nozzle is already assigned to another attendant in this shift' });
+    // Each nozzle is manned by exactly one operator per shift — reject any nozzle
+    // already taken by a DIFFERENT operator (the child table is the source of truth).
+    for (const nz of nozzleList) {
+      const { rows: dup } = await pool.query(
+        `SELECT 1 FROM shift_attendant_nozzles
+         WHERE shift_id=$1 AND nozzle_id=$2 AND attendant_id<>$3`,
+        [req.params.id, nz.nozzle_id, attendant_id]);
+      if (dup.length) {
+        return res.status(409).json({ error: 'A selected nozzle is already assigned to another operator in this shift.' });
       }
     }
 
@@ -183,6 +203,10 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
       await pool.query('UPDATE rfid_tags SET is_active=TRUE WHERE id=$1', [rfid_tag_id]);
     }
 
+    // Operator row stays one-per-operator (cash/identity). For back-compat with
+    // the single-nozzle settlement path, mirror the FIRST nozzle onto sa.nozzle_id
+    // / sa.opening_reading; the full set lives in shift_attendant_nozzles.
+    const first = nozzleList[0] || {};
     const { rows } = await pool.query(
       `INSERT INTO shift_attendants(
          shift_id, attendant_id, rfid_tag_id, nozzle_id,
@@ -192,11 +216,49 @@ router.post('/:id/assign', authenticate, authorize('owner','manager'), requireSt
          rfid_tag_id=$3, nozzle_id=$4, bank_account=$5,
          upi_vpa=$6, opening_reading=$7, opening_cash=$8
        RETURNING *`,
-      [req.params.id, attendant_id, rfid_tag_id||null, nozzle_id||null,
+      [req.params.id, attendant_id, rfid_tag_id||null, first.nozzle_id||null,
        bank_account||null, upi_vpa||null,
-       opening_reading||0, opening_cash||0]
+       first.opening_reading||0, opening_cash||0]
     );
-    res.json(rows[0]);
+
+    // Replace this operator's nozzle set (clean re-assign on edit).
+    await pool.query('DELETE FROM shift_attendant_nozzles WHERE shift_id=$1 AND attendant_id=$2',
+      [req.params.id, attendant_id]);
+    for (const nz of nozzleList) {
+      await pool.query(
+        `INSERT INTO shift_attendant_nozzles(shift_id, attendant_id, nozzle_id, opening_reading)
+         VALUES($1,$2,$3,$4)`,
+        [req.params.id, attendant_id, nz.nozzle_id, nz.opening_reading != null ? nz.opening_reading : 0]);
+    }
+
+    res.json({ ...rows[0], nozzles: nozzleList });
+  } catch (err) { next(err); }
+});
+
+// GET /api/shifts/:id/nozzle-openings — suggested opening per nozzle = the most
+// recent prior closing (across the child table, the per-nozzle meter store, or the
+// legacy single-nozzle column). Lets the UI auto-carry the opening at shift start.
+router.get('/:id/nozzle-openings', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
+  async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
+        COALESCE(
+          (SELECT san.closing_reading FROM shift_attendant_nozzles san JOIN shifts s2 ON s2.id=san.shift_id
+            WHERE san.nozzle_id=n.id AND san.shift_id<>$1 AND san.closing_reading IS NOT NULL
+            ORDER BY s2.start_time DESC LIMIT 1),
+          (SELECT snr.closing_reading FROM shift_nozzle_readings snr JOIN shifts s3 ON s3.id=snr.shift_id
+            WHERE snr.nozzle_id=n.id AND snr.shift_id<>$1 AND snr.closing_reading IS NOT NULL
+            ORDER BY s3.start_time DESC LIMIT 1),
+          (SELECT sa.closing_reading FROM shift_attendants sa JOIN shifts s4 ON s4.id=sa.shift_id
+            WHERE sa.nozzle_id=n.id AND sa.shift_id<>$1 AND sa.closing_reading IS NOT NULL
+            ORDER BY s4.start_time DESC LIMIT 1)
+        ) AS suggested_opening
+      FROM nozzles n
+      WHERE n.station_id = (SELECT station_id FROM shifts WHERE id=$1) AND n.is_active
+      ORDER BY n.nozzle_number`, [req.params.id]);
+    res.json(rows);
   } catch (err) { next(err); }
 });
 
