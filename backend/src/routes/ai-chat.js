@@ -152,7 +152,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
       '',
       '--- Current Fuel Prices ---',
       Object.keys(priceMap).length
-        ? Object.entries(priceMap).map(([ft, p]) => `${ft}: ₹${p}/L`).join(' | ')
+        ? Object.entries(priceMap).map(([ft, p]) => `${ft}: ₹${p}/${ft==='cng'?'kg':'L'}`).join(' | ')
         : 'No price data',
       '',
       '--- Held Suspense (running balances, to be cleared) ---',

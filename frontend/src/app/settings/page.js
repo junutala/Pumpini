@@ -762,7 +762,7 @@ function PricesTab({ stationId, prices, reload }) {
             </select>
           </div>
           <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">Price per Litre (₹) *</label>
+            <label className="label">Price per {form.fuel_type==='cng'?'kg':'Litre'} (₹) *</label>
             <input className="input input-lg" type="number" step="0.01" min="0" required
               placeholder="e.g. 105.50" value={form.price}
               onChange={e=>f('price',e.target.value)}/>
@@ -790,7 +790,7 @@ function PricesTab({ stationId, prices, reload }) {
               </div>
             </div>
             <div style={{fontFamily:'var(--font-mono)',fontWeight:800,fontSize:20}}>
-              ₹{Number(p.price).toFixed(2)}<span style={{fontSize:12,color:'var(--text-3)'}}>/L</span>
+              ₹{Number(p.price).toFixed(2)}<span style={{fontSize:12,color:'var(--text-3)'}}>/{p.fuel_type==='cng'?'kg':'L'}</span>
             </div>
           </div>
         ))}
