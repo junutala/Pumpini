@@ -7,10 +7,13 @@
 --    shifts.view (Start/End Shift), deliveries.view, stock.reconcile,
 --    invoice.generate (Credit Invoices/Receipts/Notes), pettycash.manage,
 --    deposits.manage, reports.view (Reports/Credit Reports), corporate.view
---    (Credit Customers). Bunk View shows regardless (no perm gate).
+--    (Credit Customers), settings.manage (Settings — tanks, nozzles, selling
+--    prices). Bunk View shows regardless (no perm gate).
 --
---  Idempotent: skips any bunk that already has a 'Manager_lite'.
---  Versioned: v2 2026-06-22 (registers attendant.add in the catalog first).
+--  Idempotent: skips any bunk that already has a 'Manager_lite', and tops up any
+--  missing codes on an existing one (re-run safe).
+--  Versioned: v3 2026-06-22 (adds settings.manage so the manager can define
+--             tanks/nozzles/prices). v2 registered attendant.add in the catalog.
 -- ─────────────────────────────────────────────────────────────
 
 -- Register the new permission module first — template_permissions.module_code
@@ -27,7 +30,7 @@ BEGIN
     IF tid IS NULL THEN
       INSERT INTO role_templates(station_id, name, description, is_system)
         VALUES(st.id, 'Manager_lite',
-               'Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers, add attendant',
+               'Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers, add attendant, settings (tanks/nozzles/prices)',
                TRUE)
         RETURNING id INTO tid;
     END IF;
@@ -37,7 +40,7 @@ BEGIN
       SELECT tid, code FROM (VALUES
         ('shifts.view'),('deliveries.view'),('stock.reconcile'),('invoice.generate'),
         ('pettycash.manage'),('deposits.manage'),('reports.view'),('corporate.view'),
-        ('attendant.add')
+        ('attendant.add'),('settings.manage')
       ) AS m(code)
       ON CONFLICT DO NOTHING;
   END LOOP;
