@@ -25,12 +25,15 @@ CREATE TABLE IF NOT EXISTS tank_calibration_charts (
 );
 
 -- The per-cm dip -> volume points for each chart.
--- DIFF (litres/cm) from the manufacturer sheet is NOT stored; it is only
--- used at ingest time to validate that volume is monotonic & smooth.
+-- DIFF (litres per 1 cm at this level) IS stored: it is the manufacturer's
+-- accepted tolerance at that fill level (a dip reading is only good to ~1 cm,
+-- so a reconciliation variance smaller than DIFF litres is within reading
+-- error). It also doubles as a monotonic/smoothness check at ingest time.
 CREATE TABLE IF NOT EXISTS tank_calibration_points (
   chart_id      UUID NOT NULL REFERENCES tank_calibration_charts(id) ON DELETE CASCADE,
-  dip_cm        NUMERIC(5,1) NOT NULL,               -- allows half-cm charts
+  dip_cm        NUMERIC(5,1) NOT NULL,               -- allows sub-cm charts
   volume_ltrs   NUMERIC(10,2) NOT NULL,
+  diff_ltrs     NUMERIC(8,2),                        -- litres per cm at this level = tolerance basis
   PRIMARY KEY (chart_id, dip_cm)
 );
 
@@ -65,3 +68,24 @@ RETURNS NUMERIC AS $$
         / ((SELECT dip_cm FROM hi) - (SELECT dip_cm FROM lo))
   END;
 $$ LANGUAGE sql STABLE;
+
+-- ─────────────────────────────────────────────────────────────
+--  Accepted per-level tolerance = manufacturer DIFF (litres in the
+--  1 cm bracket containing the dip). Use this to size the stock-reco
+--  variance band at the current fill level instead of a flat %.
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION calib_tolerance(p_chart UUID, p_dip NUMERIC)
+RETURNS NUMERIC AS $$
+  SELECT diff_ltrs FROM tank_calibration_points
+  WHERE chart_id = p_chart AND dip_cm >= p_dip AND diff_ltrs IS NOT NULL
+  ORDER BY dip_cm ASC LIMIT 1;
+$$ LANGUAGE sql STABLE;
+
+-- ─────────────────────────────────────────────────────────────
+--  NOTE — dip ENTRY convention (handled in the dipstick form, not here):
+--  The stick has 4 minor marks per cm (0.2 cm each). The manager enters
+--  the mark ordinal as a decimal, e.g. "64.2" = 64 + 2nd mark. The TRUE
+--  dip is therefore  whole + (decimal_digit * 0.2)  =>  64.2 entered = 64.4
+--  cm actual. Convert to true cm BEFORE calling calib_volume(). Entered
+--  decimals are only valid in .0–.4.
+-- ─────────────────────────────────────────────────────────────
