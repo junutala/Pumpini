@@ -36,18 +36,14 @@ CREATE INDEX IF NOT EXISTS idx_credit_suspense_station
 
 -- ─────────────────────────────────────────────────────────────
 --  RLS — station-scoped (direct station_id), same rule as petty_cash_entries.
---  Guarded; canonical copy also added to rls/02_policies_direct.sql.
+--  Explicit/top-level so Supabase detects it (no "unprotected table" prompt).
+--  Assumes the RLS layer (my_stations(), app_authenticated) is present.
 -- ─────────────────────────────────────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'my_stations') THEN
-    EXECUTE 'ALTER TABLE credit_suspense_entries ENABLE ROW LEVEL SECURITY';
-    EXECUTE 'DROP POLICY IF EXISTS credit_suspense_entries_station_isolation ON credit_suspense_entries';
-    EXECUTE 'CREATE POLICY credit_suspense_entries_station_isolation ON credit_suspense_entries '
-         || 'USING (station_id IN (SELECT my_stations())) '
-         || 'WITH CHECK (station_id IN (SELECT my_stations()))';
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_authenticated') THEN
-    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON credit_suspense_entries TO app_authenticated';
-  END IF;
-END $$;
+ALTER TABLE credit_suspense_entries ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS credit_suspense_entries_station_isolation ON credit_suspense_entries;
+CREATE POLICY credit_suspense_entries_station_isolation ON credit_suspense_entries
+  USING      (station_id IN (SELECT my_stations()))
+  WITH CHECK (station_id IN (SELECT my_stations()));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON credit_suspense_entries TO app_authenticated;

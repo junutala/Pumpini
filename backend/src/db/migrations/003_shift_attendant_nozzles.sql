@@ -29,19 +29,15 @@ CREATE INDEX IF NOT EXISTS idx_san_shift_attendant
 
 -- ─────────────────────────────────────────────────────────────
 --  RLS — indirect, scoped through the parent shift's station (same pattern as
---  shift_attendants in rls/04_policies_indirect.sql). Guarded so a non-RLS DB
---  just gets a plain table. Canonical copy also added to 04_policies_indirect.sql.
+--  shift_attendants in rls/04_policies_indirect.sql). Explicit/top-level so it
+--  is unmistakable and Supabase's UI detects it (no "unprotected table" prompt).
+--  Assumes the RLS layer (my_stations(), app_authenticated) is present.
 -- ─────────────────────────────────────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'my_stations') THEN
-    EXECUTE 'ALTER TABLE shift_attendant_nozzles ENABLE ROW LEVEL SECURITY';
-    EXECUTE 'DROP POLICY IF EXISTS shift_attendant_nozzles_isolation ON shift_attendant_nozzles';
-    EXECUTE 'CREATE POLICY shift_attendant_nozzles_isolation ON shift_attendant_nozzles '
-         || 'USING (EXISTS (SELECT 1 FROM shifts s WHERE s.id = shift_attendant_nozzles.shift_id AND s.station_id IN (SELECT my_stations()))) '
-         || 'WITH CHECK (EXISTS (SELECT 1 FROM shifts s WHERE s.id = shift_attendant_nozzles.shift_id AND s.station_id IN (SELECT my_stations())))';
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_authenticated') THEN
-    EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON shift_attendant_nozzles TO app_authenticated';
-  END IF;
-END $$;
+ALTER TABLE shift_attendant_nozzles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS shift_attendant_nozzles_isolation ON shift_attendant_nozzles;
+CREATE POLICY shift_attendant_nozzles_isolation ON shift_attendant_nozzles
+  USING      (EXISTS (SELECT 1 FROM shifts s WHERE s.id = shift_attendant_nozzles.shift_id AND s.station_id IN (SELECT my_stations())))
+  WITH CHECK (EXISTS (SELECT 1 FROM shifts s WHERE s.id = shift_attendant_nozzles.shift_id AND s.station_id IN (SELECT my_stations())));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON shift_attendant_nozzles TO app_authenticated;
