@@ -90,10 +90,20 @@ login succeeded**, so the account/phone/RLS are all fine — the stored hash jus
 didn't match what the owner typed at login. Deferred: owner will create a fresh
 test user and reproduce.
 
+NEW EVIDENCE (2026-06-22, narrows it a lot): we bcrypt-verified a freshly
+created owner's stored hash directly. Owner Anjayya (+917680985046) hash was
+checked against candidates → **exact match for the typed `Welcome@2026`**, NOT
+the `Welcome@123` default. So the Add-User modal **does persist the exact typed
+password**; the create→hash→store path is sound.
+=> The "silent Welcome@123 default" / "modal drops password" theory is
+   effectively DISPROVEN. Madhu's one-off failure was almost certainly a
+   typo/mismatch between what was typed at creation vs at login that day. No
+   code bug. Downgrade this whole item to a non-bug unless it reproduces.
+
 Leading hypotheses (verify, don't assume):
-- Password field left blank at creation → backend silently defaults to
-  `Welcome@123` (POST /station-users: `hash(password || 'Welcome@123')`), while
-  owner believes he typed one. **Most likely.**
+- (downgraded) Password field blank at creation → silent `Welcome@123` default.
+  Contradicted by the Anjayya hash check above.
+- Human typo/mismatch between create-time and login-time entry. **Most likely.**
 - Stray leading/trailing space or autofill mismatch between create vs login.
 - (ruled out) phone normalization / is_active / RLS — all verified OK.
 
@@ -101,7 +111,8 @@ When reproducing, capture:
 - [ ] Exactly what's typed in the modal Password field at creation (screenshot).
 - [ ] The Network `login` response status on first attempt: 401 = hash mismatch
       (password problem, expected); 200-then-bounce = different bug.
-Hardening to consider (kills the ambiguity for good):
+Hardening (now nice-to-have, not a bug fix — see NEW EVIDENCE):
 - [ ] Make the Add-User Password **required** (no silent Welcome@123 default), OR
       show the effective password back to the admin after create, OR force
       must_change_password=TRUE so the user sets their own on first login.
+      Rationale shifts from "fix a bug" to "remove operator ambiguity".
