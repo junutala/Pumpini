@@ -72,6 +72,20 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       );
 
       await client.query('COMMIT');
+
+      // Credit-suspense drawdown (Option A): raising a credit invoice reduces the
+      // running credit-customer suspense booked at shift close. Post-commit and
+      // best-effort + idempotent per invoice, so invoicing never fails on it.
+      try {
+        await client.query(`DELETE FROM credit_suspense_entries WHERE reference_type='credit_invoice' AND reference_id=$1`, [invoice.id]);
+        if (Number(total_amount) > 0) {
+          await client.query(
+            `INSERT INTO credit_suspense_entries(station_id, direction, amount, corporate_id, description, reference_type, reference_id, created_by)
+             VALUES($1,'out',$2,$3,$4,'credit_invoice',$5,$6)`,
+            [station_id, total_amount, corporate_id || null, `Credit invoice ${invoice_number}`, invoice.id, req.user.id]);
+        }
+      } catch (e) { try { require('../utils/logger').warn('Credit-suspense drawdown skipped: ' + (e.message || e)); } catch { /* noop */ } }
+
       res.status(201).json(invoice);
     } catch (e) {
       await client.query('ROLLBACK');
