@@ -116,3 +116,27 @@ Hardening (now nice-to-have, not a bug fix — see NEW EVIDENCE):
       show the effective password back to the admin after create, OR force
       must_change_password=TRUE so the user sets their own on first login.
       Rationale shifts from "fix a bug" to "remove operator ambiguity".
+
+## 7. Admin-set Station Code + attendant display (deferred 2026-06-22)
+Owner wants attendants uniquely identifiable so common names (e.g. dozens of
+"Kumar") aren't confused across the 7 outlets, especially once POS login goes
+live. DECISIONS (owner-approved):
+- Attendant unique key / future POS login = **mobile number**. ALREADY ENFORCED:
+  POST /users/attendant requires name+phone, users.phone is globally UNIQUE
+  (dupes → 409 "already registered"), add-attendant list shows the mobile, and
+  RLS scopes each station's attendants. So disambiguation is already handled.
+- **Station Code** = a short code (e.g. KAM) the platform admin sets per outlet.
+  NOT YET BUILT. Scope when picked up:
+  - [ ] Migration: ALTER TABLE stations ADD COLUMN code VARCHAR(8) (nullable).
+  - [ ] superadmin POST /stations + PATCH /stations/:id accept & return `code`.
+  - [ ] /admin station create/edit modal: add a "Station Code" input.
+  - [ ] Show the code in cross-station/admin/group views and (optionally) beside
+        attendant names where outlet context helps (e.g. "Kumar · KAM").
+  Note: with mobile-as-key already done, the station code is a human-readable
+  display aid, not a uniqueness mechanism — low urgency.
+
+## 8. Tank Name/Label field — SKIPPED by owner (2026-06-22)
+Considered adding an optional descriptive tank label (e.g. "Diesel — East") so
+two same-capacity diesel tanks read clearly for operators. Owner said IGNORE —
+plain "Tank 1 / Tank 2" (number = sequential id, not capacity) is fine. Capacity
+(20000) goes in the Capacity field. Revisit only if operators ask.
