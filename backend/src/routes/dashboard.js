@@ -62,6 +62,19 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       WHERE sh.station_id=$1 AND sh.date=$2 AND ABS(r.variance) > 50
       ORDER BY ABS(r.variance) DESC`, [station_id, date]);
 
+    // Held suspense balances (running, station-wide): petty-cash fund and
+    // un-invoiced credit. Best-effort + separate so a not-yet-migrated table
+    // can't break the dashboard.
+    let credit_suspense = 0, petty_cash = 0;
+    try {
+      const { rows } = await pool.query(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) AS bal FROM petty_cash_entries WHERE station_id=$1`, [station_id]);
+      petty_cash = Number(rows[0].bal || 0);
+    } catch { /* table absent */ }
+    try {
+      const { rows } = await pool.query(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) AS bal FROM credit_suspense_entries WHERE station_id=$1`, [station_id]);
+      credit_suspense = Number(rows[0].bal || 0);
+    } catch { /* table absent until migration 004 */ }
+
     res.json({
       date,
       sales: sales.rows,
@@ -70,6 +83,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       alerts: alerts.rows,
       attendance: attendance.rows,
       variances,
+      suspense: { credit_suspense, petty_cash },
       sales_masked: !isOwner && shifts.rows.some(s => s.status === 'open'),
     });
   } catch (err) { next(err); }

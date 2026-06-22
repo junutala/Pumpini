@@ -193,6 +193,30 @@ export default function DashboardPage() {
         </a>
       )}
 
+      {/* Held suspense — un-invoiced credit + petty-cash fund (cleared as accounted) */}
+      {user?.role==='owner' && data?.suspense && (Number(data.suspense.credit_suspense)>0.5 || Number(data.suspense.petty_cash)>0.5) && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1.5rem'}} className="stack-mobile">
+          <a href="/invoices" style={{textDecoration:'none'}}>
+            <div className="card" style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderLeft:'4px solid #8b5cf6'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>🧾 {tc('dash_page.credit_suspense','Credit to invoice')}</div>
+                <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:2}}>{tc('dash_page.credit_suspense_sub','Un-invoiced credit booked at shift close')}</div>
+              </div>
+              <div style={{fontSize:20,fontWeight:900,color:'#7c3aed'}}>₹{Number(data.suspense.credit_suspense||0).toLocaleString('en-IN')}</div>
+            </div>
+          </a>
+          <a href="/petty-cash" style={{textDecoration:'none'}}>
+            <div className="card" style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderLeft:'4px solid #0ea5e9'}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>💼 {tc('dash_page.petty_balance','Petty cash on hand')}</div>
+                <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:2}}>{tc('dash_page.petty_balance_sub','Fund balance — cleared by expense vouchers')}</div>
+              </div>
+              <div style={{fontSize:20,fontWeight:900,color:'#0284c7'}}>₹{Number(data.suspense.petty_cash||0).toLocaleString('en-IN')}</div>
+            </div>
+          </a>
+        </div>
+      )}
+
       {/* Earnings/Margin + live nozzle feed — owner-only purchase economics */}
       {user?.role==='owner' && <EarningsMarginTile stationId={stationId}/>}
 
