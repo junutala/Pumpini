@@ -86,7 +86,6 @@ router.post('/:id/force-logout', authenticate, authorize('owner','manager'), asy
 // password is set (attendants don't log in / use POS yet). They become available
 // for shift assignment.
 router.post('/attendant', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
-  const client = await pool.connect();
   try {
     const { name, phone, language = 'en', station_id } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required.' });
@@ -94,20 +93,35 @@ router.post('/attendant', authenticate, authorize('owner','manager'), requireSta
     if (clean.length < 10) return res.status(400).json({ error: 'Enter a valid phone number.' });
     const storedPhone = clean.startsWith('91') ? `+${clean}` : `+91${clean}`;
     const hash = await bcrypt.hash('Welcome@123', 12);   // dummy — attendants don't log in yet
-    await client.query('BEGIN');
-    const { rows } = await client.query(
-      `INSERT INTO users(name,phone,password_hash,role,language,must_change_password)
-       VALUES($1,$2,$3,'attendant',$4,TRUE) RETURNING id,name,phone,role,language`,
-      [name, storedPhone, hash, language]
-    );
-    await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [station_id, rows[0].id]);
-    await client.query('COMMIT');
-    res.status(201).json(rows[0]);
+
+    // Creating a user row is a privileged op already authorized above (owner/
+    // manager + station access; role forced to 'attendant'). Run it on the BYPASS
+    // role — exactly like the superadmin console — by stepping outside the request's
+    // RLS identity (als.run(undefined,…)). A manager's identity can't satisfy an
+    // insert policy on a brand-new user that isn't linked to any of his stations
+    // yet (the station_users link is written a statement later — chicken-and-egg).
+    const created = await pool.als.run(undefined, async () => {
+      const client = await pool.connect();   // no ALS store → raw bypass owner client
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          `INSERT INTO users(name,phone,password_hash,role,language,must_change_password)
+           VALUES($1,$2,$3,'attendant',$4,TRUE) RETURNING id,name,phone,role,language`,
+          [name, storedPhone, hash, language]
+        );
+        await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [station_id, rows[0].id]);
+        await client.query('COMMIT');
+        return rows[0];
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally { client.release(); }
+    });
+    res.status(201).json(created);
   } catch (e) {
-    await client.query('ROLLBACK');
     if (e.code === '23505') return res.status(409).json({ error: 'This phone number is already registered.' });
     next(e);
-  } finally { client.release(); }
+  }
 });
 
 module.exports = router;
