@@ -83,6 +83,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       gross_volume_ltrs, temperature_c, density,
       batch_number, seal_number,
       rate_per_ltr, freight, total_value, notes,
+      invoice_id, invoice_base64, invoice_media_type,
     } = req.body;
 
     // Calculate net volume
@@ -98,14 +99,31 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
     }
 
+    // Attach the scanned invoice. The first compartment of a multi-product invoice
+    // stores the file; later compartments pass back the returned invoice_id so they
+    // share the one record (no duplicate blobs).
+    let invoiceId = invoice_id || null;
+    if (!invoiceId && invoice_base64 && invoice_media_type && INVOICE_OK_TYPES.includes(invoice_media_type)) {
+      const { rows: ir } = await pool.query(
+        `INSERT INTO delivery_invoices(station_id, file_base64, media_type, uploaded_by)
+         VALUES($1,$2,$3,$4) RETURNING id`,
+        [station_id, invoice_base64, invoice_media_type, req.user.id]
+      );
+      invoiceId = ir[0].id;
+    } else if (invoiceId) {
+      // Re-scope a passed invoice_id to this station — never link another outlet's file.
+      const { rows: iv } = await pool.query('SELECT 1 FROM delivery_invoices WHERE id=$1 AND station_id=$2', [invoiceId, station_id]);
+      if (!iv.length) invoiceId = null;
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO fuel_deliveries(
          station_id,tank_id,shift_id,dc_number,dc_date,received_at,
          fuel_type,oil_company,depot_name,tanker_number,compartment_no,
          gross_volume_ltrs,temperature_c,density,net_volume_ltrs,
          batch_number,seal_number,rate_per_ltr,freight,total_value,
-         received_by,notes
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         received_by,notes,invoice_id
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        RETURNING *`,
       [
         station_id, tank_id, shift_id||null,
@@ -116,7 +134,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
         gross_volume_ltrs, temperature_c||null, density||null, netVol.toFixed(2),
         batch_number||null, seal_number||null,
         rate_per_ltr||null, freight||0, total_value||null,
-        req.user.id, notes||null,
+        req.user.id, notes||null, invoiceId,
       ]
     );
 
@@ -157,6 +175,21 @@ router.patch('/:id/verify', authenticate, authorize('owner','manager'), requireS
        WHERE id=$2 RETURNING *`,
       [req.user.id, req.params.id]
     );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// GET /api/deliveries/:id/invoice — the stored scan attached to a delivery,
+// returned as { media_type, file_base64 } for viewing/download. Station-scoped.
+router.get('/:id/invoice', authenticate,
+  requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'),
+  async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT di.media_type, di.file_base64
+       FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
+       WHERE fd.id = $1`, [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'No invoice attached to this delivery.' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, CheckCircle, Truck, Package, Camera, Upload, ScanLine } from 'lucide-react';
+import { Plus, X, CheckCircle, Truck, Package, Camera, Upload, ScanLine, Paperclip } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -51,6 +51,19 @@ export default function DeliveriesPage() {
   const [activeItem,setActiveItem]= useState(0);
   const [recorded,  setRecorded]  = useState([]);   // indices already saved
   const [scanMeta,  setScanMeta]  = useState(null); // confidence/notes
+  const [scanFile,  setScanFile]  = useState(null); // {base64,media_type} — attached on save
+  const [invoiceId, setInvoiceId] = useState(null); // shared across an invoice's compartments
+  const [viewDoc,   setViewDoc]   = useState(null); // {media_type,url} for the viewer
+
+  const openInvoice = async (deliveryId) => {
+    try {
+      const r = await api.get(`/deliveries/${deliveryId}/invoice`);
+      const bytes = Uint8Array.from(atob(r.file_base64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.media_type }));
+      setViewDoc({ media_type: r.media_type, url });
+    } catch (err) { alert(err.error || tc('deliv_page.invoice_fail','Could not load the invoice.')); }
+  };
+  const closeViewer = () => { if (viewDoc?.url) URL.revokeObjectURL(viewDoc.url); setViewDoc(null); };
 
   const OIL_MAP = { IOC:'IOC', 'INDIAN OIL':'IOC', IOCL:'IOC', HPCL:'HPCL', BPCL:'BPCL', ESSAR:'Essar', SHELL:'Shell', RELIANCE:'Reliance', NAYARA:'Nayara' };
 
@@ -59,6 +72,7 @@ export default function DeliveriesPage() {
   const openForm = () => {
     setForm(blankForm());
     setItems([]); setRecorded([]); setActiveItem(0); setScanMeta(null); setScanErr('');
+    setScanFile(null); setInvoiceId(null);
     setShowForm(true);
   };
 
@@ -123,6 +137,7 @@ export default function DeliveriesPage() {
     setScanErr(''); setScanning(true);
     try {
       const { base64, media_type } = await fileToBase64(file);
+      setScanFile({ base64, media_type }); setInvoiceId(null);   // keep to attach on save
       const res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type });
       applyParsed(res);
     } catch (err) {
@@ -188,7 +203,13 @@ export default function DeliveriesPage() {
         rate_per_ltr:      form.rate_per_ltr ? parseFloat(form.rate_per_ltr) : null,
         freight:           parseFloat(form.freight||0),
       };
-      await api.post('/deliveries', payload);
+      // Attach the scanned invoice: first compartment uploads the file, the rest
+      // reuse the returned invoice_id so they share one stored record.
+      if (invoiceId) payload.invoice_id = invoiceId;
+      else if (scanFile) { payload.invoice_base64 = scanFile.base64; payload.invoice_media_type = scanFile.media_type; }
+
+      const created = await api.post('/deliveries', payload);
+      if (created?.invoice_id && !invoiceId) setInvoiceId(created.invoice_id);
 
       // Multi-product invoice: keep the modal open and tee up the next compartment.
       const stillLeft = items.map((_,i)=>i).filter(i => i!==activeItem && !recorded.includes(i));
@@ -279,7 +300,16 @@ export default function DeliveriesPage() {
               )}
               {deliveries.map(d=>(
                 <tr key={d.id}>
-                  <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:600}}>{d.dc_number||'—'}</td>
+                  <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:600}}>
+                    {d.dc_number||'—'}
+                    {d.invoice_id && (
+                      <button type="button" title={tc('deliv_page.view_invoice','View scanned invoice')}
+                        onClick={()=>openInvoice(d.id)}
+                        style={{marginLeft:6,background:'none',border:'none',cursor:'pointer',padding:0,verticalAlign:'middle'}}>
+                        <Paperclip size={13} style={{color:'var(--brand)'}}/>
+                      </button>
+                    )}
+                  </td>
                   <td style={{fontSize:12,whiteSpace:'nowrap'}}>{toIST(d.received_at)}</td>
                   <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{d.tanker_number||'—'}</td>
                   <td><span className={`fuel-chip fuel-${d.fuel_type}`}>{d.fuel_type}</span></td>
@@ -509,6 +539,29 @@ export default function DeliveriesPage() {
                 {tc('deliv_page.stock_auto','Tank stock will be updated automatically on save')}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice viewer */}
+      {viewDoc && (
+        <div onClick={closeViewer} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'1.5rem'}}>
+          <div className="card" style={{width:760,maxWidth:'92vw',maxHeight:'92vh',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+              <div style={{fontWeight:600,fontSize:14}}>{tc('deliv_page.scanned_invoice','Scanned Invoice')}</div>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <a className="btn btn-secondary btn-sm" href={viewDoc.url}
+                   download={viewDoc.media_type==='application/pdf'?'invoice.pdf':'invoice.jpg'}>
+                  {tc('deliv_page.download','Download')}
+                </a>
+                <button onClick={closeViewer} style={{background:'none',border:'none',cursor:'pointer'}}><X size={18}/></button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:'auto',background:'var(--surface-2)',borderRadius:6}}>
+              {viewDoc.media_type==='application/pdf'
+                ? <iframe title="invoice" src={viewDoc.url} style={{width:'100%',height:'78vh',border:'none'}}/>
+                : <img alt="invoice" src={viewDoc.url} style={{width:'100%',height:'auto',display:'block'}}/>}
+            </div>
           </div>
         </div>
       )}

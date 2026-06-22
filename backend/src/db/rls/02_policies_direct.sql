@@ -8,7 +8,7 @@ declare
   t text;
   direct_tables text[] := array[
     'alerts','attendance','cash_deposits','corporate_receipts','corporate_station_links',
-    'dipstick_readings','dispense_events','fuel_deliveries','fuel_prices','gst_invoices',
+    'delivery_invoices','dipstick_readings','dispense_events','fuel_deliveries','fuel_prices','gst_invoices',
     'nozzles','petty_cash_entries','product_cn_seq','product_credit_notes','product_invoice_seq',
     'product_invoices','product_stock_receipts','products','rfid_tags','role_templates',
     'shift_definitions','shifts','station_group_members','station_settings','station_subscriptions',
