@@ -140,3 +140,33 @@ Considered adding an optional descriptive tank label (e.g. "Diesel — East") so
 two same-capacity diesel tanks read clearly for operators. Owner said IGNORE —
 plain "Tank 1 / Tank 2" (number = sequential id, not capacity) is fine. Capacity
 (20000) goes in the Capacity field. Revisit only if operators ask.
+
+## 9. Add a "Pump" layer above nozzles (deferred 2026-06-22)
+Owner request. Today the hierarchy is Tank → Nozzle. Add a **Pump** (a.k.a.
+dispensing unit) layer in between, so each nozzle belongs to a numbered pump:
+  Tank → (Nozzle) and Pump → Nozzle(s), with Nozzle still mapped to a Tank.
+WHY it's valuable: the physical **pump stock slips** (the printed meter/receipt
+the operator tears off) carry the **pump number**. Capturing the pump number in
+our model lets us tie meter readings, receipt images, and reconciliation to the
+exact physical pump — much stronger audit trail and matches what staff read off
+the slip.
+
+Scope when picked up:
+- [ ] New table `pumps` (id, station_id, pump_number/label, ...). RLS: direct
+      station_id isolation (add to rls/02 direct-tables list).
+- [ ] `nozzles` gets `pump_id` FK (nullable first for backfill, then required).
+- [ ] Settings → Pumps tab (CRUD), and nozzle form picks its Pump.
+- [ ] Show pump number in shift-start/-end (operator readings grouped by pump),
+      dipstick/receipt capture, and dashboards where nozzle appears.
+- [ ] Backfill: create a default pump per existing nozzle grouping, or prompt
+      the owner to map existing nozzles to pumps.
+Note: a pump typically has 1-2 nozzles (e.g. one per fuel, or two same-fuel
+guns). Keep nozzle→tank mapping intact; pump is an organisational/audit layer.
+
+## 10. Dipstick + attendant entry on an already-open shift (watch item 2026-06-22)
+Owner opened a shift but hadn't collected the opening dip / attendants yet, plans
+to load them later onto the OPEN shift (dip readings + assign operators + pump
+receipt images). Confirmed backend allows assign while open and next-day close.
+IF the open-shift screens don't allow loading the opening dipstick after the fact
+(e.g. dip capture is gated to shift-open only), make opening dip enterable on an
+open shift. Revisit only if owner reports he can't load it.
