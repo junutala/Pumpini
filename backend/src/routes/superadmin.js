@@ -147,8 +147,8 @@ router.post('/owners', authAdmin, async (req, res, next) => {
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO users(name,phone,email,password_hash,role)
-         VALUES($1,$2,$3,$4,'owner') RETURNING *`,
+        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
+         VALUES($1,$2,$3,$4,'owner',TRUE) RETURNING *`,
         [name, storedPhone, email||null, hash]
       );
       if (group_id) {
@@ -709,9 +709,11 @@ router.post('/station-users', authAdmin, async (req, res, next) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // must_change_password=TRUE: admin sets a starter password; the user is
+      // forced to set their own on first login (same as after Reset PW).
       const { rows } = await client.query(
-        `INSERT INTO users(name,phone,email,password_hash,role)
-         VALUES($1,$2,$3,$4,$5) RETURNING *`,
+        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
+         VALUES($1,$2,$3,$4,$5,TRUE) RETURNING *`,
         [name, storedPhone, email||null, hash, role]
       );
       await client.query(

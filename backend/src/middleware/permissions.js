@@ -90,8 +90,11 @@ async function getUserPermissions(userId, stationId) {
   const planMods = await getPlanModules(stationId, catalog);
   let perms;
   if (!planMods) {
-    // Fail open: preserve today's behaviour until a plan is configured.
-    perms = (role === 'owner') ? ['ALL'] : resp;
+    // Fail open on the PLAN ceiling only (until a plan is configured). An
+    // explicitly assigned responsibility STILL restricts — including owners
+    // (a finance owner limited to dashboard + cash integrity). Owner with NO
+    // responsibility = the whole catalog, as before.
+    perms = (role === 'owner' && !tp.length) ? ['ALL'] : resp;
   } else {
     perms = resp.filter(p => planMods.includes(p)); // …capped by what the outlet's plan includes
   }
