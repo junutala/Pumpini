@@ -38,6 +38,7 @@ export default function ShiftStartPage() {
   const [open, setOpen]       = useState({ shift_number:1, date: today() });
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+  const [prices, setPrices]   = useState([]);   // current selling price per fuel — parallel-run reminder
 
   // Dipstick step
   const [tanks, setTanks]     = useState([]);
@@ -62,11 +63,13 @@ export default function ShiftStartPage() {
       api.get(`/stations/${stationId}/nozzles`).catch(()=>[]),
       api.get('/shifts', { params:{ station_id: stationId, status:'open' } }).catch(()=>[]),
       api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
-    ]).then(([d,u,n,os,tk]) => {
+      api.get(`/prices/${stationId}/current`).catch(()=>[]),
+    ]).then(([d,u,n,os,tk,pr]) => {
       setDefs(Array.isArray(d)?d:[]); setUsers(Array.isArray(u)?u:[]);
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
       setOpenShifts(Array.isArray(os)?os:[]);
       setTanks(Array.isArray(tk)?tk:[]);
+      setPrices(Array.isArray(pr)?pr:[]);
     });
   }, [stationId]);
 
@@ -175,6 +178,21 @@ export default function ShiftStartPage() {
         <ChevronRight size={14} color="var(--text-3)"/>
         <span style={{fontWeight:800,fontSize:15}}>Start Shift</span>
       </div>
+
+      {/* Current selling price — reminder to keep the system in step with the board during parallel run */}
+      {prices.length>0 && (
+        <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 12px',marginBottom:'1rem'}}>
+          <span style={{fontSize:11.5,fontWeight:800,color:'#92400e',textTransform:'uppercase',letterSpacing:'.04em'}}>Selling price in system</span>
+          {prices.map(p=>(
+            <span key={p.fuel_type} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:14,fontWeight:800}}>
+              <span className={`fuel-chip fuel-${p.fuel_type}`} style={{textTransform:'capitalize'}}>{String(p.fuel_type).replace('_',' ')}</span>
+              ₹{Number(p.price).toFixed(2)}
+              {p.effective_from && <span style={{fontSize:10.5,fontWeight:500,color:'#a16207'}}>since {new Date(p.effective_from).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>}
+            </span>
+          ))}
+          <span style={{fontSize:11.5,color:'#92400e',marginLeft:'auto'}}>⚠ Board price changed? Update it in <strong>Prices</strong> before the shift runs.</span>
+        </div>
+      )}
 
       {/* Stepper */}
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
