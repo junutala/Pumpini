@@ -10,7 +10,7 @@ router.get('/charts', authenticate, async (_req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT id, name, diameter_cm, length_cm,
-              ROUND(pi() * power(diameter_cm/2, 2) * length_cm / 1000) AS capacity_ltrs
+              ROUND((pi() * power(diameter_cm/2, 2) * length_cm / 1000)::numeric) AS capacity_ltrs
        FROM tank_calibration_charts
        WHERE is_active
        ORDER BY diameter_cm, length_cm`

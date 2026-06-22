@@ -45,11 +45,11 @@ RETURNS NUMERIC AS $$
   SELECT CASE
     WHEN p_dip <= 0 THEN 0
     WHEN p_dip >= c.diameter_cm
-      THEN ROUND(pi() * power(c.diameter_cm/2, 2) * c.length_cm / 1000, 2)
+      THEN ROUND((pi() * power(c.diameter_cm/2, 2) * c.length_cm / 1000)::numeric, 2)
     ELSE ROUND((
         power(c.diameter_cm/2, 2) * acos((c.diameter_cm/2 - p_dip) / (c.diameter_cm/2))
         - (c.diameter_cm/2 - p_dip) * sqrt(2*(c.diameter_cm/2)*p_dip - p_dip*p_dip)
-      ) * c.length_cm / 1000, 2)
+      )::numeric * c.length_cm / 1000, 2)
   END
   FROM tank_calibration_charts c WHERE c.id = p_chart;
 $$ LANGUAGE sql STABLE;
@@ -60,9 +60,9 @@ $$ LANGUAGE sql STABLE;
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION calib_tolerance(p_chart UUID, p_dip NUMERIC)
 RETURNS NUMERIC AS $$
-  SELECT ROUND(
-    2 * sqrt(GREATEST(0, 2*(c.diameter_cm/2)*p_dip - p_dip*p_dip))
-    * c.length_cm / 1000 / 10, 2)
+  SELECT ROUND((
+      2 * sqrt(GREATEST(0, 2*(c.diameter_cm/2)*p_dip - p_dip*p_dip))
+      * c.length_cm / 1000 / 10)::numeric, 2)
   FROM tank_calibration_charts c WHERE c.id = p_chart;
 $$ LANGUAGE sql STABLE;
 
