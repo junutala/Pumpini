@@ -344,7 +344,7 @@ router.get('/margin', authenticate, requireStationAccess({ required: true }), as
       LEFT JOIN LATERAL (
         SELECT COALESCE(
           (SELECT SUM(sr.quantity * sr.buying_price) / NULLIF(SUM(sr.quantity), 0)
-             FROM stock_receipts sr
+             FROM product_stock_receipts sr
             WHERE sr.product_id = pii.product_id AND sr.buying_price > 0),
           NULLIF(p.buying_price, 0)
         ) AS unit_cost
