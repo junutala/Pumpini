@@ -76,3 +76,32 @@ managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
 - [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
       with the platform admin.
 - [ ] Auditor responsibility (e.g. tally.export + reports.view only).
+- [ ] MERGE PENDING: Add-User modal Responsibility picker. Built + pushed to
+      branch `claude/voice-triggered-forms-1aa121` (commit 2926ce7) but NOT
+      merged to main yet — owner wants to test first. The /admin "Add User to
+      Station" modal now has a Responsibility dropdown (lists the bunk's
+      role_templates, e.g. Manager_lite) so you can assign at creation instead
+      of only via the row dropdown afterward. Merge after click-through.
+
+## 6. Root cause: new station-user password "doesn't work" at first login (2026-06-22)
+J Madhu (9398013493, Kamala) was created via /admin Add User; owner is "sure"
+he set the password, but login rejected it. Admin **Reset PW → known value →
+login succeeded**, so the account/phone/RLS are all fine — the stored hash just
+didn't match what the owner typed at login. Deferred: owner will create a fresh
+test user and reproduce.
+
+Leading hypotheses (verify, don't assume):
+- Password field left blank at creation → backend silently defaults to
+  `Welcome@123` (POST /station-users: `hash(password || 'Welcome@123')`), while
+  owner believes he typed one. **Most likely.**
+- Stray leading/trailing space or autofill mismatch between create vs login.
+- (ruled out) phone normalization / is_active / RLS — all verified OK.
+
+When reproducing, capture:
+- [ ] Exactly what's typed in the modal Password field at creation (screenshot).
+- [ ] The Network `login` response status on first attempt: 401 = hash mismatch
+      (password problem, expected); 200-then-bounce = different bug.
+Hardening to consider (kills the ambiguity for good):
+- [ ] Make the Add-User Password **required** (no silent Welcome@123 default), OR
+      show the effective password back to the admin after create, OR force
+      must_change_password=TRUE so the user sets their own on first login.

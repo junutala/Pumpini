@@ -1005,8 +1005,24 @@ export default function AdminPage(){
               <option value="attendant">Attendant</option><option value="manager">Manager</option><option value="owner">Owner</option>
             </select>
           </Field>
+          <Field label="Responsibility">
+            <select style={inp} value={form.template_id||''} onChange={e=>f('template_id',e.target.value)}>
+              <option value="">Default (role) — system permissions</option>
+              {stTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <div style={{fontSize:11,color:'#888',marginTop:4}}>Pick a function set (e.g. Manager_lite). Leave as Default to use plain role permissions — you can change this later on the user row.</div>
+          </Field>
           <Field label="Password"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Default: Welcome@123"/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/station-users').then(()=>loadStationUsers(form.station_id))} disabled={loading}>{loading?'Adding...':'Add User'}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading}
+            onClick={async()=>{
+              setLoading(true);
+              const created=await adminFetch('/station-users',{method:'POST',body:JSON.stringify(form)});
+              if(created&&created.error){ setLoading(false); alert(created.error); return; }
+              if(form.template_id&&created&&created.id){
+                await adminFetch('/templates/assign',{method:'POST',body:JSON.stringify({user_id:created.id,template_id:form.template_id,station_id:form.station_id})});
+              }
+              setLoading(false); closeModal(); loadStationUsers(form.station_id); reload(); showToast('User added.');
+            }}>{loading?'Adding...':'Add User'}</button>
         </Modal>
       )}
 
