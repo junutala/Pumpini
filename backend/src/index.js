@@ -91,6 +91,7 @@ app.use('/api/reconcile',  reconcileRoutes);
 app.use('/api/corporate',  corporateRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/dipstick',   dipstickRoutes);
+app.use('/api/calibration', require('./routes/calibration'));
 app.use('/api/dashboard',  dashboardRoutes);
 app.use('/api/alerts',     alertRoutes);
 app.use('/api/receipts',   receiptRoutes);

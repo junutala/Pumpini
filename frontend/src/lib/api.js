@@ -76,6 +76,10 @@ export const recordDipstick = (data)      => api.post('/dipstick', data);
 export const getTankStock   = (stationId) => api.get(`/dipstick/tanks/${stationId}`);
 export const getDensityRegister = (params) => api.get('/dipstick/density-register', { params });
 
+// Tank calibration (formula-based: diameter x length)
+export const getCalibrationCharts = ()             => api.get('/calibration/charts');
+export const setTankChart         = (tankId, data) => api.patch(`/calibration/tank/${tankId}`, data);
+
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);
 export const setPrice         = (data)       => api.post('/prices', data);

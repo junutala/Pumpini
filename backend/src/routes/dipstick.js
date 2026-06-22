@@ -3,17 +3,36 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const { dipToVolume } = require('../lib/calibration');
 
 // POST /api/dipstick
+// dip_cm is the TRUE dip (the form converts the mark-ordinal entry first). When
+// the tank has a calibration type, volume is computed authoritatively from the
+// geometry and the client's volume_ltrs is ignored; otherwise it falls back to
+// the manually entered volume (tanks not yet assigned a type).
 router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
-    const { station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c } = req.body;
+    const { station_id, tank_id, shift_id, reading_type, dip_cm, density, temperature_c } = req.body;
+    let volume_ltrs = req.body.volume_ltrs;
 
     // Re-scope tank to the validated station — a tank_id from another outlet
-    // must not be writable here even though station_id passed the guard.
+    // must not be writable here even though station_id passed the guard. Also
+    // pull its calibration type in the same hop.
+    let chart = null;
     if (tank_id) {
-      const { rows: tk } = await pool.query('SELECT 1 FROM tanks WHERE id=$1 AND station_id=$2', [tank_id, station_id]);
+      const { rows: tk } = await pool.query(
+        `SELECT c.diameter_cm, c.length_cm
+         FROM tanks t
+         LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
+         WHERE t.id=$1 AND t.station_id=$2`, [tank_id, station_id]);
       if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
+      chart = tk[0];
+    }
+
+    // Authoritative volume from the dip + tank geometry, when a type is set.
+    if (chart && chart.diameter_cm && chart.length_cm && dip_cm != null) {
+      const v = dipToVolume(chart.diameter_cm, chart.length_cm, dip_cm);
+      if (v != null) volume_ltrs = v;
     }
 
     const { rows } = await pool.query(
@@ -145,10 +164,13 @@ router.get('/density-register', authenticate, requireStationAccess({ required: t
 router.get('/tanks/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT t.*, 
+      `SELECT t.*,
+        c.name AS chart_name, c.diameter_cm, c.length_cm,
         (SELECT dr.volume_ltrs FROM dipstick_readings dr WHERE dr.tank_id=t.id ORDER BY dr.recorded_at DESC LIMIT 1) AS last_reading,
         (SELECT dr.recorded_at FROM dipstick_readings dr WHERE dr.tank_id=t.id ORDER BY dr.recorded_at DESC LIMIT 1) AS last_reading_at
-       FROM tanks t WHERE t.station_id=$1 ORDER BY t.tank_number`, [req.params.station_id]
+       FROM tanks t
+       LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
+       WHERE t.station_id=$1 ORDER BY t.tank_number`, [req.params.station_id]
     );
     res.json(rows);
   } catch (err) { next(err); }

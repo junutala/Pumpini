@@ -44,3 +44,13 @@ No scanning. Just record each type's **diameter × length** (from the tank
 nameplate or the chart header, e.g. "194-525") as a row in
 `tank_calibration_charts`. Outlets then pick the type from a dropdown at tank
 setup.
+
+## OPEN POINT — lock the logic after more samples
+6 more outlets go live over the next couple of weeks. As they come on, validate
+the formula against **a couple more tank capacities** (compare formula vs the
+real IOCL sheet at a few dips; expect to stay within the DIFF band). Once a few
+more sizes confirm, **lock** this geometric approach as final.
+
+Also open: the **dip-stick entry granularity** is hard-coded to 4 marks/cm
+(0.2 cm). If an outlet's stick differs (e.g. mm marks), make marks-per-cm a
+per-stick/per-outlet setting rather than a constant in `calibration.js`.
