@@ -20,15 +20,18 @@ BEGIN
     IF tid IS NULL THEN
       INSERT INTO role_templates(station_id, name, description, is_system)
         VALUES(st.id, 'Manager_lite',
-               'Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers',
+               'Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers, add attendant',
                TRUE)
         RETURNING id INTO tid;
-      INSERT INTO template_permissions(template_id, module_code)
-        SELECT tid, code FROM (VALUES
-          ('shifts.view'),('deliveries.view'),('stock.reconcile'),('invoice.generate'),
-          ('pettycash.manage'),('deposits.manage'),('reports.view'),('corporate.view')
-        ) AS m(code)
-        ON CONFLICT DO NOTHING;
     END IF;
+    -- Ensure all codes present (idempotent — also tops up attendant.add on a
+    -- Manager_lite that was seeded before this column existed).
+    INSERT INTO template_permissions(template_id, module_code)
+      SELECT tid, code FROM (VALUES
+        ('shifts.view'),('deliveries.view'),('stock.reconcile'),('invoice.generate'),
+        ('pettycash.manage'),('deposits.manage'),('reports.view'),('corporate.view'),
+        ('attendant.add')
+      ) AS m(code)
+      ON CONFLICT DO NOTHING;
   END LOOP;
 END $$;

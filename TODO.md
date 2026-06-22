@@ -65,9 +65,9 @@ For now the platform admin (/admin) creates ALL users (owners, managers,
 attendants) and assigns responsibilities. Owners come back to admin for extra
 managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
 (migration 006) WITHOUT user-management. When we revisit, decide:
-- [ ] "Add Attendant" — a narrow manager capability (create attendant-role user
-      + fixed attendant responsibility only, enforced server-side). Replaces any
-      broad "Add User" for managers.
+- [x] "Add Attendant" — DONE 2026-06-22. /add-attendant + POST /users/attendant
+      force role='attendant' + station scope + dummy password (no POS/login);
+      perm 'attendant.add' on Manager_lite + manager defaults. Manager-facing.
 - [ ] SECURITY: lock down responsibility create/assign. Today POST /api/templates
       and /api/templates/assign are authorize('owner','manager') — a manager can
       mint a template with ANY permissions and assign it (privilege escalation).

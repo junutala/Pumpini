@@ -91,6 +91,7 @@ export const acknowledgeAlert = (id)     => api.patch(`/alerts/${id}/acknowledge
 // Users
 export const getUsers  = (params) => api.get('/users', { params });
 export const updateUser = (id, d) => api.patch(`/users/${id}`, d);
+export const addAttendant = (data) => api.post('/users/attendant', data);
 
 // RFID
 export const getRfidTags  = (stationId) => api.get(`/rfid?station_id=${stationId}`);
