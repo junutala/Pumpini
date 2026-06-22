@@ -53,3 +53,9 @@ When picked up (do in an isolated worktree, full build + click-through before me
 - [ ] Re-check data fetching/caching defaults (fetch no longer cached by default)
 - [ ] `npm run build` + smoke-test every page; then PR to main
 - [ ] Add CI (npm ci && build) + commit the workspace lockfile in the same PR
+
+## 4. Dip continuity: closing dip → next opening dip (deferred 2026-06-22)
+The closing dipstick of one shift/day is physically the opening dip of the next
+(same as the meter handover). Later: auto-prefill the opening dip from the prior
+shift's closing dip and flag any mismatch (a dip "handover tripwire"), instead of
+re-keying it. Keep manual capture for now.
