@@ -39,7 +39,11 @@ export default function AddAttendantPage() {
       setForm({ name:'', phone:'' });
       load();
       setTimeout(()=>setSaved(''), 4000);
-    } catch (e) { setErr(e.error || 'Could not add attendant'); }
+    } catch (e) {
+      // Surface the real reason (backend message, else network/timeout text) so
+      // failures are self-describing instead of a generic catch-all.
+      setErr(e?.error || e?.message || (typeof e==='string'?e:'Could not add attendant'));
+    }
     finally { setBusy(false); }
   };
 
