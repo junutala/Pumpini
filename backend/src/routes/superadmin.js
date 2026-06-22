@@ -231,7 +231,21 @@ router.post('/stations', authAdmin, async (req, res, next) => {
         [name, address, gst_number, oil_company, city, state]
       );
       const sid = rows[0].id;
-      // Assign owner
+
+      // Seed the standard 'Manager_lite' responsibility for this bunk so it's
+      // ready to assign in /admin (is_system => not editable by a manager).
+      const { rows: mlEx } = await client.query(
+        `SELECT id FROM role_templates WHERE station_id=$1 AND name='Manager_lite' LIMIT 1`, [sid]);
+      if (!mlEx.length) {
+        const { rows: ml } = await client.query(
+          `INSERT INTO role_templates(station_id,name,description,is_system)
+           VALUES($1,'Manager_lite','Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers',TRUE)
+           RETURNING id`, [sid]);
+        for (const c of ['shifts.view','deliveries.view','stock.reconcile','invoice.generate','pettycash.manage','deposits.manage','reports.view','corporate.view']) {
+          await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [ml.id, c]);
+        }
+      }
+
       if (owner_id) {
         await client.query(
           'INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
