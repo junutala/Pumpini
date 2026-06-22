@@ -10,8 +10,15 @@
 --    (Credit Customers). Bunk View shows regardless (no perm gate).
 --
 --  Idempotent: skips any bunk that already has a 'Manager_lite'.
---  Versioned: v1 2026-06-22.
+--  Versioned: v2 2026-06-22 (registers attendant.add in the catalog first).
 -- ─────────────────────────────────────────────────────────────
+
+-- Register the new permission module first — template_permissions.module_code
+-- has a FK to permission_modules(code).
+INSERT INTO permission_modules(code, category, label) VALUES
+  ('attendant.add', 'Admin', 'Add Attendant')
+ON CONFLICT (code) DO NOTHING;
+
 DO $$
 DECLARE st RECORD; tid UUID;
 BEGIN
