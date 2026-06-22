@@ -162,8 +162,9 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
   async (req, res, next) => {
     const {
-      shift_id, attendant_id, closing_reading, price_per_ltr,
+      shift_id, attendant_id, closing_reading, closings, price_per_ltr,
       test_ltrs = 0, card_total = 0, upi_total = 0, cash_actual = 0,
+      credit_total = 0, petty_cash = 0,
       resolution, resolution_amount = 0, operator_ack = false, remarks, denomination,
     } = req.body;
     if (!shift_id || !attendant_id) return res.status(400).json({ error: 'shift_id and attendant_id are required' });
@@ -173,7 +174,7 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.opening_reading, sa.opening_cash, sa.nozzle_id,
+        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
                n.fuel_type, s.station_id
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
@@ -182,56 +183,119 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Attendant not assigned to this shift' }); }
       const sa = saRows[0];
 
-      // Price: supplied (handles mid-shift revision) else latest fuel price
-      let price = parseFloat(price_per_ltr || 0);
-      if (!price && sa.fuel_type) {
-        const { rows: pr } = await client.query(
-          `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2
-           ORDER BY effective_from DESC LIMIT 1`, [sa.station_id, sa.fuel_type]);
-        price = parseFloat(pr[0]?.price || 0);
+      // The operator's nozzles (child table); fall back to the legacy single nozzle.
+      const { rows: nozRows } = await client.query(`
+        SELECT san.nozzle_id, san.opening_reading, n.fuel_type
+        FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
+        WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
+      let opNozzles = nozRows;
+      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
+      if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles assigned to this operator.' }); }
+
+      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the single form.
+      const closeArr = (Array.isArray(closings) && closings.length)
+        ? closings
+        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+      const closeMap = {};
+      for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
+
+      // Price per fuel (supplied price applies only to a single-fuel operator).
+      const priceCache = {};
+      const priceFor = async (fuel) => {
+        if (priceCache[fuel] != null) return priceCache[fuel];
+        let p = (price_per_ltr && opNozzles.length === 1) ? parseFloat(price_per_ltr) : 0;
+        if (!p) {
+          const { rows: pr } = await client.query(
+            `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2 ORDER BY effective_from DESC LIMIT 1`,
+            [sa.station_id, fuel]);
+          p = parseFloat(pr[0]?.price || 0);
+        }
+        priceCache[fuel] = p; return p;
+      };
+
+      // Sales = Σ over his nozzles of (closing − opening − test) × price(fuel).
+      let salesValue = 0, totalTest = 0;
+      const legs = [];
+      for (const nz of opNozzles) {
+        const c = closeMap[nz.nozzle_id];
+        if (!c || c.closing_reading == null || c.closing_reading === '') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: "A closing reading is missing for one of the operator's nozzles." });
+        }
+        const opening = parseFloat(nz.opening_reading || 0);
+        const closing = parseFloat(c.closing_reading);
+        const test    = parseFloat(c.test_ltrs || 0);
+        const meterLtrs = closing - opening;
+        if (!(meterLtrs >= 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Closing reading must be ≥ opening reading for every nozzle.' }); }
+        const litres = Math.max(0, meterLtrs - test);
+        const price  = await priceFor(nz.fuel_type);
+        if (!price) { await client.query('ROLLBACK'); return res.status(400).json({ error: `No current price found for ${nz.fuel_type}.` }); }
+        salesValue += litres * price; totalTest += test;
+        legs.push({ nozzle_id: nz.nozzle_id, fuel_type: nz.fuel_type, price, litres, value: +(litres*price).toFixed(2), closing });
       }
-      if (!price) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Price per litre is required (no current price found).' }); }
+      salesValue = +salesValue.toFixed(2);
 
-      const openingReading = parseFloat(sa.opening_reading || 0);
-      const openingCash    = parseFloat(sa.opening_cash || 0);
-      const meterLtrs = parseFloat(closing_reading) - openingReading;
-      if (!(meterLtrs >= 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Closing reading must be ≥ opening reading.' }); }
-      const salesLtrs  = Math.max(0, meterLtrs - parseFloat(test_ltrs || 0));
-      const salesValue = +(salesLtrs * price).toFixed(2);
-
-      // Credit already logged per customer for this attendant/shift — not synthesized
-      const { rows: cr } = await client.query(`
-        SELECT COALESCE(SUM(amount),0) AS credit_value
-        FROM dispense_events
-        WHERE shift_id=$1 AND attendant_id=$2 AND payment_mode='credit'
-          AND NOT COALESCE(is_voided,FALSE)`, [shift_id, attendant_id]);
-      const creditValue = parseFloat(cr[0].credit_value || 0);
-
+      const openingCash = parseFloat(sa.opening_cash || 0);
       const cardVal   = parseFloat(card_total || 0);
       const upiVal    = parseFloat(upi_total || 0);
-      const cashValue = +(salesValue - cardVal - upiVal - creditValue).toFixed(2);
-      const expectedCash = +(openingCash + cashValue).toFixed(2);
+      const creditVal = parseFloat(credit_total || 0);    // manual lump → suspense
+      const pettyVal  = parseFloat(petty_cash || 0);      // cash out of drawer → petty-cash fund
+      const cashValue = +(salesValue - cardVal - upiVal - creditVal).toFixed(2);
+      const expectedCash = +(openingCash + cashValue - pettyVal).toFixed(2);
       const cashActual   = parseFloat(cash_actual || 0);
       const variance     = +(cashActual - expectedCash).toFixed(2);
 
-      // Idempotent re-submit: drop prior synthesized rows, re-create cash/card/upi.
-      // (Credit is real per-customer data and is left untouched.) amount is a
-      // generated column (qty×rate), so we set rate=price and qty=value/price.
+      // Re-create synthesized sales: distribute each payment bucket (incl. the
+      // credit lump) across his nozzles by value share — keeps per-fuel litres AND
+      // payment-mode totals exact. amount is generated (qty×rate).
       await client.query(`DELETE FROM dispense_events WHERE shift_id=$1 AND attendant_id=$2 AND source='manager'`, [shift_id, attendant_id]);
-      for (const [mode, val] of [['cash', cashValue], ['card', cardVal], ['upi', upiVal]]) {
-        if (val > 0) {
-          await client.query(
-            `INSERT INTO dispense_events
-               (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
-                quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',NOW())`,
-            [sa.station_id, shift_id, attendant_id, sa.nozzle_id, sa.fuel_type,
-             +(val / price).toFixed(3), price, mode]);
+      for (const leg of legs) {
+        const share = salesValue > 0 ? leg.value / salesValue : (1 / legs.length);
+        for (const [mode, total] of [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]]) {
+          const val = +(total * share).toFixed(2);
+          if (val > 0) {
+            await client.query(
+              `INSERT INTO dispense_events
+                 (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
+                  quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',NOW())`,
+              [sa.station_id, shift_id, attendant_id, leg.nozzle_id, leg.fuel_type,
+               +(val / leg.price).toFixed(3), leg.price, mode]);
+          }
         }
       }
 
+      // Persist each nozzle's closing; mirror the last onto sa for legacy reads.
+      for (const leg of legs) {
+        await client.query(
+          `UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`,
+          [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
+      }
       await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`,
-        [closing_reading, shift_id, attendant_id]);
+        [legs[legs.length - 1].closing, shift_id, attendant_id]);
+
+      // Petty cash/skimming → one top-up into the station petty-cash fund per
+      // operator (idempotent on the operator's settlement row).
+      await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
+      if (pettyVal > 0) {
+        const { rows: whoRows } = await client.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
+        const { rows: shRows }  = await client.query('SELECT date FROM shifts WHERE id=$1', [shift_id]);
+        const dt = shRows[0]?.date ? String(shRows[0].date).slice(0, 10) : '';
+        await client.query(
+          `INSERT INTO petty_cash_entries(station_id, direction, amount, entry_type, description, reference_type, reference_id, created_by)
+           VALUES($1,'in',$2,'topup',$3,'shift_close',$4,$5)`,
+          [sa.station_id, pettyVal, `Petty cash @ shift close — ${whoRows[0]?.name || 'operator'}_${dt}`, sa.id, req.user.id]);
+      }
+
+      // Credit lump → credit-suspense control account 'in' (idempotent per operator).
+      await client.query(`DELETE FROM credit_suspense_entries WHERE shift_id=$1 AND attendant_id=$2 AND reference_type='shift_close' AND direction='in'`, [shift_id, attendant_id]);
+      if (creditVal > 0) {
+        const { rows: whoRows } = await client.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
+        await client.query(
+          `INSERT INTO credit_suspense_entries(station_id, direction, amount, shift_id, attendant_id, description, reference_type, reference_id, created_by)
+           VALUES($1,'in',$2,$3,$4,$5,'shift_close',$6,$7)`,
+          [sa.station_id, creditVal, shift_id, attendant_id, `Credit booked @ shift close — ${whoRows[0]?.name || 'operator'}`, sa.id, req.user.id]);
+      }
 
       if (denomination) {
         const d = denomination;
@@ -253,17 +317,18 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
            shift_id, attendant_id, total_sales, cash_expected, cash_actual,
            upi_total, credit_total, card_total, remarks,
            manager_confirmed, manager_id, confirmed_at, reconciled_at,
-           mode, resolution, resolution_amount, operator_ack, test_ltrs, price_per_ltr)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,NOW(),NOW(),'manager',$11,$12,$13,$14,$15)
+           mode, resolution, resolution_amount, operator_ack, test_ltrs, price_per_ltr, petty_cash)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$10,NOW(),NOW(),'manager',$11,$12,$13,$14,$15,$16)
          ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
            total_sales=$3, cash_expected=$4, cash_actual=$5, upi_total=$6, credit_total=$7,
            card_total=$8, remarks=$9, manager_confirmed=TRUE, manager_id=$10, confirmed_at=NOW(),
            reconciled_at=NOW(), mode='manager', resolution=$11, resolution_amount=$12,
-           operator_ack=$13, test_ltrs=$14, price_per_ltr=$15
+           operator_ack=$13, test_ltrs=$14, price_per_ltr=$15, petty_cash=$16
          RETURNING *`,
         [shift_id, attendant_id, salesValue, expectedCash, cashActual,
-         upiVal, creditValue, cardVal, remarks||null, req.user.id,
-         resType, resAmt, operator_ack === true || operator_ack === 'true', test_ltrs||0, price]);
+         upiVal, creditVal, cardVal, remarks||null, req.user.id,
+         resType, resAmt, operator_ack === true || operator_ack === 'true', totalTest, legs[0]?.price || 0, pettyVal]);
+
 
       await client.query('COMMIT');
 
