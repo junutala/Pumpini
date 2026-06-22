@@ -76,3 +76,25 @@ VALUES
   ('15KL', 194, 525, 'IOCL', 'IOCL Warangal sheet', 'formula verified vs sheet ~0.1%'),
   ('20KL', 210, 625, 'IOCL', 'IOCL Warangal sheet', 'formula verified vs sheet ~0.3%')
 ON CONFLICT (name) DO NOTHING;
+
+-- ─────────────────────────────────────────────────────────────
+--  RLS — keep the invariant: every table has RLS ON.
+--  This is shared reference data, so the rule is "anyone authenticated may
+--  READ, nobody writes via the app role" — same pattern as plans /
+--  permission_modules / alert_definitions. Writes happen here (the seed above)
+--  and via the superadmin console, both on the bypass owner role.
+--  Baked into the migration so the table is NEVER created without RLS.
+--  (Mirrors backend/src/db/rls/05_policies_hard_global.sql.)
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE tank_calibration_charts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS tank_calibration_charts_read ON tank_calibration_charts;
+CREATE POLICY tank_calibration_charts_read ON tank_calibration_charts FOR SELECT USING (true);
+
+-- Table-level grant for the per-request role (guarded: the role only exists
+-- once the RLS phase scripts have run).
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_authenticated') THEN
+    GRANT SELECT ON tank_calibration_charts TO app_authenticated;
+  END IF;
+END $$;
