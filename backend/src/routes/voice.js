@@ -69,6 +69,40 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
   }
 });
 
+// ── POST /api/voice/speak ─ Sarvam TTS (Bulbul): text → spoken audio ──
+// Completes the voice loop: Claude's reply (e.g. Telugu text) → Sarvam speaks it.
+router.post('/speak', authenticate, async (req, res, next) => {
+  try {
+    const apiKey = process.env.SARVAM_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Sarvam API key not configured' });
+
+    const text = (req.body.text || '').toString().trim();
+    if (!text) return res.status(400).json({ error: 'No text provided' });
+    const langCode = LANG_MAP[req.body.language] || 'en-IN';
+
+    const sarvamRes = await fetch('https://api.sarvam.ai/text-to-speech', {
+      method: 'POST',
+      headers: { 'api-subscription-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.slice(0, 1500),          // Bulbul per-request cap; long replies are clipped
+        target_language_code: langCode,
+        speaker: 'anushka',
+        model: 'bulbul:v2',
+      }),
+    });
+    const data = await sarvamRes.json();
+    if (!sarvamRes.ok) {
+      return res.status(502).json({ error: 'TTS failed', details: data, status: sarvamRes.status });
+    }
+    const audio = Array.isArray(data.audios) ? data.audios[0] : (data.audio || null);
+    if (!audio) return res.status(502).json({ error: 'No audio returned', details: data });
+    res.json({ audio, format: 'wav' });
+  } catch (err) {
+    console.error('TTS route error:', err.message);
+    next(err);
+  }
+});
+
 // ── POS Command Parser ────────────────────────────────────
 function parsePOSCommand(text, lang) {
   const t = text.toLowerCase().trim();

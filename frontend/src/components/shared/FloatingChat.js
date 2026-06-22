@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Mic, MicOff, Loader, Zap, ChevronDown } from 'lucide-react';
+import { MessageSquare, X, Send, Mic, MicOff, Loader, Zap, ChevronDown, Volume2, VolumeX } from 'lucide-react';
 import { sendAiChat } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -23,10 +23,32 @@ export default function FloatingChat() {
   const [loading,    setLoading]    = useState(false);
   const [recording,  setRecording]  = useState(false);
   const [voiceStatus,setVoiceStatus]= useState(''); // '' | 'listening' | 'processing' | 'error'
+  const [voiceErr,   setVoiceErr]   = useState(''); // human-readable reason for an error
   const [mediaRec,   setMediaRec]   = useState(null);
+  const [speak,      setSpeak]      = useState(false); // 🔊 read replies aloud (Sarvam TTS)
 
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
+  const audioRef  = useRef(null);
+
+  // Sarvam Bulbul TTS — speak a reply in the app's language. Best-effort.
+  const speakText = async (text) => {
+    if (!text) return;
+    try {
+      const res = await fetch('/api/voice/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+        body: JSON.stringify({ text, language: getLang() }),
+      });
+      const data = await res.json();
+      if (data.audio) {
+        try { audioRef.current?.pause(); } catch { /* ignore */ }
+        const a = new Audio(`data:audio/wav;base64,${data.audio}`);
+        audioRef.current = a;
+        a.play().catch(() => {});
+      }
+    } catch { /* TTS failure must not break the chat */ }
+  };
 
   const getLang = () =>
     (typeof window !== 'undefined' && localStorage.getItem('i18nextLng')) || 'en';
@@ -39,7 +61,7 @@ export default function FloatingChat() {
     if (open) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
-  const send = async (text) => {
+  const send = async (text, fromVoice = false) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
     const lang = getLang();
@@ -49,6 +71,8 @@ export default function FloatingChat() {
     try {
       const { reply } = await sendAiChat({ message: msg, station_id: stationId, language: lang });
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      // Speak the reply when the speaker is on, or when the question came by voice.
+      if (speak || fromVoice) speakText(reply);
     } catch (e) {
       const detail = e?.detail
         || (typeof e?.error === 'string' && e.error !== 'ai_unreachable' ? e.error : '')
@@ -93,13 +117,18 @@ export default function FloatingChat() {
             headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
             body: form,
           });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) {
+            const detail = data.details ? ` — ${JSON.stringify(data.details).slice(0, 140)}` : '';
+            throw new Error((data.error || `transcription failed (${res.status})`) + detail);
+          }
           setVoiceStatus('');
-          if (data.transcript?.trim()) send(data.transcript.trim());
-        } catch {
+          if (data.transcript?.trim()) send(data.transcript.trim(), true);
+          else { setVoiceStatus('error'); setVoiceErr('Heard nothing — speak a bit longer/closer.'); setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 4000); }
+        } catch (e) {
           setVoiceStatus('error');
-          setTimeout(() => setVoiceStatus(''), 3000);
+          setVoiceErr('Transcription failed: ' + (e?.message || 'try again'));
+          setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 7000);
         }
       };
       rec.start();
@@ -108,9 +137,15 @@ export default function FloatingChat() {
       setVoiceStatus('listening');
       // Auto-stop after 10 s
       setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, 10_000);
-    } catch {
+    } catch (e) {
       setVoiceStatus('error');
-      setTimeout(() => setVoiceStatus(''), 3000);
+      setVoiceErr(
+        e?.name === 'NotAllowedError' ? 'Microphone blocked — allow mic access for this site, then retry.'
+        : e?.name === 'NotFoundError' ? 'No microphone found on this device.'
+        : e?.name === 'NotReadableError' ? 'Mic is in use by another app.'
+        : 'Could not access the microphone.'
+      );
+      setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 7000);
     }
   };
 
@@ -172,6 +207,13 @@ export default function FloatingChat() {
                 Live station data · {lang.toUpperCase()}
               </div>
             </div>
+            <button
+              onClick={() => { setSpeak(s => !s); if (speak) { try { audioRef.current?.pause(); } catch { /* ignore */ } } }}
+              title={speak ? 'Voice replies: ON' : 'Voice replies: OFF'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: speak ? '#fff' : 'rgba(255,255,255,.6)', display:'flex',alignItems:'center' }}
+            >
+              {speak ? <Volume2 size={17}/> : <VolumeX size={17}/>}
+            </button>
             <button
               onClick={() => setOpen(false)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'rgba(255,255,255,.8)', display:'flex',alignItems:'center' }}
@@ -279,8 +321,8 @@ export default function FloatingChat() {
               </div>
             )}
             {voiceStatus === 'error' && (
-              <div style={{ textAlign:'center', fontSize:11, color:'#dc2626', marginBottom:4 }}>
-                Mic error — please try again
+              <div style={{ textAlign:'center', fontSize:11, color:'#dc2626', marginBottom:4, lineHeight:1.4 }}>
+                {voiceErr || 'Voice error — please try again'}
               </div>
             )}
 
