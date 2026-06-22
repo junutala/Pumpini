@@ -242,7 +242,7 @@ router.post('/stations', authAdmin, async (req, res, next) => {
            VALUES($1,'Manager_lite','Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers',TRUE)
            RETURNING id`, [sid]);
         for (const c of ['shifts.view','deliveries.view','stock.reconcile','invoice.generate','pettycash.manage','deposits.manage','reports.view','corporate.view','attendant.add']) {
-          await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [ml.id, c]);
+          await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [ml[0].id, c]);
         }
       }
 
