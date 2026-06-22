@@ -9,7 +9,11 @@ create policy shift_attendants_isolation on public.shift_attendants
   using      (exists (select 1 from public.shifts s where s.id = shift_attendants.shift_id and s.station_id in (select my_stations())))
   with check (exists (select 1 from public.shifts s where s.id = shift_attendants.shift_id and s.station_id in (select my_stations())));
 
-alter table public.shift_reconciliation enable row level security;
+alter table public.shift_attendant_nozzles enable row level security;
+drop policy if exists shift_attendant_nozzles_isolation on public.shift_attendant_nozzles;
+create policy shift_attendant_nozzles_isolation on public.shift_attendant_nozzles
+  using      (exists (select 1 from public.shifts s where s.id = shift_attendant_nozzles.shift_id and s.station_id in (select my_stations())))
+  with check (exists (select 1 from public.shifts s where s.id = shift_attendant_nozzles.shift_id and s.station_id in (select my_stations())));alter table public.shift_reconciliation enable row level security;
 drop policy if exists shift_reconciliation_isolation on public.shift_reconciliation;
 create policy shift_reconciliation_isolation on public.shift_reconciliation
   using      (exists (select 1 from public.shifts s where s.id = shift_reconciliation.shift_id and s.station_id in (select my_stations())))
