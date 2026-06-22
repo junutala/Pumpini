@@ -24,6 +24,12 @@ const pool = new Pool({
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  // TCP keep-alive so the Supabase pooler / NAT doesn't silently drop a
+  // connection that's been idle (e.g. while a user sits on a screen). Without
+  // this, the first request after an idle spell can grab a dead socket and fail,
+  // with a retry "magically" working — the classic stale-connection symptom.
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
   // Hard ceilings so one slow/hung query can't pin a connection while every
   // outlet's dashboard polls pile up behind it.
   statement_timeout: 15000,             // 15s per statement
@@ -68,9 +74,38 @@ function chainedQuery(store, args) {
   return p;
 }
 
+// A dead/stale connection (idle-dropped by the pooler or NAT) throws one of
+// these. Such an error means the statement never ran, so retrying on a FRESH
+// connection is safe. We never retry real query errors (syntax, constraint,
+// statement_timeout) — only connection-layer failures.
+function isRetryableConnError(e) {
+  if (!e) return false;
+  const code = String(e.code || '');
+  if (['57P01','08006','08003','08000','08001','08004','ECONNRESET','EPIPE','ETIMEDOUT'].includes(code)) return true;
+  const m = String(e.message || '').toLowerCase();
+  return m.includes('connection terminated')
+      || m.includes('server closed the connection')
+      || m.includes('connection reset')
+      || m.includes('terminating connection')
+      || m.includes('not queryable');
+}
+
+// realQuery acquires + releases its own connection per call, so retrying it
+// transparently picks a fresh connection — exactly what we want after an idle
+// drop. (The identity-client path can't do this: its connection is fixed for the
+// request, so a dead one surfaces and the user retries the whole action — keepAlive
+// makes that rare.)
+async function realQueryRetry(args) {
+  try { return await realQuery(...args); }
+  catch (e) {
+    if (isRetryableConnError(e)) return await realQuery(...args);
+    throw e;
+  }
+}
+
 pool.query = (...args) => {
   const store = als.getStore();
-  return store ? chainedQuery(store, args) : realQuery(...args);
+  return store ? chainedQuery(store, args) : realQueryRetry(args);
 };
 
 // Inside a request, pool.connect() shares the one request client. release() is a
@@ -166,5 +201,6 @@ async function runAs(identity, fn) {
 pool.als                = als;
 pool.identityMiddleware = identityMiddleware;
 pool.runAs              = runAs;
+pool.isRetryableConnError = isRetryableConnError;
 
 module.exports = pool;

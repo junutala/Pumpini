@@ -100,7 +100,7 @@ router.post('/attendant', authenticate, authorize('owner','manager'), requireSta
     // RLS identity (als.run(undefined,…)). A manager's identity can't satisfy an
     // insert policy on a brand-new user that isn't linked to any of his stations
     // yet (the station_users link is written a statement later — chicken-and-egg).
-    const created = await pool.als.run(undefined, async () => {
+    const insertAttendant = () => pool.als.run(undefined, async () => {
       const client = await pool.connect();   // no ALS store → raw bypass owner client
       try {
         await client.query('BEGIN');
@@ -113,10 +113,19 @@ router.post('/attendant', authenticate, authorize('owner','manager'), requireSta
         await client.query('COMMIT');
         return rows[0];
       } catch (e) {
-        await client.query('ROLLBACK');
+        try { await client.query('ROLLBACK'); } catch { /* connection may be dead */ }
         throw e;
       } finally { client.release(); }
     });
+
+    // Atomic transaction → safe to re-run once on a stale/dead connection (idle
+    // pool drop), so the manager never sees the "first click fails" symptom.
+    let created;
+    try { created = await insertAttendant(); }
+    catch (e) {
+      if (pool.isRetryableConnError(e)) created = await insertAttendant();
+      else throw e;
+    }
     res.status(201).json(created);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'This phone number is already registered.' });
