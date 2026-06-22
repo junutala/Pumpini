@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { MessageSquare, X, Send, Mic, MicOff, Loader, Zap, ChevronDown } from 'lucide-react';
+import { MessageSquare, X, Send, Mic, MicOff, Loader, Zap, ChevronDown, Volume2, VolumeX } from 'lucide-react';
 import { sendAiChat } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -24,9 +24,30 @@ export default function FloatingChat() {
   const [recording,  setRecording]  = useState(false);
   const [voiceStatus,setVoiceStatus]= useState(''); // '' | 'listening' | 'processing' | 'error'
   const [mediaRec,   setMediaRec]   = useState(null);
+  const [speak,      setSpeak]      = useState(false); // 🔊 read replies aloud (Sarvam TTS)
 
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
+  const audioRef  = useRef(null);
+
+  // Sarvam Bulbul TTS — speak a reply in the app's language. Best-effort.
+  const speakText = async (text) => {
+    if (!text) return;
+    try {
+      const res = await fetch('/api/voice/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('token')}` },
+        body: JSON.stringify({ text, language: getLang() }),
+      });
+      const data = await res.json();
+      if (data.audio) {
+        try { audioRef.current?.pause(); } catch { /* ignore */ }
+        const a = new Audio(`data:audio/wav;base64,${data.audio}`);
+        audioRef.current = a;
+        a.play().catch(() => {});
+      }
+    } catch { /* TTS failure must not break the chat */ }
+  };
 
   const getLang = () =>
     (typeof window !== 'undefined' && localStorage.getItem('i18nextLng')) || 'en';
@@ -39,7 +60,7 @@ export default function FloatingChat() {
     if (open) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
-  const send = async (text) => {
+  const send = async (text, fromVoice = false) => {
     const msg = (text || input).trim();
     if (!msg || loading) return;
     const lang = getLang();
@@ -49,6 +70,8 @@ export default function FloatingChat() {
     try {
       const { reply } = await sendAiChat({ message: msg, station_id: stationId, language: lang });
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      // Speak the reply when the speaker is on, or when the question came by voice.
+      if (speak || fromVoice) speakText(reply);
     } catch (e) {
       const detail = e?.detail
         || (typeof e?.error === 'string' && e.error !== 'ai_unreachable' ? e.error : '')
@@ -96,7 +119,7 @@ export default function FloatingChat() {
           const data = await res.json();
           if (data.error) throw new Error(data.error);
           setVoiceStatus('');
-          if (data.transcript?.trim()) send(data.transcript.trim());
+          if (data.transcript?.trim()) send(data.transcript.trim(), true);
         } catch {
           setVoiceStatus('error');
           setTimeout(() => setVoiceStatus(''), 3000);
@@ -172,6 +195,13 @@ export default function FloatingChat() {
                 Live station data · {lang.toUpperCase()}
               </div>
             </div>
+            <button
+              onClick={() => { setSpeak(s => !s); if (speak) { try { audioRef.current?.pause(); } catch { /* ignore */ } } }}
+              title={speak ? 'Voice replies: ON' : 'Voice replies: OFF'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: speak ? '#fff' : 'rgba(255,255,255,.6)', display:'flex',alignItems:'center' }}
+            >
+              {speak ? <Volume2 size={17}/> : <VolumeX size={17}/>}
+            </button>
             <button
               onClick={() => setOpen(false)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'rgba(255,255,255,.8)', display:'flex',alignItems:'center' }}
