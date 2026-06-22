@@ -101,6 +101,12 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     let depositStatus = null;
     if (isOwner) { try { depositStatus = await computeDepositStatus(station_id); } catch { /* ignore */ } }
 
+    // Held suspense balances (running, station-wide): petty-cash fund + un-invoiced
+    // credit. Separate best-effort queries so a not-yet-migrated table can't break chat.
+    let creditSuspense = null, pettyFund = null;
+    try { const { rows } = await pool.query(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) AS bal FROM petty_cash_entries WHERE station_id=$1`, [station_id]); pettyFund = Number(rows[0].bal || 0); } catch { /* absent */ }
+    try { const { rows } = await pool.query(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) AS bal FROM credit_suspense_entries WHERE station_id=$1`, [station_id]); creditSuspense = Number(rows[0].bal || 0); } catch { /* absent until migration 004 */ }
+
     const s = salesRes.rows[0];
     const contextLines = [
       `Date: ${today}`,
@@ -148,6 +154,11 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
       Object.keys(priceMap).length
         ? Object.entries(priceMap).map(([ft, p]) => `${ft}: ₹${p}/L`).join(' | ')
         : 'No price data',
+      '',
+      '--- Held Suspense (running balances, to be cleared) ---',
+      (creditSuspense != null || pettyFund != null)
+        ? `Credit to invoice: ₹${Number(creditSuspense||0).toLocaleString('en-IN')} (credit booked by operators at shift close, not yet invoiced to customers — drawn down as credit invoices are raised). Petty cash on hand: ₹${Number(pettyFund||0).toLocaleString('en-IN')} (fund balance — topped up at shift close, cleared as expense vouchers are filed).`
+        : 'No suspense data.',
       '',
       '--- Unacknowledged Alerts ---',
       alertsRes.rows.length

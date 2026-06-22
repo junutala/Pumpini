@@ -24,6 +24,7 @@ const roleDefaults = {
     'invoice.generate','deliveries.view',
     // split-out feature modules (were reachable via the umbrellas above)
     'lubes.manage','pettycash.manage','deposits.manage','stock.reconcile','tally.export','ai_chat.use',
+    'attendant.add',
   ],
   attendant: [
     'dashboard.view','dispense.entry','dispense.view',

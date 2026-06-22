@@ -9,7 +9,7 @@ import {
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass, PlayCircle, StopCircle
+  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus
 } from 'lucide-react';
 
 const NAV_GROUPS = [
@@ -83,6 +83,7 @@ const NAV_GROUPS = [
   {
     label: 'Admin',
     items: [
+      { key:'addattendant',   href:'/add-attendant', icon:UserPlus, perm:'attendant.add' },
       { key:'users',          href:'/users',     icon:Users,       perm:'users.manage',     roles:['owner'] },
       { key:'responsibilities',href:'/templates',icon:ShieldAlert, perm:'users.manage',     roles:['owner'] },
     ]
@@ -114,6 +115,7 @@ const NAV_LABELS = {
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',
+  addattendant:'Add Attendant',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
 };
 

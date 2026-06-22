@@ -443,7 +443,8 @@ INSERT INTO permission_modules(code, category, label) VALUES
   ('tally.export',     'Accounts',  'Tally Export'),
   ('ai_chat.use',      'AI',        'AI Assistant'),
   ('group.view',       'Dashboard', 'Group Dashboard'),
-  ('settings.manage',  'Admin',     'Station Settings')
+  ('settings.manage',  'Admin',     'Station Settings'),
+  ('attendant.add',    'Admin',     'Add Attendant')
 ON CONFLICT (code) DO NOTHING;
 
 -- Preserve access for users on custom responsibility templates: the split-out

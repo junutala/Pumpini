@@ -59,3 +59,20 @@ The closing dipstick of one shift/day is physically the opening dip of the next
 (same as the meter handover). Later: auto-prefill the opening dip from the prior
 shift's closing dip and flag any mismatch (a dip "handover tripwire"), instead of
 re-keying it. Keep manual capture for now.
+
+## 5. User-management access model — relook with ample time (deferred 2026-06-22)
+For now the platform admin (/admin) creates ALL users (owners, managers,
+attendants) and assigns responsibilities. Owners come back to admin for extra
+managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
+(migration 006) WITHOUT user-management. When we revisit, decide:
+- [x] "Add Attendant" — DONE 2026-06-22. /add-attendant + POST /users/attendant
+      force role='attendant' + station scope + dummy password (no POS/login);
+      perm 'attendant.add' on Manager_lite + manager defaults. Manager-facing.
+- [ ] SECURITY: lock down responsibility create/assign. Today POST /api/templates
+      and /api/templates/assign are authorize('owner','manager') — a manager can
+      mint a template with ANY permissions and assign it (privilege escalation).
+      Mitigated for now only because managers don't create users. Tighten to
+      owner-only (or "can only grant ⊆ your own perms") when we open this up.
+- [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
+      with the platform admin.
+- [ ] Auditor responsibility (e.g. tally.export + reports.view only).
