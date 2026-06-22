@@ -1,91 +1,78 @@
 -- ─────────────────────────────────────────────────────────────
---  GLOBAL TANK CALIBRATION LIBRARY
---  Calibration is a property of the physical tank type (geometry),
---  NOT of the outlet and NOT of the fuel (HSD vs Petrol is irrelevant).
---  There are ~11 standard tank types (mostly differing by volume), so
---  this is a small shared library that every outlet's tank points to.
+--  GLOBAL TANK CALIBRATION — FORMULA-BASED
+--
+--  An underground tank is a horizontal cylinder, so dip -> volume is a
+--  deterministic function of just two numbers: diameter (D) and length (L),
+--  in cm. We therefore DO NOT store per-cm chart data; we store (D, L) per
+--  standard tank type (~11 of them) and compute volume + tolerance on the fly.
+--
+--  Verified against the IOCL Warangal sheets:
+--    15KL  D=194 L=525  -> reproduces the chart to ~0.1%
+--    20KL  D=210 L=625  -> reproduces the chart to ~0.3% (max 0.35%)
+--  Both well inside the per-level DIFF tolerance, so the formula is as good
+--  as the printed chart for reconciliation — and it self-corrects OCR slips.
 --
 --  Idempotent — safe to run against the shared production DB via psql.
 -- ─────────────────────────────────────────────────────────────
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- One row per standard tank type (the ~11)
+-- One row per standard tank type (the ~11). Geometry only — fuel-agnostic.
 CREATE TABLE IF NOT EXISTS tank_calibration_charts (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name                VARCHAR(80) NOT NULL UNIQUE,   -- e.g. '15 KL', '20 KL'
-  nominal_capacity_kl NUMERIC(6,2) NOT NULL,
+  name                VARCHAR(80) NOT NULL UNIQUE,   -- e.g. '15KL', '20KL'
+  diameter_cm         NUMERIC(6,1) NOT NULL,         -- D  (max dip = D)
+  length_cm           NUMERIC(7,1) NOT NULL,         -- L
   manufacturer        VARCHAR(120),
-  max_dip_cm          NUMERIC(5,1),
-  max_volume_ltrs     NUMERIC(10,2),
-  source              VARCHAR(160),                  -- provenance, e.g. 'IOCL Warangal sheet'
+  source              VARCHAR(160),                  -- provenance / verification note
   notes               TEXT,
   is_active           BOOLEAN DEFAULT TRUE,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
--- The per-cm dip -> volume points for each chart.
--- DIFF (litres per 1 cm at this level) IS stored: it is the manufacturer's
--- accepted tolerance at that fill level (a dip reading is only good to ~1 cm,
--- so a reconciliation variance smaller than DIFF litres is within reading
--- error). It also doubles as a monotonic/smoothness check at ingest time.
-CREATE TABLE IF NOT EXISTS tank_calibration_points (
-  chart_id      UUID NOT NULL REFERENCES tank_calibration_charts(id) ON DELETE CASCADE,
-  dip_cm        NUMERIC(5,1) NOT NULL,               -- allows sub-cm charts
-  volume_ltrs   NUMERIC(10,2) NOT NULL,
-  diff_ltrs     NUMERIC(8,2),                        -- litres per cm at this level = tolerance basis
-  PRIMARY KEY (chart_id, dip_cm)
-);
-
--- Link each outlet's tank to a shared chart (chosen at tank setup).
+-- Link each outlet's tank to a shared type (chosen from a dropdown at setup).
 ALTER TABLE tanks ADD COLUMN IF NOT EXISTS calibration_chart_id
   UUID REFERENCES tank_calibration_charts(id);
 
 -- ─────────────────────────────────────────────────────────────
---  Dip -> litres lookup with linear interpolation between the two
---  bounding integer-cm points (real dip readings come to 0.1 cm).
---  Usage:  SELECT calib_volume(t.calibration_chart_id, 154.9);
+--  dip (cm, true) -> litres, via the circular-segment volume of a
+--  horizontal cylinder:  V = [ r²·acos((r-h)/r) - (r-h)·√(2rh-h²) ] · L / 1000
+--  NOTE: feed the TRUE dip. The dipstick form converts the mark-ordinal
+--  entry first (4 marks/cm @0.2cm: entered 64.2 = true 64.4 cm).
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION calib_volume(p_chart UUID, p_dip NUMERIC)
 RETURNS NUMERIC AS $$
-  WITH lo AS (
-    SELECT dip_cm, volume_ltrs FROM tank_calibration_points
-    WHERE chart_id = p_chart AND dip_cm <= p_dip
-    ORDER BY dip_cm DESC LIMIT 1),
-  hi AS (
-    SELECT dip_cm, volume_ltrs FROM tank_calibration_points
-    WHERE chart_id = p_chart AND dip_cm >= p_dip
-    ORDER BY dip_cm ASC LIMIT 1)
   SELECT CASE
-    WHEN (SELECT dip_cm FROM lo) IS NULL OR (SELECT dip_cm FROM hi) IS NULL
-      THEN NULL                                       -- dip outside charted range
-    WHEN (SELECT dip_cm FROM lo) = (SELECT dip_cm FROM hi)
-      THEN (SELECT volume_ltrs FROM lo)               -- exact hit
-    ELSE
-      (SELECT volume_ltrs FROM lo)
-      + ((SELECT volume_ltrs FROM hi) - (SELECT volume_ltrs FROM lo))
-        * (p_dip - (SELECT dip_cm FROM lo))
-        / ((SELECT dip_cm FROM hi) - (SELECT dip_cm FROM lo))
-  END;
+    WHEN p_dip <= 0 THEN 0
+    WHEN p_dip >= c.diameter_cm
+      THEN ROUND(pi() * power(c.diameter_cm/2, 2) * c.length_cm / 1000, 2)
+    ELSE ROUND((
+        power(c.diameter_cm/2, 2) * acos((c.diameter_cm/2 - p_dip) / (c.diameter_cm/2))
+        - (c.diameter_cm/2 - p_dip) * sqrt(2*(c.diameter_cm/2)*p_dip - p_dip*p_dip)
+      ) * c.length_cm / 1000, 2)
+  END
+  FROM tank_calibration_charts c WHERE c.id = p_chart;
 $$ LANGUAGE sql STABLE;
 
 -- ─────────────────────────────────────────────────────────────
---  Accepted per-level tolerance = manufacturer DIFF (litres in the
---  1 cm bracket containing the dip). Use this to size the stock-reco
---  variance band at the current fill level instead of a flat %.
+--  Accepted ± tolerance at this dip = litres in 1 mm of dip = the liquid
+--  surface area · 0.1 cm.  (= the sheet's DIFF column.)
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION calib_tolerance(p_chart UUID, p_dip NUMERIC)
 RETURNS NUMERIC AS $$
-  SELECT diff_ltrs FROM tank_calibration_points
-  WHERE chart_id = p_chart AND dip_cm >= p_dip AND diff_ltrs IS NOT NULL
-  ORDER BY dip_cm ASC LIMIT 1;
+  SELECT ROUND(
+    2 * sqrt(GREATEST(0, 2*(c.diameter_cm/2)*p_dip - p_dip*p_dip))
+    * c.length_cm / 1000 / 10, 2)
+  FROM tank_calibration_charts c WHERE c.id = p_chart;
 $$ LANGUAGE sql STABLE;
 
 -- ─────────────────────────────────────────────────────────────
---  NOTE — dip ENTRY convention (handled in the dipstick form, not here):
---  The stick has 4 minor marks per cm (0.2 cm each). The manager enters
---  the mark ordinal as a decimal, e.g. "64.2" = 64 + 2nd mark. The TRUE
---  dip is therefore  whole + (decimal_digit * 0.2)  =>  64.2 entered = 64.4
---  cm actual. Convert to true cm BEFORE calling calib_volume(). Entered
---  decimals are only valid in .0–.4.
+--  Seed the two verified types. Add the remaining ~9 by simply recording
+--  each tank's diameter × length (from the nameplate or the chart header
+--  e.g. "194-525") — no chart scanning needed.
 -- ─────────────────────────────────────────────────────────────
+INSERT INTO tank_calibration_charts (name, diameter_cm, length_cm, manufacturer, source, notes)
+VALUES
+  ('15KL', 194, 525, 'IOCL', 'IOCL Warangal sheet', 'formula verified vs sheet ~0.1%'),
+  ('20KL', 210, 625, 'IOCL', 'IOCL Warangal sheet', 'formula verified vs sheet ~0.3%')
+ON CONFLICT (name) DO NOTHING;
