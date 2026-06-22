@@ -23,6 +23,7 @@ export default function FloatingChat() {
   const [loading,    setLoading]    = useState(false);
   const [recording,  setRecording]  = useState(false);
   const [voiceStatus,setVoiceStatus]= useState(''); // '' | 'listening' | 'processing' | 'error'
+  const [voiceErr,   setVoiceErr]   = useState(''); // human-readable reason for an error
   const [mediaRec,   setMediaRec]   = useState(null);
   const [speak,      setSpeak]      = useState(false); // 🔊 read replies aloud (Sarvam TTS)
 
@@ -116,13 +117,18 @@ export default function FloatingChat() {
             headers: { Authorization: `Bearer ${sessionStorage.getItem('token')}` },
             body: form,
           });
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.error) {
+            const detail = data.details ? ` — ${JSON.stringify(data.details).slice(0, 140)}` : '';
+            throw new Error((data.error || `transcription failed (${res.status})`) + detail);
+          }
           setVoiceStatus('');
           if (data.transcript?.trim()) send(data.transcript.trim(), true);
-        } catch {
+          else { setVoiceStatus('error'); setVoiceErr('Heard nothing — speak a bit longer/closer.'); setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 4000); }
+        } catch (e) {
           setVoiceStatus('error');
-          setTimeout(() => setVoiceStatus(''), 3000);
+          setVoiceErr('Transcription failed: ' + (e?.message || 'try again'));
+          setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 7000);
         }
       };
       rec.start();
@@ -131,9 +137,15 @@ export default function FloatingChat() {
       setVoiceStatus('listening');
       // Auto-stop after 10 s
       setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, 10_000);
-    } catch {
+    } catch (e) {
       setVoiceStatus('error');
-      setTimeout(() => setVoiceStatus(''), 3000);
+      setVoiceErr(
+        e?.name === 'NotAllowedError' ? 'Microphone blocked — allow mic access for this site, then retry.'
+        : e?.name === 'NotFoundError' ? 'No microphone found on this device.'
+        : e?.name === 'NotReadableError' ? 'Mic is in use by another app.'
+        : 'Could not access the microphone.'
+      );
+      setTimeout(() => { setVoiceStatus(''); setVoiceErr(''); }, 7000);
     }
   };
 
@@ -309,8 +321,8 @@ export default function FloatingChat() {
               </div>
             )}
             {voiceStatus === 'error' && (
-              <div style={{ textAlign:'center', fontSize:11, color:'#dc2626', marginBottom:4 }}>
-                Mic error — please try again
+              <div style={{ textAlign:'center', fontSize:11, color:'#dc2626', marginBottom:4, lineHeight:1.4 }}>
+                {voiceErr || 'Voice error — please try again'}
               </div>
             )}
 
