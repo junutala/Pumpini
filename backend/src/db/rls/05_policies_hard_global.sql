@@ -108,6 +108,15 @@ alter table public.alert_definitions enable row level security;
 drop policy if exists alert_definitions_read on public.alert_definitions;
 create policy alert_definitions_read on public.alert_definitions for select using (true);
 
+-- tank_calibration_charts: standard tank types (diameter x length). Shared
+-- reference data — readable by every authenticated user (the dipstick form's
+-- type dropdown + calib_volume() reads). Writes go via the bypass owner role /
+-- superadmin (RLS on + SELECT-only policy => no write policy => writes denied
+-- for app_authenticated).
+alter table public.tank_calibration_charts enable row level security;
+drop policy if exists tank_calibration_charts_read on public.tank_calibration_charts;
+create policy tank_calibration_charts_read on public.tank_calibration_charts for select using (true);
+
 -- leads: public marketing form may INSERT; only superadmin may read/manage.
 alter table public.leads enable row level security;
 drop policy if exists leads_superadmin_read on public.leads;

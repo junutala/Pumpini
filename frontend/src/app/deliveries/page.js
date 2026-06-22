@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, CheckCircle, Truck, Package } from 'lucide-react';
+import { Plus, X, CheckCircle, Truck, Package, Camera, Upload, ScanLine, Paperclip } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -43,6 +43,107 @@ export default function DeliveriesPage() {
   });
 
   const f = (field, val) => setForm(p => ({ ...p, [field]: val }));
+
+  // ── Invoice scanning (photo / PDF → pre-filled fields, user verifies) ──
+  const [scanning,  setScanning]  = useState(false);
+  const [scanErr,   setScanErr]   = useState('');
+  const [items,     setItems]     = useState([]);   // parsed line-items
+  const [activeItem,setActiveItem]= useState(0);
+  const [recorded,  setRecorded]  = useState([]);   // indices already saved
+  const [scanMeta,  setScanMeta]  = useState(null); // confidence/notes
+  const [scanFile,  setScanFile]  = useState(null); // {base64,media_type} — attached on save
+  const [invoiceId, setInvoiceId] = useState(null); // shared across an invoice's compartments
+  const [viewDoc,   setViewDoc]   = useState(null); // {media_type,url} for the viewer
+
+  const openInvoice = async (deliveryId) => {
+    try {
+      const r = await api.get(`/deliveries/${deliveryId}/invoice`);
+      const bytes = Uint8Array.from(atob(r.file_base64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: r.media_type }));
+      setViewDoc({ media_type: r.media_type, url });
+    } catch (err) { alert(err.error || tc('deliv_page.invoice_fail','Could not load the invoice.')); }
+  };
+  const closeViewer = () => { if (viewDoc?.url) URL.revokeObjectURL(viewDoc.url); setViewDoc(null); };
+
+  const OIL_MAP = { IOC:'IOC', 'INDIAN OIL':'IOC', IOCL:'IOC', HPCL:'HPCL', BPCL:'BPCL', ESSAR:'Essar', SHELL:'Shell', RELIANCE:'Reliance', NAYARA:'Nayara' };
+
+  const blankForm = () => ({ dc_date: today, received_at: nowISTStr(), fuel_type:'petrol', oil_company:'HPCL', freight:0 });
+
+  const openForm = () => {
+    setForm(blankForm());
+    setItems([]); setRecorded([]); setActiveItem(0); setScanMeta(null); setScanErr('');
+    setScanFile(null); setInvoiceId(null);
+    setShowForm(true);
+  };
+
+  // Read a file as base64; downscale photos client-side so mobile uploads stay small.
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    if (file.type === 'application/pdf') {
+      const r = new FileReader();
+      r.onload  = () => resolve({ base64: String(r.result).split(',')[1], media_type: 'application/pdf' });
+      r.onerror = reject; r.readAsDataURL(file);
+      return;
+    }
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 2000, scale = Math.min(1, max / Math.max(img.width, img.height));
+      const cw = Math.round(img.width * scale), ch = Math.round(img.height * scale);
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      URL.revokeObjectURL(url);
+      resolve({ base64: c.toDataURL('image/jpeg', 0.85).split(',')[1], media_type: 'image/jpeg' });
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+
+  const selectItem = (i, list = items) => {
+    const it = list[i]; if (!it) return;
+    setActiveItem(i);
+    const match = tanks.filter(t => t.fuel_type === it.fuel_type);
+    setForm(p => ({
+      ...p,
+      fuel_type:         it.fuel_type || p.fuel_type,
+      tank_id:           match.length === 1 ? match[0].id : '',
+      gross_volume_ltrs: it.gross_volume_ltrs != null ? String(it.gross_volume_ltrs) : '',
+      density:           it.density != null ? String(it.density) : '',
+      rate_per_ltr:      it.rate_per_ltr != null ? String(it.rate_per_ltr) : '',
+      compartment_no:    it.compartment_no || '',
+      notes:             [it.product_name && `Product: ${it.product_name}`, it.sample_no && `Sample ${it.sample_no}`].filter(Boolean).join(' · '),
+    }));
+  };
+
+  const applyParsed = (res) => {
+    const its = Array.isArray(res.items) ? res.items : [];
+    setItems(its); setRecorded([]); setActiveItem(0);
+    setScanMeta({ confidence: res.confidence, notes: res.notes });
+    setForm(p => ({
+      ...p,
+      dc_number:     res.dc_number   || p.dc_number,
+      dc_date:       res.dc_date     || p.dc_date,
+      received_at:   res.received_at ? String(res.received_at).slice(0,16) : p.received_at,
+      oil_company:   OIL_MAP[String(res.oil_company||'').toUpperCase()] || p.oil_company,
+      depot_name:    res.depot_name    || p.depot_name,
+      tanker_number: res.tanker_number || p.tanker_number,
+      seal_number:   res.seal_number   || p.seal_number,
+    }));
+    if (its.length) selectItem(0, its);
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    const ok = ['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
+    if (!ok.includes(file.type)) { setScanErr(tc('deliv_page.bad_file','Upload a photo (JPG/PNG) or a PDF.')); return; }
+    setScanErr(''); setScanning(true);
+    try {
+      const { base64, media_type } = await fileToBase64(file);
+      setScanFile({ base64, media_type }); setInvoiceId(null);   // keep to attach on save
+      const res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type });
+      applyParsed(res);
+    } catch (err) {
+      setScanErr(err.error || tc('deliv_page.scan_fail','Could not read the invoice — enter the details manually.'));
+    } finally { setScanning(false); }
+  };
 
   // Auto-calculate net volume
   const netVolume = () => {
@@ -102,7 +203,26 @@ export default function DeliveriesPage() {
         rate_per_ltr:      form.rate_per_ltr ? parseFloat(form.rate_per_ltr) : null,
         freight:           parseFloat(form.freight||0),
       };
-      await api.post('/deliveries', payload);
+      // Attach the scanned invoice: first compartment uploads the file, the rest
+      // reuse the returned invoice_id so they share one stored record.
+      if (invoiceId) payload.invoice_id = invoiceId;
+      else if (scanFile) { payload.invoice_base64 = scanFile.base64; payload.invoice_media_type = scanFile.media_type; }
+
+      const created = await api.post('/deliveries', payload);
+      if (created?.invoice_id && !invoiceId) setInvoiceId(created.invoice_id);
+
+      // Multi-product invoice: keep the modal open and tee up the next compartment.
+      const stillLeft = items.map((_,i)=>i).filter(i => i!==activeItem && !recorded.includes(i));
+      if (items.length && stillLeft.length) {
+        setRecorded(r => [...r, activeItem]);
+        selectItem(stillLeft[0]);
+        setSaved(tc('deliv_page.saved_next','Saved — now review the next product from this invoice.'));
+        setTimeout(()=>setSaved(''), 4000);
+        setLoading(false);
+        load();
+        return;
+      }
+
       setShowForm(false);
       setSaved(tc('deliv_page.delivery_recorded','Delivery recorded!'));
       setTimeout(()=>setSaved(''), 3000);
@@ -127,7 +247,7 @@ export default function DeliveriesPage() {
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           {saved && <div className="badge badge-success"style={{padding:'6px 12px'}}>✓ {saved}</div>}
-          <button className="btn btn-primary" onClick={()=>setShowForm(true)}>
+          <button className="btn btn-primary" onClick={openForm}>
             <Plus size={16}/>{tc('deliv_page.record_delivery','Record Delivery')}
           </button>
         </div>
@@ -180,7 +300,16 @@ export default function DeliveriesPage() {
               )}
               {deliveries.map(d=>(
                 <tr key={d.id}>
-                  <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:600}}>{d.dc_number||'—'}</td>
+                  <td style={{fontFamily:'var(--font-mono)',fontSize:12,fontWeight:600}}>
+                    {d.dc_number||'—'}
+                    {d.invoice_id && (
+                      <button type="button" title={tc('deliv_page.view_invoice','View scanned invoice')}
+                        onClick={()=>openInvoice(d.id)}
+                        style={{marginLeft:6,background:'none',border:'none',cursor:'pointer',padding:0,verticalAlign:'middle'}}>
+                        <Paperclip size={13} style={{color:'var(--brand)'}}/>
+                      </button>
+                    )}
+                  </td>
                   <td style={{fontSize:12,whiteSpace:'nowrap'}}>{toIST(d.received_at)}</td>
                   <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{d.tanker_number||'—'}</td>
                   <td><span className={`fuel-chip fuel-${d.fuel_type}`}>{d.fuel_type}</span></td>
@@ -220,6 +349,49 @@ export default function DeliveriesPage() {
             </div>
 
             <form onSubmit={handleSubmit}>
+              {/* Scan invoice / DC — photo or PDF → pre-fill, user verifies */}
+              <div style={{border:'1px dashed var(--border)',borderRadius:8,padding:'0.85rem',marginBottom:'1.1rem',background:'var(--surface-2)'}}
+                onDragOver={e=>e.preventDefault()}
+                onDrop={e=>{e.preventDefault(); handleFile(e.dataTransfer.files?.[0]);}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <ScanLine size={18} style={{color:'var(--brand)',flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:150}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{tc('deliv_page.scan_title','Scan the invoice / DC')}</div>
+                    <div style={{fontSize:11,color:'var(--text-3)'}}>{tc('deliv_page.scan_sub','Photo or PDF — we pre-fill the fields for you to verify.')}</div>
+                  </div>
+                  <label className="btn btn-secondary btn-sm" style={{cursor:'pointer'}}>
+                    <Camera size={14}/>{tc('deliv_page.take_photo','Take photo')}
+                    <input type="file" accept="image/*" capture="environment" hidden onChange={e=>handleFile(e.target.files?.[0])}/>
+                  </label>
+                  <label className="btn btn-secondary btn-sm" style={{cursor:'pointer'}}>
+                    <Upload size={14}/>{tc('deliv_page.upload','Upload')}
+                    <input type="file" accept="image/*,application/pdf" hidden onChange={e=>handleFile(e.target.files?.[0])}/>
+                  </label>
+                </div>
+                {scanning && <div style={{fontSize:12,color:'var(--brand)',marginTop:8}}>⏳ {tc('deliv_page.reading','Reading the invoice…')}</div>}
+                {scanErr  && <div style={{fontSize:12,color:'var(--danger)',marginTop:8}}>{scanErr}</div>}
+                {items.length>0 && (
+                  <div style={{marginTop:10}}>
+                    <div style={{fontSize:11,color:'var(--text-3)',marginBottom:4}}>
+                      {tc('deliv_page.detected','Detected products — pick one to record:')}
+                      {scanMeta?.confidence && <span> · {tc('deliv_page.confidence','confidence')}: <b>{scanMeta.confidence}</b></span>}
+                    </div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                      {items.map((it,i)=>(
+                        <button type="button" key={i} onClick={()=>selectItem(i)}
+                          className={`badge ${i===activeItem?'badge-info':'badge-gray'}`}
+                          style={{cursor:'pointer',opacity:recorded.includes(i)?0.45:1,padding:'4px 8px'}}>
+                          {recorded.includes(i)?'✓ ':''}{it.fuel_type} · {fmtL(it.gross_volume_ltrs)}L
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{fontSize:11,color:'var(--warning)',marginTop:8}}>
+                      ⚠ {tc('deliv_page.verify_warn','Auto-filled from the scan — verify every field against the paper before you confirm.')}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Section: Challan Details */}
               <div style={{fontSize:12,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'0.75rem',borderBottom:'1px solid var(--border)',paddingBottom:4}}>
                 {tc('deliv_page.challan_details','Challan Details')}
@@ -227,7 +399,7 @@ export default function DeliveriesPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:'1rem'}}>
                 <div>
                   <label className="label">{tc('deliv_page.dc_number','DC Number')}</label>
-                  <input className="input" placeholder="DC/2026/04/12345"
+                  <input className="input" placeholder="DC/2026/04/12345" value={form.dc_number||''}
                     onChange={e=>f('dc_number',e.target.value)}/>
                 </div>
                 <div>
@@ -248,27 +420,27 @@ export default function DeliveriesPage() {
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.depot_terminal','Depot / Terminal Name')}</label>
-                  <input className="input" placeholder="e.g. Madurai Terminal"
+                  <input className="input" placeholder="e.g. Madurai Terminal" value={form.depot_name||''}
                     onChange={e=>f('depot_name',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.tanker_number','Tanker Number')}</label>
-                  <input className="input" placeholder="TN58AB1234"
+                  <input className="input" placeholder="TN58AB1234" value={form.tanker_number||''}
                     onChange={e=>f('tanker_number',e.target.value.toUpperCase())}/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.compartment','Compartment No.')}</label>
-                  <input className="input" placeholder="e.g. 1 or C1"
+                  <input className="input" placeholder="e.g. 1 or C1" value={form.compartment_no||''}
                     onChange={e=>f('compartment_no',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.seal_number','Seal Number')}</label>
-                  <input className="input" placeholder="Security seal no."
+                  <input className="input" placeholder="Security seal no." value={form.seal_number||''}
                     onChange={e=>f('seal_number',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.batch_number','Batch Number')}</label>
-                  <input className="input" placeholder="Quality batch ref."
+                  <input className="input" placeholder="Quality batch ref." value={form.batch_number||''}
                     onChange={e=>f('batch_number',e.target.value)}/>
                 </div>
               </div>
@@ -286,7 +458,7 @@ export default function DeliveriesPage() {
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.deliver_tank','Deliver to Tank')} *</label>
-                  <select className="input" onChange={e=>f('tank_id',e.target.value)} required>
+                  <select className="input" value={form.tank_id||''} onChange={e=>f('tank_id',e.target.value)} required>
                     <option value="">{tc('deliv_page.select_tank','Select tank...')}</option>
                     {tanks.filter(t=>t.fuel_type===form.fuel_type).map(t=>(
                       <option key={t.id} value={t.id}>{tc('deliv_page.tank','Tank')} {t.tank_number} — {t.fuel_type} ({fmtL(t.current_stock)}L {tc('deliv_page.current','current')})</option>
@@ -295,7 +467,7 @@ export default function DeliveriesPage() {
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.during_shift','During Shift')}</label>
-                  <select className="input" onChange={e=>f('shift_id',e.target.value)}>
+                  <select className="input" value={form.shift_id||''} onChange={e=>f('shift_id',e.target.value)}>
                     <option value="">{tc('deliv_page.select_shift_opt','Select shift (optional)')}</option>
                     {shifts.map(s=><option key={s.id} value={s.id}>{tc('deliv_page.shift','Shift')} {s.shift_number} — {s.status}</option>)}
                   </select>
@@ -309,17 +481,17 @@ export default function DeliveriesPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:10,marginBottom:'1rem'}}>
                 <div>
                   <label className="label">{tc('deliv_page.gross_volume','Gross Volume (L)')} *</label>
-                  <input className="input" type="number" step="0.01" placeholder="10250.00"
+                  <input className="input" type="number" step="0.01" placeholder="10250.00" value={form.gross_volume_ltrs||''}
                     onChange={e=>f('gross_volume_ltrs',e.target.value)} required/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.temperature','Temperature (°C)')}</label>
-                  <input className="input" type="number" step="0.1" placeholder="34.2"
+                  <input className="input" type="number" step="0.1" placeholder="34.2" value={form.temperature_c||''}
                     onChange={e=>f('temperature_c',e.target.value)}/>
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.density','Density (kg/L)')}</label>
-                  <input className="input" type="number" step="0.0001" placeholder="0.7358"
+                  <input className="input" type="number" step="0.0001" placeholder="0.7358" value={form.density||''}
                     onChange={e=>f('density',e.target.value)}/>
                 </div>
                 <div>
@@ -337,7 +509,7 @@ export default function DeliveriesPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:'1.25rem'}}>
                 <div>
                   <label className="label">{tc('deliv_page.rate_per_ltr','Rate per Litre (₹ ex-depot)')}</label>
-                  <input className="input" type="number" step="0.01" placeholder="67.42"
+                  <input className="input" type="number" step="0.01" placeholder="67.42" value={form.rate_per_ltr||''}
                     onChange={e=>f('rate_per_ltr',e.target.value)}/>
                 </div>
                 <div>
@@ -356,7 +528,7 @@ export default function DeliveriesPage() {
               <div style={{marginBottom:'1.25rem'}}>
                 <label className="label">{tc('deliv_page.notes','Notes')}</label>
                 <textarea className="input" rows={2} placeholder={tc('deliv_page.notes_ph','Any observations about the delivery...')}
-                  onChange={e=>f('notes',e.target.value)}/>
+                  value={form.notes||''} onChange={e=>f('notes',e.target.value)}/>
               </div>
 
               <button className="btn btn-primary btn-lg" type="submit"
@@ -367,6 +539,29 @@ export default function DeliveriesPage() {
                 {tc('deliv_page.stock_auto','Tank stock will be updated automatically on save')}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice viewer */}
+      {viewDoc && (
+        <div onClick={closeViewer} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'1.5rem'}}>
+          <div className="card" style={{width:760,maxWidth:'92vw',maxHeight:'92vh',display:'flex',flexDirection:'column'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+              <div style={{fontWeight:600,fontSize:14}}>{tc('deliv_page.scanned_invoice','Scanned Invoice')}</div>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <a className="btn btn-secondary btn-sm" href={viewDoc.url}
+                   download={viewDoc.media_type==='application/pdf'?'invoice.pdf':'invoice.jpg'}>
+                  {tc('deliv_page.download','Download')}
+                </a>
+                <button onClick={closeViewer} style={{background:'none',border:'none',cursor:'pointer'}}><X size={18}/></button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:'auto',background:'var(--surface-2)',borderRadius:6}}>
+              {viewDoc.media_type==='application/pdf'
+                ? <iframe title="invoice" src={viewDoc.url} style={{width:'100%',height:'78vh',border:'none'}}/>
+                : <img alt="invoice" src={viewDoc.url} style={{width:'100%',height:'auto',display:'block'}}/>}
+            </div>
           </div>
         </div>
       )}

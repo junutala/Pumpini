@@ -3,9 +3,10 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, X, Droplets } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getDipstick, recordDipstick, getTankStock, getShifts } from '../../lib/api';
+import { getDipstick, recordDipstick, getTankStock, getShifts, getCalibrationCharts, setTankChart } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import { markToTrueDip, dipToVolume, dipTolerance } from '../../lib/calibration';
 
 const FUEL_COLORS = { petrol: '#3b82f6', diesel: '#f59e0b', cng: '#10b981', premium_petrol: '#8b5cf6' };
 const fmtL = n => Number(n || 0).toFixed(2);
@@ -21,19 +22,34 @@ export default function DipstickPage() {
   const [tanks, setTanks]       = useState([]);
   const [readings, setReadings] = useState([]);
   const [shifts, setShifts]     = useState([]);
+  const [charts, setCharts]     = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm]         = useState({ reading_type: 'opening', temperature_c: 30 });
+  const [dipEntry, setDipEntry] = useState('');   // mark-ordinal entry, e.g. "64.2"
   const [loading, setLoading]   = useState(false);
 
   const load = async () => {
     if (!stationId) return;
-    const [t, r, s] = await Promise.all([
+    const [t, r, s, c] = await Promise.all([
       getTankStock(stationId),
       getDipstick({ station_id: stationId }),
       getShifts({ station_id: stationId, date: today }),
+      getCalibrationCharts().catch(() => []),
     ]);
-    setTanks(t); setReadings(r); setShifts(s);
+    setTanks(t); setReadings(r); setShifts(s); setCharts(c);
     setForm(p => ({ ...p, station_id: stationId }));
+  };
+
+  // Live dip -> volume for the selected tank's calibration type
+  const selectedTank = tanks.find(t => t.id === form.tank_id);
+  const hasChart = !!(selectedTank && selectedTank.diameter_cm && selectedTank.length_cm);
+  const trueDip  = dipEntry === '' ? null : markToTrueDip(dipEntry);
+  const calcVol  = hasChart && trueDip != null ? dipToVolume(selectedTank.diameter_cm, selectedTank.length_cm, trueDip) : null;
+  const calcTol  = hasChart && trueDip != null ? dipTolerance(selectedTank.diameter_cm, selectedTank.length_cm, trueDip) : null;
+
+  const assignChart = async (tankId, chartId) => {
+    try { await setTankChart(tankId, { station_id: stationId, chart_id: chartId || null }); load(); }
+    catch (err) { alert(err.error || 'Failed to set tank type'); }
   };
 
   useEffect(() => { load(); }, [stationId]);
@@ -42,8 +58,13 @@ export default function DipstickPage() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      await recordDipstick({ ...form, station_id: stationId });
-      setShowForm(false); load();
+      const payload = { ...form, station_id: stationId };
+      if (hasChart) { payload.dip_cm = trueDip; payload.volume_ltrs = calcVol; }  // formula is authoritative
+      else { payload.dip_cm = dipEntry; }
+      await recordDipstick(payload);
+      setShowForm(false); setDipEntry('');
+      setForm({ reading_type: 'opening', temperature_c: 30, station_id: stationId });
+      load();
     } catch (err) { alert(err.error || 'Failed'); }
     finally { setLoading(false); }
   };
@@ -89,6 +110,15 @@ export default function DipstickPage() {
                     {tc('dip_page.last_dip','Last dip')}: {new Date(tank.last_reading_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 )}
+                {/* Tank type (calibration) — auto dip→volume once set */}
+                <div style={{ marginTop: 8 }}>
+                  <select className="input" style={{ fontSize: 11, padding: '4px 6px' }}
+                    value={tank.calibration_chart_id || ''}
+                    onChange={e => assignChart(tank.id, e.target.value)}>
+                    <option value="">{tc('dip_page.set_type','Set tank type…')}</option>
+                    {charts.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtL(c.capacity_ltrs)} L</option>)}
+                  </select>
+                </div>
               </div>
             );
           })}
@@ -169,14 +199,27 @@ export default function DipstickPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">{tc('dip_page.dip_cm','Dip (cm)')}</label>
-                  <input className="input" type="number" step="0.1" placeholder="e.g. 124.5" required
-                    onChange={e => setForm(p => ({ ...p, dip_cm: e.target.value }))} />
+                  <label className="label">{tc('dip_page.dip_reading','Dip Reading')}</label>
+                  <input className="input" type="number" step="0.1" required
+                    placeholder={hasChart ? 'e.g. 64.2' : 'e.g. 124.5'}
+                    value={dipEntry} onChange={e => setDipEntry(e.target.value)} />
+                  {hasChart && (
+                    <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+                      {tc('dip_page.marks_hint','4 marks/cm')} · {dipEntry || '…'} → {trueDip != null ? `${trueDip} cm` : '…'}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label">{tc('dip_page.volume_ltrs','Volume (Ltrs)')}</label>
-                  <input className="input" type="number" step="0.01" placeholder="e.g. 8500.00" required
-                    onChange={e => setForm(p => ({ ...p, volume_ltrs: e.target.value }))} />
+                  {hasChart ? (
+                    <div className="input" style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-2)', fontWeight: 600 }}>
+                      {calcVol != null ? `${fmtL(calcVol)} L` : '—'}
+                      {calcTol != null && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', marginLeft: 6 }}>± {fmtL(calcTol)} L</span>}
+                    </div>
+                  ) : (
+                    <input className="input" type="number" step="0.01" placeholder="e.g. 8500.00" required
+                      onChange={e => setForm(p => ({ ...p, volume_ltrs: e.target.value }))} />
+                  )}
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.density','Density (kg/L)')}</label>
