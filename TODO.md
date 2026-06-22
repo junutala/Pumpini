@@ -76,3 +76,9 @@ managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
 - [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
       with the platform admin.
 - [ ] Auditor responsibility (e.g. tally.export + reports.view only).
+- [ ] MERGE PENDING: Add-User modal Responsibility picker. Built + pushed to
+      branch `claude/voice-triggered-forms-1aa121` (commit 2926ce7) but NOT
+      merged to main yet — owner wants to test first. The /admin "Add User to
+      Station" modal now has a Responsibility dropdown (lists the bunk's
+      role_templates, e.g. Manager_lite) so you can assign at creation instead
+      of only via the row dropdown afterward. Merge after click-through.
