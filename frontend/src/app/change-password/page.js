@@ -23,15 +23,15 @@ export default function ChangePasswordPage() {
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
-    if (newPw.length < 6) { setError(tc('fp_page.pw_short','Password must be at least 6 characters')); return; }
-    if (newPw !== confirm) { setError(tc('fp_page.pw_mismatch','Passwords do not match')); return; }
+    if (newPw.length < 6) { setError(tc('chpwd.pwShort','Password must be at least 6 characters')); return; }
+    if (newPw !== confirm) { setError(tc('chpwd.pwMismatch','Passwords do not match')); return; }
     setLoading(true);
     try {
       await api.post('/auth/change-password', { new_password: newPw });
       setDone(true);
       setTimeout(()=>{ logout(); router.replace('/login'); }, 2000);
     } catch(err) {
-      setError(err.error||'Failed to change password. Please try again.');
+      setError(err.error||tc('chpwd.changeFailed','Failed to change password. Please try again.'));
     } finally { setLoading(false); }
   };
 
@@ -46,11 +46,11 @@ export default function ChangePasswordPage() {
         </div>
 
         <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:10,padding:'10px 14px',marginBottom:'1.5rem',fontSize:13,color:'#9a3412'}}>
-          🔐 {tc('fp_page.change_sub','You must set a new password before continuing.')}
+          🔐 {tc('chpwd.changeSub','You must set a new password before continuing.')}
         </div>
 
         <h2 style={{fontSize:17,fontWeight:700,marginBottom:'1.5rem',textAlign:'center',color:'#111'}}>
-          {tc('fp_page.change_title','Change Your Password')}
+          {tc('chpwd.changeTitle','Change Your Password')}
         </h2>
 
         {!done ? (
@@ -58,7 +58,7 @@ export default function ChangePasswordPage() {
             {/* New password */}
             <div style={{marginBottom:'1rem'}}>
               <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:6,color:'#333'}}>
-                {tc('fp_page.new_password','New Password (min 6 characters)')}
+                {tc('chpwd.newPassword','New Password (min 6 characters)')}
               </label>
               <div style={{display:'flex',alignItems:'center',border:'1.5px solid #ddd',borderRadius:10,overflow:'hidden'}}>
                 <input type={showNew?'text':'password'} placeholder="••••••••"
@@ -74,7 +74,7 @@ export default function ChangePasswordPage() {
             {/* Confirm password */}
             <div style={{marginBottom:'1.5rem'}}>
               <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:6,color:'#333'}}>
-                {tc('fp_page.confirm_password','Confirm New Password')}
+                {tc('chpwd.confirmPassword','Confirm New Password')}
               </label>
               <div style={{display:'flex',alignItems:'center',border:'1.5px solid #ddd',borderRadius:10,overflow:'hidden'}}>
                 <input type={showConf?'text':'password'} placeholder="••••••••"
@@ -87,7 +87,7 @@ export default function ChangePasswordPage() {
               </div>
               {confirm && newPw && confirm!==newPw && (
                 <div style={{fontSize:12,color:'var(--danger)',marginTop:4}}>
-                  {tc('fp_page.pw_mismatch','Passwords do not match')}
+                  {tc('chpwd.pwMismatch','Passwords do not match')}
                 </div>
               )}
             </div>
@@ -100,12 +100,12 @@ export default function ChangePasswordPage() {
 
             <button type="submit" disabled={loading}
               style={{width:'100%',height:50,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontSize:16,fontWeight:700,cursor:'pointer'}}>
-              {loading?tc('fp_page.changing','Changing...'):tc('fp_page.change_btn','Set New Password')}
+              {loading?tc('chpwd.changing','Changing...'):tc('chpwd.changeBtn','Set New Password')}
             </button>
           </form>
         ) : (
           <div style={{textAlign:'center',color:'#15803d',background:'#dcfce7',borderRadius:12,padding:'1.5rem',fontSize:14}}>
-            ✓ {tc('fp_page.change_ok','Password changed successfully. Redirecting...')}
+            ✓ {tc('chpwd.changeOk','Password changed successfully. Redirecting...')}
           </div>
         )}
       </div>

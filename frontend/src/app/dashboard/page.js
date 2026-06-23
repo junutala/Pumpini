@@ -10,6 +10,7 @@ import AppShell from '../../components/shared/AppShell';
 import { getOwnerDashboard } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useTranslation } from 'react-i18next';
 import { useSocket } from '../../hooks/useSocket';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
@@ -31,6 +32,8 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const [deposit, setDeposit] = useState(null);
   const [loading, setLoading] = useState(true);
   const { on } = useSocket(stationId, null);
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const load = useCallback(async () => {
     if (!stationId) return;
@@ -48,8 +51,8 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   useEffect(() => on('dispense:new', () => load()), [on, load]);
   useRefreshOnFocus(load);
 
-  if (!stationId) return <Wrapper><div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>No station assigned. Contact your administrator.</div></Wrapper>;
-  if (loading)    return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>Loading…</div></Wrapper>;
+  if (!stationId) return <Wrapper><div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>{tc('bunk.noStation', 'No station assigned. Contact your administrator.')}</div></Wrapper>;
+  if (loading)    return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.loading', 'Loading…')}</div></Wrapper>;
 
   const d = data || {};
   const sales = d.sales || [];
@@ -82,13 +85,13 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const payTotal = payTotals.reduce((s, p) => s + p.v, 0);
 
   const actions = [];
-  if (cashAwaiting > 0) actions.push({ k: 'cash', Icon: Landmark, bg: '#fee2e2', fg: '#991b1b', label: 'Cash to deposit', value: fmtR(cashAwaiting), sub: depositAge > 0 ? `oldest ${depositAge} day${depositAge > 1 ? 's' : ''} · banking due` : 'banking due', subColor: 'var(--danger,#dc2626)', cta: 'Record deposit', href: '/deposits' });
-  if (creditToInvoice > 0) actions.push({ k: 'credit', Icon: FileText, bg: '#ede9fe', fg: '#5b21b6', label: 'Credit to invoice', value: fmtR(creditToInvoice), sub: 'booked at shift close', subColor: 'var(--text-3)', cta: 'Raise invoices', href: '/invoices' });
-  if (lowTank) actions.push({ k: 'tank', Icon: Droplets, bg: '#fef3c7', fg: '#92400e', label: `${cap(lowTank.fuel_type)} running low`, value: `${lowTank.fill_pct ?? '—'}% · ~${lowTank.days}d`, sub: `tank ${lowTank.tank_number} · reorder window`, subColor: 'var(--warning,#d97706)', cta: 'Plan order', href: '/deliveries' });
-  if (wet?.beyond_tolerance) actions.push({ k: 'wet', Icon: AlertTriangle, bg: '#fee2e2', fg: '#991b1b', label: 'Wet-stock variance', value: `${fmtL(wet.variance_ltrs)} L`, sub: 'beyond tolerance this month', subColor: 'var(--danger,#dc2626)', cta: 'Reconcile', href: '/stock-reco' });
+  if (cashAwaiting > 0) actions.push({ k: 'cash', Icon: Landmark, bg: '#fee2e2', fg: '#991b1b', label: tc('bunk.cashToDeposit', 'Cash to deposit'), value: fmtR(cashAwaiting), sub: depositAge > 0 ? tc('bunk.oldestDaysBankingDue', 'oldest {n} day{s} · banking due').replace('{n}', depositAge).replace('{s}', depositAge > 1 ? 's' : '') : tc('bunk.bankingDue', 'banking due'), subColor: 'var(--danger,#dc2626)', cta: tc('bunk.recordDeposit', 'Record deposit'), href: '/deposits' });
+  if (creditToInvoice > 0) actions.push({ k: 'credit', Icon: FileText, bg: '#ede9fe', fg: '#5b21b6', label: tc('bunk.creditToInvoice', 'Credit to invoice'), value: fmtR(creditToInvoice), sub: tc('bunk.bookedAtShiftClose', 'booked at shift close'), subColor: 'var(--text-3)', cta: tc('bunk.raiseInvoices', 'Raise invoices'), href: '/invoices' });
+  if (lowTank) actions.push({ k: 'tank', Icon: Droplets, bg: '#fef3c7', fg: '#92400e', label: tc('bunk.fuelRunningLow', '{fuel} running low').replace('{fuel}', cap(lowTank.fuel_type)), value: `${lowTank.fill_pct ?? '—'}% · ~${lowTank.days}d`, sub: tc('bunk.tankReorderWindow', 'tank {n} · reorder window').replace('{n}', lowTank.tank_number), subColor: 'var(--warning,#d97706)', cta: tc('bunk.planOrder', 'Plan order'), href: '/deliveries' });
+  if (wet?.beyond_tolerance) actions.push({ k: 'wet', Icon: AlertTriangle, bg: '#fee2e2', fg: '#991b1b', label: tc('bunk.wetStockVariance', 'Wet-stock variance'), value: `${fmtL(wet.variance_ltrs)} L`, sub: tc('bunk.beyondToleranceMonth', 'beyond tolerance this month'), subColor: 'var(--danger,#dc2626)', cta: tc('bunk.reconcile', 'Reconcile'), href: '/stock-reco' });
 
   const needCount = actions.length + unread.length;
-  const aiLines = brief.length ? brief : ['Nothing flagged — running clean.'];
+  const aiLines = brief.length ? brief : [tc('bunk.aiNothingFlagged', 'Nothing flagged — running clean.')];
 
   return (
     <Wrapper>
@@ -98,17 +101,17 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Fuel size={19} color="#fac775" />
-              <span style={{ fontSize: 17, fontWeight: 700 }}>Bunk cockpit</span>
+              <span style={{ fontSize: 17, fontWeight: 700 }}>{tc('bunk.bunkCockpit', 'Bunk cockpit')}</span>
             </div>
             <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              {closedShifts.length > 0 && <span style={{ fontSize: 12, background: '#173404', color: '#c0dd97', padding: '3px 10px', borderRadius: 99 }}><CheckCircle size={12} style={{ verticalAlign: -2 }} /> {closedShifts.length} closed</span>}
-              {openShifts.length > 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{salesMasked ? <><Lock size={12} style={{ verticalAlign: -2 }} /> {openShifts.length} live · sealed</> : <>{openShifts.length} live</>}</span>}
-              {shifts.length === 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>no shift open</span>}
+              {closedShifts.length > 0 && <span style={{ fontSize: 12, background: '#173404', color: '#c0dd97', padding: '3px 10px', borderRadius: 99 }}><CheckCircle size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.nClosed', '{n} closed').replace('{n}', closedShifts.length)}</span>}
+              {openShifts.length > 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{salesMasked ? <><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.nLiveSealed', '{n} live · sealed').replace('{n}', openShifts.length)}</> : <>{tc('bunk.nLive', '{n} live').replace('{n}', openShifts.length)}</>}</span>}
+              {shifts.length === 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{tc('bunk.noShiftOpen', 'no shift open')}</span>}
             </div>
           </div>
           <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
-            {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {needCount} need you</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> all clear</>}
+            {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.nNeedYou', '{n} need you').replace('{n}', needCount)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.allClear', 'all clear')}</>}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
@@ -120,7 +123,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
       {/* Needs you */}
       {actions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Needs you</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{tc('bunk.needsYou', 'Needs you')}</div>
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
             {actions.map(a => (
               <div key={a.k} style={{ ...card, padding: '12px 14px' }}>
@@ -140,13 +143,13 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
       {/* Today's money */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>Today's money</span>
-          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, background: 'var(--surface-2,#f1f5f9)', color: 'var(--text-2,#475569)', padding: '4px 10px', borderRadius: 99 }}><Lock size={12} style={{ verticalAlign: -2 }} /> {openShifts.length} live shift sealed — reveals at close</span>}
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.todaysMoney', "Today's money")}</span>
+          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, background: 'var(--surface-2,#f1f5f9)', color: 'var(--text-2,#475569)', padding: '4px 10px', borderRadius: 99 }}><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.liveShiftsSealedReveals', '{n} live shift sealed — reveals at close').replace('{n}', openShifts.length)}</span>}
         </div>
         <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: payTotal > 0 ? 12 : 0 }}>
-          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sales{salesMasked && closedShifts.length ? ' (closed)' : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
-          <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>Margin</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{margin.pct}% · sell − buy</div>}</div>
-          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Litres</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div></div>
+          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.sales', 'Sales')}{salesMasked && closedShifts.length ? tc('bunk.closedSuffix', ' (closed)') : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
+          <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>
+          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litres', 'Litres')}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div></div>
         </div>
         {payTotal > 0 && <>
           <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden' }}>
@@ -163,22 +166,22 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>
-              Latest shift settlement{settlements[0]?.shift_number ? ` — Shift ${settlements[0].shift_number}` : ''}
+              {tc('bunk.latestShiftSettlement', 'Latest shift settlement')}{settlements[0]?.shift_number ? tc('bunk.shiftNumberSuffix', ' — Shift {n}').replace('{n}', settlements[0].shift_number) : ''}
             </span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{settlements.length} operator{settlements.length > 1 ? 's' : ''} closed</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.operatorsClosed', '{n} operator{s} closed').replace('{n}', settlements.length).replace('{s}', settlements.length > 1 ? 's' : '')}</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 540 }}>
               <thead>
                 <tr style={{ color: 'var(--text-3)', textAlign: 'right' }}>
-                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>Operator</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Cash</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>UPI</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Card</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Credit</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Petty</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Total</th>
-                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Variance</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.operator', 'Operator')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.cash', 'Cash')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.upi', 'UPI')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.card', 'Card')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.credit', 'Credit')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.petty', 'Petty')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.total', 'Total')}</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.variance', 'Variance')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,7 +204,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
               {settlements.length > 1 && (
                 <tfoot>
                   <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
-                    <td style={{ textAlign: 'left', padding: 8 }}>Total</td>
+                    <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
                     <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
                     <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
                     <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
@@ -219,23 +222,23 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
 
       {/* Credit receivables */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Credit receivables</div>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('bunk.creditReceivables', 'Credit receivables')}</div>
         <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 120, ...mini, background: '#ede9fe' }}><div style={{ fontSize: 12, color: '#5b21b6' }}>To invoice</div><div style={{ fontSize: 18, fontWeight: 800, color: '#4c1d95' }}>{fmtR(recv.to_invoice)}</div></div>
+          <div style={{ flex: 1, minWidth: 120, ...mini, background: '#ede9fe' }}><div style={{ fontSize: 12, color: '#5b21b6' }}>{tc('bunk.toInvoice', 'To invoice')}</div><div style={{ fontSize: 18, fontWeight: 800, color: '#4c1d95' }}>{fmtR(recv.to_invoice)}</div></div>
           <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }}><ArrowRight size={16} /></div>
-          <div style={{ flex: 1, minWidth: 120, ...mini }}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Outstanding</div><div style={{ fontSize: 18, fontWeight: 800 }}>{fmtR(recv.outstanding)}</div></div>
+          <div style={{ flex: 1, minWidth: 120, ...mini }}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.outstanding', 'Outstanding')}</div><div style={{ fontSize: 18, fontWeight: 800 }}>{fmtR(recv.outstanding)}</div></div>
           <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }}><ArrowRight size={16} /></div>
-          <div style={{ flex: 1, minWidth: 120, ...mini, background: recv.overdue_90 > 0 ? '#fee2e2' : 'var(--surface-2,#f8fafc)' }}><div style={{ fontSize: 12, color: recv.overdue_90 > 0 ? '#991b1b' : 'var(--text-3)' }}>Overdue 90+</div><div style={{ fontSize: 18, fontWeight: 800, color: recv.overdue_90 > 0 ? '#7f1d1d' : 'inherit' }}>{fmtR(recv.overdue_90)}</div></div>
+          <div style={{ flex: 1, minWidth: 120, ...mini, background: recv.overdue_90 > 0 ? '#fee2e2' : 'var(--surface-2,#f8fafc)' }}><div style={{ fontSize: 12, color: recv.overdue_90 > 0 ? '#991b1b' : 'var(--text-3)' }}>{tc('bunk.overdue90', 'Overdue 90+')}</div><div style={{ fontSize: 18, fontWeight: 800, color: recv.overdue_90 > 0 ? '#7f1d1d' : 'inherit' }}>{fmtR(recv.overdue_90)}</div></div>
         </div>
       </div>
 
       {/* Fuel health */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>Fuel health</span>
-          {wet && <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 99, background: wet.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wet.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wet.beyond_tolerance ? <AlertTriangle size={12} style={{ verticalAlign: -2 }} /> : <CheckCircle size={12} style={{ verticalAlign: -2 }} />} Stock variance MTD {fmtL(wet.variance_ltrs)} L{wet.beyond_tolerance ? ' · over tolerance' : ' · within tolerance'}</span>}
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.fuelHealth', 'Fuel health')}</span>
+          {wet && <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 99, background: wet.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wet.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wet.beyond_tolerance ? <AlertTriangle size={12} style={{ verticalAlign: -2 }} /> : <CheckCircle size={12} style={{ verticalAlign: -2 }} />} {tc('bunk.stockVarianceMtd', 'Stock variance MTD {n} L').replace('{n}', fmtL(wet.variance_ltrs))}{wet.beyond_tolerance ? tc('bunk.overTolerance', ' · over tolerance') : tc('bunk.withinTolerance', ' · within tolerance')}</span>}
         </div>
-        {cover.length === 0 ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No tanks configured.</div> : (
+        {cover.length === 0 ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>{tc('bunk.noTanksConfigured', 'No tanks configured.')}</div> : (
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(125px,1fr))', gap: 12 }}>
             {cover.map(t => {
               const isGas = (t.fuel_type || '').toLowerCase() === 'cng';
@@ -247,9 +250,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     ? <div style={{ width: 32, height: 60, border: '1.5px solid #94a3b8', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Flame size={18} color="#94a3b8" /></div>
                     : <div style={{ width: 32, height: 60, border: `1.5px solid ${col}`, borderRadius: 5, position: 'relative', overflow: 'hidden', flexShrink: 0 }}><div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${Math.min(100, pct)}%`, background: col }} /></div>}
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>Tank {t.tank_number} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{t.fuel_type}</span></div>
-                    {isGas ? <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)' }}>by kg</div> : <div style={{ fontSize: 17, fontWeight: 800, color: col }}>{pct}%</div>}
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isGas ? 'gas · no dip' : (t.days != null ? `~${t.days} days` : 'cover —')}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{tc('bunk.tankN', 'Tank {n}').replace('{n}', t.tank_number)} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{t.fuel_type}</span></div>
+                    {isGas ? <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)' }}>{tc('bunk.byKg', 'by kg')}</div> : <div style={{ fontSize: 17, fontWeight: 800, color: col }}>{pct}%</div>}
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isGas ? tc('bunk.gasNoDip', 'gas · no dip') : (t.days != null ? tc('bunk.daysCover', '~{n} days').replace('{n}', t.days) : tc('bunk.coverDash', 'cover —'))}</div>
                   </div>
                 </div>
               );
@@ -262,7 +265,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
       <div style={{ background: '#ede9fe', borderRadius: 14, padding: '14px 16px', marginBottom: embedded ? 0 : 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <Sparkles size={18} color="#5b21b6" />
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>AI briefing</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>{tc('bunk.aiBriefing', 'AI briefing')}</span>
         </div>
         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#3b0764', lineHeight: 1.7 }}>
           {aiLines.map((l, i) => <li key={i}>{l}</li>)}

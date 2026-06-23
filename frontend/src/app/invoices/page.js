@@ -5,6 +5,7 @@
 // invoice per customer (vehicle / fuel / qty / rate keyed from the chits) and the
 // control total simply DEPRECIATES by the invoice amount — no rate reconciliation.
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, FileText, ChevronRight, ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../../components/shared/AppShell';
@@ -23,6 +24,8 @@ export default function InvoicesPage() {
   const router = useRouter();
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [corps,    setCorps]    = useState([]);
   const [settings, setSettings] = useState(null);
@@ -70,9 +73,9 @@ export default function InvoicesPage() {
   const delLine = (i) => setLines(ls => ls.length>1 ? ls.filter((_,idx)=>idx!==i) : [emptyLine()]);
 
   const generate = async () => {
-    if (!corp) return setMsg({ ok:false, text:'Pick a credit customer first.' });
+    if (!corp) return setMsg({ ok:false, text:tc('invp.errPickCustomer', 'Pick a credit customer first.') });
     const valid = lines.filter(l => lineAmt(l) > 0);
-    if (!valid.length) return setMsg({ ok:false, text:'Add at least one line with quantity and rate.' });
+    if (!valid.length) return setMsg({ ok:false, text:tc('invp.errAddLine', 'Add at least one line with quantity and rate.') });
     setBusy(true); setMsg(null);
     try {
       const t = +total.toFixed(2);
@@ -94,12 +97,16 @@ export default function InvoicesPage() {
         line_items,
         is_opening_balance: opening,
       });
-      const name = corps.find(c=>c.id===corp)?.company_name || 'customer';
-      setMsg({ ok:true, text:`✓ Invoice ${invNo} raised for ${name} — ₹${fmt(t)}.${opening ? ' Opening balance — control total unaffected.' : ' Control total reduced.'}` });
+      const name = corps.find(c=>c.id===corp)?.company_name || tc('invp.customerFallback', 'customer');
+      const suffix = opening
+        ? tc('invp.successOpening', ' Opening balance — control total unaffected.')
+        : tc('invp.successReduced', ' Control total reduced.');
+      setMsg({ ok:true, text: tc('invp.successInvoice', '✓ Invoice {invNo} raised for {name} — ₹{amt}.')
+        .replace('{invNo}', invNo).replace('{name}', name).replace('{amt}', fmt(t)) + suffix });
       setLines([emptyLine()]); setCorp(''); setOpening(false);
       load();
     } catch (e) {
-      setMsg({ ok:false, text: e.response?.data?.error || e.error || 'Could not raise the invoice.' });
+      setMsg({ ok:false, text: e.response?.data?.error || e.error || tc('invp.errGeneric', 'Could not raise the invoice.') });
     }
     setBusy(false);
   };
@@ -108,22 +115,22 @@ export default function InvoicesPage() {
     <AppShell>
       {/* Breadcrumb */}
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>Dashboard</button>
+        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>{tc('invp.dashboard', 'Dashboard')}</button>
         <ChevronRight size={14} color="var(--text-3)"/>
-        <span style={{fontWeight:800,fontSize:15}}>Credit Invoices</span>
+        <span style={{fontWeight:800,fontSize:15}}>{tc('invp.creditInvoices', 'Credit Invoices')}</span>
       </div>
 
       {/* Control total */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap',
         background:'#0f172a',color:'#fff',borderRadius:14,padding:'1rem 1.25rem',marginBottom:'1.25rem'}}>
         <div>
-          <div style={{fontSize:12,opacity:.7,textTransform:'uppercase',letterSpacing:'.05em'}}>Credit pending invoicing</div>
+          <div style={{fontSize:12,opacity:.7,textTransform:'uppercase',letterSpacing:'.05em'}}>{tc('invp.creditPending', 'Credit pending invoicing')}</div>
           <div style={{fontSize:30,fontWeight:800,lineHeight:1.1,marginTop:2}}>₹{fmt(pending.pending)}</div>
-          <div style={{fontSize:11.5,opacity:.6,marginTop:3}}>Credit booked at shift close, not yet invoiced to customers. Raise invoices below until this clears.</div>
+          <div style={{fontSize:11.5,opacity:.6,marginTop:3}}>{tc('invp.creditPendingHint', 'Credit booked at shift close, not yet invoiced to customers. Raise invoices below until this clears.')}</div>
         </div>
         <div style={{textAlign:'right',fontSize:12,opacity:.75,lineHeight:1.7}}>
-          <div>Booked: ₹{fmt(pending.booked)}</div>
-          <div>Invoiced: ₹{fmt(pending.invoiced)}</div>
+          <div>{tc('invp.booked', 'Booked')}: ₹{fmt(pending.booked)}</div>
+          <div>{tc('invp.invoiced', 'Invoiced')}: ₹{fmt(pending.invoiced)}</div>
         </div>
       </div>
 
@@ -136,22 +143,22 @@ export default function InvoicesPage() {
 
       {/* Raise an invoice */}
       <div className="card" style={{marginBottom:'1.25rem'}}>
-        <div style={{fontWeight:700,fontSize:15,marginBottom:'0.9rem'}}>Raise a credit invoice</div>
+        <div style={{fontWeight:700,fontSize:15,marginBottom:'0.9rem'}}>{tc('invp.raiseInvoice', 'Raise a credit invoice')}</div>
 
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 220px 160px',gap:12,marginBottom:'1rem'}}>
           <div>
-            <label className="label">Credit customer *</label>
+            <label className="label">{tc('invp.creditCustomer', 'Credit customer *')}</label>
             <select style={inp} value={corp} onChange={e=>setCorp(e.target.value)}>
-              <option value="">Select customer…</option>
+              <option value="">{tc('invp.selectCustomer', 'Select customer…')}</option>
               {corps.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
           </div>
           <div>
-            <label className="label">Invoice no.</label>
+            <label className="label">{tc('invp.invoiceNo', 'Invoice no.')}</label>
             <input style={inp} value={invNo} onChange={e=>setInvNo(e.target.value)} />
           </div>
           <div>
-            <label className="label">Date</label>
+            <label className="label">{tc('invp.date', 'Date')}</label>
             <input style={inp} type="date" value={invDate} onChange={e=>setInvDate(e.target.value)} />
           </div>
         </div>
@@ -161,18 +168,18 @@ export default function InvoicesPage() {
           <table className="dms-table" style={{minWidth:640}}>
             <thead>
               <tr>
-                <th style={{width:'30%'}}>Vehicle No.</th>
-                <th style={{width:120}}>Fuel</th>
-                <th style={{width:110,textAlign:'right'}}>Qty (L)</th>
-                <th style={{width:110,textAlign:'right'}}>Rate ₹/L</th>
-                <th style={{width:130,textAlign:'right'}}>Amount</th>
+                <th style={{width:'30%'}}>{tc('invp.vehicleNo', 'Vehicle No.')}</th>
+                <th style={{width:120}}>{tc('invp.fuel', 'Fuel')}</th>
+                <th style={{width:110,textAlign:'right'}}>{tc('invp.qtyL', 'Qty (L)')}</th>
+                <th style={{width:110,textAlign:'right'}}>{tc('invp.rateL', 'Rate ₹/L')}</th>
+                <th style={{width:130,textAlign:'right'}}>{tc('invp.amount', 'Amount')}</th>
                 <th style={{width:40}}></th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l,i) => (
                 <tr key={i}>
-                  <td><input style={{...inp,padding:'7px 9px'}} placeholder="e.g. TN09AB1234" value={l.vehicle} onChange={e=>setLine(i,'vehicle',e.target.value.toUpperCase())} /></td>
+                  <td><input style={{...inp,padding:'7px 9px'}} placeholder={tc('invp.vehiclePlaceholder', 'e.g. TN09AB1234')} value={l.vehicle} onChange={e=>setLine(i,'vehicle',e.target.value.toUpperCase())} /></td>
                   <td>
                     <select style={{...inp,padding:'7px 9px'}} value={l.fuel} onChange={e=>setLine(i,'fuel',e.target.value)}>
                       {FUELS.map(f => <option key={f} value={f}>{f[0].toUpperCase()+f.slice(1)}</option>)}
@@ -182,7 +189,7 @@ export default function InvoicesPage() {
                   <td><input style={{...inp,padding:'7px 9px',textAlign:'right'}} type="number" step="0.01" min="0" placeholder="0.00" value={l.rate} onChange={e=>setLine(i,'rate',e.target.value)} /></td>
                   <td className="num" style={{fontWeight:700}}>₹{fmt(lineAmt(l))}</td>
                   <td>
-                    <button onClick={()=>delLine(i)} title="Remove" style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626'}}><Trash2 size={15}/></button>
+                    <button onClick={()=>delLine(i)} title={tc('invp.remove', 'Remove')} style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626'}}><Trash2 size={15}/></button>
                   </td>
                 </tr>
               ))}
@@ -191,40 +198,40 @@ export default function InvoicesPage() {
         </div>
 
         <button onClick={addLine} style={{marginTop:10,display:'inline-flex',alignItems:'center',gap:5,background:'#f1f5f9',border:'1px solid #e2e8f0',borderRadius:8,padding:'7px 12px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
-          <Plus size={14}/> Add line
+          <Plus size={14}/> {tc('invp.addLine', 'Add line')}
         </button>
 
         {/* Opening-balance flag — loads a pre-go-live balance without touching the control total */}
         <label style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:'1rem',fontSize:13,cursor:'pointer',color: opening?'#9a3412':'var(--text-2)'}}>
           <input type="checkbox" checked={opening} onChange={e=>setOpening(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
-          <span><strong>Opening balance</strong> — pre-go-live entry; do <u>not</u> draw down the credit control total.</span>
+          <span><strong>{tc('invp.openingBalance', 'Opening balance')}</strong> {tc('invp.openingBalanceHint1', '— pre-go-live entry; do')} <u>{tc('invp.openingBalanceNot', 'not')}</u> {tc('invp.openingBalanceHint2', 'draw down the credit control total.')}</span>
         </label>
 
         {/* Total + generate */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap',marginTop:'1rem',paddingTop:'1rem',borderTop:'1px solid #eef0f2'}}>
           <div>
-            <span style={{fontSize:13,color:'var(--text-3)'}}>Invoice total</span>
+            <span style={{fontSize:13,color:'var(--text-3)'}}>{tc('invp.invoiceTotal', 'Invoice total')}</span>
             <div style={{fontSize:24,fontWeight:800}}>₹{fmt(total)}</div>
             {willGoNegative && total>0 && (
-              <div style={{fontSize:11.5,color:'#b45309',marginTop:2}}>⚠ Exceeds the pending control total — allowed, but it will push the balance below zero.</div>
+              <div style={{fontSize:11.5,color:'#b45309',marginTop:2}}>{tc('invp.exceedsWarning', '⚠ Exceeds the pending control total — allowed, but it will push the balance below zero.')}</div>
             )}
           </div>
           <button onClick={generate} disabled={busy}
             style={{height:48,padding:'0 24px',background: busy?'#94a3b8':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer',display:'inline-flex',alignItems:'center',gap:8}}>
-            <FileText size={17}/>{busy ? 'Raising…' : 'Generate Invoice'}
+            <FileText size={17}/>{busy ? tc('invp.raising', 'Raising…') : tc('invp.generateInvoice', 'Generate Invoice')}
           </button>
         </div>
       </div>
 
       {/* Recent invoices */}
       <div className="card">
-        <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>Recent credit invoices</div>
+        <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>{tc('invp.recentInvoices', 'Recent credit invoices')}</div>
         {recent.length === 0 ? (
-          <div style={{color:'var(--text-3)',fontSize:13}}>No credit invoices raised yet.</div>
+          <div style={{color:'var(--text-3)',fontSize:13}}>{tc('invp.noInvoices', 'No credit invoices raised yet.')}</div>
         ) : (
           <div className="table-wrap">
             <table className="dms-table">
-              <thead><tr><th>Invoice No.</th><th>Customer</th><th>Date</th><th style={{textAlign:'right'}}>Amount</th></tr></thead>
+              <thead><tr><th>{tc('invp.invoiceNoCol', 'Invoice No.')}</th><th>{tc('invp.customer', 'Customer')}</th><th>{tc('invp.date', 'Date')}</th><th style={{textAlign:'right'}}>{tc('invp.amount', 'Amount')}</th></tr></thead>
               <tbody>
                 {recent.map(iv => (
                   <tr key={iv.id}>

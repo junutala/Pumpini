@@ -4,6 +4,7 @@ import { RotateCcw, X, Printer } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { useTranslation } from 'react-i18next';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8,
   fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -13,6 +14,8 @@ export default function CreditNotesPage() {
   if (typeof window === 'undefined') return null;
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [notes,     setNotes]     = useState([]);
   const [corps,     setCorps]     = useState([]);
@@ -75,8 +78,8 @@ export default function CreditNotesPage() {
 
   const submit = async () => {
     const toReturn = lines.filter(l => l.returnQty > 0).map(l => ({ invoice_item_id: l.id, quantity: l.returnQty }));
-    if (!invoiceId) { setErr('Select the original invoice'); return; }
-    if (!toReturn.length) { setErr('Enter a return quantity for at least one item'); return; }
+    if (!invoiceId) { setErr(tc('cnotes.errSelectInvoice', 'Select the original invoice')); return; }
+    if (!toReturn.length) { setErr(tc('cnotes.errEnterReturnQty', 'Enter a return quantity for at least one item')); return; }
     setSaving(true); setErr('');
     try {
       const inv = invoices.find(i => i.id === invoiceId);
@@ -89,7 +92,7 @@ export default function CreditNotesPage() {
         items: toReturn,
       });
       setModal(false); load();
-    } catch(e) { setErr(e.response?.data?.error || e.error || 'Could not create credit note'); }
+    } catch(e) { setErr(e.response?.data?.error || e.error || tc('cnotes.errCreateFailed', 'Could not create credit note')); }
     setSaving(false);
   };
 
@@ -99,29 +102,36 @@ export default function CreditNotesPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Credit Notes</h1>
-          <div style={{ fontSize:13, color:'var(--text-3)' }}>Product returns against an invoice (GST credit note)</div>
+          <h1 className="page-title">{tc('cnotes.title', 'Credit Notes')}</h1>
+          <div style={{ fontSize:13, color:'var(--text-3)' }}>{tc('cnotes.subtitle', 'Product returns against an invoice (GST credit note)')}</div>
         </div>
-        <button className="btn btn-primary" onClick={openNew}><RotateCcw size={15}/> New Return</button>
+        <button className="btn btn-primary" onClick={openNew}><RotateCcw size={15}/> {tc('cnotes.newReturn', 'New Return')}</button>
       </div>
 
       <div className="table-wrap">
         <table className="dms-table">
           <thead><tr>
-            {['Credit Note','Date','Customer','Against Invoice','Settlement','Amount'].map(h=><th key={h}>{h}</th>)}
+            {[
+              tc('cnotes.thCreditNote','Credit Note'),
+              tc('cnotes.thDate','Date'),
+              tc('cnotes.thCustomer','Customer'),
+              tc('cnotes.thAgainstInvoice','Against Invoice'),
+              tc('cnotes.thSettlement','Settlement'),
+              tc('cnotes.thAmount','Amount'),
+            ].map(h=><th key={h}>{h}</th>)}
           </tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} style={{ textAlign:'center', padding:'2rem', color:'var(--text-3)' }}>Loading…</td></tr>
+              <tr><td colSpan={6} style={{ textAlign:'center', padding:'2rem', color:'var(--text-3)' }}>{tc('cnotes.loading', 'Loading…')}</td></tr>
             ) : notes.length === 0 ? (
-              <tr><td colSpan={6} style={{ textAlign:'center', padding:'2rem', color:'var(--text-3)' }}>No credit notes yet</td></tr>
+              <tr><td colSpan={6} style={{ textAlign:'center', padding:'2rem', color:'var(--text-3)' }}>{tc('cnotes.empty', 'No credit notes yet')}</td></tr>
             ) : notes.map(n => (
               <tr key={n.id}>
                 <td className="num" style={{ fontWeight:600 }}>{n.cn_number}</td>
                 <td>{new Date(n.created_at).toLocaleDateString('en-IN')}</td>
                 <td>{n.customer_name}</td>
                 <td className="num">{n.original_invoice_number || '—'}</td>
-                <td><span className="badge badge-gray">{n.settlement === 'outstanding' ? 'Outstanding ↓' : 'Petty cash'}</span></td>
+                <td><span className="badge badge-gray">{n.settlement === 'outstanding' ? tc('cnotes.outstandingDown', 'Outstanding ↓') : tc('cnotes.pettyCash', 'Petty cash')}</span></td>
                 <td className="num" style={{ fontWeight:600 }}>₹{fmt(n.grand_total)}</td>
               </tr>
             ))}
@@ -135,24 +145,24 @@ export default function CreditNotesPage() {
           alignItems:'center', justifyContent:'center', zIndex:200, padding:'1rem', overflowY:'auto' }}>
           <div className="card" style={{ width:'100%', maxWidth:560, maxHeight:'92vh', overflowY:'auto' }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
-              <span style={{ fontWeight:700, fontSize:16 }}>New Return / Credit Note</span>
+              <span style={{ fontWeight:700, fontSize:16 }}>{tc('cnotes.modalTitle', 'New Return / Credit Note')}</span>
               <button onClick={()=>setModal(false)} style={{ background:'none', border:'none', cursor:'pointer' }}><X size={18}/></button>
             </div>
 
             <div style={{ marginBottom:'0.85rem' }}>
-              <label className="label">Customer</label>
+              <label className="label">{tc('cnotes.customer', 'Customer')}</label>
               <select style={inp} value={custKey} onChange={e=>setCustKey(e.target.value)}>
-                <option value="cash">Cash Customer (refund from petty cash)</option>
-                {corps.map(c => <option key={c.id} value={c.id}>{c.company_name} (credit — reduces outstanding)</option>)}
+                <option value="cash">{tc('cnotes.cashCustomer', 'Cash Customer (refund from petty cash)')}</option>
+                {corps.map(c => <option key={c.id} value={c.id}>{tc('cnotes.corpOptionSuffix', '{name} (credit — reduces outstanding)').replace('{name}', c.company_name)}</option>)}
               </select>
             </div>
 
             <div style={{ marginBottom:'0.85rem' }}>
-              <label className="label">Original invoice *{' '}
-                <span style={{ fontWeight:400, color:'var(--text-3)' }}>(within return policy)</span>
+              <label className="label">{tc('cnotes.originalInvoice', 'Original invoice')} *{' '}
+                <span style={{ fontWeight:400, color:'var(--text-3)' }}>{tc('cnotes.withinReturnPolicy', '(within return policy)')}</span>
               </label>
               <select style={inp} value={invoiceId} onChange={e=>loadReturnable(e.target.value)}>
-                <option value="">{invoices.length ? 'Select invoice…' : 'No invoices in the return window'}</option>
+                <option value="">{invoices.length ? tc('cnotes.selectInvoice', 'Select invoice…') : tc('cnotes.noInvoicesInWindow', 'No invoices in the return window')}</option>
                 {invoices.map(i => (
                   <option key={i.id} value={i.id}>
                     {i.invoice_number} · {new Date(i.created_at).toLocaleDateString('en-IN')} · ₹{fmt(i.grand_total)}
@@ -163,7 +173,7 @@ export default function CreditNotesPage() {
 
             {lines.length > 0 && (
               <div style={{ marginBottom:'0.85rem' }}>
-                <div style={{ fontSize:12, fontWeight:600, color:'var(--text-2)', marginBottom:6 }}>Items to return</div>
+                <div style={{ fontSize:12, fontWeight:600, color:'var(--text-2)', marginBottom:6 }}>{tc('cnotes.itemsToReturn', 'Items to return')}</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
                   {lines.map(l => (
                     <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8,
@@ -172,7 +182,7 @@ export default function CreditNotesPage() {
                       <div style={{ flex:1, minWidth:0 }}>
                         <div style={{ fontSize:13, fontWeight:600 }}>{l.product_name}</div>
                         <div style={{ fontSize:11, color:'var(--text-3)' }}>
-                          ₹{fmt(l.unit_price)} · {l.gst_rate}% GST · sold {Number(l.quantity)} · returnable {Number(l.returnable)}
+                          ₹{fmt(l.unit_price)} · {l.gst_rate}% GST · {tc('cnotes.sold', 'sold {n}').replace('{n}', Number(l.quantity))} · {tc('cnotes.returnable', 'returnable {n}').replace('{n}', Number(l.returnable))}
                         </div>
                       </div>
                       <input type="number" step="0.1" min="0" max={l.returnable}
@@ -187,21 +197,21 @@ export default function CreditNotesPage() {
             )}
 
             <div style={{ marginBottom:'0.85rem' }}>
-              <label className="label">Reason (optional)</label>
-              <input style={inp} value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. wrong item, damaged in transit" />
+              <label className="label">{tc('cnotes.reason', 'Reason (optional)')}</label>
+              <input style={inp} value={reason} onChange={e=>setReason(e.target.value)} placeholder={tc('cnotes.reasonPlaceholder', 'e.g. wrong item, damaged in transit')} />
             </div>
 
             {err && <div className="alert-banner danger" style={{ marginBottom:'0.85rem' }}>{err}</div>}
 
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
               <span style={{ fontSize:13, color:'var(--text-3)' }}>
-                {isCredit ? 'Reduces customer outstanding' : 'Refund from petty cash'} (incl. GST)
+                {isCredit ? tc('cnotes.reducesOutstanding', 'Reduces customer outstanding') : tc('cnotes.refundPettyCash', 'Refund from petty cash')} {tc('cnotes.inclGst', '(incl. GST)')}
               </span>
               <span style={{ fontSize:20, fontWeight:800 }}>₹{fmt(grand)}</span>
             </div>
             <button className="btn btn-primary" style={{ width:'100%', justifyContent:'center', height:46 }}
               onClick={submit} disabled={saving || grand <= 0}>
-              {saving ? 'Issuing…' : 'Issue Credit Note'}
+              {saving ? tc('cnotes.issuing', 'Issuing…') : tc('cnotes.issueCreditNote', 'Issue Credit Note')}
             </button>
           </div>
         </div>

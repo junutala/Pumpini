@@ -4,6 +4,7 @@
 // shift + attendant so the cash rolls into that attendant's blind-drop.
 // Self-contained: does NOT touch the fuel/voice flow.
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Plus, Minus, Trash2, CheckCircle } from 'lucide-react';
 import api from '../../lib/api';
 import BarcodeScanner from './BarcodeScanner';
@@ -11,8 +12,11 @@ import BarcodeScanner from './BarcodeScanner';
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8,
   fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const PAY = [['cash','💵 Cash'], ['upi','📱 UPI'], ['card','💳 Card'], ['credit','🏢 Credit']];
+const PAY_KEYS = { cash:['payCash','💵 Cash'], upi:['payUpi','📱 UPI'], card:['payCard','💳 Card'], credit:['payCredit','🏢 Credit'] };
 
 export default function LubeSaleModal({ stationId, shiftId, attendantId, corps = [], onClose, onDone }) {
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const [products, setProducts] = useState([]);
   const [cart,     setCart]     = useState([]);
   const [barcode,  setBarcode]  = useState('');
@@ -43,7 +47,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
     try {
       const p = await api.get(`/products/barcode/${encodeURIComponent(c)}`, { params: { station_id: stationId } });
       addProduct(p); setBarcode('');
-    } catch { setErr(`Barcode ${c} not found`); setTimeout(() => setErr(''), 2500); setBarcode(''); }
+    } catch { setErr(tc('lubemodal.barcodeNotFound', 'Barcode {code} not found').replace('{code}', c)); setTimeout(() => setErr(''), 2500); setBarcode(''); }
   };
 
   const setQty = (pid, d) => setCart(prev =>
@@ -55,11 +59,11 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
 
   const checkout = async () => {
     if (!cart.length) return;
-    if (payMode === 'credit' && !custId) { setErr('Select a credit customer'); return; }
+    if (payMode === 'credit' && !custId) { setErr(tc('lubemodal.selectCreditCustomerErr', 'Select a credit customer')); return; }
     // ₹50,000 cash-invoice cap: a "Cash Customer" (non-credit) lube invoice over
     // ₹50k needs an identifiable buyer (credit customer + receipt) or a split.
     if (payMode !== 'credit' && grand > 50000 &&
-        !window.confirm(`⚠️ This cash invoice is ₹${grand.toLocaleString('en-IN', { minimumFractionDigits:2 })}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to a credit customer with a receipt — or split the invoice.\n\nProceed as a cash sale anyway?`)) return;
+        !window.confirm(tc('lubemodal.cashCapConfirm', '⚠️ This cash invoice is ₹{amount}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to a credit customer with a receipt — or split the invoice.\n\nProceed as a cash sale anyway?').replace('{amount}', grand.toLocaleString('en-IN', { minimumFractionDigits:2 })))) return;
     setSaving(true); setErr('');
     try {
       const res = await api.post('/products/invoices', {
@@ -75,7 +79,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
       });
       setDone(res);
       onDone && onDone(res);
-    } catch (e) { setErr(e.response?.data?.error || e.error || 'Sale failed'); }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('lubemodal.saleFailed', 'Sale failed')); }
     setSaving(false);
   };
 
@@ -87,30 +91,30 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
       <div style={{ background:'#fff', borderRadius:16, padding:'1.5rem', width:'100%', maxWidth:440,
         boxShadow:'0 20px 60px rgba(0,0,0,.35)', maxHeight:'92vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
-          <h2 style={{ fontWeight:800, fontSize:17, margin:0 }}>🛒 Lube Sale</h2>
+          <h2 style={{ fontWeight:800, fontSize:17, margin:0 }}>{tc('lubemodal.title', '🛒 Lube Sale')}</h2>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer' }}><X size={18}/></button>
         </div>
 
         {done ? (
           <div style={{ textAlign:'center', padding:'1rem 0' }}>
             <CheckCircle size={44} color="#16a34a" style={{ margin:'0 auto 0.75rem' }}/>
-            <div style={{ fontSize:18, fontWeight:800 }}>Sale complete</div>
-            <div style={{ fontSize:13, color:'#666', margin:'4px 0 2px' }}>Invoice {done.invoice_number}</div>
+            <div style={{ fontSize:18, fontWeight:800 }}>{tc('lubemodal.saleComplete', 'Sale complete')}</div>
+            <div style={{ fontSize:13, color:'#666', margin:'4px 0 2px' }}>{tc('lubemodal.invoiceLabel', 'Invoice {number}').replace('{number}', done.invoice_number)}</div>
             <div style={{ fontSize:22, fontWeight:900, color:'#16a34a', marginBottom:'1.25rem' }}>
               ₹{Number(done.grand_total).toLocaleString('en-IN', { minimumFractionDigits:2 })}
             </div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={reset} style={{ flex:1, height:44, background:'#FF6B00', color:'#fff', border:'none',
-                borderRadius:10, fontWeight:700, cursor:'pointer' }}>New Lube Sale</button>
+                borderRadius:10, fontWeight:700, cursor:'pointer' }}>{tc('lubemodal.newLubeSale', 'New Lube Sale')}</button>
               <button onClick={onClose} style={{ flex:1, height:44, background:'#f1f5f9', color:'#334155', border:'none',
-                borderRadius:10, fontWeight:700, cursor:'pointer' }}>Done</button>
+                borderRadius:10, fontWeight:700, cursor:'pointer' }}>{tc('lubemodal.doneBtn', 'Done')}</button>
             </div>
           </div>
         ) : (
           <>
             {/* Scan / pick */}
             <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-              <input style={{ ...inp, flex:1 }} placeholder="Scan or type barcode" value={barcode}
+              <input style={{ ...inp, flex:1 }} placeholder={tc('lubemodal.scanPlaceholder', 'Scan or type barcode')} value={barcode}
                 onChange={e => setBarcode(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addByBarcode(barcode); } }}/>
               <BarcodeScanner label="" onScan={addByBarcode}/>
@@ -131,7 +135,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
 
             {/* Cart */}
             {cart.length === 0 ? (
-              <div style={{ textAlign:'center', color:'#aaa', fontSize:13, padding:'1rem 0' }}>Scan or add a product</div>
+              <div style={{ textAlign:'center', color:'#aaa', fontSize:13, padding:'1rem 0' }}>{tc('lubemodal.scanOrAdd', 'Scan or add a product')}</div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
                 {cart.map(it => (
@@ -139,7 +143,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
                     background:'#f8fafc', borderRadius:8, padding:'7px 10px' }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.product_name}</div>
-                      <div style={{ fontSize:11, color:'#888' }}>₹{it.unit_price.toFixed(2)} · {it.gst_rate}% GST</div>
+                      <div style={{ fontSize:11, color:'#888' }}>₹{it.unit_price.toFixed(2)} · {tc('lubemodal.gstSuffix', '{rate}% GST').replace('{rate}', it.gst_rate)}</div>
                     </div>
                     <button onClick={() => setQty(it.product_id, -1)} style={{ border:'none', background:'#e2e8f0', borderRadius:6, width:24, height:24, cursor:'pointer' }}><Minus size={13}/></button>
                     <span style={{ fontSize:13, fontWeight:700, minWidth:24, textAlign:'center' }}>{it.quantity}</span>
@@ -157,12 +161,12 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
                 <button key={id} onClick={() => setPayMode(id)}
                   style={{ padding:'9px', borderRadius:8, border:'1.5px solid ' + (payMode === id ? '#FF6B00' : '#e5e7eb'),
                     background: payMode === id ? '#fff7ed' : '#fff', color: payMode === id ? '#9a3412' : '#334155',
-                    fontWeight:600, fontSize:13, cursor:'pointer' }}>{label}</button>
+                    fontWeight:600, fontSize:13, cursor:'pointer' }}>{tc('lubemodal.' + PAY_KEYS[id][0], PAY_KEYS[id][1])}</button>
               ))}
             </div>
             {payMode === 'credit' && (
               <select style={{ ...inp, marginBottom:8 }} value={custId} onChange={e => setCustId(e.target.value)}>
-                <option value="">Select credit customer…</option>
+                <option value="">{tc('lubemodal.selectCreditCustomer', 'Select credit customer…')}</option>
                 {corps.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
               </select>
             )}
@@ -170,13 +174,13 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
             {err && <div style={{ background:'#fee2e2', color:'#991b1b', borderRadius:8, padding:'8px 12px', fontSize:13, marginBottom:8 }}>{err}</div>}
 
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
-              <span style={{ fontSize:14, color:'#555' }}>Total (incl. GST)</span>
+              <span style={{ fontSize:14, color:'#555' }}>{tc('lubemodal.totalInclGst', 'Total (incl. GST)')}</span>
               <span style={{ fontSize:22, fontWeight:900 }}>₹{grand.toLocaleString('en-IN', { minimumFractionDigits:2 })}</span>
             </div>
             <button onClick={checkout} disabled={saving || !cart.length}
               style={{ width:'100%', height:48, background: cart.length ? '#16a34a' : '#cbd5e1', color:'#fff',
                 border:'none', borderRadius:10, fontWeight:800, fontSize:15, cursor: cart.length ? 'pointer' : 'not-allowed' }}>
-              {saving ? 'Processing…' : 'Complete Sale'}
+              {saving ? tc('lubemodal.processing', 'Processing…') : tc('lubemodal.completeSale', 'Complete Sale')}
             </button>
           </>
         )}

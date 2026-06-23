@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
       await api.post('/auth/forgot-password', { phone });
       setSent(true);
     } catch(err) {
-      setError(err.error||'Something went wrong. Please try again.');
+      setError(err.error||tc('fpwd.genericError','Something went wrong. Please try again.'));
     } finally { setLoading(false); }
   };
 
@@ -38,10 +38,10 @@ export default function ForgotPasswordPage() {
         </div>
 
         <h2 style={{fontSize:18,fontWeight:700,marginBottom:6,textAlign:'center',color:'#111'}}>
-          {tc('fp_page.forgot_title','Reset Password')}
+          {tc('fpwd.title','Reset Password')}
         </h2>
         <p style={{fontSize:13,color:'#888',textAlign:'center',marginBottom:'1.5rem',lineHeight:1.5}}>
-          {tc('fp_page.forgot_sub','Enter your registered mobile number. We\'ll send a temporary password via WhatsApp / SMS.')}
+          {tc('fpwd.subtitle','Enter your registered mobile number. We\'ll send a temporary password via WhatsApp / SMS.')}
         </p>
 
         {!sent ? (
@@ -69,23 +69,23 @@ export default function ForgotPasswordPage() {
 
             <button type="submit" disabled={loading||phone.length!==10}
               style={{width:'100%',height:50,background:phone.length===10?'#FF6B00':'#ccc',color:'#fff',border:'none',borderRadius:10,fontSize:16,fontWeight:700,cursor:phone.length===10?'pointer':'not-allowed',marginBottom:'0.75rem'}}>
-              {loading?tc('fp_page.sending','Sending...'):tc('fp_page.send_otp','Send Temporary Password')}
+              {loading?tc('fpwd.sending','Sending...'):tc('fpwd.sendTempPassword','Send Temporary Password')}
             </button>
 
             <button type="button" onClick={()=>router.push('/login')}
               style={{width:'100%',background:'none',border:'none',color:'#888',fontSize:14,cursor:'pointer',padding:'8px'}}>
-              {tc('fp_page.back_to_login','← Back to Login')}
+              {tc('fpwd.backToLogin','← Back to Login')}
             </button>
           </form>
         ) : (
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:48,marginBottom:'1rem'}}>📱</div>
             <div style={{background:'#dcfce7',border:'1px solid #86efac',borderRadius:12,padding:'1rem 1.25rem',color:'#15803d',fontSize:14,lineHeight:1.6,marginBottom:'1.5rem'}}>
-              {tc('fp_page.sent_ok','A temporary password has been sent to your WhatsApp / SMS. Please login with it and change your password immediately.')}
+              {tc('fpwd.sentOk','A temporary password has been sent to your WhatsApp / SMS. Please login with it and change your password immediately.')}
             </div>
             <button onClick={()=>router.push('/login')}
               style={{width:'100%',height:50,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontSize:16,fontWeight:700,cursor:'pointer'}}>
-              {tc('fp_page.back_to_login','← Back to Login')}
+              {tc('fpwd.backToLogin','← Back to Login')}
             </button>
           </div>
         )}

@@ -4,10 +4,13 @@ import { Printer, Download, Eye, X } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
+import { useTranslation } from 'react-i18next';
 
 export default function ProductsHistoryPage() {
   if (typeof window === 'undefined') return null;
   const { station } = useAuth();
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const stationId   = typeof station==='object' ? station?.id : station;
   const stationName = typeof station==='object' ? station?.name : '';
 
@@ -35,7 +38,7 @@ export default function ProductsHistoryPage() {
         api.get(`/stations/${stationId}/settings`),
       ]);
       setSelected(inv); setStationInfo(si||{});
-    } catch(e) { alert('Failed to load invoice'); }
+    } catch(e) { alert(tc('lubehist.loadInvoiceFailed', 'Failed to load invoice')); }
   };
 
   useEffect(() => { if (stationId) load(); }, [stationId]);
@@ -54,8 +57,8 @@ export default function ProductsHistoryPage() {
     <AppShell>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12,marginBottom:'1.5rem'}}>
         <div>
-          <h1 className="page-title">Products Sales History</h1>
-          <p className="page-subtitle">GST invoice register for lubes & products</p>
+          <h1 className="page-title">{tc('lubehist.pageTitle', 'Products Sales History')}</h1>
+          <p className="page-subtitle">{tc('lubehist.pageSubtitle', 'GST invoice register for lubes & products')}</p>
         </div>
       </div>
 
@@ -63,27 +66,27 @@ export default function ProductsHistoryPage() {
       <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1rem 1.25rem',
         marginBottom:'1rem',display:'flex',gap:12,alignItems:'flex-end',flexWrap:'wrap'}}>
         <div>
-          <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>From</label>
+          <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubehist.from', 'From')}</label>
           <input type="date" value={from} onChange={e=>setFrom(e.target.value)}
             style={{padding:'8px 12px',border:'1.5px solid #e5e3de',borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
         <div>
-          <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>To</label>
+          <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubehist.to', 'To')}</label>
           <input type="date" value={to} onChange={e=>setTo(e.target.value)}
             style={{padding:'8px 12px',border:'1.5px solid #e5e3de',borderRadius:8,fontSize:14,outline:'none'}}/>
         </div>
         <button onClick={load} style={{padding:'9px 20px',background:'#FF6B00',color:'#fff',border:'none',
-          borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:13}}>Apply</button>
+          borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:13}}>{tc('lubehist.apply', 'Apply')}</button>
       </div>
 
       {/* Summary cards */}
       {invoices.length > 0 && (
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:'1rem',marginBottom:'1rem'}}>
           {[
-            ['Invoices', invoices.length, '#1A5F7A'],
-            ['Subtotal', fmtCur(totals.subtotal), '#16a34a'],
-            ['GST (CGST+SGST)', fmtCur(totals.cgst+totals.sgst), '#9333ea'],
-            ['Grand Total', fmtCur(totals.grand), '#FF6B00'],
+            [tc('lubehist.cardInvoices', 'Invoices'), invoices.length, '#1A5F7A'],
+            [tc('lubehist.cardSubtotal', 'Subtotal'), fmtCur(totals.subtotal), '#16a34a'],
+            [tc('lubehist.cardGst', 'GST (CGST+SGST)'), fmtCur(totals.cgst+totals.sgst), '#9333ea'],
+            [tc('lubehist.cardGrandTotal', 'Grand Total'), fmtCur(totals.grand), '#FF6B00'],
           ].map(([l,v,c])=>(
             <div key={l} style={{background:'#fff',borderRadius:12,padding:'1rem',
               border:'1px solid #e5e3de',borderTop:`3px solid ${c}`}}>
@@ -97,13 +100,13 @@ export default function ProductsHistoryPage() {
       {/* Invoice list */}
       <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
         {loading ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#aaa'}}>Loading...</div>
+          <div style={{textAlign:'center',padding:'3rem',color:'#aaa'}}>{tc('lubehist.loading', 'Loading...')}</div>
         ) : invoices.length===0 ? (
-          <div style={{textAlign:'center',padding:'3rem',color:'#aaa'}}>No invoices found for this period</div>
+          <div style={{textAlign:'center',padding:'3rem',color:'#aaa'}}>{tc('lubehist.noInvoices', 'No invoices found for this period')}</div>
         ) : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr style={{background:'#f8f7f5'}}>
-              {['Invoice No','Date','Customer','Items','Payment','Subtotal','GST','Total',''].map(h=>(
+              {[tc('lubehist.thInvoiceNo','Invoice No'),tc('lubehist.thDate','Date'),tc('lubehist.thCustomer','Customer'),tc('lubehist.thItems','Items'),tc('lubehist.thPayment','Payment'),tc('lubehist.thSubtotal','Subtotal'),tc('lubehist.thGst','GST'),tc('lubehist.thTotal','Total'),''].map(h=>(
                 <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,
                   fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
               ))}
@@ -126,7 +129,7 @@ export default function ProductsHistoryPage() {
                     <button onClick={()=>loadInvoice(inv.id)}
                       style={{display:'flex',alignItems:'center',gap:4,padding:'4px 10px',background:'#f0f9ff',
                         color:'#1A5F7A',border:'none',borderRadius:6,cursor:'pointer',fontSize:12,fontWeight:600}}>
-                      <Eye size={12}/>View
+                      <Eye size={12}/>{tc('lubehist.view', 'View')}
                     </button>
                   </td>
                 </tr>
@@ -149,7 +152,7 @@ export default function ProductsHistoryPage() {
                 <button onClick={()=>window.print()}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:'#FF6B00',
                     color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
-                  <Printer size={14}/>Print
+                  <Printer size={14}/>{tc('lubehist.print', 'Print')}
                 </button>
                 <button onClick={()=>setSelected(null)}
                   style={{padding:'8px 12px',background:'#f3f4f6',border:'none',borderRadius:8,cursor:'pointer'}}>
@@ -163,24 +166,24 @@ export default function ProductsHistoryPage() {
                 <div style={{fontSize:20,fontWeight:800}}>{selected.station_name}</div>
                 <div style={{fontSize:12,color:'#555'}}>{selected.address}</div>
                 <div style={{fontSize:12,color:'#555'}}>{selected.city}{selected.state?`, ${selected.state}`:''}</div>
-                {selected.gstn && <div style={{fontSize:12,fontWeight:600,marginTop:4}}>GSTIN: {selected.gstn}</div>}
+                {selected.gstn && <div style={{fontSize:12,fontWeight:600,marginTop:4}}>{tc('lubehist.gstinLabel', 'GSTIN')}: {selected.gstn}</div>}
               </div>
-              <div style={{textAlign:'center',fontWeight:800,fontSize:16,marginBottom:'1rem',letterSpacing:2}}>TAX INVOICE</div>
+              <div style={{textAlign:'center',fontWeight:800,fontSize:16,marginBottom:'1rem',letterSpacing:2}}>{tc('lubehist.taxInvoice', 'TAX INVOICE')}</div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1rem',fontSize:12}}>
                 <div>
-                  <div><strong>Invoice No:</strong> {selected.invoice_number}</div>
-                  <div><strong>Date:</strong> {new Date(selected.invoice_date).toLocaleDateString('en-IN')}</div>
-                  <div><strong>Payment:</strong> {selected.payment_mode?.toUpperCase()}</div>
+                  <div><strong>{tc('lubehist.invoiceNoLabel', 'Invoice No')}:</strong> {selected.invoice_number}</div>
+                  <div><strong>{tc('lubehist.dateLabel', 'Date')}:</strong> {new Date(selected.invoice_date).toLocaleDateString('en-IN')}</div>
+                  <div><strong>{tc('lubehist.paymentLabel', 'Payment')}:</strong> {selected.payment_mode?.toUpperCase()}</div>
                 </div>
                 <div>
-                  <div><strong>Bill To:</strong> {selected.customer_name}</div>
-                  {selected.customer_gstn && <div><strong>GSTN:</strong> {selected.customer_gstn}</div>}
+                  <div><strong>{tc('lubehist.billToLabel', 'Bill To')}:</strong> {selected.customer_name}</div>
+                  {selected.customer_gstn && <div><strong>{tc('lubehist.gstnLabel', 'GSTN')}:</strong> {selected.customer_gstn}</div>}
                 </div>
               </div>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,marginBottom:'1rem'}}>
                 <thead>
                   <tr style={{background:'#f3f4f6'}}>
-                    {['#','Description','HSN','Qty','Unit','Rate','Taxable','CGST','SGST','Total'].map(h=>(
+                    {['#',tc('lubehist.colDescription','Description'),'HSN',tc('lubehist.colQty','Qty'),tc('lubehist.colUnit','Unit'),tc('lubehist.colRate','Rate'),tc('lubehist.colTaxable','Taxable'),'CGST','SGST',tc('lubehist.colTotal','Total')].map(h=>(
                       <th key={h} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'left',fontWeight:700}}>{h}</th>
                     ))}
                   </tr>
@@ -203,7 +206,7 @@ export default function ProductsHistoryPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{background:'#f8f7f5',fontWeight:700}}>
-                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>TOTAL</td>
+                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{tc('lubehist.totalRow', 'TOTAL')}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.subtotal)}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.total_cgst)}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.total_sgst)}</td>
@@ -212,11 +215,11 @@ export default function ProductsHistoryPage() {
                 </tfoot>
               </table>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2rem',marginTop:'2rem',fontSize:11,color:'#666'}}>
-                <div><div style={{fontWeight:700,color:'#000',marginBottom:4}}>Terms & Conditions</div>
-                  <div>Goods once sold will not be taken back.</div></div>
+                <div><div style={{fontWeight:700,color:'#000',marginBottom:4}}>{tc('lubehist.termsTitle', 'Terms & Conditions')}</div>
+                  <div>{tc('lubehist.termsBody', 'Goods once sold will not be taken back.')}</div></div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontWeight:700,color:'#000',marginBottom:24}}>For {selected.station_name}</div>
-                  <div>Authorised Signatory</div>
+                  <div style={{fontWeight:700,color:'#000',marginBottom:24}}>{tc('lubehist.forStation', 'For {name}').replace('{name}', selected.station_name)}</div>
+                  <div>{tc('lubehist.authorisedSignatory', 'Authorised Signatory')}</div>
                 </div>
               </div>
             </div>

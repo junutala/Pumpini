@@ -3,6 +3,7 @@
 // renders that bunk's manager cockpit unmasked (DashboardPage embedded). A link
 // hops to the Intelligence dashboard (the analytics/decision layer).
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Building2, Bell, CheckCircle, AlertTriangle, Clock, UserX,
   Landmark, TrendingUp, TrendingDown, ChevronRight, Brain } from 'lucide-react';
@@ -21,6 +22,8 @@ const EXC_ICON = { cash: Clock, wetstock: AlertTriangle, overdue: UserX };
 
 export default function GroupDashboardPage() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const [groups, setGroups]               = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedOutlet, setSelectedOutlet] = useState(null);
@@ -48,11 +51,11 @@ export default function GroupDashboardPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Operations</h1>
-          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Your bunks at a glance · drill into any one</div>
+          <h1 className="page-title">{tc('gdash.operations', 'Operations')}</h1>
+          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('gdash.bunksAtGlance', 'Your bunks at a glance · drill into any one')}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> Intelligence</button>
+          <button className="btn btn-secondary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> {tc('gdash.intelligence', 'Intelligence')}</button>
           {selectedGroup && <button className="btn btn-secondary btn-sm" onClick={() => loadGroup(selectedGroup.id)}><RefreshCw size={14} /></button>}
         </div>
       </div>
@@ -66,13 +69,13 @@ export default function GroupDashboardPage() {
         </div>
       )}
 
-      {groups.length === 0 && <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>You are not part of any owner group yet. Contact the administrator.</div>}
-      {loading && <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>Loading…</div>}
+      {groups.length === 0 && <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>{tc('gdash.noGroup', 'You are not part of any owner group yet. Contact the administrator.')}</div>}
+      {loading && <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>{tc('gdash.loading', 'Loading…')}</div>}
 
       {/* Outlet picker pills */}
       {data && !loading && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-          <button onClick={() => setSelectedOutlet(null)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (!selectedOutlet ? '#23272e' : '#e5e7eb'), background: !selectedOutlet ? '#23272e' : '#fff', color: !selectedOutlet ? '#fff' : 'var(--text-2,#475569)' }}>All bunks</button>
+          <button onClick={() => setSelectedOutlet(null)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (!selectedOutlet ? '#23272e' : '#e5e7eb'), background: !selectedOutlet ? '#23272e' : '#fff', color: !selectedOutlet ? '#fff' : 'var(--text-2,#475569)' }}>{tc('gdash.allBunks', 'All bunks')}</button>
           {st.map(s => (
             <button key={s.id} onClick={() => setSelectedOutlet(s.id)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (selectedOutlet === s.id ? '#23272e' : '#e5e7eb'), background: selectedOutlet === s.id ? '#23272e' : '#fff', color: selectedOutlet === s.id ? '#fff' : 'var(--text-2,#475569)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: health(s) }} /> {s.name}
@@ -90,60 +93,60 @@ export default function GroupDashboardPage() {
           <div style={{ background: '#23272e', borderRadius: 14, padding: '16px 18px', color: '#f1efe8', marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Building2 size={19} color="#fac775" /><span style={{ fontSize: 17, fontWeight: 700 }}>{st.length} bunks · live</span></div>
-                <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>Sum of your outlets · {new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Building2 size={19} color="#fac775" /><span style={{ fontSize: 17, fontWeight: 700 }}>{tc('gdash.bunksLive', '{n} bunks · live').replace('{n}', st.length)}</span></div>
+                <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{tc('gdash.sumOfOutlets', 'Sum of your outlets')} · {new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}</div>
               </div>
-              <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, background: exc.length ? '#633806' : '#173404', color: exc.length ? '#fac775' : '#c0dd97' }}>{exc.length ? <><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> {exc.length} need you</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> all clear</>}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, background: exc.length ? '#633806' : '#173404', color: exc.length ? '#fac775' : '#c0dd97' }}>{exc.length ? <><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.needYou', '{n} need you').replace('{n}', exc.length)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.allClear', 'all clear')}</>}</span>
             </div>
           </div>
 
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
             <div style={mini}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sales today</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.salesToday', 'Sales today')}</div>
               <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(tt.total_sales)}</div>
-              {tt.vs_yesterday_pct != null && <div style={{ fontSize: 12, color: tt.vs_yesterday_pct >= 0 ? '#3b6d11' : '#b91c1c' }}>{tt.vs_yesterday_pct >= 0 ? <TrendingUp size={12} style={{ verticalAlign: -2 }} /> : <TrendingDown size={12} style={{ verticalAlign: -2 }} />} {tt.vs_yesterday_pct >= 0 ? '+' : ''}{tt.vs_yesterday_pct}% vs yest.</div>}
+              {tt.vs_yesterday_pct != null && <div style={{ fontSize: 12, color: tt.vs_yesterday_pct >= 0 ? '#3b6d11' : '#b91c1c' }}>{tt.vs_yesterday_pct >= 0 ? <TrendingUp size={12} style={{ verticalAlign: -2 }} /> : <TrendingDown size={12} style={{ verticalAlign: -2 }} />} {tt.vs_yesterday_pct >= 0 ? '+' : ''}{tt.vs_yesterday_pct}{tc('gdash.vsYest', '% vs yest.')}</div>}
             </div>
             <div style={{ ...mini, background: '#eaf3de' }}>
-              <div style={{ fontSize: 12, color: '#3b6d11' }}>Margin today</div>
+              <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('gdash.marginToday', 'Margin today')}</div>
               <div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{fmtR(tt.total_margin)}</div>
-              {tt.group_margin_pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tt.group_margin_pct}% blended</div>}
+              {tt.group_margin_pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tt.group_margin_pct}{tc('gdash.blended', '% blended')}</div>}
             </div>
-            <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Litres</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(tt.total_litres)} L</div></div>
+            <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.litres', 'Litres')}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(tt.total_litres)} L</div></div>
           </div>
 
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10, marginBottom: 14 }}>
             <div style={{ ...card, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ width: 28, height: 28, borderRadius: 7, background: '#fee2e2', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Landmark size={16} /></span><span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>Cash undeposited</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ width: 28, height: 28, borderRadius: 7, background: '#fee2e2', color: '#991b1b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Landmark size={16} /></span><span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{tc('gdash.cashUndeposited', 'Cash undeposited')}</span></div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{fmtR(tt.cash_undeposited)}</div>
             </div>
             <div style={{ ...card, padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ width: 28, height: 28, borderRadius: 7, background: '#ede9fe', color: '#5b21b6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserX size={16} /></span><span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>Credit receivables</span></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}><span style={{ width: 28, height: 28, borderRadius: 7, background: '#ede9fe', color: '#5b21b6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><UserX size={16} /></span><span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{tc('gdash.creditReceivables', 'Credit receivables')}</span></div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{fmtR(tt.receivables_outstanding)}</div>
-              {tt.overdue_90 > 0 && <div style={{ fontSize: 12, color: 'var(--danger,#dc2626)', marginTop: 2 }}>{fmtR(tt.overdue_90)} overdue 90+</div>}
+              {tt.overdue_90 > 0 && <div style={{ fontSize: 12, color: 'var(--danger,#dc2626)', marginTop: 2 }}>{fmtR(tt.overdue_90)} {tc('gdash.overdue90', 'overdue 90+')}</div>}
             </div>
           </div>
 
           <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Outlets</div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('gdash.outlets', 'Outlets')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {st.map(s => (
                 <div key={s.id} onClick={() => setSelectedOutlet(s.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 10, flexWrap: 'wrap', cursor: 'pointer' }}>
                   <span style={{ width: 9, height: 9, borderRadius: '50%', background: health(s), flexShrink: 0 }} />
                   <span style={{ fontSize: 14, fontWeight: 700, minWidth: 90 }}>{s.name}</span>
                   <span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{fmtR(s.sales)} · <span style={{ color: '#3b6d11' }}>{s.gross_margin_pct != null ? s.gross_margin_pct + '%' : '—'}</span></span>
-                  {s.wetstock_beyond && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>stock loss</span>}
-                  {s.overdue_90 > 0 && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{fmtR(s.overdue_90)} overdue</span>}
-                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>cash {fmtR(s.cash_undeposited)}</span>
+                  {s.wetstock_beyond && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{tc('gdash.stockLoss', 'stock loss')}</span>}
+                  {s.overdue_90 > 0 && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{fmtR(s.overdue_90)} {tc('gdash.overdue', 'overdue')}</span>}
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.cash', 'cash')} {fmtR(s.cash_undeposited)}</span>
                   <span style={{ marginLeft: 'auto', color: 'var(--text-3)' }}><ChevronRight size={16} /></span>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>Tap an outlet to open its full cockpit (live, unmasked).</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>{tc('gdash.tapOutletHint', 'Tap an outlet to open its full cockpit (live, unmasked).')}</div>
           </div>
 
           {exc.length > 0 && (
             <div style={{ ...card, padding: '14px 16px' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>Exceptions</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 10 }}>{tc('gdash.exceptions', 'Exceptions')}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
                 {exc.map((e, i) => { const I = EXC_ICON[e.type] || AlertTriangle; return (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}><I size={16} color={e.type === 'cash' ? '#d97706' : '#dc2626'} /><span>{e.text}</span></div>
