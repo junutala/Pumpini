@@ -256,23 +256,15 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
       msg = await ai.messages.create({
         // 4000 so a multi-product invoice's JSON isn't truncated mid-object.
         model: 'claude-sonnet-4-6', max_tokens: 4000,
-        messages: [
-          { role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] },
-          // Prefill an open brace so the model MUST continue a JSON object — it can
-          // never reply with prose, an apology, or "I can't read this" (the old
-          // "Could not read the invoice" failures were the model returning text,
-          // not the image being illegible). We re-attach the "{" below.
-          { role: 'assistant', content: '{' },
-        ],
+        messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] }],
       });
     } catch (e) {
       try { require('../utils/logger').error('parse-invoice API error: ' + (e.message || e)); } catch { /* noop */ }
       return res.status(503).json({ error: 'Invoice scanning is unavailable right now — enter the details manually.' });
     }
 
-    const raw = (msg.content.find(b => b.type === 'text')?.text || '').trim();
-    // Re-attach the prefilled "{" (the API returns only the continuation).
-    const txt = raw.startsWith('{') ? raw : '{' + raw;
+    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+    // Grab the JSON object from the reply (tolerates ```json fences / stray prose).
     const m = txt.match(/\{[\s\S]*\}/);
     let parsed;
     try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
