@@ -135,4 +135,28 @@ router.get('/saved', authenticate, requireStationAccess({ required: true }), asy
   } catch (err) { next(err); }
 });
 
+// GET /api/invoices/credit-pending?station_id=
+// The control total: credit booked into suspense at shift close (in) minus what
+// has already been invoiced to customers (out). The manager invoices customers
+// until this nets to zero. No reconciliation — it simply depreciates by each
+// invoice's amount.
+router.get('/credit-pending', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN direction='in'  THEN amount ELSE 0 END),0) AS booked,
+         COALESCE(SUM(CASE WHEN direction='out' THEN amount ELSE 0 END),0) AS invoiced,
+         COALESCE(SUM(CASE WHEN direction='in'  THEN amount ELSE -amount END),0) AS pending
+       FROM credit_suspense_entries WHERE station_id=$1`,
+      [station_id]
+    );
+    res.json({
+      booked:   Number(rows[0].booked   || 0),
+      invoiced: Number(rows[0].invoiced || 0),
+      pending:  Number(rows[0].pending  || 0),
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
