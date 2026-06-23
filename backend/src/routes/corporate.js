@@ -159,35 +159,45 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
       }
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    // Run the create on the bypass owner role (als.run(undefined,…)) — the same fix
+    // as Add-Attendant. A manager's app_authenticated identity can't satisfy the
+    // corporate_accounts insert policy for a brand-new account, and the duplicate
+    // trigger needs to read across ALL outlets to enforce GSTN uniqueness. Still
+    // fully authorized above (owner/manager + canAccessStation); the row is stamped
+    // created_by_station = the verified station, so per-tenant reads stay scoped.
+    const corp = await pool.als.run(undefined, async () => {
+      const client = await pool.connect();   // no ALS store → raw bypass owner client
+      try {
+        await client.query('BEGIN');
 
-      const { rows } = await client.query(
-        `INSERT INTO corporate_accounts(
-           company_name, contact_person, contact_phone, email,
-           gst_number, gstn, pan, address, is_active, created_by_station
-         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9) RETURNING *`,
-        [company_name, contact_person||null, contact_phone||null,
-         email||null, effectiveGstn||null, effectiveGstn||null,
-         pan||null, address||null, station_id||null]
-      );
-
-      const corp = rows[0];
-
-      // Create station link
-      if (station_id && credit_limit !== undefined) {
-        await client.query(
-          `INSERT INTO corporate_station_links(corporate_id,station_id,credit_limit,payment_terms)
-           VALUES($1,$2,$3,$4) ON CONFLICT(corporate_id,station_id) DO NOTHING`,
-          [corp.id, station_id, credit_limit, payment_terms]
+        const { rows } = await client.query(
+          `INSERT INTO corporate_accounts(
+             company_name, contact_person, contact_phone, email,
+             gst_number, gstn, pan, address, is_active, created_by_station
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,TRUE,$9) RETURNING *`,
+          [company_name, contact_person||null, contact_phone||null,
+           email||null, effectiveGstn||null, effectiveGstn||null,
+           pan||null, address||null, station_id||null]
         );
-      }
 
-      await client.query('COMMIT');
-      res.status(201).json(corp);
-    } catch(e) { await client.query('ROLLBACK'); throw e; }
-    finally { client.release(); }
+        const created = rows[0];
+
+        // Create station link
+        if (station_id && credit_limit !== undefined) {
+          await client.query(
+            `INSERT INTO corporate_station_links(corporate_id,station_id,credit_limit,payment_terms)
+             VALUES($1,$2,$3,$4) ON CONFLICT(corporate_id,station_id) DO NOTHING`,
+            [created.id, station_id, credit_limit, payment_terms]
+          );
+        }
+
+        await client.query('COMMIT');
+        return created;
+      } catch(e) { await client.query('ROLLBACK'); throw e; }
+      finally { client.release(); }
+    });
+
+    res.status(201).json(corp);
   } catch (err) { next(err); }
 });
 
