@@ -99,11 +99,11 @@ router.get('/summary/:corporate_id', authenticate, requireCorporateAccess('corpo
     const { corporate_id } = req.params;
     const p = [corporate_id];
 
-    // Total credit sales
-    let salesQ = `SELECT COALESCE(SUM(amount),0) AS total_sales
-      FROM dispense_events
-      WHERE corporate_id=$1 AND payment_mode='credit'
-        AND NOT COALESCE(is_voided,FALSE)`;
+    // Total billed to this customer = sum of credit invoices raised to them.
+    // (Credit isn't tagged per-customer at the pump in the control-total model.)
+    let salesQ = `SELECT COALESCE(SUM(total_amount),0) AS total_sales
+      FROM gst_invoices
+      WHERE corporate_id=$1`;
     if (station_id) { p.push(station_id); salesQ += ` AND station_id=$${p.length}`; }
 
     // Total receipts
