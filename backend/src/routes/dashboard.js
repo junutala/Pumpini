@@ -89,6 +89,85 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       credit_suspense = Number(rows[0].bal || 0);
     } catch { /* table absent until migration 004 */ }
 
+    // ── Cockpit metrics (best-effort — never break the dashboard) ──────
+    // Margin cost basis = LAST delivery rate per fuel (owner-chosen). Litres come
+    // from the sales rollup, so margin honours blind-drop (closed shifts only for
+    // non-owners). Days-of-cover = current stock ÷ trailing 7-day avg daily litres.
+    let margin = null, cover = [], last_settlement = null, wetstock_mtd = null;
+    let receivables = { to_invoice: credit_suspense, outstanding: 0, overdue_90: 0 };
+    let ai_briefing = [];
+    try {
+      const monthStart = date.slice(0, 8) + '01';
+      const [prices, buyRates, trail, recv, lastSet, wet] = await Promise.all([
+        pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, price FROM fuel_prices
+                    WHERE station_id=$1 ORDER BY fuel_type, effective_from DESC`, [station_id]),
+        pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, rate_per_ltr FROM fuel_deliveries
+                    WHERE station_id=$1 AND rate_per_ltr IS NOT NULL
+                    ORDER BY fuel_type, received_at DESC NULLS LAST`, [station_id]),
+        pool.query(`SELECT n.fuel_type, COALESCE(SUM(de.quantity_ltrs),0)/7.0 AS avg_daily
+                    FROM dispense_events de JOIN nozzles n ON n.id=de.nozzle_id
+                    WHERE de.station_id=$1 AND de.occurred_at::date > $2::date - 7
+                      AND NOT COALESCE(de.is_voided,FALSE)
+                    GROUP BY n.fuel_type`, [station_id, date]),
+        pool.query(`SELECT
+                      COALESCE((SELECT SUM(total_amount) FROM gst_invoices WHERE station_id=$1),0) AS invoiced,
+                      COALESCE((SELECT SUM(amount) FROM corporate_receipts WHERE station_id=$1),0) AS received,
+                      COALESCE((SELECT SUM(total_amount) FROM gst_invoices WHERE station_id=$1 AND invoice_date <= $2::date - 90),0) AS invoiced_old`,
+                    [station_id, date]),
+        pool.query(`SELECT r.cash_actual, r.upi_total, r.card_total, r.credit_total, r.petty_cash,
+                           r.total_sales, r.variance, r.reconciled_at, u.name AS attendant_name, sh.shift_number
+                    FROM shift_reconciliation r JOIN shifts sh ON sh.id=r.shift_id JOIN users u ON u.id=r.attendant_id
+                    WHERE sh.station_id=$1 AND r.manager_confirmed=TRUE
+                    ORDER BY r.reconciled_at DESC LIMIT 1`, [station_id]),
+        pool.query(`SELECT COALESCE(SUM(variance_ltrs),0) AS var_ltrs, BOOL_OR(beyond_tolerance) AS beyond
+                    FROM tank_reconciliation WHERE station_id=$1 AND created_at >= $2`, [station_id, monthStart])
+          .catch(() => ({ rows: [{ var_ltrs: 0, beyond: false }] })),
+      ]);
+
+      const sell = {}; prices.rows.forEach(r => { sell[r.fuel_type] = parseFloat(r.price); });
+      const buy  = {}; buyRates.rows.forEach(r => { buy[r.fuel_type] = parseFloat(r.rate_per_ltr); });
+      const ltrsByFuel = {};
+      sales.rows.forEach(r => { ltrsByFuel[r.fuel_type] = (ltrsByFuel[r.fuel_type] || 0) + parseFloat(r.total_ltrs || 0); });
+      let marginAmt = 0, salesAmt = 0;
+      Object.keys(ltrsByFuel).forEach(ft => {
+        const l = ltrsByFuel[ft];
+        if (sell[ft] != null) salesAmt += l * sell[ft];
+        if (sell[ft] != null && buy[ft] != null) marginAmt += l * (sell[ft] - buy[ft]);
+      });
+      margin = { amount: +marginAmt.toFixed(2), pct: salesAmt > 0 ? +(marginAmt / salesAmt * 100).toFixed(1) : null, basis: 'last_delivery' };
+
+      const avgDaily = {}; trail.rows.forEach(r => { avgDaily[r.fuel_type] = parseFloat(r.avg_daily); });
+      cover = stock.rows.map(t => {
+        const ad = avgDaily[t.fuel_type] || 0;
+        return { tank_number: t.tank_number, fuel_type: t.fuel_type, fill_pct: t.fill_pct,
+                 days: ad > 0 ? +(parseFloat(t.current_stock) / ad).toFixed(1) : null };
+      });
+
+      const rv = recv.rows[0];
+      const outstanding = Math.max(0, parseFloat(rv.invoiced) - parseFloat(rv.received));
+      const overdue90   = Math.max(0, Math.min(outstanding, parseFloat(rv.invoiced_old) - parseFloat(rv.received)));
+      receivables = { to_invoice: credit_suspense, outstanding: +outstanding.toFixed(2), overdue_90: +overdue90.toFixed(2) };
+
+      if (lastSet.rows.length) {
+        const r = lastSet.rows[0];
+        last_settlement = {
+          attendant_name: r.attendant_name, shift_number: r.shift_number, at: r.reconciled_at,
+          cash: Number(r.cash_actual || 0), upi: Number(r.upi_total || 0), card: Number(r.card_total || 0),
+          credit: Number(r.credit_total || 0), petty: Number(r.petty_cash || 0),
+          total: Number(r.total_sales || 0), variance: Number(r.variance || 0),
+        };
+      }
+      wetstock_mtd = { variance_ltrs: Number(wet.rows[0].var_ltrs || 0), beyond_tolerance: !!wet.rows[0].beyond };
+
+      // Rule-based briefing v1 (LLM version is a fast-follow)
+      const inr = n => '₹' + Math.round(n).toLocaleString('en-IN');
+      const low = cover.filter(c => c.days != null && c.days < 2).sort((a, b) => a.days - b.days)[0];
+      if (low) ai_briefing.push(`${low.fuel_type} (tank ${low.tank_number}) ~${low.days} days of cover — plan a refill.`);
+      if (wetstock_mtd.beyond_tolerance) ai_briefing.push('Wet-stock variance is beyond tolerance this month — worth a surprise dip.');
+      if (receivables.overdue_90 > 0) ai_briefing.push(`${inr(receivables.overdue_90)} of credit is 90+ days overdue.`);
+      if (credit_suspense > 0) ai_briefing.push(`${inr(credit_suspense)} credit is waiting to be invoiced.`);
+    } catch (e) { /* cockpit metrics are additive — keep the core dashboard alive */ }
+
     res.json({
       date,
       sales: sales.rows,
@@ -99,6 +178,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       variances,
       settlements,
       suspense: { credit_suspense, petty_cash },
+      margin, cover, receivables, last_settlement, wetstock_mtd, ai_briefing,
       sales_masked: !isOwner && shifts.rows.some(s => s.status === 'open'),
     });
   } catch (err) { next(err); }
