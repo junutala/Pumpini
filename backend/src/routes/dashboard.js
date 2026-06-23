@@ -62,19 +62,29 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       WHERE sh.station_id=$1 AND sh.date=$2 AND ABS(r.variance) > 50
       ORDER BY ABS(r.variance) DESC`, [station_id, date]);
 
-    // Per-operator settlement, broken down by payment type (today's settled
-    // operators) — the recon view. Settlement is the blind-drop reveal point,
-    // so only manager-confirmed (completed) settlements are surfaced.
+    // Per-operator settlement, broken down by payment type — every attendant of
+    // the LATEST closed shift (the one most recently reconciled). Deliberately NOT
+    // date-scoped: a shift can span midnight or be settled the next morning, so we
+    // key off the most-recent reconciliation, not the calendar date. Settlement is
+    // the blind-drop reveal point, so only manager-confirmed rows are surfaced.
     const { rows: settlements } = await pool.query(`
-      SELECT r.attendant_id, u.name AS attendant_name, sh.shift_number,
+      SELECT r.attendant_id, u.name AS attendant_name, sh.shift_number, sh.date AS shift_date,
              r.total_sales, r.cash_actual, r.cash_expected, r.variance,
              r.card_total, r.upi_total, r.credit_total, r.petty_cash,
              r.reconciled_at
       FROM shift_reconciliation r
       JOIN shifts sh ON sh.id = r.shift_id
       JOIN users u ON u.id = r.attendant_id
-      WHERE sh.station_id=$1 AND sh.date=$2 AND r.manager_confirmed = TRUE
-      ORDER BY sh.shift_number, u.name`, [station_id, date]);
+      WHERE r.manager_confirmed = TRUE
+        AND r.shift_id = (
+          SELECT r2.shift_id
+          FROM shift_reconciliation r2
+          JOIN shifts sh2 ON sh2.id = r2.shift_id
+          WHERE sh2.station_id = $1 AND r2.manager_confirmed = TRUE
+          ORDER BY r2.reconciled_at DESC
+          LIMIT 1
+        )
+      ORDER BY u.name`, [station_id]);
 
     // Held suspense balances (running, station-wide): petty-cash fund and
     // un-invoiced credit. Best-effort + separate so a not-yet-migrated table

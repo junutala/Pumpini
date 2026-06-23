@@ -158,11 +158,13 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </>}
       </div>
 
-      {/* Settlements today — every operator who closed */}
+      {/* Latest shift settlement — every operator of the most recently closed shift */}
       {settlements.length > 0 && (
         <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>Settlements today</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>
+              Latest shift settlement{settlements[0]?.shift_number ? ` — Shift ${settlements[0].shift_number}` : ''}
+            </span>
             <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{settlements.length} operator{settlements.length > 1 ? 's' : ''} closed</span>
           </div>
           <div style={{ overflowX: 'auto' }}>
