@@ -101,6 +101,18 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const salesMasked  = !!data?.sales_masked; // blind drop: open shift, non-owner
   const unreadAlerts = (data?.alerts || []).filter(a => !a.acknowledged_at);
 
+  // Per-operator settlement by payment type (today's settled operators)
+  const settlements  = data?.settlements || [];
+  const fmtR = n => '₹' + Number(n||0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  const settleTotals = settlements.reduce((t, s) => ({
+    cash:   t.cash   + parseFloat(s.cash_actual  || 0),
+    card:   t.card   + parseFloat(s.card_total   || 0),
+    upi:    t.upi    + parseFloat(s.upi_total    || 0),
+    credit: t.credit + parseFloat(s.credit_total || 0),
+    petty:  t.petty  + parseFloat(s.petty_cash   || 0),
+    sales:  t.sales  + parseFloat(s.total_sales  || 0),
+  }), { cash:0, card:0, upi:0, credit:0, petty:0, sales:0 });
+
   // Payment pie
   const paymentData = ['cash','upi','credit','card'].map(mode => ({
     name:  t(`dispense.${mode}`),
@@ -350,6 +362,69 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           )}
         </div>
       </div>
+
+      {/* Operator settlements — per attendant, by payment type (today) */}
+      {settlements.length > 0 && (
+        <div className="card" style={{marginBottom:'1.5rem'}}>
+          <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>
+            {tc('dash_page.operator_settlements','Operator Settlements — by Payment Type (today)')}
+          </div>
+          <div className="table-wrap">
+            <table className="dms-table">
+              <thead>
+                <tr>
+                  <th>{tc('dash_page.operator','Operator')}</th>
+                  <th>{tc('dash_page.shift','Shift')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dispense.cash','Cash')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dispense.card','Card')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dispense.upi','UPI')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dispense.credit','Credit')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dash_page.petty','Petty')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dash_page.total_sales','Sales')}</th>
+                  <th style={{textAlign:'right'}}>{tc('dash_page.variance','Variance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settlements.map((s,i) => {
+                  const v = parseFloat(s.variance || 0);
+                  return (
+                    <tr key={`${s.attendant_id}-${i}`}>
+                      <td><strong>{s.attendant_name}</strong></td>
+                      <td>{s.shift_number}</td>
+                      <td className="num">{fmtR(s.cash_actual)}</td>
+                      <td className="num">{fmtR(s.card_total)}</td>
+                      <td className="num">{fmtR(s.upi_total)}</td>
+                      <td className="num">{fmtR(s.credit_total)}</td>
+                      <td className="num">{fmtR(s.petty_cash)}</td>
+                      <td className="num"><strong>{fmtR(s.total_sales)}</strong></td>
+                      <td className="num">
+                        <span style={{fontFamily:'var(--font-mono)',fontWeight:700,
+                          color: Math.abs(v) <= 50 ? 'var(--success)' : 'var(--danger)'}}>
+                          {v >= 0 ? '+' : ''}{fmtR(v)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {settlements.length > 1 && (
+                <tfoot>
+                  <tr style={{borderTop:'2px solid var(--border)',fontWeight:700}}>
+                    <td colSpan={2}>{tc('dash_page.total','Total')}</td>
+                    <td className="num">{fmtR(settleTotals.cash)}</td>
+                    <td className="num">{fmtR(settleTotals.card)}</td>
+                    <td className="num">{fmtR(settleTotals.upi)}</td>
+                    <td className="num">{fmtR(settleTotals.credit)}</td>
+                    <td className="num">{fmtR(settleTotals.petty)}</td>
+                    <td className="num">{fmtR(settleTotals.sales)}</td>
+                    <td/>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Tank levels — Book Stock vs Actual Dip */}
       <div className="card" style={{marginBottom:'1.5rem'}}>
