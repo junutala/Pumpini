@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Save, Plus, X, Building2, IndianRupee, Wifi,
   Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag } from '../../lib/api';
+import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
@@ -486,11 +486,14 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
 
 // ── Tanks Tab ──────────────────────────────────────────────
 function TanksTab({ stationId, tanks, reload, askConfirm }) {
-  const empty = {fuel_type:'petrol',current_stock:0,density:''};
+  const empty = {fuel_type:'petrol'};
   const [form,setForm]     = useState(empty);
   const [editTank,setEdit] = useState(null);
   const [loading,setLoading] = useState(false);
+  const [charts,setCharts] = useState([]);  // calibration library (15KL / 20KL …)
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  useEffect(()=>{ getCalibrationCharts().then(c=>setCharts(Array.isArray(c)?c:[])).catch(()=>setCharts([])); },[]);
 
   const save = async(e) => {
     e.preventDefault(); setLoading(true);
@@ -510,7 +513,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
   const startEdit = (t) => {
     setEdit(t);
     setForm({ tank_number:t.tank_number, fuel_type:t.fuel_type,
-      capacity_ltrs:t.capacity_ltrs, current_stock:t.current_stock, density:t.density||'' });
+      capacity_ltrs:t.capacity_ltrs, calibration_chart_id:t.calibration_chart_id||'' });
   };
 
   return (
@@ -536,20 +539,18 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
               placeholder="e.g. 20000" value={form.capacity_ltrs||''}
               onChange={e=>f('capacity_ltrs',parseFloat(e.target.value))}/>
           </div>
-          <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">Current Stock (Litres)</label>
-            <input className="input" type="number" step="0.01" min="0"
-              placeholder="e.g. 15000" value={form.current_stock||''}
-              onChange={e=>f('current_stock',parseFloat(e.target.value))}/>
-            <div style={{fontSize:11,color:'var(--text-3)',marginTop:2}}>
-              Enter actual measured opening stock
-            </div>
-          </div>
           <div style={{marginBottom:'1.25rem'}}>
-            <label className="label">Density (kg/L) — optional</label>
-            <input className="input" type="number" step="0.0001"
-              placeholder="0.7350 for petrol, 0.8250 for diesel"
-              value={form.density||''} onChange={e=>f('density',e.target.value)}/>
+            <label className="label">Tank Calibration (size)</label>
+            <select className="input" value={form.calibration_chart_id||''}
+              onChange={e=>f('calibration_chart_id', e.target.value || null)}>
+              <option value="">— None (enter volume manually at dip) —</option>
+              {charts.map(c=>(
+                <option key={c.id} value={c.id}>{c.name} · {Number(c.capacity_ltrs||0).toLocaleString('en-IN')} L</option>
+              ))}
+            </select>
+            <div style={{fontSize:11,color:'var(--text-3)',marginTop:2}}>
+              Converts dip → litres automatically at shift open/close. Live stock &amp; density come from dip readings, not here.
+            </div>
           </div>
           <div style={{display:'flex',gap:8}}>
             <button className="btn btn-primary" type="submit" style={{flex:1,justifyContent:'center'}} disabled={loading}>
@@ -572,7 +573,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
         {tanks.length>0 && (
           <div className="table-wrap">
             <table className="dms-table">
-              <thead><tr><th>Tank #</th><th>Fuel</th><th>Capacity</th><th>Current Stock</th><th>Fill %</th><th>Density</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Tank #</th><th>Fuel</th><th>Capacity</th><th>Calibration</th><th>Current Stock</th><th>Fill %</th><th>Actions</th></tr></thead>
               <tbody>
                 {tanks.map(t=>{
                   const pct = t.capacity_ltrs>0 ? Math.round((t.current_stock/t.capacity_ltrs)*100) : 0;
@@ -581,6 +582,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
                       <td><strong>Tank {t.tank_number}</strong></td>
                       <td><span className={`fuel-chip fuel-${t.fuel_type}`}>{FUEL_TYPES.find(f=>f.value===t.fuel_type)?.label||t.fuel_type}</span></td>
                       <td className="num">{Number(t.capacity_ltrs).toLocaleString('en-IN')} L</td>
+                      <td style={{fontSize:12}}>{t.chart_name || (charts.find(c=>c.id===t.calibration_chart_id)?.name) || <span style={{color:'var(--text-3)'}}>—</span>}</td>
                       <td className="num">{Number(t.current_stock).toLocaleString('en-IN',{maximumFractionDigits:1})} L</td>
                       <td>
                         <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -591,7 +593,6 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
                           <span style={{fontSize:12,fontFamily:'var(--font-mono)'}}>{pct}%</span>
                         </div>
                       </td>
-                      <td className="num" style={{fontSize:12}}>{t.density?Number(t.density).toFixed(4):'—'}</td>
                       <td>
                         <div style={{display:'flex',gap:6}}>
                           <button className="btn btn-secondary btn-sm" onClick={()=>startEdit(t)}><Edit2 size={12}/>Edit</button>

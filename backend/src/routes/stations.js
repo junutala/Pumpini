@@ -220,8 +220,11 @@ router.get('/:id/tanks', authenticate, requireStationId('id'), async (req, res, 
   try {
     const { rows } = await pool.query(
       `SELECT t.*,
-        ROUND(t.current_stock/NULLIF(t.capacity_ltrs,0)*100,1) AS fill_pct
-       FROM tanks t WHERE t.station_id=$1 ORDER BY t.tank_number`,
+        ROUND(t.current_stock/NULLIF(t.capacity_ltrs,0)*100,1) AS fill_pct,
+        c.name AS chart_name, c.diameter_cm, c.length_cm
+       FROM tanks t
+       LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
+       WHERE t.station_id=$1 ORDER BY t.tank_number`,
       [req.params.id]
     );
     res.json(rows);
@@ -232,10 +235,11 @@ router.get('/:id/tanks', authenticate, requireStationId('id'), async (req, res, 
 router.post('/:id/tanks', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
+    const calibration_chart_id = req.body.calibration_chart_id || null;
     const { rows } = await pool.query(
-      `INSERT INTO tanks(station_id,tank_number,fuel_type,capacity_ltrs,current_stock,density)
-       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [req.params.id, tank_number, fuel_type, capacity_ltrs, current_stock||0, density||null]
+      `INSERT INTO tanks(station_id,tank_number,fuel_type,capacity_ltrs,current_stock,density,calibration_chart_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.params.id, tank_number, fuel_type, capacity_ltrs, current_stock||0, density||null, calibration_chart_id]
     );
     res.status(201).json(rows[0]);
   } catch(err) { next(err); }
@@ -245,15 +249,19 @@ router.post('/:id/tanks', authenticate, authorize('owner','manager'), requireSta
 router.patch('/:id/tanks/:tank_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
+    // Only touch calibration when the field is actually sent; null then means "clear to manual".
+    const calProvided = Object.prototype.hasOwnProperty.call(req.body, 'calibration_chart_id');
+    const calibration_chart_id = req.body.calibration_chart_id || null;
     const { rows } = await pool.query(
       `UPDATE tanks SET
          tank_number=COALESCE($1,tank_number),
          fuel_type=COALESCE($2,fuel_type),
          capacity_ltrs=COALESCE($3,capacity_ltrs),
          current_stock=COALESCE($4,current_stock),
-         density=COALESCE($5,density)
-       WHERE id=$6 AND station_id=$7 RETURNING *`,
-      [tank_number, fuel_type, capacity_ltrs, current_stock, density, req.params.tank_id, req.params.id]
+         density=COALESCE($5,density),
+         calibration_chart_id = CASE WHEN $6 THEN $7 ELSE calibration_chart_id END
+       WHERE id=$8 AND station_id=$9 RETURNING *`,
+      [tank_number, fuel_type, capacity_ltrs, current_stock, density, calProvided, calibration_chart_id, req.params.tank_id, req.params.id]
     );
     res.json(rows[0]);
   } catch(err) { next(err); }
