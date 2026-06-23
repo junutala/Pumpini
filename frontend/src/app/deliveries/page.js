@@ -108,6 +108,7 @@ export default function DeliveriesPage() {
       gross_volume_ltrs: it.gross_volume_ltrs != null ? String(it.gross_volume_ltrs) : '',
       density:           it.density != null ? String(it.density) : '',
       rate_per_ltr:      it.rate_per_ltr != null ? String(it.rate_per_ltr) : '',
+      total_value:       it.total_value != null ? String(it.total_value) : '',
       compartment_no:    it.compartment_no || '',
       notes:             [it.product_name && `Product: ${it.product_name}`, it.sample_no && `Sample ${it.sample_no}`].filter(Boolean).join(' · '),
     }));
@@ -138,7 +139,10 @@ export default function DeliveriesPage() {
     try {
       const { base64, media_type } = await fileToBase64(file);
       setScanFile({ base64, media_type }); setInvoiceId(null);   // keep to attach on save
-      const res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type });
+      // The first scan is occasionally flaky — one silent retry before we give up.
+      let res;
+      try { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type }); }
+      catch (e1) { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type }); }
       applyParsed(res);
     } catch (err) {
       setScanErr(err.error || tc('deliv_page.scan_fail','Could not read the invoice — enter the details manually.'));
@@ -153,13 +157,12 @@ export default function DeliveriesPage() {
     return form.gross_volume_ltrs || '';
   };
 
-  // Auto-calculate total value
-  const totalValue = () => {
-    if (form.rate_per_ltr && form.gross_volume_ltrs) {
-      return (parseFloat(form.rate_per_ltr) * parseFloat(form.gross_volume_ltrs) + parseFloat(form.freight||0)).toFixed(2);
-    }
-    return '';
-  };
+  // Total value = the invoice's "Total for material" (incl. taxes) when scanned or
+  // typed; otherwise a gross × rate + freight estimate (pre-tax) as a fallback.
+  const computedTotal = () => (form.rate_per_ltr && form.gross_volume_ltrs)
+    ? (parseFloat(form.rate_per_ltr) * parseFloat(form.gross_volume_ltrs) + parseFloat(form.freight || 0)).toFixed(2)
+    : '';
+  const totalValue = () => (form.total_value !== '' && form.total_value != null) ? String(form.total_value) : computedTotal();
 
   const load = async () => {
     if (!stationId) return;
@@ -519,9 +522,11 @@ export default function DeliveriesPage() {
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.total_value_rs','Total Value (₹)')}</label>
-                  <input className="input" value={totalValue()} readOnly
-                    style={{background:'var(--surface-2)',fontFamily:'var(--font-mono)',fontWeight:600}}/>
-                  <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>{tc('deliv_page.auto_calc','Auto-calculated')}</div>
+                  <input className="input" type="number" step="0.01" value={form.total_value ?? ''}
+                    placeholder={computedTotal() || '0.00'}
+                    onChange={e=>f('total_value', e.target.value)}
+                    style={{fontFamily:'var(--font-mono)',fontWeight:600}}/>
+                  <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>{tc('deliv_page.total_hint','"Total for material" incl. taxes — from the invoice, editable')}</div>
                 </div>
               </div>
 
