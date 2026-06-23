@@ -35,6 +35,7 @@ export default function InvoicesPage() {
   const [lines,   setLines]   = useState([emptyLine()]);
   const [busy,    setBusy]    = useState(false);
   const [msg,     setMsg]     = useState(null);   // { ok, text }
+  const [opening, setOpening] = useState(false);  // opening-balance invoice → don't draw down the control total
 
   const load = useCallback(async () => {
     if (!stationId) return;
@@ -91,10 +92,11 @@ export default function InvoicesPage() {
         cgst_rate: 0, sgst_rate: 0, cgst_amount: 0, sgst_amount: 0,
         total_amount: t,
         line_items,
+        is_opening_balance: opening,
       });
       const name = corps.find(c=>c.id===corp)?.company_name || 'customer';
-      setMsg({ ok:true, text:`✓ Invoice ${invNo} raised for ${name} — ₹${fmt(t)}. Control total reduced.` });
-      setLines([emptyLine()]); setCorp('');
+      setMsg({ ok:true, text:`✓ Invoice ${invNo} raised for ${name} — ₹${fmt(t)}.${opening ? ' Opening balance — control total unaffected.' : ' Control total reduced.'}` });
+      setLines([emptyLine()]); setCorp(''); setOpening(false);
       load();
     } catch (e) {
       setMsg({ ok:false, text: e.response?.data?.error || e.error || 'Could not raise the invoice.' });
@@ -192,8 +194,14 @@ export default function InvoicesPage() {
           <Plus size={14}/> Add line
         </button>
 
+        {/* Opening-balance flag — loads a pre-go-live balance without touching the control total */}
+        <label style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:'1rem',fontSize:13,cursor:'pointer',color: opening?'#9a3412':'var(--text-2)'}}>
+          <input type="checkbox" checked={opening} onChange={e=>setOpening(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
+          <span><strong>Opening balance</strong> — pre-go-live entry; do <u>not</u> draw down the credit control total.</span>
+        </label>
+
         {/* Total + generate */}
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap',marginTop:'1.25rem',paddingTop:'1rem',borderTop:'1px solid #eef0f2'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap',marginTop:'1rem',paddingTop:'1rem',borderTop:'1px solid #eef0f2'}}>
           <div>
             <span style={{fontSize:13,color:'var(--text-3)'}}>Invoice total</span>
             <div style={{fontSize:24,fontWeight:800}}>₹{fmt(total)}</div>
