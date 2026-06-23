@@ -371,7 +371,7 @@ export default function CorporatePage() {
                   <input className="input" placeholder="ABCDE1234F" maxLength={10} value={form.pan||''} onChange={e=>f('pan',e.target.value.toUpperCase())}/>
                 </div>
                 <div style={{gridColumn:'1/-1'}}>
-                  <label className="label">{tc('corp_page.contact_person','Contact Person (Corporate User)')}</label>
+                  <label className="label">{tc('corp_page.contact_person','Contact Person (Corporate User) — optional')}</label>
                   <select className="input" value={form.contact_person_id||''} 
                     onChange={e=>{
                       const u = corpUsers.find(u=>u.id===e.target.value);
@@ -392,12 +392,12 @@ export default function CorporatePage() {
                     ))}
                   </select>
                   {corpUsers.length===0 && (
-                    <div style={{fontSize:11,color:'var(--warning)',marginTop:3}}>
-                      ⚠ {tc('corp_page.no_corp_users','No corporate users found. Go to Users page and create a user with role "Corporate" first.')}
+                    <div style={{fontSize:11,color:'var(--text-3)',marginTop:3}}>
+                      {tc('corp_page.no_corp_users','No Corporate-role users yet — leave this blank for now. You can link one later (by editing the customer) when you set up their portal login.')}
                     </div>
                   )}
                   <div style={{fontSize:11,color:'var(--text-3)',marginTop:3}}>
-                    {tc('corp_page.corp_user_hint','Only users with role "Corporate" appear here. Phone is auto-filled and used for duplicate detection.')}
+                    {tc('corp_page.corp_user_hint','Optional. Link a Corporate-role user to give this customer a portal login later. If selected, their phone auto-fills and is used for duplicate detection.')}
                   </div>
                 </div>
                 <div>
