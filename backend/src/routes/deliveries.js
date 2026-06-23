@@ -238,6 +238,7 @@ Rules:
 - density is kg/L @15C. If printed as kg/m3 (e.g. 752.200 / 837.900) divide by 1000 -> 0.7522 / 0.8379.
 - total_value: ALWAYS read the per-product "Total for material" line — the all-inclusive amount (basic value PLUS every duty and tax). NEVER use the basic price / assessable value / taxable value (the pre-tax figure); on oil-company invoices these differ a lot (e.g. basic 331453.56 vs "Total for material" 448125.21 -> pick 448125.21). Apply the same to every product (petrol, diesel, etc.). If no all-inclusive line is labelled, sum that product's basic value + its taxes.
 - invoice_total_value is the whole invoice's grand total (sum of all materials' "Total for material" + any common charges).
+- rate_per_ltr is the ex-depot price PER LITRE in ₹ — normally ₹70-120. If the invoice quotes the rate per KL (a 5-6 digit figure like 82863.39), divide by 1000 -> 82.86. NEVER return a per-litre rate above ~200; if you computed one, you read a per-KL number.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
 router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
@@ -253,10 +254,12 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     let msg;
     try {
       msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 1500,
+        // 4000 so a multi-product invoice's JSON isn't truncated mid-object.
+        model: 'claude-sonnet-4-6', max_tokens: 4000,
         messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] }],
       });
     } catch (e) {
+      try { require('../utils/logger').error('parse-invoice API error: ' + (e.message || e)); } catch { /* noop */ }
       return res.status(503).json({ error: 'Invoice scanning is unavailable right now — enter the details manually.' });
     }
 
@@ -264,7 +267,10 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     const m = txt.match(/\{[\s\S]*\}/);
     let parsed;
     try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
-    if (!parsed) return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
+    if (!parsed) {
+      try { require('../utils/logger').warn(`parse-invoice unparsed (stop=${msg.stop_reason}): ${txt.slice(0, 400)}`); } catch { /* noop */ }
+      return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
+    }
     if (!Array.isArray(parsed.items)) parsed.items = [];
     res.json(parsed);
   } catch (err) { next(err); }
