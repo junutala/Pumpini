@@ -4,6 +4,7 @@
 // assignment at Start Shift. Scoped to the current bunk.
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { UserPlus, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { addAttendant, getUsers } from '../../lib/api';
@@ -15,6 +16,8 @@ export default function AddAttendantPage() {
   const router = useRouter();
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [form, setForm] = useState({ name:'', phone:'' });
   const [list, setList] = useState([]);
@@ -31,18 +34,18 @@ export default function AddAttendantPage() {
 
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setSaved('');
-    if (!form.name.trim() || !form.phone.trim()) return setErr('Enter the name and phone.');
+    if (!form.name.trim() || !form.phone.trim()) return setErr(tc('addatt.errEnterNamePhone', 'Enter the name and phone.'));
     setBusy(true);
     try {
       await addAttendant({ ...form, station_id: stationId });
-      setSaved(`${form.name} added — available for shift assignment.`);
+      setSaved(tc('addatt.savedAdded', '{name} added — available for shift assignment.').replace('{name}', form.name));
       setForm({ name:'', phone:'' });
       load();
       setTimeout(()=>setSaved(''), 4000);
     } catch (e) {
       // Surface the real reason (backend message, else network/timeout text) so
       // failures are self-describing instead of a generic catch-all.
-      setErr(e?.error || e?.message || (typeof e==='string'?e:'Could not add attendant'));
+      setErr(e?.error || e?.message || (typeof e==='string'?e:tc('addatt.errCouldNotAdd', 'Could not add attendant')));
     }
     finally { setBusy(false); }
   };
@@ -50,9 +53,9 @@ export default function AddAttendantPage() {
   return (
     <AppShell>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>Dashboard</button>
+        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>{tc('addatt.dashboard', 'Dashboard')}</button>
         <ChevronRight size={14} color="var(--text-3)"/>
-        <span style={{fontWeight:800,fontSize:15}}>Add Attendant</span>
+        <span style={{fontWeight:800,fontSize:15}}>{tc('addatt.title', 'Add Attendant')}</span>
       </div>
 
       {err   && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
@@ -60,31 +63,31 @@ export default function AddAttendantPage() {
 
       <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'440px 1fr',gap:'1.25rem',alignItems:'start'}}>
         <div className="card">
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><UserPlus size={16} color="#FF6B00"/>New attendant</div>
-          <div style={{fontSize:12,color:'var(--text-3)',marginBottom:'1rem'}}>They&apos;ll appear in the operator list at Start Shift. No login needed yet — a default password is set.</div>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><UserPlus size={16} color="#FF6B00"/>{tc('addatt.newAttendant', 'New attendant')}</div>
+          <div style={{fontSize:12,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('addatt.newAttendantHint', "They'll appear in the operator list at Start Shift. No login needed yet — a default password is set.")}</div>
           <form onSubmit={submit} style={{display:'grid',gap:12}}>
             <div>
-              <label className="label">Name</label>
-              <input style={inp} value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Suresh"/>
+              <label className="label">{tc('addatt.labelName', 'Name')}</label>
+              <input style={inp} value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder={tc('addatt.phName', 'e.g. Suresh')}/>
             </div>
             <div>
-              <label className="label">Phone</label>
-              <input style={inp} value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="10-digit mobile"/>
+              <label className="label">{tc('addatt.labelPhone', 'Phone')}</label>
+              <input style={inp} value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder={tc('addatt.phPhone', '10-digit mobile')}/>
             </div>
             <button type="submit" disabled={busy} style={{height:44,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:busy?'default':'pointer'}}>
-              {busy ? 'Adding…' : 'Add attendant'}
+              {busy ? tc('addatt.adding', 'Adding…') : tc('addatt.addAttendant', 'Add attendant')}
             </button>
           </form>
         </div>
 
         <div className="card">
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Attendants at this bunk ({list.length})</div>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('addatt.attendantsAtBunk', 'Attendants at this bunk ({n})').replace('{n}', list.length)}</div>
           {list.length === 0
-            ? <div style={{color:'#aaa',fontSize:13}}>No attendants yet.</div>
+            ? <div style={{color:'#aaa',fontSize:13}}>{tc('addatt.noAttendants', 'No attendants yet.')}</div>
             : list.map(a => (
                 <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                   <div style={{fontWeight:600,fontSize:13}}>{a.name}</div>
-                  <div style={{fontSize:12,color:'#888',fontFamily:'var(--font-mono)'}}>{a.phone}{a.is_active===false && <span style={{color:'#dc2626',marginLeft:6}}>inactive</span>}</div>
+                  <div style={{fontSize:12,color:'#888',fontFamily:'var(--font-mono)'}}>{a.phone}{a.is_active===false && <span style={{color:'#dc2626',marginLeft:6}}>{tc('addatt.inactive', 'inactive')}</span>}</div>
                 </div>
               ))}
         </div>

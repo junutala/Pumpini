@@ -4,19 +4,22 @@ import { Send, Mic, MicOff, Loader, MessageSquare, Zap } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { sendAiChat } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-
-const STARTERS = [
-  "What are today's total sales?",
-  "Which fuel has sold the most today?",
-  "Are there any pending alerts?",
-  "What is the current tank stock level?",
-  "How many transactions were done today?",
-];
+import { useTranslation } from 'react-i18next';
 
 export default function AiChatPage() {
   const { user, station } = useAuth();
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const stationId = typeof station === 'object' ? station?.id : station;
   const lang = (typeof window !== 'undefined' && localStorage.getItem('i18nextLng')) || 'en';
+
+  const STARTERS = [
+    tc('aichat.starterTotalSales', "What are today's total sales?"),
+    tc('aichat.starterTopFuel', "Which fuel has sold the most today?"),
+    tc('aichat.starterAlerts', "Are there any pending alerts?"),
+    tc('aichat.starterTankStock', "What is the current tank stock level?"),
+    tc('aichat.starterTxnCount', "How many transactions were done today?"),
+  ];
 
   const [messages, setMessages] = useState([]);
   const [input, setInput]       = useState('');
@@ -46,7 +49,7 @@ export default function AiChatPage() {
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: '⚠️ Sorry, something went wrong. Please try again.',
+        content: tc('aichat.errorGeneric', '⚠️ Sorry, something went wrong. Please try again.'),
         error: true,
       }]);
     } finally {
@@ -113,9 +116,9 @@ export default function AiChatPage() {
             <Zap size={20} color="#fff" fill="#fff"/>
           </div>
           <div>
-            <h1 style={{margin:0,fontSize:18,fontWeight:800}}>AI Assistant</h1>
+            <h1 style={{margin:0,fontSize:18,fontWeight:800}}>{tc('aichat.title', 'AI Assistant')}</h1>
             <p style={{margin:0,fontSize:12,color:'var(--text-3)'}}>
-              Ask anything about your station — sales, stock, shifts, alerts
+              {tc('aichat.subtitle', 'Ask anything about your station — sales, stock, shifts, alerts')}
             </p>
           </div>
         </div>
@@ -127,7 +130,7 @@ export default function AiChatPage() {
             <div style={{textAlign:'center',paddingTop:'2rem'}}>
               <MessageSquare size={36} color="var(--text-3)" style={{marginBottom:12}}/>
               <p style={{color:'var(--text-3)',fontSize:14,margin:'0 0 1.5rem'}}>
-                Ask a question about your station or try one of these:
+                {tc('aichat.emptyPrompt', 'Ask a question about your station or try one of these:')}
               </p>
               <div style={{display:'flex',flexWrap:'wrap',gap:8,justifyContent:'center'}}>
                 {STARTERS.map(s => (
@@ -180,7 +183,7 @@ export default function AiChatPage() {
               <div style={{padding:'10px 14px',borderRadius:12,background:'var(--surface-2)',
                 display:'flex',alignItems:'center',gap:6,fontSize:13,color:'var(--text-2)'}}>
                 <Loader size={14} style={{animation:'spin 1s linear infinite'}}/>
-                Thinking…
+                {tc('aichat.thinking', 'Thinking…')}
               </div>
             </div>
           )}
@@ -192,17 +195,17 @@ export default function AiChatPage() {
         <div style={{paddingTop:'0.75rem',borderTop:'1px solid var(--border)'}}>
           {voiceStatus === 'listening' && (
             <div style={{textAlign:'center',fontSize:12,color:'#dc2626',marginBottom:6,fontWeight:600}}>
-              🔴 Listening… speak now (tap mic to stop)
+              {tc('aichat.voiceListening', '🔴 Listening… speak now (tap mic to stop)')}
             </div>
           )}
           {voiceStatus === 'processing' && (
             <div style={{textAlign:'center',fontSize:12,color:'var(--text-2)',marginBottom:6}}>
-              Processing voice…
+              {tc('aichat.voiceProcessing', 'Processing voice…')}
             </div>
           )}
           {voiceStatus === 'error' && (
             <div style={{textAlign:'center',fontSize:12,color:'#dc2626',marginBottom:6}}>
-              Mic error — please try again
+              {tc('aichat.voiceError', 'Mic error — please try again')}
             </div>
           )}
           <div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
@@ -223,7 +226,7 @@ export default function AiChatPage() {
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
               }}
-              placeholder="Ask about sales, stock, shifts… (Enter to send)"
+              placeholder={tc('aichat.inputPlaceholder', 'Ask about sales, stock, shifts… (Enter to send)')}
               style={{flex:1,resize:'none',padding:'10px 14px',borderRadius:10,
                 border:'1px solid var(--border)',fontSize:14,fontFamily:'inherit',
                 background:'var(--surface-1)',color:'var(--text-1)',outline:'none',
@@ -240,7 +243,7 @@ export default function AiChatPage() {
             </button>
           </div>
           <p style={{margin:'6px 0 0',fontSize:11,color:'var(--text-3)',textAlign:'center'}}>
-            Answers are based on live station data · {lang.toUpperCase()} mode
+            {tc('aichat.footerNote', 'Answers are based on live station data · {lang} mode').replace('{lang}', lang.toUpperCase())}
           </p>
         </div>
       </div>

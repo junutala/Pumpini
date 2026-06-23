@@ -4,6 +4,7 @@
 // meter). One operator can hold several nozzles (manpower shortage); the opening
 // meter auto-carries from the prior shift's closing and is editable/scannable.
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
@@ -24,6 +25,8 @@ const readB64 = (file) => new Promise((resolve, reject) => {
 });
 
 export default function ShiftStartPage() {
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const router = useRouter();
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
@@ -84,7 +87,7 @@ export default function ShiftStartPage() {
     }
   }, [openShifts, open.date]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const label = n => { const def = defs.find(d=>d.shift_number===n); return def ? `Shift ${n} — ${def.name} (${def.start_time}–${def.end_time})` : `Shift ${n}`; };
+  const label = n => { const def = defs.find(d=>d.shift_number===n); const sh = tc('sstart.shiftWord','Shift'); return def ? `${sh} ${n} — ${def.name} (${def.start_time}–${def.end_time})` : `${sh} ${n}`; };
 
   const refreshShift = async (id) => {
     const d = await api.get(`/shifts/${id}`);
@@ -100,14 +103,14 @@ export default function ShiftStartPage() {
       const s = await api.post('/shifts', { ...open, station_id: stationId });
       await refreshShift(s.id); refreshOpen();
       setStep(1);
-    } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not open shift'); }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errOpenShift','Could not open shift')); }
     setBusy(false);
   };
 
   const resumeShift = async (s) => {
     setBusy(true); setErr('');
     try { await refreshShift(s.id); setStep(1); }
-    catch (e) { setErr(e.response?.data?.error || e.error || 'Could not load that shift'); }
+    catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errLoadShift','Could not load that shift')); }
     setBusy(false);
   };
 
@@ -123,7 +126,7 @@ export default function ShiftStartPage() {
     if (entered === '' || entered == null) return;
     const hasChart = tank.diameter_cm && tank.length_cm;
     const vol = tankVol(tank);
-    if (vol == null) return setErr(`Tank ${tank.tank_number}: enter a volume.`);
+    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a volume.').replace('{n}', tank.tank_number));
     setBusy(true); setErr('');
     try {
       await api.post('/dipstick', {
@@ -138,7 +141,7 @@ export default function ShiftStartPage() {
         ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
         : t));
-    } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not save dip'); }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); }
     setBusy(false);
   };
 
@@ -159,14 +162,14 @@ export default function ShiftStartPage() {
       const b64 = await readB64(file);
       const r = await api.post('/reconcile/ocr-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       if (r.reading) pickNoz(nozzle.id, { selected:true, opening: r.reading });
-      if (!r.legible) setErr(`Nozzle ${nozzle.nozzle_number}: scan unclear${r.notes ? ` (${r.notes})` : ''} — check the reading.`);
-    } catch (e) { setErr(e.response?.data?.error || e.error || 'Scan failed'); }
+      if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozzle.nozzle_number) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errScanFailed','Scan failed')); }
     setScanning('');
   };
 
   const addOperator = async () => {
-    if (!asg.attendant_id) return setErr('Pick an operator');
-    if (asg.opening_cash === undefined || asg.opening_cash === '') return setErr('Enter opening cash (0 if no float)');
+    if (!asg.attendant_id) return setErr(tc('sstart.errPickOperator','Pick an operator'));
+    if (asg.opening_cash === undefined || asg.opening_cash === '') return setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)'));
     const chosen = nozzles.filter(n => nozPick[n.id]?.selected).map(n => {
       const v = nozPick[n.id].opening;
       const opening = v !== '' && v != null ? parseFloat(v) : (openings[n.id] != null ? Number(openings[n.id]) : 0);
@@ -176,30 +179,30 @@ export default function ShiftStartPage() {
     try {
       await api.post(`/shifts/${shift.id}/assign`, { attendant_id: asg.attendant_id, opening_cash: asg.opening_cash, nozzles: chosen });
       setAsg({}); setNozPick({}); await refreshShift(shift.id); refreshOpen();
-    } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not add operator'); }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); }
     setBusy(false);
   };
 
   return (
     <AppShell>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>Dashboard</button>
+        <button onClick={()=>router.push('/dashboard')} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-3)',display:'flex',alignItems:'center',gap:4,fontSize:13}}><ArrowLeft size={15}/>{tc('sstart.dashboard','Dashboard')}</button>
         <ChevronRight size={14} color="var(--text-3)"/>
-        <span style={{fontWeight:800,fontSize:15}}>Start Shift</span>
+        <span style={{fontWeight:800,fontSize:15}}>{tc('sstart.startShift','Start Shift')}</span>
       </div>
 
       {/* Current selling price — reminder to keep the system in step with the board during parallel run */}
       {prices.length>0 && (
         <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 12px',marginBottom:'1rem'}}>
-          <span style={{fontSize:11.5,fontWeight:800,color:'#92400e',textTransform:'uppercase',letterSpacing:'.04em'}}>Selling price in system</span>
+          <span style={{fontSize:11.5,fontWeight:800,color:'#92400e',textTransform:'uppercase',letterSpacing:'.04em'}}>{tc('sstart.sellingPriceInSystem','Selling price in system')}</span>
           {prices.map(p=>(
             <span key={p.fuel_type} style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:14,fontWeight:800}}>
               <span className={`fuel-chip fuel-${p.fuel_type}`} style={{textTransform:'capitalize'}}>{String(p.fuel_type).replace('_',' ')}</span>
               ₹{Number(p.price).toFixed(2)}
-              {p.effective_from && <span style={{fontSize:10.5,fontWeight:500,color:'#a16207'}}>since {new Date(p.effective_from).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>}
+              {p.effective_from && <span style={{fontSize:10.5,fontWeight:500,color:'#a16207'}}>{tc('sstart.since','since')} {new Date(p.effective_from).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>}
             </span>
           ))}
-          <span style={{fontSize:11.5,color:'#92400e',marginLeft:'auto'}}>⚠ Board price changed? Update it in <strong>Prices</strong> before the shift runs.</span>
+          <span style={{fontSize:11.5,color:'#92400e',marginLeft:'auto'}}>⚠ {tc('sstart.boardPriceChangedPre','Board price changed? Update it in')} <strong>{tc('sstart.pricesLink','Prices')}</strong> {tc('sstart.boardPriceChangedPost','before the shift runs.')}</span>
         </div>
       )}
 
@@ -212,7 +215,7 @@ export default function ShiftStartPage() {
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
               color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift?'pointer':'default'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
-            {s}
+            {tc('sstart.step'+s, s)}
           </button>
         ))}
       </div>
@@ -223,37 +226,37 @@ export default function ShiftStartPage() {
       {step===0 && (
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'440px 1fr',gap:'1.25rem',alignItems:'start'}}>
           <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>Open a new shift</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>{tc('sstart.openANewShift','Open a new shift')}</div>
             <div style={{marginBottom:'1rem'}}>
-              <label className="label">Shift slot</label>
+              <label className="label">{tc('sstart.shiftSlot','Shift slot')}</label>
               <select style={inp} value={open.shift_number} onChange={e=>setOpen(p=>({...p,shift_number:parseInt(e.target.value)}))}>
-                {[1,2,3].map(n=><option key={n} value={n} disabled={takenSlots.has(n)}>{label(n)}{takenSlots.has(n)?' — already open':''}</option>)}
+                {[1,2,3].map(n=><option key={n} value={n} disabled={takenSlots.has(n)}>{label(n)}{takenSlots.has(n)?tc('sstart.alreadyOpenSuffix',' — already open'):''}</option>)}
               </select>
             </div>
             <div style={{marginBottom:'1.25rem'}}>
-              <label className="label">Date</label>
+              <label className="label">{tc('sstart.date','Date')}</label>
               <input style={inp} type="date" value={open.date} onChange={e=>setOpen(p=>({...p,date:e.target.value}))}/>
             </div>
             <button onClick={openShift} disabled={busy||slotTaken||allTaken} style={{width:'100%',height:46,background:(slotTaken||allTaken)?'#e5e3de':'#FF6B00',color:(slotTaken||allTaken)?'#888':'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:(busy||slotTaken||allTaken)?'default':'pointer'}}>
-              {busy?'Opening…':allTaken?'All slots open':slotTaken?'This slot is already open':'Open Shift →'}
+              {busy?tc('sstart.opening','Opening…'):allTaken?tc('sstart.allSlotsOpen','All slots open'):slotTaken?tc('sstart.thisSlotAlreadyOpen','This slot is already open'):tc('sstart.openShiftBtn','Open Shift →')}
             </button>
-            {(slotTaken||allTaken) && <div style={{fontSize:12,color:'var(--text-3)',marginTop:8}}>{allTaken?'Every slot for this date is already open — resume one on the right.':'That slot is open already — pick another or resume on the right.'}</div>}
+            {(slotTaken||allTaken) && <div style={{fontSize:12,color:'var(--text-3)',marginTop:8}}>{allTaken?tc('sstart.everySlotOpenHint','Every slot for this date is already open — resume one on the right.'):tc('sstart.slotOpenHint','That slot is open already — pick another or resume on the right.')}</div>}
           </div>
 
           <div className="card">
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.5rem'}}>
-              <div style={{fontWeight:700,fontSize:15}}>Currently open shifts</div>
-              {openShifts.length>0 && <span style={{fontSize:12,fontWeight:700,color:'#16a34a',background:'#dcfce7',borderRadius:99,padding:'2px 10px'}}>{openShifts.length} open</span>}
+              <div style={{fontWeight:700,fontSize:15}}>{tc('sstart.currentlyOpenShifts','Currently open shifts')}</div>
+              {openShifts.length>0 && <span style={{fontSize:12,fontWeight:700,color:'#16a34a',background:'#dcfce7',borderRadius:99,padding:'2px 10px'}}>{tc('sstart.nOpen','{n} open').replace('{n}', openShifts.length)}</span>}
             </div>
             {openShifts.length===0
-              ? <div style={{color:'var(--text-3)',fontSize:13,padding:'8px 0'}}>No shifts are open right now.</div>
+              ? <div style={{color:'var(--text-3)',fontSize:13,padding:'8px 0'}}>{tc('sstart.noShiftsOpen','No shifts are open right now.')}</div>
               : openShifts.map(s=>(
                 <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
-                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {s.attendant_count||0} operator{(s.attendant_count||0)===1?'':'s'}</div>
+                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {tc('sstart.nOperators','{n} operators').replace('{n}', s.attendant_count||0)}</div>
                   </div>
-                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>Resume →</button>
+                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
                 </div>
               ))}
           </div>
@@ -263,42 +266,42 @@ export default function ShiftStartPage() {
       {/* STEP 1 — Dipstick (opening stock) */}
       {step===1 && shift && (
         <div className="card" style={{maxWidth:620}}>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>Opening dip readings</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Enter each tank&apos;s dip (4 marks/cm). Volume is computed from the tank&apos;s calibration. This is the opening stock for today&apos;s reconciliation.</div>
-          {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>No dip-measured tanks configured.</div>}
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','Enter each tank’s dip (4 marks/cm). Volume is computed from the tank’s calibration. This is the opening stock for today’s reconciliation.')}</div>
+          {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
             const vol = tankVol(tk);
             return (
               <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-                  <div style={{width:120,fontSize:13,fontWeight:600}}>Tank {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                  <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?'dip e.g. 64.2':'dip cm'}
+                  <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
+                  <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
                     value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                   {hasChart
                     ? <div style={{minWidth:120,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
-                    : <input style={{...inp,width:130}} type="number" step="0.01" placeholder="volume L"
+                    : <input style={{...inp,width:130}} type="number" step="0.01" placeholder={tc('sstart.volumeL','volume L')}
                         value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
                   <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
                     style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
                       background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
-                    {savedDips[tk.id]?'✓ Saved':'Save'}
+                    {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
                   </button>
-                  {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>No calibration — type volume</span>}
+                  {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>{tc('sstart.noCalibration','No calibration — type volume')}</span>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
                   ? <div style={{fontSize:11.5,color:'#475569',marginTop:5,marginLeft:130}}>
-                      <span style={{color:'#16a34a',fontWeight:700}}>● Last saved</span>{' '}
-                      {tk.last_reading_type ? `${tk.last_reading_type} ` : ''}dip {tk.last_dip_cm!=null?`${tk.last_dip_cm} cm`:'—'}
+                      <span style={{color:'#16a34a',fontWeight:700}}>● {tc('sstart.lastSaved','Last saved')}</span>{' '}
+                      {tk.last_reading_type ? `${tk.last_reading_type} ` : ''}{tc('sstart.dipLabel','dip')} {tk.last_dip_cm!=null?`${tk.last_dip_cm} cm`:'—'}
                       {tk.last_reading!=null?` → ${fmtL(tk.last_reading)} L`:''} · {fmtWhen(tk.last_reading_at)}
                     </div>
-                  : <div style={{fontSize:11.5,color:'#94a3b8',marginTop:5,marginLeft:130}}>No reading saved yet for this tank.</div>}
+                  : <div style={{fontSize:11.5,color:'#94a3b8',marginTop:5,marginLeft:130}}>{tc('sstart.noReadingYet','No reading saved yet for this tank.')}</div>}
               </div>
             );
           })}
           <button onClick={()=>setStep(2)} style={{width:'100%',height:46,marginTop:12,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
-            Next: Operators →
+            {tc('sstart.nextOperators','Next: Operators →')}
           </button>
         </div>
       )}
@@ -307,19 +310,19 @@ export default function ShiftStartPage() {
       {step===2 && shift && (
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.25rem',alignItems:'start'}}>
           <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Add an operator</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.addAnOperator','Add an operator')}</div>
             <div style={{display:'grid',gap:10}}>
-              <div><label className="label">Operator</label>
+              <div><label className="label">{tc('sstart.operator','Operator')}</label>
                 <select style={inp} value={asg.attendant_id||''} onChange={e=>setAsg(p=>({...p,attendant_id:e.target.value}))}>
-                  <option value="">Select…</option>
+                  <option value="">{tc('sstart.selectPlaceholder','Select…')}</option>
                   {users.filter(u=>!assignedIds.has(u.id)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
                 </select></div>
-              <div><label className="label">Opening cash (₹)</label>
-                <input style={inp} type="number" step="0.01" placeholder="Float handed over (0 if none)" value={asg.opening_cash||''} onChange={e=>setAsg(p=>({...p,opening_cash:e.target.value}))}/></div>
+              <div><label className="label">{tc('sstart.openingCash','Opening cash (₹)')}</label>
+                <input style={inp} type="number" step="0.01" placeholder={tc('sstart.floatPlaceholder','Float handed over (0 if none)')} value={asg.opening_cash||''} onChange={e=>setAsg(p=>({...p,opening_cash:e.target.value}))}/></div>
 
               <div>
-                <label className="label">Nozzles he mans <span style={{fontWeight:400,color:'#888'}}>(tick each; opening auto-carries from last close)</span></label>
-                {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>All nozzles are already assigned.</div>}
+                <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint','(tick each; opening auto-carries from last close)')}</span></label>
+                {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
                   const sug = openings[n.id];
@@ -329,51 +332,51 @@ export default function ShiftStartPage() {
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                         <input type="checkbox" checked={sel} onChange={e=>{ if(e.target.checked) pickNoz(n.id,{selected:true}); else setNozPick(p=>({...p,[n.id]:{...(p[n.id]||{}),selected:false}})); }}/>
-                        Nozzle {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
+                        {tc('sstart.nozzle','Nozzle')} {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
                       </label>
                       {sel && (
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
-                          <input style={{...inp,flex:1}} type="number" step="0.001" placeholder="Opening meter"
+                          <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('sstart.openingMeter','Opening meter')}
                             value={cur} onChange={e=>pickNoz(n.id,{opening:e.target.value})}/>
-                          <label title="Scan the totalizer" style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:16}}>
+                          <label title={tc('sstart.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:16}}>
                             {scanning===n.id?'…':'📷'}
                             <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
                           </label>
                         </div>
                       )}
-                      {drift && <div style={{fontSize:11,color:'#b45309',marginTop:4}}>⚠ differs from last close ({sug}) — verify handover</div>}
+                      {drift && <div style={{fontSize:11,color:'#b45309',marginTop:4}}>⚠ {tc('sstart.driftWarn','differs from last close ({sug}) — verify handover').replace('{sug}', sug)}</div>}
                     </div>
                   );
                 })}
               </div>
 
-              <button onClick={addOperator} disabled={busy} style={{height:42,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer'}}><Plus size={15} style={{verticalAlign:'middle'}}/> Add operator</button>
+              <button onClick={addOperator} disabled={busy} style={{height:42,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer'}}><Plus size={15} style={{verticalAlign:'middle'}}/> {tc('sstart.addOperatorBtn','Add operator')}</button>
             </div>
           </div>
 
           <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>Operators ({attendants.length})</div>
-            {attendants.length===0 ? <div style={{color:'#aaa',fontSize:13}}>No operators added yet.</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.operatorsCount','Operators ({n})').replace('{n}', attendants.length)}</div>
+            {attendants.length===0 ? <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noOperatorsYet','No operators added yet.')}</div>
               : attendants.map(a=>(
                 <div key={a.id} style={{background:'#f8fafc',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div style={{fontWeight:700,fontSize:13.5}}>{a.attendant_name}</div>
-                    <div style={{fontSize:12,color:'#888'}}>float ₹{Number(a.opening_cash||0).toLocaleString('en-IN')}</div>
+                    <div style={{fontSize:12,color:'#888'}}>{tc('sstart.float','float')} ₹{Number(a.opening_cash||0).toLocaleString('en-IN')}</div>
                   </div>
                   {(a.nozzles||[]).length>0
                     ? <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
                         {a.nozzles.map(nz=>(
                           <span key={nz.nozzle_id} style={{fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 8px'}}>
-                            N{nz.nozzle_number} · {nz.fuel_type} · open {Number(nz.opening_reading||0)}
+                            N{nz.nozzle_number} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
                           </span>
                         ))}
                       </div>
-                    : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>No nozzles assigned</div>}
+                    : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                 </div>
               ))}
             <button onClick={()=>router.push('/dashboard')} disabled={attendants.length===0}
               style={{width:'100%',height:46,marginTop:12,background:attendants.length?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:attendants.length?'pointer':'not-allowed'}}>
-              Start — Shift is live ✓
+              {tc('sstart.startShiftLive','Start — Shift is live ✓')}
             </button>
           </div>
         </div>

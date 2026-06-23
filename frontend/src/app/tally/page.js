@@ -3,6 +3,7 @@
 // day's value, lets the owner map each to their Tally ledger name, then downloads
 // a Tally-Prime-ready XML of the day's vouchers (Sales / Receipt / Contra).
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download, Save } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
@@ -14,6 +15,8 @@ const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 export default function TallyPage() {
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [date, setDate]       = useState(todayIST());
   const [company, setCompany] = useState('');
@@ -38,7 +41,7 @@ export default function TallyPage() {
         company_name: company,
         mappings: rows.map(t => ({ touchpoint_key: t.key, ledger_name: t.ledger_name })),
       });
-    } catch (e) { alert(e.response?.data?.error || 'Failed to save'); }
+    } catch (e) { alert(e.response?.data?.error || tc('tallyp.failedToSave', 'Failed to save')); }
     setSaving(false);
   };
 
@@ -52,7 +55,7 @@ export default function TallyPage() {
       a.href = url; a.download = `tally-${date.replace(/-/g, '')}.xml`; a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      let msg = 'Export failed';
+      let msg = tc('tallyp.exportFailed', 'Export failed');
       try { const t = await e.response?.data?.text?.(); if (t) { const j = JSON.parse(t); msg = j.detail || j.error || msg; } }
       catch { msg = e.response?.data?.error || e.error || msg; }
       alert(msg);
@@ -66,19 +69,19 @@ export default function TallyPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Tally Export</h1>
-          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Map your Tally ledgers once, then download Tally-Prime XML for any day.</div>
+          <h1 className="page-title">{tc('tallyp.title', 'Tally Export')}</h1>
+          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('tallyp.subtitle', 'Map your Tally ledgers once, then download Tally-Prime XML for any day.')}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input className="input" type="date" style={{ width: 160 }} value={date} onChange={e => setDate(e.target.value)} />
-          <button className="btn btn-primary" onClick={download} disabled={downloading}><Download size={15} />{downloading ? 'Preparing…' : 'Download XML'}</button>
+          <button className="btn btn-primary" onClick={download} disabled={downloading}><Download size={15} />{downloading ? tc('tallyp.preparing', 'Preparing…') : tc('tallyp.downloadXml', 'Download XML')}</button>
         </div>
       </div>
 
       {/* Tally company */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <label className="label">Tally Company Name <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>(must exactly match the company in Tally Prime)</span></label>
-        <input className="input" style={{ maxWidth: 420 }} placeholder="e.g. Sri Sai Filling Station" value={company} onChange={e => setCompany(e.target.value)} />
+        <label className="label">{tc('tallyp.companyNameLabel', 'Tally Company Name')} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{tc('tallyp.companyNameHint', '(must exactly match the company in Tally Prime)')}</span></label>
+        <input className="input" style={{ maxWidth: 420 }} placeholder={tc('tallyp.companyNamePlaceholder', 'e.g. Sri Sai Filling Station')} value={company} onChange={e => setCompany(e.target.value)} />
       </div>
 
       {groups.map(g => (
@@ -88,20 +91,20 @@ export default function TallyPage() {
             <table className="dms-table">
               <thead>
                 <tr>
-                  <th>Financial touchpoint</th>
-                  <th style={{ textAlign: 'right' }}>Value ({date})</th>
-                  <th>Your Tally ledger name</th>
+                  <th>{tc('tallyp.thTouchpoint', 'Financial touchpoint')}</th>
+                  <th style={{ textAlign: 'right' }}>{tc('tallyp.thValue', 'Value ({date})').replace('{date}', date)}</th>
+                  <th>{tc('tallyp.thLedger', 'Your Tally ledger name')}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.filter(t => t.group === g).map(t => (
                   <tr key={t.key} style={!t.inExport ? { opacity: 0.7 } : undefined}>
                     <td>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.label}{!t.inExport && <span style={{ fontSize: 10, color: '#d97706', marginLeft: 6, fontWeight: 700 }}>SOON</span>}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{t.label}{!t.inExport && <span style={{ fontSize: 10, color: '#d97706', marginLeft: 6, fontWeight: 700 }}>{tc('tallyp.soonBadge', 'SOON')}</span>}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{t.desc}</div>
                     </td>
                     <td className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(t.value)}</td>
-                    <td><input className="input" style={{ minWidth: 200 }} placeholder="e.g. Petrol Sales A/c" value={t.ledger_name || ''} onChange={e => setLedger(t.key, e.target.value)} /></td>
+                    <td><input className="input" style={{ minWidth: 200 }} placeholder={tc('tallyp.ledgerPlaceholder', 'e.g. Petrol Sales A/c')} value={t.ledger_name || ''} onChange={e => setLedger(t.key, e.target.value)} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -111,9 +114,9 @@ export default function TallyPage() {
       ))}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-        <button className="btn btn-secondary" onClick={save} disabled={saving}><Save size={15} />{saving ? 'Saving…' : 'Save Mapping'}</button>
+        <button className="btn btn-secondary" onClick={save} disabled={saving}><Save size={15} />{saving ? tc('tallyp.saving', 'Saving…') : tc('tallyp.saveMapping', 'Save Mapping')}</button>
         <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-          “SOON” touchpoints are saved for later — the current export covers Sales, Receipts and Bank deposits (Contra), idempotent on re-import.
+          {tc('tallyp.soonNote', '“SOON” touchpoints are saved for later — the current export covers Sales, Receipts and Bank deposits (Contra), idempotent on re-import.')}
         </span>
       </div>
     </AppShell>

@@ -5,12 +5,13 @@ import AppShell from '../../../components/shared/AppShell';
 import BarcodeScanner from '../../../components/shared/BarcodeScanner';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
+import { useTranslation } from 'react-i18next';
 
 const PAYMENT_MODES = [
-  { id:'cash',   label:'💵 Cash',   color:'#16a34a' },
-  { id:'upi',    label:'📱 UPI',    color:'#2563eb' },
-  { id:'card',   label:'💳 Card',   color:'#ea580c' },
-  { id:'credit', label:'🏢 Credit', color:'#9333ea' },
+  { id:'cash',   label:'💵 Cash',   en:'Cash',   color:'#16a34a' },
+  { id:'upi',    label:'📱 UPI',    en:'UPI',    color:'#2563eb' },
+  { id:'card',   label:'💳 Card',   en:'Card',   color:'#ea580c' },
+  { id:'credit', label:'🏢 Credit', en:'Credit', color:'#9333ea' },
 ];
 
 const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #e5e3de',borderRadius:8,
@@ -18,6 +19,8 @@ const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #e5e3de',border
 
 export default function ProductsPOSPage() {
   if (typeof window === 'undefined') return null;
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const { user, station } = useAuth();
   const stationId   = typeof station==='object' ? station?.id : station;
   const stationName = typeof station==='object' ? station?.name : '';
@@ -87,11 +90,11 @@ export default function ProductsPOSPage() {
         };
         requestAnimationFrame(detect);
       } else {
-        alert('Barcode scanner not supported on this browser. Please type the barcode manually.');
+        alert(tc('lubepos.scannerNotSupported', 'Barcode scanner not supported on this browser. Please type the barcode manually.'));
         stopScanning();
       }
     } catch(e) {
-      alert('Camera access denied or not available. Type barcode manually.');
+      alert(tc('lubepos.cameraDenied', 'Camera access denied or not available. Type barcode manually.'));
     }
   };
 
@@ -111,7 +114,7 @@ export default function ProductsPOSPage() {
       setBarcodeInput('');
       barcodeRef.current?.focus();
     } catch(e) {
-      alert(`Barcode ${code} not found in catalogue`);
+      alert(tc('lubepos.barcodeNotFound', 'Barcode {code} not found in catalogue').replace('{code}', code));
       setBarcodeInput('');
     }
   };
@@ -158,10 +161,10 @@ export default function ProductsPOSPage() {
   }, { subtotal:0, cgst:0, sgst:0, grand:0 });
 
   const checkout = async () => {
-    if (cart.length===0) return alert('Cart is empty');
-    if (custType==='credit' && !custId) return alert('Please select a credit customer');
+    if (cart.length===0) return alert(tc('lubepos.cartEmpty', 'Cart is empty'));
+    if (custType==='credit' && !custId) return alert(tc('lubepos.selectCreditCustomer', 'Please select a credit customer'));
     if (custType!=='credit' && totals.grand > 50000 &&
-        !confirm(`⚠️ This cash invoice is ${fmtCur(totals.grand)}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to an identifiable (credit) customer and apply a receipt — or split the invoice.\n\nProceed as a cash sale anyway?`)) return;
+        !confirm(tc('lubepos.cashOver50k', '⚠️ This cash invoice is {amt}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to an identifiable (credit) customer and apply a receipt — or split the invoice.\n\nProceed as a cash sale anyway?').replace('{amt}', fmtCur(totals.grand)))) return;
     setSaving(true);
     try {
       const res = await api.post('/products/invoices', {
@@ -177,7 +180,7 @@ export default function ProductsPOSPage() {
       setCart([]);
       setCustType('cash'); setCustId(''); setCustName('Cash Customer');
       setPayMode('cash');
-    } catch(e) { alert(e.response?.data?.error || 'Sale failed'); }
+    } catch(e) { alert(e.response?.data?.error || tc('lubepos.saleFailed', 'Sale failed')); }
     setSaving(false);
   };
 
@@ -186,7 +189,7 @@ export default function ProductsPOSPage() {
 
   return (
     <AppShell>
-      <h1 className="page-title" style={{marginBottom:'1.5rem'}}>Products POS</h1>
+      <h1 className="page-title" style={{marginBottom:'1.5rem'}}>{tc('lubepos.productsPos', 'Products POS')}</h1>
 
       <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 380px',gap:'1.5rem',alignItems:'start'}}>
 
@@ -194,19 +197,19 @@ export default function ProductsPOSPage() {
         <div>
           {/* Barcode input */}
           <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1.25rem',marginBottom:'1rem'}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>Scan / Search Product</div>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>{tc('lubepos.scanSearchProduct', 'Scan / Search Product')}</div>
             <div style={{display:'flex',gap:8}}>
-              <input ref={barcodeRef} style={{...inp,flex:1}} placeholder="Scan barcode or type product name..."
+              <input ref={barcodeRef} style={{...inp,flex:1}} placeholder={tc('lubepos.scanPlaceholder', 'Scan barcode or type product name...')}
                 value={barcodeInput}
                 onChange={e=>setBarcodeInput(e.target.value)}
                 onKeyDown={e=>{ if(e.key==='Enter' && barcodeInput.trim()) addByBarcode(barcodeInput.trim()); }}/>
-              <BarcodeScanner onScan={addByBarcode} label="Camera"/>
+              <BarcodeScanner onScan={addByBarcode} label={tc('lubepos.camera', 'Camera')}/>
             </div>
           </div>
 
           {/* Product grid */}
           <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1.25rem'}}>
-            <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>All Products</div>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:'0.75rem'}}>{tc('lubepos.allProducts', 'All Products')}</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:8}}>
               {products.map(p=>(
                 <button key={p.id} onClick={()=>addToCart(p)}
@@ -219,7 +222,7 @@ export default function ProductsPOSPage() {
                   <div style={{fontSize:11,color:'#888',marginBottom:6}}>{p.brand||''}</div>
                   <div style={{fontWeight:800,fontSize:15,color:'#FF6B00'}}>{fmtCur(p.selling_price)}</div>
                   <div style={{fontSize:10,color: p.current_stock<=p.min_stock_level?'#dc2626':'#888',marginTop:2}}>
-                    Stock: {Number(p.current_stock).toFixed(1)} {p.unit}s
+                    {tc('lubepos.stock', 'Stock')}: {Number(p.current_stock).toFixed(1)} {p.unit}s
                   </div>
                 </button>
               ))}
@@ -230,12 +233,12 @@ export default function ProductsPOSPage() {
         {/* Right — cart & checkout */}
         <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1.25rem',position:'sticky',top:'1rem'}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>
-            Cart {cart.length>0 && <span style={{background:'#FF6B00',color:'#fff',borderRadius:99,padding:'1px 7px',fontSize:12,marginLeft:6}}>{cart.length}</span>}
+            {tc('lubepos.cart', 'Cart')} {cart.length>0 && <span style={{background:'#FF6B00',color:'#fff',borderRadius:99,padding:'1px 7px',fontSize:12,marginLeft:6}}>{cart.length}</span>}
           </div>
 
           {cart.length===0 ? (
             <div style={{textAlign:'center',padding:'2rem',color:'#aaa',fontSize:13}}>
-              Scan or click a product to add
+              {tc('lubepos.emptyCartHint', 'Scan or click a product to add')}
             </div>
           ) : (
             <>
@@ -247,7 +250,7 @@ export default function ProductsPOSPage() {
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.product_name}</div>
                         <div style={{fontSize:11,color:'#888'}}>₹{fmt2(item.unit_price)} × {item.quantity} {item.unit}s</div>
-                        <div style={{fontSize:11,color:'#888'}}>GST {item.gst_rate}%: ₹{fmt2(c.cgst+c.sgst)}</div>
+                        <div style={{fontSize:11,color:'#888'}}>{tc('lubepos.gst', 'GST')} {item.gst_rate}%: ₹{fmt2(c.cgst+c.sgst)}</div>
                       </div>
                       <div style={{textAlign:'right',marginLeft:8}}>
                         <div style={{fontWeight:700,fontSize:14}}>₹{fmt2(c.total)}</div>
@@ -265,11 +268,11 @@ export default function ProductsPOSPage() {
 
               {/* Totals */}
               <div style={{background:'#f8f7f5',borderRadius:8,padding:'0.75rem',marginBottom:'0.75rem',fontSize:13}}>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>Subtotal</span><span>{fmtCur(totals.subtotal)}</span></div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>CGST</span><span>{fmtCur(totals.cgst)}</span></div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>SGST</span><span>{fmtCur(totals.sgst)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.subtotal', 'Subtotal')}</span><span>{fmtCur(totals.subtotal)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.cgst', 'CGST')}</span><span>{fmtCur(totals.cgst)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.sgst', 'SGST')}</span><span>{fmtCur(totals.sgst)}</span></div>
                 <div style={{display:'flex',justifyContent:'space-between',fontWeight:800,fontSize:15,borderTop:'1px solid #e5e3de',paddingTop:6,marginTop:3}}>
-                  <span>Total</span><span style={{color:'#FF6B00'}}>{fmtCur(totals.grand)}</span>
+                  <span>{tc('lubepos.total', 'Total')}</span><span style={{color:'#FF6B00'}}>{fmtCur(totals.grand)}</span>
                 </div>
               </div>
 
@@ -281,13 +284,13 @@ export default function ProductsPOSPage() {
                       style={{padding:'8px',background:payMode===m.id?m.color:'#f3f4f6',
                         color:payMode===m.id?'#fff':'#555',border:'none',borderRadius:8,
                         cursor:'pointer',fontWeight:600,fontSize:12}}>
-                      {m.label}
+                      {m.label.split(' ')[0]} {tc('lubepos.pay_'+m.id, m.en)}
                     </button>
                   ))}
                 </div>
                 {payMode==='credit' && (
                   <select style={{...inp,marginTop:6}} value={custId} onChange={e=>setCustId(e.target.value)}>
-                    <option value="">Select credit customer...</option>
+                    <option value="">{tc('lubepos.selectCreditCustomerOpt', 'Select credit customer...')}</option>
                     {corps.map(c=><option key={c.id} value={c.id}>{c.company_name}</option>)}
                   </select>
                 )}
@@ -296,7 +299,7 @@ export default function ProductsPOSPage() {
               <button onClick={checkout} disabled={saving}
                 style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',
                   borderRadius:10,cursor:'pointer',fontWeight:800,fontSize:15}}>
-                {saving ? 'Processing...' : `Bill ${fmtCur(totals.grand)}`}
+                {saving ? tc('lubepos.processing', 'Processing...') : tc('lubepos.bill', 'Bill {amt}').replace('{amt}', fmtCur(totals.grand))}
               </button>
             </>
           )}
@@ -313,16 +316,16 @@ export default function ProductsPOSPage() {
             {/* Actions */}
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',
               padding:'1rem 1.5rem',borderBottom:'1px solid #e5e3de',position:'sticky',top:0,background:'#fff',zIndex:1}}>
-              <span style={{fontWeight:700,fontSize:16}}>GST Invoice — {invoice.invoice_number}</span>
+              <span style={{fontWeight:700,fontSize:16}}>{tc('lubepos.gstInvoice', 'GST Invoice')} — {invoice.invoice_number}</span>
               <div style={{display:'flex',gap:8}}>
                 <button onClick={()=>window.print()}
                   style={{display:'flex',alignItems:'center',gap:6,padding:'8px 16px',background:'#FF6B00',
                     color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
-                  <Printer size={14}/>Print
+                  <Printer size={14}/>{tc('lubepos.print', 'Print')}
                 </button>
                 <button onClick={()=>setInvoice(null)}
                   style={{padding:'8px 16px',background:'#f3f4f6',color:'#555',border:'none',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13}}>
-                  Close
+                  {tc('lubepos.close', 'Close')}
                 </button>
               </div>
             </div>
@@ -335,23 +338,23 @@ export default function ProductsPOSPage() {
                 <div style={{fontSize:20,fontWeight:800,marginBottom:4}}>{stationName}</div>
                 <div style={{fontSize:12,color:'#555'}}>{stationInfo.address || ''}</div>
                 <div style={{fontSize:12,color:'#555'}}>{stationInfo.city || ''}{stationInfo.state?`, ${stationInfo.state}`:''}</div>
-                {stationInfo.gstn && <div style={{fontSize:12,fontWeight:600,marginTop:4}}>GSTIN: {stationInfo.gstn}</div>}
+                {stationInfo.gstn && <div style={{fontSize:12,fontWeight:600,marginTop:4}}>{tc('lubepos.gstinLabel', 'GSTIN')}: {stationInfo.gstn}</div>}
               </div>
 
               <div style={{textAlign:'center',fontWeight:800,fontSize:16,marginBottom:'1rem',letterSpacing:2}}>
-                TAX INVOICE
+                {tc('lubepos.taxInvoice', 'TAX INVOICE')}
               </div>
 
               {/* Invoice details */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1rem',fontSize:12}}>
                 <div>
-                  <div><strong>Invoice No:</strong> {invoice.invoice_number}</div>
-                  <div><strong>Date:</strong> {new Date(invoice.created_at).toLocaleDateString('en-IN')}</div>
-                  <div><strong>Payment:</strong> {invoice.payment_mode?.toUpperCase()}</div>
+                  <div><strong>{tc('lubepos.invoiceNo', 'Invoice No')}:</strong> {invoice.invoice_number}</div>
+                  <div><strong>{tc('lubepos.date', 'Date')}:</strong> {new Date(invoice.created_at).toLocaleDateString('en-IN')}</div>
+                  <div><strong>{tc('lubepos.payment', 'Payment')}:</strong> {invoice.payment_mode?.toUpperCase()}</div>
                 </div>
                 <div>
-                  <div><strong>Bill To:</strong> {invoice.customer_name}</div>
-                  {invoice.customer_gstn && <div><strong>GSTN:</strong> {invoice.customer_gstn}</div>}
+                  <div><strong>{tc('lubepos.billTo', 'Bill To')}:</strong> {invoice.customer_name}</div>
+                  {invoice.customer_gstn && <div><strong>{tc('lubepos.gstnLabel', 'GSTN')}:</strong> {invoice.customer_gstn}</div>}
                 </div>
               </div>
 
@@ -359,8 +362,19 @@ export default function ProductsPOSPage() {
               <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'1rem',fontSize:12}}>
                 <thead>
                   <tr style={{background:'#f3f4f6'}}>
-                    {['#','Description','HSN','Qty','Unit','Rate','Taxable','CGST','SGST','Total'].map(h=>(
-                      <th key={h} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'left',fontWeight:700}}>{h}</th>
+                    {[
+                      {k:'colNum',     en:'#'},
+                      {k:'colDesc',    en:'Description'},
+                      {k:'colHsn',     en:'HSN'},
+                      {k:'colQty',     en:'Qty'},
+                      {k:'colUnit',    en:'Unit'},
+                      {k:'colRate',    en:'Rate'},
+                      {k:'colTaxable', en:'Taxable'},
+                      {k:'colCgst',    en:'CGST'},
+                      {k:'colSgst',    en:'SGST'},
+                      {k:'colTotal',   en:'Total'},
+                    ].map(h=>(
+                      <th key={h.k} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'left',fontWeight:700}}>{tc('lubepos.'+h.k, h.en)}</th>
                     ))}
                   </tr>
                 </thead>
@@ -382,7 +396,7 @@ export default function ProductsPOSPage() {
                 </tbody>
                 <tfoot>
                   <tr style={{background:'#f8f7f5',fontWeight:700}}>
-                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>TOTAL</td>
+                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{tc('lubepos.totalRow', 'TOTAL')}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.subtotal)}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.total_cgst)}</td>
                     <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.total_sgst)}</td>
@@ -393,19 +407,19 @@ export default function ProductsPOSPage() {
 
               {/* Amount in words */}
               <div style={{fontSize:12,marginBottom:'1rem',background:'#f8f7f5',padding:'0.5rem 0.75rem',borderRadius:6}}>
-                <strong>Grand Total: ₹{fmt2(invoice.grand_total)}</strong>
+                <strong>{tc('lubepos.grandTotal', 'Grand Total')}: ₹{fmt2(invoice.grand_total)}</strong>
               </div>
 
               {/* Footer */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2rem',marginTop:'2rem',fontSize:11,color:'#666'}}>
                 <div>
-                  <div style={{fontWeight:700,color:'#000',marginBottom:4}}>Terms & Conditions</div>
-                  <div>Goods once sold will not be taken back.</div>
-                  <div>Subject to local jurisdiction.</div>
+                  <div style={{fontWeight:700,color:'#000',marginBottom:4}}>{tc('lubepos.termsConditions', 'Terms & Conditions')}</div>
+                  <div>{tc('lubepos.termsNoReturn', 'Goods once sold will not be taken back.')}</div>
+                  <div>{tc('lubepos.termsJurisdiction', 'Subject to local jurisdiction.')}</div>
                 </div>
                 <div style={{textAlign:'right'}}>
-                  <div style={{fontWeight:700,color:'#000',marginBottom:24}}>For {stationName}</div>
-                  <div>Authorised Signatory</div>
+                  <div style={{fontWeight:700,color:'#000',marginBottom:24}}>{tc('lubepos.forStation', 'For {station}').replace('{station}', stationName)}</div>
+                  <div>{tc('lubepos.authorisedSignatory', 'Authorised Signatory')}</div>
                 </div>
               </div>
             </div>

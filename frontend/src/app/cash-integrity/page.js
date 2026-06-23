@@ -3,6 +3,7 @@
 // operator's drawer is over or exact, never under; so repeated undercash (even
 // when made good on the spot) flags a suspect. Pure read-only oversight.
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ShieldAlert, AlertTriangle, CheckCircle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
@@ -19,6 +20,13 @@ export default function CashIntegrityPage() {
   const [rows, setRows] = useState([]);
   const [days, setDays] = useState(90);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
+  const RANGE_LABELS = {
+    '30 days': tc('cashint.range30', '30 days'),
+    '90 days': tc('cashint.range90', '90 days'),
+    '6 months': tc('cashint.range6m', '6 months'),
+  };
 
   const load = async () => {
     if (!stationId) return;
@@ -40,13 +48,13 @@ export default function CashIntegrityPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Cash Integrity</h1>
+          <h1 className="page-title">{tc('cashint.title', 'Cash Integrity')}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
-            A clean operator is over or exact — <strong>never under</strong>. Repeated undercash is a red flag.
+            {tc('cashint.subPre', 'A clean operator is over or exact — ')}<strong>{tc('cashint.neverUnder', 'never under')}</strong>{tc('cashint.subPost', '. Repeated undercash is a red flag.')}
           </div>
         </div>
         <select className="input" style={{ width: 140 }} value={days} onChange={e => setDays(parseInt(e.target.value))}>
-          {RANGES.map(([d, l]) => <option key={d} value={d}>{l}</option>)}
+          {RANGES.map(([d, l]) => <option key={d} value={d}>{RANGE_LABELS[l] || l}</option>)}
         </select>
       </div>
 
@@ -55,19 +63,19 @@ export default function CashIntegrityPage() {
           <table className="dms-table">
             <thead>
               <tr>
-                <th>Operator</th>
-                <th style={{ textAlign: 'center' }}>Reconciliations</th>
-                <th style={{ textAlign: 'center' }}>Undercash</th>
-                <th style={{ textAlign: 'center' }}>Overcash / Exact</th>
-                <th style={{ textAlign: 'right' }}>Total Short</th>
-                <th>Last Undercash</th>
-                <th style={{ textAlign: 'center' }}>Flag</th>
+                <th>{tc('cashint.colOperator', 'Operator')}</th>
+                <th style={{ textAlign: 'center' }}>{tc('cashint.colReconciliations', 'Reconciliations')}</th>
+                <th style={{ textAlign: 'center' }}>{tc('cashint.colUndercash', 'Undercash')}</th>
+                <th style={{ textAlign: 'center' }}>{tc('cashint.colOvercashExact', 'Overcash / Exact')}</th>
+                <th style={{ textAlign: 'right' }}>{tc('cashint.colTotalShort', 'Total Short')}</th>
+                <th>{tc('cashint.colLastUndercash', 'Last Undercash')}</th>
+                <th style={{ textAlign: 'center' }}>{tc('cashint.colFlag', 'Flag')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>Loading…</td></tr>}
+              {loading && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{tc('cashint.loading', 'Loading…')}</td></tr>}
               {!loading && rows.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>No confirmed reconciliations in this period.</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{tc('cashint.noRecons', 'No confirmed reconciliations in this period.')}</td></tr>
               )}
               {!loading && rows.map(r => {
                 const suspect = isSuspect(r);
@@ -84,10 +92,10 @@ export default function CashIntegrityPage() {
                     <td style={{ fontSize: 13 }}>{toDate(r.last_short_at)}</td>
                     <td style={{ textAlign: 'center' }}>
                       {suspect
-                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#dc2626', fontWeight: 700, fontSize: 12 }}><ShieldAlert size={14} />Suspect</span>
+                        ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#dc2626', fontWeight: 700, fontSize: 12 }}><ShieldAlert size={14} />{tc('cashint.flagSuspect', 'Suspect')}</span>
                         : r.undercash_count > 0
-                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontSize: 12 }}><AlertTriangle size={13} />Watch</span>
-                          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#16a34a', fontSize: 12 }}><CheckCircle size={13} />Clean</span>}
+                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontSize: 12 }}><AlertTriangle size={13} />{tc('cashint.flagWatch', 'Watch')}</span>
+                          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#16a34a', fontSize: 12 }}><CheckCircle size={13} />{tc('cashint.flagClean', 'Clean')}</span>}
                     </td>
                   </tr>
                 );
@@ -96,8 +104,7 @@ export default function CashIntegrityPage() {
           </table>
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '10px 14px', borderTop: '1px solid var(--border)' }}>
-          “Undercash” = the operator declared less cash than the meter expected (a shortfall), whether or not it was made good on the spot.
-          Repeated undercash warrants disciplinary review — the system records the pattern; the action is yours.
+          {tc('cashint.footnote', '“Undercash” = the operator declared less cash than the meter expected (a shortfall), whether or not it was made good on the spot. Repeated undercash warrants disciplinary review — the system records the pattern; the action is yours.')}
         </div>
       </div>
     </AppShell>

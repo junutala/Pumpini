@@ -28,6 +28,7 @@ const todayIST = () => {
 
 export default function AttendancePage() {
   const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const { user, station } = useAuth();
   const stationId = typeof station==='object'?station?.id:station;
 
@@ -75,7 +76,7 @@ export default function AttendancePage() {
         check_in:checkIn, check_out:checkOut,
       });
       await load();
-    } catch(e){ alert(e.error||'Failed'); }
+    } catch(e){ alert(e.error||tc('attend.failed','Failed')); }
     finally{ setSaving(p=>({...p,[empId]:false})); }
   };
 
@@ -116,15 +117,15 @@ export default function AttendancePage() {
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">Attendance</h1>
+        <h1 className="page-title">{tc('attend.title','Attendance')}</h1>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           <input className="input" type="date" value={date} onChange={e=>setDate(e.target.value)} style={{width:160}}/>
           <select className="input" style={{width:130}} value={shiftFilter} onChange={e=>setShiftFilter(parseInt(e.target.value))}>
-            <option value={1}>Shift 1</option>
-            <option value={2}>Shift 2</option>
-            <option value={3}>Shift 3</option>
+            <option value={1}>{tc('attend.shift1','Shift 1')}</option>
+            <option value={2}>{tc('attend.shift2','Shift 2')}</option>
+            <option value={3}>{tc('attend.shift3','Shift 3')}</option>
           </select>
-          <button className="btn btn-primary" onClick={saveAll}>Save All</button>
+          <button className="btn btn-primary" onClick={saveAll}>{tc('attend.saveAll','Save All')}</button>
           <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={14}/></button>
         </div>
       </div>
@@ -137,7 +138,7 @@ export default function AttendancePage() {
           </div>
         ))}
         <div style={{marginLeft:'auto',fontSize:13,color:'var(--text-3)',alignSelf:'center'}}>
-          All times in IST (GMT+5:30)
+          {tc('attend.allTimesIST','All times in IST (GMT+5:30)')}
         </div>
       </div>
 
@@ -147,13 +148,13 @@ export default function AttendancePage() {
           <table className="dms-table">
             <thead>
               <tr>
-                <th>Employee</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Check In (IST)</th>
-                <th>Check Out (IST)</th>
-                <th>Quick Actions</th>
-                <th>Save</th>
+                <th>{tc('attend.employee','Employee')}</th>
+                <th>{tc('attend.role','Role')}</th>
+                <th>{tc('attend.status','Status')}</th>
+                <th>{tc('attend.checkInIST','Check In (IST)')}</th>
+                <th>{tc('attend.checkOutIST','Check Out (IST)')}</th>
+                <th>{tc('attend.quickActions','Quick Actions')}</th>
+                <th>{tc('attend.save','Save')}</th>
               </tr>
             </thead>
             <tbody>
@@ -170,35 +171,35 @@ export default function AttendancePage() {
                       <select className="input" style={{width:110,height:32,fontSize:13}}
                         value={bulkStatus[emp.id]||'present'}
                         onChange={e=>setBulkStatus(p=>({...p,[emp.id]:e.target.value}))}>
-                        <option value="present">Present</option>
-                        <option value="absent">Absent</option>
-                        <option value="half_day">Half Day</option>
-                        <option value="leave">Leave</option>
+                        <option value="present">{tc('attend.present','Present')}</option>
+                        <option value="absent">{tc('attend.absent','Absent')}</option>
+                        <option value="half_day">{tc('attend.halfDay','Half Day')}</option>
+                        <option value="leave">{tc('attend.leave','Leave')}</option>
                       </select>
                     </td>
                     <td>
                       <input type="time" className="input" style={{width:110,height:32,fontSize:13}}
                         value={bulkCheckin[emp.id]||''}
                         onChange={e=>setBulkCheckin(p=>({...p,[emp.id]:e.target.value}))}/>
-                      {rec?.check_in && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>Saved: {toIST(rec.check_in)}</div>}
+                      {rec?.check_in && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>{tc('attend.saved','Saved')}: {toIST(rec.check_in)}</div>}
                     </td>
                     <td>
                       <input type="time" className="input" style={{width:110,height:32,fontSize:13}}
                         value={bulkCheckout[emp.id]||''}
                         onChange={e=>setBulkCheckout(p=>({...p,[emp.id]:e.target.value}))}/>
-                      {rec?.check_out && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>Saved: {toIST(rec.check_out)}</div>}
+                      {rec?.check_out && <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>{tc('attend.saved','Saved')}: {toIST(rec.check_out)}</div>}
                     </td>
                     <td>
                       <div style={{display:'flex',gap:4}}>
-                        <button className="btn btn-secondary btn-sm" title="Check In Now"
+                        <button className="btn btn-secondary btn-sm" title={tc('attend.checkInNow','Check In Now')}
                           onClick={()=>quickCheckIn(emp.id)}
                           style={{padding:'0 8px',fontSize:11}}>
-                          <Clock size={12}/> In
+                          <Clock size={12}/> {tc('attend.in','In')}
                         </button>
-                        <button className="btn btn-secondary btn-sm" title="Check Out Now"
+                        <button className="btn btn-secondary btn-sm" title={tc('attend.checkOutNow','Check Out Now')}
                           onClick={()=>quickCheckOut(emp.id)}
                           style={{padding:'0 8px',fontSize:11}}>
-                          <Clock size={12}/> Out
+                          <Clock size={12}/> {tc('attend.out','Out')}
                         </button>
                       </div>
                     </td>
@@ -207,14 +208,14 @@ export default function AttendancePage() {
                         onClick={()=>saveOne(emp.id)}
                         disabled={saving[emp.id]}
                         style={{padding:'0 12px'}}>
-                        {saving[emp.id]?'..':'Save'}
+                        {saving[emp.id]?'..':tc('attend.save','Save')}
                       </button>
                     </td>
                   </tr>
                 );
               })}
               {employees.filter(e=>e.role!=='owner').length===0 && (
-                <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>No employees found</td></tr>
+                <tr><td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>{tc('attend.noEmployees','No employees found')}</td></tr>
               )}
             </tbody>
           </table>
@@ -222,7 +223,7 @@ export default function AttendancePage() {
       </div>
 
       <div style={{marginTop:'1rem',fontSize:12,color:'var(--text-3)'}}>
-        💡 Tip: Use <strong>In</strong> / <strong>Out</strong> buttons to stamp the current IST time instantly. Or manually type the time and click Save. Click <strong>Save All</strong> to save all rows at once.
+        💡 {tc('attend.tipUse','Tip: Use')} <strong>{tc('attend.in','In')}</strong> / <strong>{tc('attend.out','Out')}</strong> {tc('attend.tipStamp','buttons to stamp the current IST time instantly. Or manually type the time and click Save. Click')} <strong>{tc('attend.saveAll','Save All')}</strong> {tc('attend.tipSaveRows','to save all rows at once.')}
       </div>
     </AppShell>
   );

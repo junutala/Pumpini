@@ -12,6 +12,7 @@ const ROLE_COLORS = { owner: 'badge-danger', manager: 'badge-warning', attendant
 
 export default function UsersPage() {
   const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const { user, station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
 
@@ -38,7 +39,7 @@ export default function UsersPage() {
       await api.post('/auth/register', form);
       if (stationId) await api.post(`/stations/${stationId}/users`, { user_id: '__last__' }); // will use proper id via response
       setShowAdd(false); load();
-    } catch (err) { alert(err.error || 'Failed to add user'); }
+    } catch (err) { alert(err.error || tc('usersp.failedAddUser', 'Failed to add user')); }
     finally { setLoading(false); }
   };
 
@@ -48,7 +49,7 @@ export default function UsersPage() {
       const newUser = await api.post('/auth/register', form);
       if (stationId) await api.post(`/stations/${stationId}/users`, { user_id: newUser.id });
       setShowAdd(false); load();
-    } catch (err) { alert(err.error || err.errors?.[0]?.msg || 'Failed'); }
+    } catch (err) { alert(err.error || err.errors?.[0]?.msg || tc('usersp.failed', 'Failed')); }
     finally { setLoading(false); }
   };
 
@@ -58,7 +59,7 @@ export default function UsersPage() {
       const { id, ...rest } = editUser;
       await updateUser(id, rest);
       setEditUser(null); load();
-    } catch (err) { alert(err.error || 'Failed'); }
+    } catch (err) { alert(err.error || tc('usersp.failed', 'Failed')); }
     finally { setLoading(false); }
   };
 
@@ -67,11 +68,11 @@ export default function UsersPage() {
   };
 
   const forceLogout = async (u) => {
-    if (!confirm(`Force-logout ${u.name}? Their active sessions will end immediately and they'll need to log in again.`)) return;
+    if (!confirm(tc('usersp.forceLogoutConfirm', "Force-logout {name}? Their active sessions will end immediately and they'll need to log in again.").replace('{name}', u.name))) return;
     try {
       await api.post(`/users/${u.id}/force-logout`, {});
-      alert(`${u.name} has been logged out of all sessions.`);
-    } catch (err) { alert(err.error || 'Failed to force-logout'); }
+      alert(tc('usersp.forceLogoutDone', '{name} has been logged out of all sessions.').replace('{name}', u.name));
+    } catch (err) { alert(err.error || tc('usersp.failedForceLogout', 'Failed to force-logout')); }
   };
 
   const filtered = users.filter(u =>
@@ -82,15 +83,15 @@ export default function UsersPage() {
     <AppShell>
       <div className="page-header">
         <h1 className="page-title">{t('nav.users')}</h1>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} />Add User</button>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}><Plus size={16} />{tc('usersp.addUser', 'Add User')}</button>
       </div>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 10, marginBottom: '1.5rem' }}>
-        <input className="input" placeholder="Search by name or phone..." style={{ maxWidth: 260 }}
+        <input className="input" placeholder={tc('usersp.searchPlaceholder', 'Search by name or phone...')} style={{ maxWidth: 260 }}
           value={filter} onChange={e => setFilter(e.target.value)} />
         <select className="input" style={{ width: 160 }} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
-          <option value="">All Roles</option>
+          <option value="">{tc('usersp.allRoles', 'All Roles')}</option>
           {['owner','manager','attendant','rsa','corporate'].map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
         </select>
       </div>
@@ -100,13 +101,13 @@ export default function UsersPage() {
           <table className="dms-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Language</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th>{tc('usersp.colName', 'Name')}</th>
+                <th>{tc('usersp.colPhone', 'Phone')}</th>
+                <th>{tc('usersp.colEmail', 'Email')}</th>
+                <th>{tc('usersp.colRole', 'Role')}</th>
+                <th>{tc('usersp.colLanguage', 'Language')}</th>
+                <th>{tc('usersp.colStatus', 'Status')}</th>
+                <th>{tc('usersp.colActions', 'Actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -122,16 +123,16 @@ export default function UsersPage() {
                   <td style={{ fontSize: 13 }}>{u.language?.toUpperCase()}</td>
                   <td>
                     <span className={`badge ${u.is_active ? 'badge-success' : 'badge-danger'}`}>
-                      {u.is_active ? 'Active' : 'Inactive'}
+                      {u.is_active ? tc('usersp.statusActive', 'Active') : tc('usersp.statusInactive', 'Inactive')}
                     </span>
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="btn btn-secondary btn-sm" onClick={() => setEditUser({ ...u })}>Edit</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setEditUser({ ...u })}>{tc('usersp.edit', 'Edit')}</button>
                       <button className={`btn btn-sm ${u.is_active ? 'btn-danger' : 'btn-secondary'}`} onClick={() => toggleActive(u)}>
                         {u.is_active ? <UserX size={13} /> : <UserCheck size={13} />}
                       </button>
-                      <button className="btn btn-secondary btn-sm" title="Force logout (end all sessions)" onClick={() => forceLogout(u)}>
+                      <button className="btn btn-secondary btn-sm" title={tc('usersp.forceLogoutTitle', 'Force logout (end all sessions)')} onClick={() => forceLogout(u)}>
                         <LogOut size={13} />
                       </button>
                     </div>
@@ -148,11 +149,11 @@ export default function UsersPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 400 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <span style={{ fontWeight: 600 }}>Add New User</span>
+              <span style={{ fontWeight: 600 }}>{tc('usersp.addNewUser', 'Add New User')}</span>
               <button onClick={() => setShowAdd(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleRegister}>
-              {[['name','Full Name',true,'text'],['phone','Phone (+91...)',true,'tel'],['email','Email',false,'email'],['password','Password',true,'password']].map(([f,l,r,type]) => (
+              {[['name',tc('usersp.fullName','Full Name'),true,'text'],['phone',tc('usersp.phonePlus91','Phone (+91...)'),true,'tel'],['email',tc('usersp.email','Email'),false,'email'],['password',tc('usersp.password','Password'),true,'password']].map(([f,l,r,type]) => (
                 <div key={f} style={{ marginBottom: '0.75rem' }}>
                   <label className="label">{l}</label>
                   <input className="input" type={type} placeholder={l} required={r}
@@ -161,20 +162,20 @@ export default function UsersPage() {
               ))}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '1.25rem' }}>
                 <div>
-                  <label className="label">Role</label>
+                  <label className="label">{tc('usersp.role', 'Role')}</label>
                   <select className="input" value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))}>
                     {['owner','manager','attendant','rsa','corporate'].map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="label">Language</label>
+                  <label className="label">{tc('usersp.language', 'Language')}</label>
                   <select className="input" value={form.language} onChange={e => setForm(p => ({ ...p, language: e.target.value }))}>
                     {[['en','English'],['hi','हिन्दी'],['ta','தமிழ்'],['te','తెలుగు'],['kn','ಕನ್ನಡ'],['mr','मराठी']].map(([c,n]) => <option key={c} value={c}>{n}</option>)}
                   </select>
                 </div>
               </div>
               <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                {loading ? 'Creating...' : 'Create User & Assign to Station'}
+                {loading ? tc('usersp.creating', 'Creating...') : tc('usersp.createAndAssign', 'Create User & Assign to Station')}
               </button>
             </form>
           </div>
@@ -186,38 +187,38 @@ export default function UsersPage() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: 380 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <span style={{ fontWeight: 600 }}>Edit User</span>
+              <span style={{ fontWeight: 600 }}>{tc('usersp.editUser', 'Edit User')}</span>
               <button onClick={() => setEditUser(null)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={18} /></button>
             </div>
             <form onSubmit={handleEdit}>
               <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Name</label>
+                <label className="label">{tc('usersp.colName', 'Name')}</label>
                 <input className="input" value={editUser.name || ''} onChange={e => setEditUser(p => ({ ...p, name: e.target.value }))} />
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <label className="label">Email</label>
+                <label className="label">{tc('usersp.email', 'Email')}</label>
                 <input className="input" type="email" value={editUser.email || ''} onChange={e => setEditUser(p => ({ ...p, email: e.target.value }))} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '0.75rem' }}>
                 <div>
-                  <label className="label">Role</label>
+                  <label className="label">{tc('usersp.role', 'Role')}</label>
                   <select className="input" value={editUser.role} onChange={e => setEditUser(p => ({ ...p, role: e.target.value }))}>
                     {['owner','manager','attendant','rsa','corporate'].map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="label">Language</label>
+                  <label className="label">{tc('usersp.language', 'Language')}</label>
                   <select className="input" value={editUser.language || 'en'} onChange={e => setEditUser(p => ({ ...p, language: e.target.value }))}>
                     {[['en','English'],['hi','हिन्दी'],['ta','தமிழ்'],['te','తెలుగు'],['kn','ಕನ್ನಡ'],['mr','मराठी']].map(([c,n]) => <option key={c} value={c}>{n}</option>)}
                   </select>
                 </div>
               </div>
               <div style={{ marginBottom: '1.25rem' }}>
-                <label className="label">New Password (leave blank to keep)</label>
+                <label className="label">{tc('usersp.newPassword', 'New Password (leave blank to keep)')}</label>
                 <input className="input" type="password" placeholder="••••••••" onChange={e => setEditUser(p => ({ ...p, password: e.target.value }))} />
               </div>
               <button className="btn btn-primary" type="submit" style={{ width: '100%', justifyContent: 'center' }} disabled={loading}>
-                {loading ? 'Saving...' : 'Save Changes'}
+                {loading ? tc('usersp.saving', 'Saving...') : tc('usersp.saveChanges', 'Save Changes')}
               </button>
             </form>
           </div>

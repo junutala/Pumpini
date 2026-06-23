@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
          CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox } from 'lucide-react';
@@ -94,6 +95,8 @@ function LoginScreen({onLogin}){
   const [showPw,setShowPw]=useState(false);
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(false);
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const submit=async e=>{
     e.preventDefault(); setLoading(true); setError('');
@@ -116,18 +119,18 @@ function LoginScreen({onLogin}){
           </div>
           <div style={{display:'inline-flex',alignItems:'center',gap:6,background:'#f0f9ff',
             padding:'4px 12px',borderRadius:99,fontSize:13,color:'#1A5F7A',fontWeight:600}}>
-            <Shield size={14}/> SuperAdmin Console
+            <Shield size={14}/> {tc('adminp.superadminConsole', 'SuperAdmin Console')}
           </div>
         </div>
         <form onSubmit={submit}>
           <div style={{marginBottom:'1rem'}}>
-            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>Email</label>
+            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.email', 'Email')}</label>
             <input style={{width:'100%',padding:'10px 12px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box'}}
               type="email" placeholder="admin@pumpini.in" value={form.email}
               onChange={e=>setForm(p=>({...p,email:e.target.value}))} required/>
           </div>
           <div style={{marginBottom:'1.5rem'}}>
-            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>Password</label>
+            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.password', 'Password')}</label>
             <div style={{display:'flex',border:'1.5px solid #ddd',borderRadius:8,overflow:'hidden'}}>
               <input style={{flex:1,padding:'10px 12px',border:'none',fontSize:14,outline:'none'}}
                 type={showPw?'text':'password'} placeholder="••••••••" value={form.password}
@@ -140,7 +143,7 @@ function LoginScreen({onLogin}){
           </div>
           {error&&<div style={{background:'#fee2e2',color:'#991b1b',padding:'10px 12px',borderRadius:8,fontSize:13,marginBottom:'1rem'}}>{error}</div>}
           <button style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',borderRadius:8,fontSize:15,fontWeight:700,cursor:'pointer'}}
-            type="submit" disabled={loading}>{loading?'Logging in...':'Login'}</button>
+            type="submit" disabled={loading}>{loading?tc('adminp.loggingIn', 'Logging in...'):tc('adminp.login', 'Login')}</button>
         </form>
       </div>
     </div>
@@ -174,6 +177,8 @@ export default function AdminPage(){
   const [form,setForm]     = useState({});
   const [loading,setLoading] = useState(false);
   const [toast,setToast]   = useState('');
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const showToast = msg => { setToast(msg); setTimeout(()=>setToast(''),3000); };
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
@@ -236,35 +241,35 @@ export default function AdminPage(){
   const loadGroupStations = async gid => { const r=await adminFetch(`/groups/${gid}/stations`); setGroupStations(p=>({...p,[gid]:Array.isArray(r)?r:[]})); };
   const loadStationUsers  = async sid => { if(!sid)return; const r=await adminFetch(`/station-users/${sid}`); setStationUsers(Array.isArray(r)?r:[]); };
   const loadStTemplates   = async sid => { if(!sid){setStTemplates([]);return;} const r=await adminFetch(`/templates?station_id=${sid}`); setStTemplates(Array.isArray(r)?r:[]); };
-  const assignResp        = async (user_id, template_id) => { await adminFetch('/templates/assign',{method:'POST',body:JSON.stringify({user_id,template_id:template_id||null,station_id:selStation})}); loadStationUsers(selStation); showToast('Responsibility updated.'); };
+  const assignResp        = async (user_id, template_id) => { await adminFetch('/templates/assign',{method:'POST',body:JSON.stringify({user_id,template_id:template_id||null,station_id:selStation})}); loadStationUsers(selStation); showToast(tc('adminp.responsibilityUpdated', 'Responsibility updated.')); };
 
   const save = async(url,method='POST')=>{
     setLoading(true);
     const res=await adminFetch(url,{method,body:JSON.stringify(form)});
     setLoading(false);
     if(res.error){alert(res.error);return false;}
-    closeModal(); reload(); showToast('Saved!');
+    closeModal(); reload(); showToast(tc('adminp.saved', 'Saved!'));
     return true;
   };
 
   const resetPassword = async userId=>{
-    const pw=prompt('New password (min 8 chars):');
-    if(!pw||pw.length<8){alert('Too short');return;}
+    const pw=prompt(tc('adminp.newPasswordPrompt', 'New password (min 8 chars):'));
+    if(!pw||pw.length<8){alert(tc('adminp.tooShort', 'Too short'));return;}
     await adminFetch(`/owners/${userId}`,{method:'PATCH',body:JSON.stringify({password:pw})});
-    showToast('Password reset!');
+    showToast(tc('adminp.passwordReset', 'Password reset!'));
   };
 
   if(!admin) return <LoginScreen onLogin={a=>setAdmin(a)}/>;
 
   const TABS=[
-    {id:'dashboard',label:'Platform Dashboard',icon:<TrendingUp size={14}/>},
-    {id:'groups',   label:'Owner Groups',      icon:<Globe size={14}/>},
-    {id:'owners',   label:'Owners',            icon:<Users size={14}/>},
-    {id:'stations', label:'Petrol Bunks',      icon:<Building2 size={14}/>},
-    {id:'plans',    label:'Plans',             icon:<Layers size={14}/>},
-    {id:'alertdefs',label:'AI Chat',           icon:<Shield size={14}/>},
-    {id:'stationusers',label:'Users & Roles',  icon:<UserPlus size={14}/>},
-    {id:'leads',    label:'Leads',             icon:<Inbox size={14}/>},
+    {id:'dashboard',label:tc('adminp.tabPlatformDashboard','Platform Dashboard'),icon:<TrendingUp size={14}/>},
+    {id:'groups',   label:tc('adminp.tabOwnerGroups','Owner Groups'),      icon:<Globe size={14}/>},
+    {id:'owners',   label:tc('adminp.tabOwners','Owners'),            icon:<Users size={14}/>},
+    {id:'stations', label:tc('adminp.tabPetrolBunks','Petrol Bunks'),      icon:<Building2 size={14}/>},
+    {id:'plans',    label:tc('adminp.tabPlans','Plans'),             icon:<Layers size={14}/>},
+    {id:'alertdefs',label:tc('adminp.tabAiChat','AI Chat'),           icon:<Shield size={14}/>},
+    {id:'stationusers',label:tc('adminp.tabUsersRoles','Users & Roles'),  icon:<UserPlus size={14}/>},
+    {id:'leads',    label:tc('adminp.tabLeads','Leads'),             icon:<Inbox size={14}/>},
   ];
 
   const formCities = getCities(form.state||'');
@@ -283,7 +288,7 @@ export default function AdminPage(){
       <div style={{width:220,background:'#0F1923',display:'flex',flexDirection:'column',position:'sticky',top:0,height:'100dvh',flexShrink:0}}>
         <div style={{padding:'1.25rem 1rem 1rem',borderBottom:'1px solid rgba(255,255,255,.08)'}}>
           <div style={{fontSize:22,fontWeight:900}}><span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span></div>
-          <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginTop:2}}>ADMIN CONSOLE</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,.35)',marginTop:2}}>{tc('adminp.adminConsole', 'ADMIN CONSOLE')}</div>
         </div>
         <nav style={{flex:1,padding:'0.5rem 0'}}>
           {TABS.map(t=>(
@@ -300,7 +305,7 @@ export default function AdminPage(){
           <button style={{background:'rgba(255,255,255,.08)',border:'none',color:'rgba(255,255,255,.6)',
             borderRadius:7,padding:'7px 12px',cursor:'pointer',fontSize:12,width:'100%',display:'flex',alignItems:'center',gap:6}}
             onClick={()=>{localStorage.removeItem('admin_token');setAdmin(null);}}>
-            <LogOut size={13}/>Logout
+            <LogOut size={13}/>{tc('adminp.logout', 'Logout')}
           </button>
         </div>
       </div>
@@ -311,15 +316,15 @@ export default function AdminPage(){
         {/* ── Platform Dashboard ── */}
         {tab==='dashboard'&&(
           <div>
-            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>Platform Dashboard</h1>
+            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>{tc('adminp.platformDashboard', 'Platform Dashboard')}</h1>
             <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'1rem',marginBottom:'2rem'}}>
               {[
-                ['Owner Groups',  stats?.total_groups||0,   '#FF6B00'],
-                ['Owners',        stats?.total_owners||0,   '#9333ea'],
-                ['Petrol Bunks',  stats?.total_stations||0, '#1A5F7A'],
-                ['Active Users',  stats?.total_users||0,    '#16a34a'],
-                ["Today's Sales", fmtAmt(stats?.today_sales||0),'#dc2626'],
-                ['MTD Sales',     fmtAmt(stats?.mtd_sales||0),  '#0891b2'],
+                [tc('adminp.statOwnerGroups','Owner Groups'),  stats?.total_groups||0,   '#FF6B00'],
+                [tc('adminp.statOwners','Owners'),        stats?.total_owners||0,   '#9333ea'],
+                [tc('adminp.statPetrolBunks','Petrol Bunks'),  stats?.total_stations||0, '#1A5F7A'],
+                [tc('adminp.statActiveUsers','Active Users'),  stats?.total_users||0,    '#16a34a'],
+                [tc('adminp.statTodaysSales',"Today's Sales"), fmtAmt(stats?.today_sales||0),'#dc2626'],
+                [tc('adminp.statMtdSales','MTD Sales'),     fmtAmt(stats?.mtd_sales||0),  '#0891b2'],
               ].map(([l,v,c])=>(
                 <div key={l} style={{background:'#fff',borderRadius:12,padding:'1.25rem',border:'1px solid #e5e3de',borderTop:`3px solid ${c}`}}>
                   <div style={{fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>{l}</div>
@@ -329,12 +334,12 @@ export default function AdminPage(){
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
               <div style={{padding:'1rem 1.25rem',fontWeight:700,borderBottom:'1px solid #e5e3de',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                <span>Recent Petrol Bunks</span>
-                <button style={btn()} onClick={()=>openModal('station')}><Plus size={14}/>New Bunk</button>
+                <span>{tc('adminp.recentPetrolBunks', 'Recent Petrol Bunks')}</span>
+                <button style={btn()} onClick={()=>openModal('station')}><Plus size={14}/>{tc('adminp.newBunk', 'New Bunk')}</button>
               </div>
               <table style={{width:'100%',borderCollapse:'collapse'}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {['Station','City','Plan','Status'].map(h=>(
+                  {[tc('adminp.colStation','Station'),tc('adminp.colCity','City'),tc('adminp.colPlan','Plan'),tc('adminp.colStatus','Status')].map(h=>(
                     <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
                   ))}
                 </tr></thead>
@@ -357,65 +362,65 @@ export default function AdminPage(){
         {tab==='groups'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Owner Groups</h1>
-              <button style={btn()} onClick={()=>openModal('group')}><Plus size={15}/>New Group</button>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.ownerGroups', 'Owner Groups')}</h1>
+              <button style={btn()} onClick={()=>openModal('group')}><Plus size={15}/>{tc('adminp.newGroup', 'New Group')}</button>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(360px,1fr))',gap:'1rem'}}>
               {groups.map(g=>(
                 <div key={g.id} style={{background:'#fff',borderRadius:12,padding:'1.5rem',border:'1px solid #e5e3de',borderTop:`3px solid ${g.is_active?'#FF6B00':'#ccc'}`}}>
                   <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{g.name}</div>
-                  <div style={{fontSize:12,color:'#888',marginBottom:'0.75rem'}}>{g.description||'No description'}</div>
+                  <div style={{fontSize:12,color:'#888',marginBottom:'0.75rem'}}>{g.description||tc('adminp.noDescription','No description')}</div>
                   <div style={{fontSize:12,color:'#555',marginBottom:'0.5rem',fontWeight:600}}>
-                    👥 {g.owner_count||0} owners · ⛽ {g.station_count||0} bunks
+                    👥 {tc('adminp.ownersBunksCount','{owners} owners · ⛽ {bunks} bunks').replace('{owners}',g.owner_count||0).replace('{bunks}',g.station_count||0)}
                   </div>
 
                   {/* Owners sub-grid */}
                   <div style={{background:'#f8f7f5',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.5rem'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>Owners</span>
+                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>{tc('adminp.owners', 'Owners')}</span>
                       <button style={{...btn('#f0fff4','#15803d'),height:24,padding:'0 8px',fontSize:11}}
-                        onClick={()=>openModal('addMember',{group_id:g.id,group_name:g.name})}><Plus size={11}/>Add</button>
+                        onClick={()=>openModal('addMember',{group_id:g.id,group_name:g.name})}><Plus size={11}/>{tc('adminp.add', 'Add')}</button>
                     </div>
                     {groupMembers[g.id]
                       ? groupMembers[g.id].length===0
-                        ? <div style={{color:'#aaa',fontSize:11}}>No owners yet</div>
+                        ? <div style={{color:'#aaa',fontSize:11}}>{tc('adminp.noOwnersYet', 'No owners yet')}</div>
                         : groupMembers[g.id].map(m=>(
                           <div key={m.user_id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0',borderBottom:'1px solid #ece9e4'}}>
                             <span style={{fontWeight:600}}>{m.owner_name}</span>
                             <button style={{fontSize:10,padding:'1px 6px',background:'#fee2e2',border:'none',borderRadius:4,cursor:'pointer',color:'#991b1b'}}
-                              onClick={()=>adminFetch(`/groups/${g.id}/members/${m.user_id}`,{method:'DELETE'}).then(()=>{loadGroupMembers(g.id);reload();})}>Remove</button>
+                              onClick={()=>adminFetch(`/groups/${g.id}/members/${m.user_id}`,{method:'DELETE'}).then(()=>{loadGroupMembers(g.id);reload();})}>{tc('adminp.remove', 'Remove')}</button>
                           </div>
                         ))
-                      : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupMembers(g.id)}>Click to view</button>
+                      : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupMembers(g.id)}>{tc('adminp.clickToView', 'Click to view')}</button>
                     }
                   </div>
 
                   {/* Bunks sub-grid */}
                   <div style={{background:'#f0f9ff',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.75rem'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>Petrol Bunks</span>
+                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>{tc('adminp.petrolBunks', 'Petrol Bunks')}</span>
                       <button style={{...btn('#f0fff4','#15803d'),height:24,padding:'0 8px',fontSize:11}}
-                        onClick={()=>{ loadGroupStations(g.id); openModal('addBunk',{group_id:g.id,group_name:g.name}); }}><Plus size={11}/>Add</button>
+                        onClick={()=>{ loadGroupStations(g.id); openModal('addBunk',{group_id:g.id,group_name:g.name}); }}><Plus size={11}/>{tc('adminp.add', 'Add')}</button>
                     </div>
                     {groupStations[g.id]
                       ? groupStations[g.id].length===0
-                        ? <div style={{color:'#aaa',fontSize:11}}>No bunks</div>
+                        ? <div style={{color:'#aaa',fontSize:11}}>{tc('adminp.noBunks', 'No bunks')}</div>
                         : groupStations[g.id].map(s=>(
                           <div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0',borderBottom:'1px solid #e0eefb'}}>
                             <span style={{fontWeight:600}}>{s.name}</span>
                             <div style={{display:'flex',alignItems:'center',gap:6}}>
                               <SubBadge plan={s.plan} status={s.sub_status}/>
                               <button style={{fontSize:10,padding:'1px 6px',background:'#fee2e2',border:'none',borderRadius:4,cursor:'pointer',color:'#991b1b'}}
-                                onClick={()=>adminFetch(`/groups/${g.id}/stations/${s.id}`,{method:'DELETE'}).then(()=>{loadGroupStations(g.id);reload();showToast('Bunk removed.');})}>Remove</button>
+                                onClick={()=>adminFetch(`/groups/${g.id}/stations/${s.id}`,{method:'DELETE'}).then(()=>{loadGroupStations(g.id);reload();showToast(tc('adminp.bunkRemoved','Bunk removed.'));})}>{tc('adminp.remove', 'Remove')}</button>
                             </div>
                           </div>
                         ))
-                      : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupStations(g.id)}>Click to view</button>
+                      : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupStations(g.id)}>{tc('adminp.clickToView', 'Click to view')}</button>
                     }
                   </div>
 
                   <div style={{display:'flex',gap:6}}>
-                    <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('group',{id:g.id,name:g.name,description:g.description})}><Edit2 size={12}/>Edit</button>
+                    <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('group',{id:g.id,name:g.name,description:g.description})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
                   </div>
                 </div>
               ))}
@@ -427,13 +432,13 @@ export default function AdminPage(){
         {tab==='owners'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Owners</h1>
-              <button style={btn()} onClick={()=>openModal('owner')}><Plus size={15}/>New Owner</button>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.ownersHeading', 'Owners')}</h1>
+              <button style={btn()} onClick={()=>openModal('owner')}><Plus size={15}/>{tc('adminp.newOwner', 'New Owner')}</button>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
               <table style={{width:'100%',borderCollapse:'collapse'}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {['Name','Mobile','Email','Bunks','Actions'].map(h=>(
+                  {[tc('adminp.colName','Name'),tc('adminp.colMobile','Mobile'),tc('adminp.colEmail','Email'),tc('adminp.colBunks','Bunks'),tc('adminp.colActions','Actions')].map(h=>(
                     <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
                   ))}
                 </tr></thead>
@@ -446,8 +451,8 @@ export default function AdminPage(){
                       <td style={{padding:'11px 14px'}}>{o.station_count||0}</td>
                       <td style={{padding:'11px 14px'}}>
                         <div style={{display:'flex',gap:5}}>
-                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editOwner',{id:o.id,name:o.name,email:o.email,phone:(o.phone||'').replace('+91','')})}><Edit2 size={12}/>Edit</button>
-                          <button style={btn('#fff7ed','#9a3412')} onClick={()=>resetPassword(o.id)}><Key size={12}/>Reset PW</button>
+                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editOwner',{id:o.id,name:o.name,email:o.email,phone:(o.phone||'').replace('+91','')})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
+                          <button style={btn('#fff7ed','#9a3412')} onClick={()=>resetPassword(o.id)}><Key size={12}/>{tc('adminp.resetPw', 'Reset PW')}</button>
                         </div>
                       </td>
                     </tr>
@@ -462,13 +467,13 @@ export default function AdminPage(){
         {tab==='stations'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Petrol Bunks</h1>
-              <button style={btn()} onClick={()=>openModal('station')}><Plus size={15}/>New Petrol Bunk</button>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.petrolBunksHeading', 'Petrol Bunks')}</h1>
+              <button style={btn()} onClick={()=>openModal('station')}><Plus size={15}/>{tc('adminp.newPetrolBunk', 'New Petrol Bunk')}</button>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
               <table style={{width:'100%',borderCollapse:'collapse'}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {['Station','City','Oil Co.','Plan / Status','Start','End','Actions'].map(h=>(
+                  {[tc('adminp.colStation','Station'),tc('adminp.colCity','City'),tc('adminp.colOilCo','Oil Co.'),tc('adminp.colPlanStatus','Plan / Status'),tc('adminp.colStart','Start'),tc('adminp.colEnd','End'),tc('adminp.colActions','Actions')].map(h=>(
                     <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
                   ))}
                 </tr></thead>
@@ -480,11 +485,11 @@ export default function AdminPage(){
                       <td style={{padding:'11px 14px',fontSize:12}}>{s.oil_company||'—'}</td>
                       <td style={{padding:'11px 14px'}}><SubBadge plan={s.plan} status={s.sub_status}/></td>
                       <td style={{padding:'11px 14px',fontSize:12,fontFamily:'monospace'}}>{s.start_date||'—'}</td>
-                      <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date||<span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>Active</span>}</td>
+                      <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date||<span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>{tc('adminp.active', 'Active')}</span>}</td>
                       <td style={{padding:'11px 14px'}}>
                         <div style={{display:'flex',gap:5}}>
-                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company,owner_id:(s.owner_ids&&s.owner_ids[0])||'',owner_group_id:s.owner_group_id||''})}><Edit2 size={12}/>Edit</button>
-                          <button style={btn('#fff7ed','#9a3412')} onClick={()=>{setForm({station_id:s.id,plan:s.plan||'pro',status:s.sub_status||'active',start_date:s.start_date||todayIST(),end_date:s.end_date||''});setModal({type:'editSub',data:s});}}><Calendar size={12}/>Plan</button>
+                          <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company,owner_id:(s.owner_ids&&s.owner_ids[0])||'',owner_group_id:s.owner_group_id||''})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
+                          <button style={btn('#fff7ed','#9a3412')} onClick={()=>{setForm({station_id:s.id,plan:s.plan||'pro',status:s.sub_status||'active',start_date:s.start_date||todayIST(),end_date:s.end_date||''});setModal({type:'editSub',data:s});}}><Calendar size={12}/>{tc('adminp.plan', 'Plan')}</button>
                         </div>
                       </td>
                     </tr>
@@ -498,7 +503,7 @@ export default function AdminPage(){
         {/* ── Plans ── */}
         {tab==='plans'&&(
           <div>
-            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>Plans</h1>
+            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>{tc('adminp.plansHeading', 'Plans')}</h1>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem'}}>
               {['starter','pro','enterprise'].map(planName=>{
                 const plan=plans.find(p=>p.name===planName);
@@ -508,19 +513,19 @@ export default function AdminPage(){
                   <div key={planName} style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
                     <div style={{background:pb,padding:'1rem 1.25rem',borderBottom:`2px solid ${pt}`}}>
                       <div style={{fontSize:18,fontWeight:800,color:pt}}>{planName.toUpperCase()}</div>
-                      <div style={{fontSize:13,color:pt,opacity:.8,marginTop:2}}>{plan?`₹${Number(plan.price_per_month||0).toLocaleString('en-IN')}/month`:'Not configured'}</div>
+                      <div style={{fontSize:13,color:pt,opacity:.8,marginTop:2}}>{plan?tc('adminp.perMonthPrice','₹{price}/month').replace('{price}',Number(plan.price_per_month||0).toLocaleString('en-IN')):tc('adminp.notConfigured','Not configured')}</div>
                     </div>
                     <div style={{padding:'1rem 1.25rem'}}>
                       <div style={{marginBottom:'0.75rem'}}>
-                        <label style={{fontSize:12,fontWeight:600,color:'#555',display:'block',marginBottom:4}}>Price/month (₹)</label>
-                        <input style={{...inp}} type="number" placeholder="e.g. 999" defaultValue={plan?.price_per_month||''} id={`price-${planName}`}/>
+                        <label style={{fontSize:12,fontWeight:600,color:'#555',display:'block',marginBottom:4}}>{tc('adminp.pricePerMonthLabel', 'Price/month (₹)')}</label>
+                        <input style={{...inp}} type="number" placeholder={tc('adminp.pricePlaceholder','e.g. 999')} defaultValue={plan?.price_per_month||''} id={`price-${planName}`}/>
                       </div>
                       <div style={{marginBottom:'0.75rem'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                          <div style={{fontSize:12,fontWeight:600,color:'#555'}}>Functions included ({(planFeat[planName]||[]).length}/{modules.length})</div>
+                          <div style={{fontSize:12,fontWeight:600,color:'#555'}}>{tc('adminp.functionsIncluded','Functions included ({sel}/{total})').replace('{sel}',(planFeat[planName]||[]).length).replace('{total}',modules.length)}</div>
                           <div style={{display:'flex',gap:8}}>
-                            <button style={{fontSize:11,background:'none',border:'none',color:'#1A5F7A',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:modules.map(m=>m.code)}))}>All</button>
-                            <button style={{fontSize:11,background:'none',border:'none',color:'#991b1b',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:[]}))}>None</button>
+                            <button style={{fontSize:11,background:'none',border:'none',color:'#1A5F7A',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:modules.map(m=>m.code)}))}>{tc('adminp.all', 'All')}</button>
+                            <button style={{fontSize:11,background:'none',border:'none',color:'#991b1b',cursor:'pointer'}} onClick={()=>setPlanFeat(p=>({...p,[planName]:[]}))}>{tc('adminp.none', 'None')}</button>
                           </div>
                         </div>
                         <div style={{maxHeight:260,overflowY:'auto',border:'1px solid #eee',borderRadius:8,padding:'6px 8px'}}>
@@ -539,10 +544,10 @@ export default function AdminPage(){
                             </div>
                           ))}
                         </div>
-                        <div style={{fontSize:11,color:'#888',marginTop:4}}>Outlets on this plan can only use the ticked functions. Leave all unticked = no gating (fail-open).</div>
+                        <div style={{fontSize:11,color:'#888',marginTop:4}}>{tc('adminp.gatingHelp', 'Outlets on this plan can only use the ticked functions. Leave all unticked = no gating (fail-open).')}</div>
                       </div>
                       <button style={{...btn(),width:'100%',justifyContent:'center'}}
-                        onClick={async()=>{const price=document.getElementById(`price-${planName}`).value;await adminFetch('/plans',{method:'POST',body:JSON.stringify({name:planName,price_per_month:parseFloat(price)||0,features:planFeat[planName]||[]})});reload();showToast('Saved!');}}>Save {planName.toUpperCase()}</button>
+                        onClick={async()=>{const price=document.getElementById(`price-${planName}`).value;await adminFetch('/plans',{method:'POST',body:JSON.stringify({name:planName,price_per_month:parseFloat(price)||0,features:planFeat[planName]||[]})});reload();showToast(tc('adminp.saved','Saved!'));}}>{tc('adminp.savePlan','Save {plan}').replace('{plan}',planName.toUpperCase())}</button>
                     </div>
                   </div>
                 );
@@ -552,18 +557,18 @@ export default function AdminPage(){
             {/* ── Tier comparison matrix (demo / explainer) ── */}
             <div style={{marginTop:'2rem',background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
               <div style={{padding:'1rem 1.25rem',borderBottom:'1px solid #eee'}}>
-                <div style={{fontSize:16,fontWeight:800}}>Tier comparison</div>
-                <div style={{fontSize:12,color:'#888',marginTop:2}}>What each tier includes vs. withholds (reflects the selections above). Great for walking a customer through the upgrade story.</div>
+                <div style={{fontSize:16,fontWeight:800}}>{tc('adminp.tierComparison', 'Tier comparison')}</div>
+                <div style={{fontSize:12,color:'#888',marginTop:2}}>{tc('adminp.tierComparisonHelp', 'What each tier includes vs. withholds (reflects the selections above). Great for walking a customer through the upgrade story.')}</div>
               </div>
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                   <thead>
                     <tr style={{background:'#faf9f7'}}>
-                      <th style={{textAlign:'left',padding:'8px 12px',fontWeight:700,color:'#555',position:'sticky',left:0,background:'#faf9f7'}}>Function</th>
+                      <th style={{textAlign:'left',padding:'8px 12px',fontWeight:700,color:'#555',position:'sticky',left:0,background:'#faf9f7'}}>{tc('adminp.functionColumn', 'Function')}</th>
                       {['starter','pro','enterprise'].map(pn=>{const[pb,pt]=PLAN_COLORS[pn];return(
                         <th key={pn} style={{padding:'8px 12px',textAlign:'center',color:pt,fontWeight:800,minWidth:110}}>
                           {pn.toUpperCase()}
-                          <div style={{fontSize:11,fontWeight:600,opacity:.8}}>{(planFeat[pn]||[]).length} functions</div>
+                          <div style={{fontSize:11,fontWeight:600,opacity:.8}}>{tc('adminp.nFunctions','{n} functions').replace('{n}',(planFeat[pn]||[]).length)}</div>
                         </th>
                       );})}
                     </tr>
@@ -594,11 +599,9 @@ export default function AdminPage(){
         {tab==='alertdefs'&&(
           <div>
             <div style={{marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>AI Chat</h1>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.aiChatHeading', 'AI Chat')}</h1>
               <p style={{fontSize:13,color:'#888',marginTop:4,maxWidth:560}}>
-                The in-app AI assistant is a plan feature. Enable it for the plans that should include it —
-                outlets on those plans get AI Chat. (WhatsApp chat has been discontinued; operational alerts
-                are now in-app.)
+                {tc('adminp.aiChatIntro', 'The in-app AI assistant is a plan feature. Enable it for the plans that should include it — outlets on those plans get AI Chat. (WhatsApp chat has been discontinued; operational alerts are now in-app.)')}
               </p>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden',maxWidth:520}}>
@@ -608,7 +611,7 @@ export default function AdminPage(){
                   <div key={planName} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'1rem 1.25rem',borderBottom:'1px solid #f0f0f0'}}>
                     <div>
                       <div style={{fontWeight:700,fontSize:14}}>{planName.toUpperCase()}</div>
-                      <div style={{fontSize:12,color:'#888'}}>AI assistant {on?'enabled':'disabled'} for this plan</div>
+                      <div style={{fontSize:12,color:'#888'}}>{on?tc('adminp.aiAssistantEnabledForPlan','AI assistant enabled for this plan'):tc('adminp.aiAssistantDisabledForPlan','AI assistant disabled for this plan')}</div>
                     </div>
                     <button onClick={async()=>{
                       const cur=planFeat[planName]||[];
@@ -616,7 +619,7 @@ export default function AdminPage(){
                       setPlanFeat(p=>({...p,[planName]:next}));
                       const price=(plans.find(pp=>pp.name===planName)?.price_per_month)||0;
                       await adminFetch('/plans',{method:'POST',body:JSON.stringify({name:planName,price_per_month:price,features:next})});
-                      reload(); showToast(on?'AI Chat disabled':'AI Chat enabled');
+                      reload(); showToast(on?tc('adminp.aiChatDisabledToast','AI Chat disabled'):tc('adminp.aiChatEnabledToast','AI Chat enabled'));
                     }} style={{background:'none',border:'none',cursor:'pointer',color:on?'#16a34a':'#ccc'}}>
                       {on?<ToggleRight size={30}/>:<ToggleLeft size={30}/>}
                     </button>
@@ -625,9 +628,7 @@ export default function AdminPage(){
               })}
             </div>
             <p style={{fontSize:12,color:'#aaa',marginTop:'1rem',maxWidth:520}}>
-              This toggles the “AI Assistant” function on each plan (same as ticking it under Plans). Configure the
-              plan’s full function list under <strong>Plans</strong> first; Responsibilities can further restrict who
-              within an outlet may use the AI chat.
+              {tc('adminp.aiChatFootnotePre', 'This toggles the “AI Assistant” function on each plan (same as ticking it under Plans). Configure the plan’s full function list under')} <strong>{tc('adminp.tabPlans', 'Plans')}</strong> {tc('adminp.aiChatFootnotePost', 'first; Responsibilities can further restrict who within an outlet may use the AI chat.')}
             </p>
           </div>
         )}
@@ -635,37 +636,37 @@ export default function AdminPage(){
         {/* ── Users & Roles ── */}
         {tab==='stationusers'&&(
           <div>
-            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>Users & Roles</h1>
+            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'1.5rem'}}>{tc('adminp.usersRolesHeading', 'Users & Roles')}</h1>
             <div style={{display:'flex',gap:12,alignItems:'flex-end',marginBottom:'1.5rem',flexWrap:'wrap'}}>
               <div>
-                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4,color:'#555'}}>Select Petrol Bunk</label>
+                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4,color:'#555'}}>{tc('adminp.selectPetrolBunk', 'Select Petrol Bunk')}</label>
                 <select style={{...inp,width:260}} value={selStation} onChange={e=>{setSelStation(e.target.value);loadStationUsers(e.target.value);loadStTemplates(e.target.value);}}>
-                  <option value="">Select a petrol bunk...</option>
+                  <option value="">{tc('adminp.selectPetrolBunkOption', 'Select a petrol bunk...')}</option>
                   {stations.map(s=><option key={s.id} value={s.id}>{s.name} — {s.city||''}</option>)}
                 </select>
               </div>
-              {selStation&&<button style={btn()} onClick={()=>openModal('stationUser',{station_id:selStation})}><UserPlus size={14}/>Add User</button>}
+              {selStation&&<button style={btn()} onClick={()=>openModal('stationUser',{station_id:selStation})}><UserPlus size={14}/>{tc('adminp.addUser', 'Add User')}</button>}
             </div>
 
             {/* Responsibilities (role templates) for this bunk */}
             {selStation&&(
               <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1rem 1.25rem',marginBottom:'1.5rem'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{fontWeight:700,fontSize:14}}>Responsibilities <span style={{fontWeight:400,color:'#888',fontSize:12}}>· function sets you assign to users (capped by the bunk’s plan)</span></div>
-                  <button style={btn('#f0fff4','#15803d')} onClick={()=>openModal('responsibility',{station_id:selStation,permissions:[]})}><Plus size={13}/>New Responsibility</button>
+                  <div style={{fontWeight:700,fontSize:14}}>{tc('adminp.responsibilities', 'Responsibilities')} <span style={{fontWeight:400,color:'#888',fontSize:12}}>{tc('adminp.responsibilitiesSub', '· function sets you assign to users (capped by the bunk’s plan)')}</span></div>
+                  <button style={btn('#f0fff4','#15803d')} onClick={()=>openModal('responsibility',{station_id:selStation,permissions:[]})}><Plus size={13}/>{tc('adminp.newResponsibility', 'New Responsibility')}</button>
                 </div>
                 {stTemplates.length===0
-                  ? <div style={{color:'#aaa',fontSize:13}}>No responsibilities yet. Users fall back to their system-role defaults.</div>
+                  ? <div style={{color:'#aaa',fontSize:13}}>{tc('adminp.noResponsibilitiesYet', 'No responsibilities yet. Users fall back to their system-role defaults.')}</div>
                   : <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
                       {stTemplates.map(t=>(
                         <div key={t.id} style={{display:'flex',alignItems:'center',gap:8,background:'#f8f7f5',borderRadius:8,padding:'6px 10px',fontSize:13}}>
                           <span style={{fontWeight:600}}>{t.name}</span>
-                          <span style={{color:'#888',fontSize:11}}>{(t.permissions||[]).length} fn · {t.user_count||0} user(s)</span>
+                          <span style={{color:'#888',fontSize:11}}>{tc('adminp.fnUsersCount','{fn} fn · {users} user(s)').replace('{fn}',(t.permissions||[]).length).replace('{users}',t.user_count||0)}</span>
                           {!t.is_system&&<>
-                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#1A5F7A'}} title="Edit"
+                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#1A5F7A'}} title={tc('adminp.edit','Edit')}
                               onClick={()=>openModal('responsibility',{id:t.id,station_id:selStation,name:t.name,description:t.description,permissions:t.permissions||[]})}><Edit2 size={13}/></button>
-                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b'}} title="Delete"
-                              onClick={()=>{ if(confirm(`Delete responsibility "${t.name}"?`)) adminFetch(`/templates/${t.id}`,{method:'DELETE'}).then(()=>{loadStTemplates(selStation);showToast('Deleted.');}); }}><Trash2 size={13}/></button>
+                            <button style={{background:'none',border:'none',cursor:'pointer',color:'#991b1b'}} title={tc('adminp.delete','Delete')}
+                              onClick={()=>{ if(confirm(tc('adminp.deleteResponsibilityConfirm','Delete responsibility "{name}"?').replace('{name}',t.name))) adminFetch(`/templates/${t.id}`,{method:'DELETE'}).then(()=>{loadStTemplates(selStation);showToast(tc('adminp.deleted','Deleted.'));}); }}><Trash2 size={13}/></button>
                           </>}
                         </div>
                       ))}
@@ -674,16 +675,16 @@ export default function AdminPage(){
               </div>
             )}
             {!selStation
-              ? <div style={{background:'#fff',borderRadius:12,border:'1px dashed #ddd',padding:'3rem',textAlign:'center',color:'#aaa'}}>Select a petrol bunk above</div>
+              ? <div style={{background:'#fff',borderRadius:12,border:'1px dashed #ddd',padding:'3rem',textAlign:'center',color:'#aaa'}}>{tc('adminp.selectBunkAbove', 'Select a petrol bunk above')}</div>
               : <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'hidden'}}>
                   <table style={{width:'100%',borderCollapse:'collapse'}}>
                     <thead><tr style={{background:'#f8f7f5'}}>
-                      {['Name','Mobile','Role','Responsibility','Status','Actions'].map(h=>(
+                      {[tc('adminp.colName','Name'),tc('adminp.colMobile','Mobile'),tc('adminp.colRole','Role'),tc('adminp.colResponsibility','Responsibility'),tc('adminp.colStatus','Status'),tc('adminp.colActions','Actions')].map(h=>(
                         <th key={h} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{h}</th>
                       ))}
                     </tr></thead>
                     <tbody>
-                      {stationUsers.length===0&&<tr><td colSpan={6} style={{textAlign:'center',padding:'2rem',color:'#aaa'}}>No users yet</td></tr>}
+                      {stationUsers.length===0&&<tr><td colSpan={6} style={{textAlign:'center',padding:'2rem',color:'#aaa'}}>{tc('adminp.noUsersYet', 'No users yet')}</td></tr>}
                       {stationUsers.map(u=>(
                         <tr key={u.id} style={{borderBottom:'1px solid #f0f0f0'}}>
                           <td style={{padding:'11px 14px',fontWeight:600}}>{u.name}</td>
@@ -692,15 +693,15 @@ export default function AdminPage(){
                           <td style={{padding:'11px 14px'}}>
                             <select value={u.template_id||''} onChange={e=>assignResp(u.id,e.target.value)}
                               style={{padding:'4px 8px',borderRadius:7,border:'1px solid #e5e7eb',fontSize:12,background:'#fff',cursor:'pointer'}}>
-                              <option value="">Default (role)</option>
+                              <option value="">{tc('adminp.defaultRole', 'Default (role)')}</option>
                               {stTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                           </td>
-                          <td style={{padding:'11px 14px'}}><span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:600,background:u.is_active?'#dcfce7':'#fee2e2',color:u.is_active?'#15803d':'#991b1b'}}>{u.is_active?'Active':'Inactive'}</span></td>
+                          <td style={{padding:'11px 14px'}}><span style={{padding:'2px 8px',borderRadius:99,fontSize:11,fontWeight:600,background:u.is_active?'#dcfce7':'#fee2e2',color:u.is_active?'#15803d':'#991b1b'}}>{u.is_active?tc('adminp.active','Active'):tc('adminp.inactive','Inactive')}</span></td>
                           <td style={{padding:'11px 14px'}}>
                             <div style={{display:'flex',gap:5}}>
-                              <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStationUser',{id:u.id,name:u.name,email:u.email,role:u.role,phone:(u.phone||'').replace('+91','')})}><Edit2 size={12}/>Edit</button>
-                              <button style={btn('#fff7ed','#9a3412')} onClick={()=>resetPassword(u.id)}><Key size={12}/>Reset PW</button>
+                              <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStationUser',{id:u.id,name:u.name,email:u.email,role:u.role,phone:(u.phone||'').replace('+91','')})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
+                              <button style={btn('#fff7ed','#9a3412')} onClick={()=>resetPassword(u.id)}><Key size={12}/>{tc('adminp.resetPw', 'Reset PW')}</button>
                             </div>
                           </td>
                         </tr>
@@ -716,18 +717,18 @@ export default function AdminPage(){
         {tab==='leads'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
-              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>Leads <span style={{fontSize:14,color:'#888',fontWeight:500}}>({sortedLeads.length})</span></h1>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.leadsHeading', 'Leads')} <span style={{fontSize:14,color:'#888',fontWeight:500}}>({sortedLeads.length})</span></h1>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
                 <label style={{fontSize:12.5,color:'#666',display:'flex',alignItems:'center',gap:5,cursor:'pointer'}}>
-                  <input type="checkbox" checked={hideClosed} onChange={e=>setHideClosed(e.target.checked)}/> Hide closed
+                  <input type="checkbox" checked={hideClosed} onChange={e=>setHideClosed(e.target.checked)}/> {tc('adminp.hideClosed', 'Hide closed')}
                 </label>
-                <button style={btn()} onClick={()=>openModal('lead',{source:'website',status:'new'})}><Plus size={15}/>Add Lead</button>
+                <button style={btn()} onClick={()=>openModal('lead',{source:'website',status:'new'})}><Plus size={15}/>{tc('adminp.addLead', 'Add Lead')}</button>
               </div>
             </div>
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:980}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {[['Date','created_at'],['Name','name'],['Phone',null],['Bunk','station_name'],['City','city'],['State','state'],['Source','source'],['Status','status'],['Notes',null],['',null]].map(([h,field],i)=>(
+                  {[[tc('adminp.colDate','Date'),'created_at'],[tc('adminp.colName','Name'),'name'],[tc('adminp.colPhone','Phone'),null],[tc('adminp.colBunk','Bunk'),'station_name'],[tc('adminp.colCity','City'),'city'],[tc('adminp.colState','State'),'state'],[tc('adminp.colSource','Source'),'source'],[tc('adminp.colStatus','Status'),'status'],[tc('adminp.colNotes','Notes'),null],['',null]].map(([h,field],i)=>(
                     <th key={i} onClick={()=>field&&sortLeads(field)}
                       style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de',cursor:field?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'}}>
                       {h}{field&&leadSort.field===field?(leadSort.dir==='asc'?' ▲':' ▼'):''}
@@ -735,7 +736,7 @@ export default function AdminPage(){
                   ))}
                 </tr></thead>
                 <tbody>
-                  {sortedLeads.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>No leads</td></tr>}
+                  {sortedLeads.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>{tc('adminp.noLeads', 'No leads')}</td></tr>}
                   {sortedLeads.map(l=>{
                     const m = LEAD_STATUS.find(x=>x[0]===l.status) || ['','','#f3f4f6','#374151'];
                     const sb = m[2], st = m[3];
@@ -751,17 +752,17 @@ export default function AdminPage(){
                         <td style={{padding:'10px 12px'}}>
                           <select value={l.status} onChange={e=>patchLead(l.id,{status:e.target.value})}
                             style={{padding:'4px 8px',borderRadius:99,border:'none',fontSize:11,fontWeight:600,background:sb,color:st,cursor:'pointer'}}>
-                            {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{lab}</option>)}
+                            {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{tc('adminp.leadStatus_'+v,lab)}</option>)}
                           </select>
                         </td>
                         <td style={{padding:'10px 12px',minWidth:180}}>
-                          <input defaultValue={l.notes||''} placeholder="Add note…"
+                          <input defaultValue={l.notes||''} placeholder={tc('adminp.addNotePlaceholder','Add note…')}
                             onBlur={e=>{ if(e.target.value!==(l.notes||'')) patchLead(l.id,{notes:e.target.value}); }}
                             style={{width:'100%',padding:'5px 8px',border:'1px solid #e5e7eb',borderRadius:6,fontSize:12,outline:'none'}}/>
                         </td>
                         <td style={{padding:'10px 12px'}}>
-                          <button style={btn('#fee2e2','#991b1b')} title="Delete"
-                            onClick={()=>{ if(confirm('Delete this lead?')) adminFetch(`/leads/${l.id}`,{method:'DELETE'}).then(()=>{loadLeads();showToast('Deleted.');}); }}><Trash2 size={12}/></button>
+                          <button style={btn('#fee2e2','#991b1b')} title={tc('adminp.delete','Delete')}
+                            onClick={()=>{ if(confirm(tc('adminp.deleteLeadConfirm','Delete this lead?'))) adminFetch(`/leads/${l.id}`,{method:'DELETE'}).then(()=>{loadLeads();showToast(tc('adminp.deleted','Deleted.'));}); }}><Trash2 size={12}/></button>
                         </td>
                       </tr>
                     );
@@ -776,127 +777,127 @@ export default function AdminPage(){
       {/* ── Modals ── */}
 
       {modal?.type==='group'&&(
-        <Modal title={form.id?'Edit Group':'New Owner Group'} onClose={closeModal}>
-          <Field label="Group Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Description"><input style={inp} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(form.id?`/groups/${form.id}`:'/groups',form.id?'PATCH':'POST')} disabled={loading}>{loading?'Saving...':form.id?'Save':'Create'}</button>
+        <Modal title={form.id?tc('adminp.editGroup','Edit Group'):tc('adminp.newOwnerGroup','New Owner Group')} onClose={closeModal}>
+          <Field label={tc('adminp.groupName','Group Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.description','Description')}><input style={inp} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(form.id?`/groups/${form.id}`:'/groups',form.id?'PATCH':'POST')} disabled={loading}>{loading?tc('adminp.saving','Saving...'):form.id?tc('adminp.save','Save'):tc('adminp.create','Create')}</button>
         </Modal>
       )}
 
       {modal?.type==='addMember'&&(
-        <Modal title={`Add Owner to: ${modal.data.group_name}`} onClose={closeModal}>
-          <Field label="Select Owner" required>
+        <Modal title={tc('adminp.addOwnerTo','Add Owner to: {group}').replace('{group}',modal.data.group_name)} onClose={closeModal}>
+          <Field label={tc('adminp.selectOwner','Select Owner')} required>
             <select style={inp} value={form.user_id||''} onChange={e=>f('user_id',e.target.value)}>
-              <option value="">Select...</option>
+              <option value="">{tc('adminp.selectDots','Select...')}</option>
               {owners.map(o=><option key={o.id} value={o.id}>{o.name} — {(o.phone||'').replace('+91','')}</option>)}
             </select>
           </Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/groups/${modal.data.group_id}/members`).then(()=>loadGroupMembers(modal.data.group_id))} disabled={loading}>{loading?'Adding...':'Add to Group'}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/groups/${modal.data.group_id}/members`).then(()=>loadGroupMembers(modal.data.group_id))} disabled={loading}>{loading?tc('adminp.adding','Adding...'):tc('adminp.addToGroup','Add to Group')}</button>
         </Modal>
       )}
 
       {modal?.type==='owner'&&(
-        <Modal title="New Owner" onClose={closeModal}>
-          <Field label="Full Name" required><input style={inp} placeholder="Rajesh Kumar" value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Mobile (10 digits)" required>
+        <Modal title={tc('adminp.newOwnerModal','New Owner')} onClose={closeModal}>
+          <Field label={tc('adminp.fullName','Full Name')} required><input style={inp} placeholder={tc('adminp.namePlaceholder','Rajesh Kumar')} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile10','Mobile (10 digits)')} required>
             <div style={{display:'flex',gap:8}}><span style={{background:'#f5f5f5',padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',fontSize:14,color:'#666'}}>+91</span>
             <input style={{...inp,flex:1}} maxLength={10} value={form.phone||''} onChange={e=>f('phone',e.target.value.replace(/\D/g,'').slice(0,10))}/></div>
           </Field>
-          <Field label="Email"><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
-          <Field label="Password"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Default: Welcome@123"/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/owners')} disabled={loading}>{loading?'Creating...':'Create Owner'}</button>
+          <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
+          <Field label={tc('adminp.password','Password')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.defaultWelcome','Default: Welcome@123')}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/owners')} disabled={loading}>{loading?tc('adminp.creating','Creating...'):tc('adminp.createOwner','Create Owner')}</button>
         </Modal>
       )}
 
       {modal?.type==='editOwner'&&(
-        <Modal title="Edit Owner" onClose={closeModal}>
-          <Field label="Full Name"><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Mobile (10 digits)">
+        <Modal title={tc('adminp.editOwnerModal','Edit Owner')} onClose={closeModal}>
+          <Field label={tc('adminp.fullName','Full Name')}><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile10','Mobile (10 digits)')}>
             <div style={{display:'flex',gap:8}}><span style={{background:'#f5f5f5',padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',fontSize:14,color:'#666'}}>+91</span>
             <input style={{...inp,flex:1}} maxLength={10} value={form.phone||''} onChange={e=>f('phone',e.target.value.replace(/\D/g,'').slice(0,10))}/></div>
           </Field>
-          <Field label="Email"><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
-          <Field label="New Password (blank = keep)"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Leave blank to keep"/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/owners/${form.id}`,'PATCH')} disabled={loading}>{loading?'Saving...':'Save Changes'}</button>
+          <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
+          <Field label={tc('adminp.newPasswordBlank','New Password (blank = keep)')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.leaveBlankToKeep','Leave blank to keep')}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/owners/${form.id}`,'PATCH')} disabled={loading}>{loading?tc('adminp.saving','Saving...'):tc('adminp.saveChanges','Save Changes')}</button>
         </Modal>
       )}
 
       {(modal?.type==='station'||modal?.type==='editStation')&&(
-        <Modal title={modal.type==='editStation'?'Edit Petrol Bunk':'New Petrol Bunk'} onClose={closeModal}>
-          <Field label="Station Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+        <Modal title={modal.type==='editStation'?tc('adminp.editPetrolBunk','Edit Petrol Bunk'):tc('adminp.newPetrolBunkModal','New Petrol Bunk')} onClose={closeModal}>
+          <Field label={tc('adminp.stationName','Station Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="State" required>
+            <Field label={tc('adminp.state','State')} required>
               <select style={inp} value={form.state||''} onChange={e=>f('state',e.target.value)}>
-                <option value="">Select...</option>
+                <option value="">{tc('adminp.selectDots','Select...')}</option>
                 {INDIAN_STATES.map(s=><option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
-            <Field label="City" required>
+            <Field label={tc('adminp.city','City')} required>
               <select style={inp} value={form.city||''} onChange={e=>f('city',e.target.value)} disabled={!form.state}>
-                <option value="">Select...</option>
+                <option value="">{tc('adminp.selectDots','Select...')}</option>
                 {formCities.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
           </div>
-          <Field label="Address"><input style={inp} value={form.address||''} onChange={e=>f('address',e.target.value)}/></Field>
+          <Field label={tc('adminp.address','Address')}><input style={inp} value={form.address||''} onChange={e=>f('address',e.target.value)}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Oil Company">
+            <Field label={tc('adminp.oilCompany','Oil Company')}>
               <select style={inp} value={form.oil_company||''} onChange={e=>f('oil_company',e.target.value)}>
-                <option value="">Select...</option>
+                <option value="">{tc('adminp.selectDots','Select...')}</option>
                 {['HPCL','BPCL','IOC','Essar','Shell','Reliance','Nayara'].map(o=><option key={o} value={o}>{o}</option>)}
               </select>
             </Field>
             <Field label="GSTN"><input style={inp} value={form.gst_number||''} onChange={e=>f('gst_number',e.target.value.toUpperCase())}/></Field>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Assign Owner">
+            <Field label={tc('adminp.assignOwner','Assign Owner')}>
               <select style={inp} value={form.owner_id||''} onChange={e=>f('owner_id',e.target.value)}>
-                <option value="">Select owner...</option>
+                <option value="">{tc('adminp.selectOwnerDots','Select owner...')}</option>
                 {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             </Field>
-            <Field label="Owner Group">
+            <Field label={tc('adminp.ownerGroup','Owner Group')}>
               <select style={inp} value={form.owner_group_id||''} onChange={e=>f('owner_group_id',e.target.value)}>
-                <option value="">No group (independent)</option>
+                <option value="">{tc('adminp.noGroupIndependent','No group (independent)')}</option>
                 {groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </Field>
           </div>
           {modal.type==='station'&&(
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-              <Field label="Plan">
+              <Field label={tc('adminp.planLabel','Plan')}>
                 <select style={inp} value={form.plan||'pro'} onChange={e=>f('plan',e.target.value)}>
                   <option value="starter">STARTER</option><option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
                 </select>
               </Field>
-              <Field label="Start Date"><input style={inp} type="date" value={form.start_date||todayIST()} onChange={e=>f('start_date',e.target.value)}/></Field>
+              <Field label={tc('adminp.startDate','Start Date')}><input style={inp} type="date" value={form.start_date||todayIST()} onChange={e=>f('start_date',e.target.value)}/></Field>
             </div>
           )}
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42,marginTop:4}} onClick={()=>save(modal.type==='editStation'?`/stations/${form.id}`:'/stations',modal.type==='editStation'?'PATCH':'POST')} disabled={loading}>{loading?'Saving...':modal.type==='editStation'?'Save Changes':'Create Bunk'}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42,marginTop:4}} onClick={()=>save(modal.type==='editStation'?`/stations/${form.id}`:'/stations',modal.type==='editStation'?'PATCH':'POST')} disabled={loading}>{loading?tc('adminp.saving','Saving...'):modal.type==='editStation'?tc('adminp.saveChanges','Save Changes'):tc('adminp.createBunk','Create Bunk')}</button>
         </Modal>
       )}
 
       {modal?.type==='addBunk'&&(
-        <Modal title={`Add Bunk — ${modal.data.group_name}`} onClose={closeModal}>
-          <Field label="Petrol Bunk">
+        <Modal title={tc('adminp.addBunkTitle','Add Bunk — {group}').replace('{group}',modal.data.group_name)} onClose={closeModal}>
+          <Field label={tc('adminp.petrolBunkField','Petrol Bunk')}>
             <select style={inp} value={form.station_id||''} onChange={e=>f('station_id',e.target.value)}>
-              <option value="">Select a bunk…</option>
-              {stations.map(s=><option key={s.id} value={s.id}>{s.name}{s.owner_group_id&&s.owner_group_id!==modal.data.group_id?' · in another group':''}</option>)}
+              <option value="">{tc('adminp.selectABunk','Select a bunk…')}</option>
+              {stations.map(s=><option key={s.id} value={s.id}>{s.name}{s.owner_group_id&&s.owner_group_id!==modal.data.group_id?tc('adminp.inAnotherGroup',' · in another group'):''}</option>)}
             </select>
           </Field>
-          <div style={{fontSize:12,color:'#888',marginBottom:10}}>A bunk belongs to one group — adding it here moves it from any other group.</div>
+          <div style={{fontSize:12,color:'#888',marginBottom:10}}>{tc('adminp.bunkOneGroupNote', 'A bunk belongs to one group — adding it here moves it from any other group.')}</div>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading||!form.station_id}
-            onClick={async()=>{ setLoading(true); const r=await adminFetch(`/groups/${modal.data.group_id}/stations`,{method:'POST',body:JSON.stringify({station_id:form.station_id})}); setLoading(false); if(r.error){alert(r.error);return;} loadGroupStations(modal.data.group_id); closeModal(); reload(); showToast('Bunk added.'); }}>
-            {loading?'Adding…':'Add Bunk to Group'}
+            onClick={async()=>{ setLoading(true); const r=await adminFetch(`/groups/${modal.data.group_id}/stations`,{method:'POST',body:JSON.stringify({station_id:form.station_id})}); setLoading(false); if(r.error){alert(r.error);return;} loadGroupStations(modal.data.group_id); closeModal(); reload(); showToast(tc('adminp.bunkAdded','Bunk added.')); }}>
+            {loading?tc('adminp.addingEllipsis','Adding…'):tc('adminp.addBunkToGroup','Add Bunk to Group')}
           </button>
         </Modal>
       )}
 
       {modal?.type==='responsibility'&&(
-        <Modal title={form.id?'Edit Responsibility':'New Responsibility'} onClose={closeModal}>
-          <Field label="Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)} placeholder="e.g. Cashier"/></Field>
-          <Field label="Description"><input style={inp} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
-          <div style={{fontSize:12,fontWeight:600,color:'#555',margin:'8px 0 6px'}}>Functions ({(form.permissions||[]).length}/{modules.length})</div>
+        <Modal title={form.id?tc('adminp.editResponsibility','Edit Responsibility'):tc('adminp.newResponsibilityModal','New Responsibility')} onClose={closeModal}>
+          <Field label={tc('adminp.name','Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)} placeholder={tc('adminp.egCashier','e.g. Cashier')}/></Field>
+          <Field label={tc('adminp.description','Description')}><input style={inp} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
+          <div style={{fontSize:12,fontWeight:600,color:'#555',margin:'8px 0 6px'}}>{tc('adminp.functionsCount','Functions ({sel}/{total})').replace('{sel}',(form.permissions||[]).length).replace('{total}',modules.length)}</div>
           <div style={{maxHeight:300,overflowY:'auto',border:'1px solid #eee',borderRadius:8,padding:'6px 8px'}}>
             {[...new Set(modules.map(m=>m.category))].map(cat=>(
               <div key={cat} style={{marginBottom:6}}>
@@ -920,29 +921,29 @@ export default function AdminPage(){
               const r= form.id ? await adminFetch(`/templates/${form.id}`,{method:'PATCH',body}) : await adminFetch('/templates',{method:'POST',body});
               setLoading(false);
               if(r&&r.error){alert(r.error);return;}
-              closeModal(); loadStTemplates(selStation); showToast('Saved.');
-            }}>{loading?'Saving…':form.id?'Save Responsibility':'Create Responsibility'}</button>
+              closeModal(); loadStTemplates(selStation); showToast(tc('adminp.savedDot','Saved.'));
+            }}>{loading?tc('adminp.savingEllipsis','Saving…'):form.id?tc('adminp.saveResponsibility','Save Responsibility'):tc('adminp.createResponsibility','Create Responsibility')}</button>
         </Modal>
       )}
 
       {modal?.type==='editSub'&&(
-        <Modal title={`Subscription — ${modal.data.name}`} onClose={closeModal}>
-          <Field label="Plan">
+        <Modal title={tc('adminp.subscriptionTitle','Subscription — {name}').replace('{name}',modal.data.name)} onClose={closeModal}>
+          <Field label={tc('adminp.planLabel','Plan')}>
             <select style={inp} value={form.plan||'pro'} onChange={e=>f('plan',e.target.value)}>
               <option value="starter">STARTER</option><option value="pro">PRO</option><option value="enterprise">ENTERPRISE</option>
             </select>
           </Field>
-          <Field label="Status">
+          <Field label={tc('adminp.status','Status')}>
             <div style={{display:'flex',gap:8}}>
-              {['active','suspended','cancelled'].map(s=>(
+              {[['active',tc('adminp.statusActive','Active')],['suspended',tc('adminp.statusSuspended','Suspended')],['cancelled',tc('adminp.statusCancelled','Cancelled')]].map(([s,lab])=>(
                 <button key={s} type="button" onClick={()=>f('status',s)}
-                  style={{...btn(form.status===s?(s==='active'?'#16a34a':s==='suspended'?'#ca8a04':'#dc2626'):'#f3f4f6',form.status===s?'#fff':'#374151'),flex:1,justifyContent:'center',textTransform:'capitalize'}}>{s}</button>
+                  style={{...btn(form.status===s?(s==='active'?'#16a34a':s==='suspended'?'#ca8a04':'#dc2626'):'#f3f4f6',form.status===s?'#fff':'#374151'),flex:1,justifyContent:'center'}}>{lab}</button>
               ))}
             </div>
           </Field>
-          <Field label="End Date (optional)">
+          <Field label={tc('adminp.endDateOptional','End Date (optional)')}>
             <input style={inp} type="date" value={form.end_date||''} onChange={e=>f('end_date',e.target.value||null)}/>
-            {form.end_date&&<div style={{fontSize:11,color:'#9333ea',marginTop:4}}>⚡ New subscription auto-starts next day</div>}
+            {form.end_date&&<div style={{fontSize:11,color:'#9333ea',marginTop:4}}>{tc('adminp.autoStartsNextDay','⚡ New subscription auto-starts next day')}</div>}
           </Field>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading}
             onClick={async()=>{
@@ -954,65 +955,65 @@ export default function AdminPage(){
                 :await adminFetch('/station-subscriptions',{method:'POST',body:JSON.stringify({station_id:form.station_id,plan:form.plan,status:form.status,start_date:form.start_date||todayIST(),end_date:form.end_date||null})});
               setLoading(false);
               if(res.error){alert(res.error);return;}
-              closeModal();reload();showToast('Subscription updated!');
-            }}>{loading?'Saving...':'Save Subscription'}</button>
+              closeModal();reload();showToast(tc('adminp.subscriptionUpdated','Subscription updated!'));
+            }}>{loading?tc('adminp.saving','Saving...'):tc('adminp.saveSubscription','Save Subscription')}</button>
         </Modal>
       )}
 
       {modal?.type==='alertDef'&&(
-        <Modal title={form.id?'Edit Alert':'New Alert Definition'} onClose={closeModal}>
-          <Field label="Alert Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Description"><textarea style={{...inp,height:72,resize:'vertical'}} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
-          <Field label="Alert Type" required>
+        <Modal title={form.id?tc('adminp.editAlert','Edit Alert'):tc('adminp.newAlertDefinition','New Alert Definition')} onClose={closeModal}>
+          <Field label={tc('adminp.alertName','Alert Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.description','Description')}><textarea style={{...inp,height:72,resize:'vertical'}} value={form.description||''} onChange={e=>f('description',e.target.value)}/></Field>
+          <Field label={tc('adminp.alertType','Alert Type')} required>
             <select style={inp} value={form.alert_type||''} onChange={e=>f('alert_type',e.target.value)}>
-              <option value="">Select...</option>
+              <option value="">{tc('adminp.selectDots','Select...')}</option>
               {['low_stock','cash_variance','shift_variance','credit_limit','delivery_delay','nozzle_idle','attendance_missing','dipstick_overdue','custom'].map(t=>(
                 <option key={t} value={t}>{t.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}</option>
               ))}
             </select>
           </Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Severity">
+            <Field label={tc('adminp.severity','Severity')}>
               <select style={inp} value={form.severity||'warning'} onChange={e=>f('severity',e.target.value)}>
-                <option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option>
+                <option value="info">{tc('adminp.severityInfo','Info')}</option><option value="warning">{tc('adminp.severityWarning','Warning')}</option><option value="critical">{tc('adminp.severityCritical','Critical')}</option>
               </select>
             </Field>
-            <Field label="Active">
+            <Field label={tc('adminp.activeLabel','Active')}>
               <select style={inp} value={form.is_active===false?'false':'true'} onChange={e=>f('is_active',e.target.value==='true')}>
-                <option value="true">Yes</option><option value="false">No</option>
+                <option value="true">{tc('adminp.yes','Yes')}</option><option value="false">{tc('adminp.no','No')}</option>
               </select>
             </Field>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10,padding:'0.75rem',background:'#f0fdf4',borderRadius:8,border:'1px solid #bbf7d0',marginBottom:'1rem',cursor:'pointer'}}
             onClick={()=>f('whatsapp_enabled',!form.whatsapp_enabled)}>
             <div style={{color:form.whatsapp_enabled?'#16a34a':'#ccc'}}>{form.whatsapp_enabled?<ToggleRight size={28}/>:<ToggleLeft size={28}/>}</div>
-            <div><div style={{fontWeight:600,fontSize:14,color:'#15803d'}}>Send via WhatsApp</div><div style={{fontSize:12,color:'#555'}}>Alert sent to station owner's WhatsApp</div></div>
+            <div><div style={{fontWeight:600,fontSize:14,color:'#15803d'}}>{tc('adminp.sendViaWhatsapp','Send via WhatsApp')}</div><div style={{fontSize:12,color:'#555'}}>{tc('adminp.alertSentToWhatsapp',"Alert sent to station owner's WhatsApp")}</div></div>
           </div>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(form.id?`/alert-definitions/${form.id}`:'/alert-definitions',form.id?'PATCH':'POST')} disabled={loading}>{loading?'Saving...':form.id?'Save':'Create Alert'}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(form.id?`/alert-definitions/${form.id}`:'/alert-definitions',form.id?'PATCH':'POST')} disabled={loading}>{loading?tc('adminp.saving','Saving...'):form.id?tc('adminp.save','Save'):tc('adminp.createAlert','Create Alert')}</button>
         </Modal>
       )}
 
       {modal?.type==='stationUser'&&(
-        <Modal title="Add User to Station" onClose={closeModal}>
-          <Field label="Full Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Mobile (10 digits)" required>
+        <Modal title={tc('adminp.addUserToStation','Add User to Station')} onClose={closeModal}>
+          <Field label={tc('adminp.fullName','Full Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile10','Mobile (10 digits)')} required>
             <div style={{display:'flex',gap:8}}><span style={{background:'#f5f5f5',padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',fontSize:14,color:'#666'}}>+91</span>
             <input style={{...inp,flex:1}} maxLength={10} value={form.phone||''} onChange={e=>f('phone',e.target.value.replace(/\D/g,'').slice(0,10))}/></div>
           </Field>
-          <Field label="Email"><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
-          <Field label="Role">
+          <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
+          <Field label={tc('adminp.role','Role')}>
             <select style={inp} value={form.role||'attendant'} onChange={e=>f('role',e.target.value)}>
-              <option value="attendant">Attendant</option><option value="manager">Manager</option><option value="owner">Owner</option>
+              <option value="attendant">{tc('adminp.roleAttendant','Attendant')}</option><option value="manager">{tc('adminp.roleManager','Manager')}</option><option value="owner">{tc('adminp.roleOwner','Owner')}</option>
             </select>
           </Field>
-          <Field label="Responsibility">
+          <Field label={tc('adminp.responsibility','Responsibility')}>
             <select style={inp} value={form.template_id||''} onChange={e=>f('template_id',e.target.value)}>
-              <option value="">Default (role) — system permissions</option>
+              <option value="">{tc('adminp.defaultRoleSystemPerms','Default (role) — system permissions')}</option>
               {stTemplates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            <div style={{fontSize:11,color:'#888',marginTop:4}}>Pick a function set (e.g. Manager_lite). Leave as Default to use plain role permissions — you can change this later on the user row.</div>
+            <div style={{fontSize:11,color:'#888',marginTop:4}}>{tc('adminp.responsibilityHelp', 'Pick a function set (e.g. Manager_lite). Leave as Default to use plain role permissions — you can change this later on the user row.')}</div>
           </Field>
-          <Field label="Password"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Default: Welcome@123"/></Field>
+          <Field label={tc('adminp.password','Password')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.defaultWelcome','Default: Welcome@123')}/></Field>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading}
             onClick={async()=>{
               setLoading(true);
@@ -1021,62 +1022,62 @@ export default function AdminPage(){
               if(form.template_id&&created&&created.id){
                 await adminFetch('/templates/assign',{method:'POST',body:JSON.stringify({user_id:created.id,template_id:form.template_id,station_id:form.station_id})});
               }
-              setLoading(false); closeModal(); loadStationUsers(form.station_id); reload(); showToast('User added.');
-            }}>{loading?'Adding...':'Add User'}</button>
+              setLoading(false); closeModal(); loadStationUsers(form.station_id); reload(); showToast(tc('adminp.userAdded','User added.'));
+            }}>{loading?tc('adminp.adding','Adding...'):tc('adminp.addUser','Add User')}</button>
         </Modal>
       )}
 
       {modal?.type==='lead'&&(
-        <Modal title="Add Lead" onClose={closeModal}>
-          <Field label="Name" required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Mobile" required><input style={inp} value={form.phone||''} onChange={e=>f('phone',e.target.value)} placeholder="+91…"/></Field>
-          <Field label="Petrol Bunk"><input style={inp} value={form.station_name||''} onChange={e=>f('station_name',e.target.value)}/></Field>
+        <Modal title={tc('adminp.addLead','Add Lead')} onClose={closeModal}>
+          <Field label={tc('adminp.name','Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile','Mobile')} required><input style={inp} value={form.phone||''} onChange={e=>f('phone',e.target.value)} placeholder="+91…"/></Field>
+          <Field label={tc('adminp.petrolBunkField','Petrol Bunk')}><input style={inp} value={form.station_name||''} onChange={e=>f('station_name',e.target.value)}/></Field>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="State">
+            <Field label={tc('adminp.state','State')}>
               <select style={inp} value={form.state||''} onChange={e=>{ f('state',e.target.value); f('city',''); }}>
-                <option value="">Select…</option>
+                <option value="">{tc('adminp.selectEllipsis','Select…')}</option>
                 {INDIAN_STATES.map(s=><option key={s} value={s}>{s}</option>)}
               </select>
             </Field>
-            <Field label="City">
+            <Field label={tc('adminp.city','City')}>
               <select style={inp} value={form.city||''} onChange={e=>f('city',e.target.value)} disabled={!form.state}>
-                <option value="">{form.state?'Select…':'Pick state first'}</option>
+                <option value="">{form.state?tc('adminp.selectEllipsis','Select…'):tc('adminp.pickStateFirst','Pick state first')}</option>
                 {getCities(form.state).map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-            <Field label="Source">
+            <Field label={tc('adminp.source','Source')}>
               <select style={inp} value={form.source||'whatsapp'} onChange={e=>f('source',e.target.value)}>
-                {LEAD_SOURCE.map(s=><option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+                {LEAD_SOURCE.map(s=><option key={s} value={s}>{tc('adminp.leadSource_'+s,s.charAt(0).toUpperCase()+s.slice(1))}</option>)}
               </select>
             </Field>
-            <Field label="Status">
+            <Field label={tc('adminp.status','Status')}>
               <select style={inp} value={form.status||'new'} onChange={e=>f('status',e.target.value)}>
-                {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{lab}</option>)}
+                {LEAD_STATUS.map(([v,lab])=><option key={v} value={v}>{tc('adminp.leadStatus_'+v,lab)}</option>)}
               </select>
             </Field>
           </div>
-          <Field label="Notes"><textarea style={{...inp,height:72,resize:'vertical'}} value={form.notes||''} onChange={e=>f('notes',e.target.value)}/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/leads')} disabled={loading}>{loading?'Saving...':'Add Lead'}</button>
+          <Field label={tc('adminp.notes','Notes')}><textarea style={{...inp,height:72,resize:'vertical'}} value={form.notes||''} onChange={e=>f('notes',e.target.value)}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/leads')} disabled={loading}>{loading?tc('adminp.saving','Saving...'):tc('adminp.addLead','Add Lead')}</button>
         </Modal>
       )}
 
       {modal?.type==='editStationUser'&&(
-        <Modal title="Edit User" onClose={closeModal}>
-          <Field label="Full Name"><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
-          <Field label="Mobile (10 digits)">
+        <Modal title={tc('adminp.editUser','Edit User')} onClose={closeModal}>
+          <Field label={tc('adminp.fullName','Full Name')}><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile10','Mobile (10 digits)')}>
             <div style={{display:'flex',gap:8}}><span style={{background:'#f5f5f5',padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',fontSize:14,color:'#666'}}>+91</span>
             <input style={{...inp,flex:1}} maxLength={10} value={form.phone||''} onChange={e=>f('phone',e.target.value.replace(/\D/g,'').slice(0,10))}/></div>
           </Field>
-          <Field label="Email"><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
-          <Field label="Role">
+          <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
+          <Field label={tc('adminp.role','Role')}>
             <select style={inp} value={form.role||'attendant'} onChange={e=>f('role',e.target.value)}>
-              <option value="attendant">Attendant</option><option value="manager">Manager</option><option value="owner">Owner</option>
+              <option value="attendant">{tc('adminp.roleAttendant','Attendant')}</option><option value="manager">{tc('adminp.roleManager','Manager')}</option><option value="owner">{tc('adminp.roleOwner','Owner')}</option>
             </select>
           </Field>
-          <Field label="New Password (blank = keep)"><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder="Leave blank"/></Field>
-          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/station-users/${form.id}`,'PATCH').then(()=>loadStationUsers(selStation))} disabled={loading}>{loading?'Saving...':'Save'}</button>
+          <Field label={tc('adminp.newPasswordBlank','New Password (blank = keep)')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.leaveBlank','Leave blank')}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save(`/station-users/${form.id}`,'PATCH').then(()=>loadStationUsers(selStation))} disabled={loading}>{loading?tc('adminp.saving','Saving...'):tc('adminp.save','Save')}</button>
         </Modal>
       )}
 

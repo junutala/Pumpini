@@ -11,6 +11,7 @@ const fmt = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits:
 
 export default function ReportsPage() {
   const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
 
@@ -61,13 +62,23 @@ export default function ReportsPage() {
       });
 
       setReport({ daily, totals, byFuel: Object.values(byFuel), rows });
-    } catch (err) { console.error(err); alert('Failed to load report'); }
+    } catch (err) { console.error(err); alert(tc('repp.failedLoadReport', 'Failed to load report')); }
     finally { setLoading(false); }
   };
 
   const exportCsv = () => {
     if (!report) return;
-    const headers = ['Date/Time','Attendant','Nozzle','Fuel','Qty(L)','Rate','Amount','Payment','Vehicle'];
+    const headers = [
+      tc('repp.csvDateTime', 'Date/Time'),
+      tc('repp.csvAttendant', 'Attendant'),
+      tc('repp.csvNozzle', 'Nozzle'),
+      tc('repp.csvFuel', 'Fuel'),
+      tc('repp.csvQtyL', 'Qty(L)'),
+      tc('repp.csvRate', 'Rate'),
+      tc('repp.csvAmount', 'Amount'),
+      tc('repp.csvPayment', 'Payment'),
+      tc('repp.csvVehicle', 'Vehicle'),
+    ];
     const rows = report.rows.map(r => [
       new Date(r.occurred_at).toLocaleString('en-IN'),
       r.attendant_name || '', r.nozzle_number || '', r.fuel_type || '',
@@ -85,7 +96,7 @@ export default function ReportsPage() {
       <div className="page-header">
         <h1 className="page-title">{t('nav.reports')}</h1>
         {report && (
-          <button className="btn btn-secondary" onClick={exportCsv}><Download size={15} /> Export CSV</button>
+          <button className="btn btn-secondary" onClick={exportCsv}><Download size={15} /> {tc('repp.exportCsv', 'Export CSV')}</button>
         )}
       </div>
 
@@ -93,15 +104,15 @@ export default function ReportsPage() {
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <label className="label">From</label>
+            <label className="label">{tc('repp.from', 'From')}</label>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ width: 160 }} />
           </div>
           <div>
-            <label className="label">To</label>
+            <label className="label">{tc('repp.to', 'To')}</label>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ width: 160 }} />
           </div>
           <button className="btn btn-primary" onClick={loadReport} disabled={loading}>
-            <Search size={15} /> {loading ? 'Loading...' : 'Generate Report'}
+            <Search size={15} /> {loading ? tc('repp.loading', 'Loading...') : tc('repp.generateReport', 'Generate Report')}
           </button>
         </div>
       </div>
@@ -110,16 +121,16 @@ export default function ReportsPage() {
         <>
           {report.rows.some(r => r.sales_hidden) && (
             <div className="alert-banner info" style={{ marginBottom: '1.5rem' }}>
-              🔒 Sales from open shifts are hidden until those shifts close — the totals below exclude them.
+              🔒 {tc('repp.openShiftHidden', 'Sales from open shifts are hidden until those shifts close — the totals below exclude them.')}
             </div>
           )}
           {/* Totals */}
           <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
             {[
-              ['Total Revenue', `₹${fmt(report.totals.amount)}`, null],
-              ['Total Litres', `${fmt(report.totals.litres)} L`, null],
-              ['Transactions', fmt(report.totals.txns), null],
-              ['Cash Collected', `₹${fmt(report.totals.cash)}`, 'var(--success)'],
+              [tc('repp.totalRevenue', 'Total Revenue'), `₹${fmt(report.totals.amount)}`, null],
+              [tc('repp.totalLitres', 'Total Litres'), `${fmt(report.totals.litres)} L`, null],
+              [tc('repp.transactions', 'Transactions'), fmt(report.totals.txns), null],
+              [tc('repp.cashCollected', 'Cash Collected'), `₹${fmt(report.totals.cash)}`, 'var(--success)'],
             ].map(([label, val, color]) => (
               <div key={label} className="stat-card">
                 <div className="stat-label">{label}</div>
@@ -130,7 +141,7 @@ export default function ReportsPage() {
 
           {/* Daily sales chart */}
           <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div style={{ fontWeight: 600, marginBottom: '1rem', fontSize: 14 }}>Daily Sales (₹)</div>
+            <div style={{ fontWeight: 600, marginBottom: '1rem', fontSize: 14 }}>{tc('repp.dailySales', 'Daily Sales (₹)')}</div>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={report.daily} margin={{ top: 0, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -145,7 +156,7 @@ export default function ReportsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
             {/* By fuel */}
             <div className="card">
-              <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>By Fuel Type</div>
+              <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>{tc('repp.byFuelType', 'By Fuel Type')}</div>
               {report.byFuel.map(f => (
                 <div key={f.fuel_type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                   <span className={`fuel-chip fuel-${f.fuel_type}`}>{t(`fuel_types.${f.fuel_type}`)}</span>
@@ -159,8 +170,8 @@ export default function ReportsPage() {
 
             {/* By payment */}
             <div className="card">
-              <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>By Payment Mode</div>
-              {[['cash','Cash','var(--success)'],['upi','UPI','var(--info)'],['credit','Credit','var(--warning)'],['card','Card','var(--brand)']].map(([mode,label,color]) => (
+              <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>{tc('repp.byPaymentMode', 'By Payment Mode')}</div>
+              {[['cash',tc('repp.cash', 'Cash'),'var(--success)'],['upi','UPI','var(--info)'],['credit',tc('repp.credit', 'Credit'),'var(--warning)'],['card',tc('repp.card', 'Card'),'var(--brand)']].map(([mode,label,color]) => (
                 <div key={mode} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: 14, fontWeight: 500 }}>{label}</span>
                   <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color }}>₹{fmt(report.totals[mode])}</div>
@@ -172,14 +183,14 @@ export default function ReportsPage() {
           {/* Raw events table */}
           <div className="card">
             <div style={{ fontWeight: 600, marginBottom: '0.75rem', fontSize: 14 }}>
-              Transaction Log ({report.rows.length} records)
-              {report.rows.length === 5000 && <span style={{ fontSize: 12, color: 'var(--warning)', marginLeft: 8 }}>⚠ Showing first 5000 — narrow date range for complete data</span>}
+              {tc('repp.transactionLog', 'Transaction Log ({n} records)').replace('{n}', report.rows.length)}
+              {report.rows.length === 5000 && <span style={{ fontSize: 12, color: 'var(--warning)', marginLeft: 8 }}>⚠ {tc('repp.showingFirst5000', 'Showing first 5000 — narrow date range for complete data')}</span>}
             </div>
             <div style={{ maxHeight: 400, overflowY: 'auto' }}>
               <div className="table-wrap">
                 <table className="dms-table">
                   <thead>
-                    <tr><th>Date/Time</th><th>Attendant</th><th>Fuel</th><th>Qty (L)</th><th>Amount</th><th>Mode</th><th>Vehicle</th></tr>
+                    <tr><th>{tc('repp.thDateTime', 'Date/Time')}</th><th>{tc('repp.thAttendant', 'Attendant')}</th><th>{tc('repp.thFuel', 'Fuel')}</th><th>{tc('repp.thQtyL', 'Qty (L)')}</th><th>{tc('repp.thAmount', 'Amount')}</th><th>{tc('repp.thMode', 'Mode')}</th><th>{tc('repp.thVehicle', 'Vehicle')}</th></tr>
                   </thead>
                   <tbody>
                     {report.rows.map(r => (
@@ -188,7 +199,7 @@ export default function ReportsPage() {
                         <td>{r.attendant_name}</td>
                         <td><span className={`fuel-chip fuel-${r.fuel_type}`}>{r.fuel_type}</span></td>
                         <td className="num">{r.sales_hidden ? '—' : Number(r.quantity_ltrs).toFixed(2)}</td>
-                        <td className="num">{r.sales_hidden ? <span style={{color:'var(--text-3)',fontSize:11}}>🔒 Hidden</span> : `₹${fmt(r.amount)}`}</td>
+                        <td className="num">{r.sales_hidden ? <span style={{color:'var(--text-3)',fontSize:11}}>🔒 {tc('repp.hidden', 'Hidden')}</span> : `₹${fmt(r.amount)}`}</td>
                         <td><span className="badge badge-gray">{r.payment_mode}</span></td>
                         <td style={{ fontSize: 12 }}>{r.vehicle_number || '—'}</td>
                       </tr>
@@ -203,7 +214,7 @@ export default function ReportsPage() {
 
       {!report && !loading && (
         <div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>
-          Select a date range and click Generate Report
+          {tc('repp.selectDateRange', 'Select a date range and click Generate Report')}
         </div>
       )}
     </AppShell>

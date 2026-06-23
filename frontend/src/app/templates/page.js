@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, X, Check, Shield, Edit2, Trash2 } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import ConfirmDialog from '../../components/shared/ConfirmDialog';
@@ -12,6 +13,8 @@ const CATEGORY_ORDER = ['Dashboard','Shifts','Dispense','Reconciliation',
   'Corporate','Attendance','Stock','Reports','Alerts','Admin'];
 
 export default function RolesPage() {
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const { station } = useAuth();
   const stationId = typeof station==='object'?station?.id:station;
 
@@ -79,20 +82,20 @@ export default function RolesPage() {
       setShowCreate(false);
       setForm({name:'',description:'',permissions:[]});
       load();
-      setSaved('Role created!'); setTimeout(()=>setSaved(''),3000);
-    } catch(err){ alert(err.error||'Failed'); }
+      setSaved(tc('tmpl.roleCreated', 'Role created!')); setTimeout(()=>setSaved(''),3000);
+    } catch(err){ alert(err.error||tc('tmpl.failed', 'Failed')); }
     finally{ setLoading(false); }
   };
 
   const handleDelete = role => {
-    if(role.is_system) return alert('Built-in roles cannot be deleted');
+    if(role.is_system) return alert(tc('tmpl.builtinCannotDelete', 'Built-in roles cannot be deleted'));
     setConfirm({
-      message:`Delete role "${role.name}"?`,
-      detail:'Users assigned this role will fall back to default permissions.',
+      message:tc('tmpl.deleteRoleConfirm', 'Delete role "{name}"?').replace('{name}', role.name),
+      detail:tc('tmpl.deleteRoleDetail', 'Users assigned this role will fall back to default permissions.'),
       danger:true,
       onConfirm: async()=>{
         await api.delete(`/templates/${role.id}`).catch(()=>{});
-        load(); setSaved('Role deleted!'); setTimeout(()=>setSaved(''),3000);
+        load(); setSaved(tc('tmpl.roleDeleted', 'Role deleted!')); setTimeout(()=>setSaved(''),3000);
       }
     });
   };
@@ -108,8 +111,8 @@ export default function RolesPage() {
       });
       setShowAssign(false); setAssignTarget(null); setAssignRoleId('');
       load();
-      setSaved('Role assigned!'); setTimeout(()=>setSaved(''),3000);
-    } catch(err){ alert(err.error||'Failed'); }
+      setSaved(tc('tmpl.roleAssigned', 'Role assigned!')); setTimeout(()=>setSaved(''),3000);
+    } catch(err){ alert(err.error||tc('tmpl.failed', 'Failed')); }
     finally{ setLoading(false); }
   };
 
@@ -126,16 +129,16 @@ export default function RolesPage() {
           message={confirm.message}
           detail={confirm.detail}
           danger={confirm.danger}
-          confirmLabel={confirm.danger?'Delete':'Confirm'}
+          confirmLabel={confirm.danger?tc('tmpl.delete','Delete'):tc('tmpl.confirm','Confirm')}
           onConfirm={()=>{ confirm.onConfirm(); setConfirm(null); }}
           onCancel={()=>setConfirm(null)}/>
       )}
 
       <div className="page-header">
         <div>
-          <h1 className="page-title">Roles</h1>
+          <h1 className="page-title">{tc('tmpl.roles', 'Roles')}</h1>
           <div style={{fontSize:13,color:'var(--text-3)'}}>
-            Define roles and assign to staff. The role controls what each person can see and do.
+            {tc('tmpl.rolesSubtitle', 'Define roles and assign to staff. The role controls what each person can see and do.')}
           </div>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -144,7 +147,7 @@ export default function RolesPage() {
             setForm({name:'',description:'',permissions:[]});
             setShowCreate(true);
           }}>
-            <Plus size={15}/>New Role
+            <Plus size={15}/>{tc('tmpl.newRole', 'New Role')}
           </button>
         </div>
       </div>
@@ -155,7 +158,7 @@ export default function RolesPage() {
         <div>
           <div style={{fontSize:11,fontWeight:700,color:'var(--text-3)',
             textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>
-            Built-in Roles
+            {tc('tmpl.builtinRoles', 'Built-in Roles')}
           </div>
           {roles.filter(r=>r.is_system).map(r=>(
             <div key={r.id} className="card"
@@ -165,18 +168,18 @@ export default function RolesPage() {
               onClick={()=>setSelected(r)}>
               <div style={{fontWeight:600,fontSize:13}}>{r.name}</div>
               <div style={{fontSize:11,color:'var(--text-3)',marginTop:2}}>
-                {(r.permissions||[]).length} permissions · {r.user_count} users
+                {tc('tmpl.permsUsersCount', '{p} permissions · {u} users').replace('{p}', (r.permissions||[]).length).replace('{u}', r.user_count)}
               </div>
             </div>
           ))}
 
           <div style={{fontSize:11,fontWeight:700,color:'var(--text-3)',
             textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8,marginTop:'1rem'}}>
-            Custom Roles
+            {tc('tmpl.customRoles', 'Custom Roles')}
           </div>
           {roles.filter(r=>!r.is_system).length===0 && (
             <div style={{fontSize:12,color:'var(--text-3)',padding:'0.5rem 0'}}>
-              No custom roles yet. Click "New Role" to create one.
+              {tc('tmpl.noCustomRoles', 'No custom roles yet. Click "New Role" to create one.')}
             </div>
           )}
           {roles.filter(r=>!r.is_system).map(r=>(
@@ -189,7 +192,7 @@ export default function RolesPage() {
                 <div>
                   <div style={{fontWeight:600,fontSize:13}}>{r.name}</div>
                   <div style={{fontSize:11,color:'var(--text-3)',marginTop:2}}>
-                    {(r.permissions||[]).length} permissions · {r.user_count} users
+                    {tc('tmpl.permsUsersCount', '{p} permissions · {u} users').replace('{p}', (r.permissions||[]).length).replace('{u}', r.user_count)}
                   </div>
                 </div>
                 <button style={{background:'none',border:'none',cursor:'pointer',
@@ -211,7 +214,7 @@ export default function RolesPage() {
                 <div style={{fontSize:13,color:'var(--text-3)',marginTop:2}}>{selected.description}</div>
               )}
               <div style={{fontSize:12,marginTop:4,color:selected.is_system?'#1A5F7A':'var(--brand)',fontWeight:500}}>
-                {selected.is_system ? '🔒 Built-in role' : '✏️ Custom role'}
+                {selected.is_system ? tc('tmpl.builtinRoleTag', '🔒 Built-in role') : tc('tmpl.customRoleTag', '✏️ Custom role')}
               </div>
             </div>
 
@@ -244,7 +247,7 @@ export default function RolesPage() {
         ) : (
           <div className="card" style={{display:'flex',alignItems:'center',
             justifyContent:'center',color:'var(--text-3)',fontSize:13,minHeight:200}}>
-            Select a role on the left to view its permissions
+            {tc('tmpl.selectRoleHint', 'Select a role on the left to view its permissions')}
           </div>
         )}
       </div>
@@ -252,16 +255,16 @@ export default function RolesPage() {
       {/* Staff & their roles */}
       <div className="card" style={{marginTop:'1.5rem'}}>
         <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>
-          Staff & Assigned Roles
+          {tc('tmpl.staffAssignedRoles', 'Staff & Assigned Roles')}
         </div>
         <div className="table-wrap">
           <table className="dms-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Mobile</th>
-                <th>Role</th>
-                <th>Action</th>
+                <th>{tc('tmpl.name', 'Name')}</th>
+                <th>{tc('tmpl.mobile', 'Mobile')}</th>
+                <th>{tc('tmpl.role', 'Role')}</th>
+                <th>{tc('tmpl.action', 'Action')}</th>
               </tr>
             </thead>
             <tbody>
@@ -280,7 +283,7 @@ export default function RolesPage() {
                         </span>
                       ) : (
                         <span className="badge badge-warning" style={{fontSize:12}}>
-                          Not assigned
+                          {tc('tmpl.notAssigned', 'Not assigned')}
                         </span>
                       )}
                     </td>
@@ -288,7 +291,7 @@ export default function RolesPage() {
                       <button className="btn btn-primary btn-sm"
                         onClick={()=>openAssign(u)}>
                         <Shield size={12}/>
-                        {assignment ? 'Change Role' : 'Assign Role'}
+                        {assignment ? tc('tmpl.changeRole', 'Change Role') : tc('tmpl.assignRole', 'Assign Role')}
                       </button>
                     </td>
                   </tr>
@@ -306,26 +309,26 @@ export default function RolesPage() {
           zIndex:100,overflowY:'auto',padding:'1rem'}}>
           <div className="card" style={{width:'100%',maxWidth:640}}>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:'1.25rem'}}>
-              <span style={{fontWeight:700,fontSize:16}}>Create New Role</span>
+              <span style={{fontWeight:700,fontSize:16}}>{tc('tmpl.createNewRole', 'Create New Role')}</span>
               <button onClick={()=>setShowCreate(false)}
                 style={{background:'none',border:'none',cursor:'pointer'}}><X size={18}/></button>
             </div>
             <form onSubmit={handleCreate}>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:'1rem'}}>
                 <div>
-                  <label className="label">Role Name *</label>
-                  <input className="input" placeholder="e.g. POS Operator" required
+                  <label className="label">{tc('tmpl.roleNameLabel', 'Role Name *')}</label>
+                  <input className="input" placeholder={tc('tmpl.roleNamePlaceholder', 'e.g. POS Operator')} required
                     value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}/>
                 </div>
                 <div>
-                  <label className="label">Description</label>
-                  <input className="input" placeholder="What does this role do?"
+                  <label className="label">{tc('tmpl.description', 'Description')}</label>
+                  <input className="input" placeholder={tc('tmpl.descriptionPlaceholder', 'What does this role do?')}
                     value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
                 </div>
               </div>
 
               <label className="label" style={{marginBottom:8,display:'block'}}>
-                Permissions — tick what this role can access
+                {tc('tmpl.permissionsHint', 'Permissions — tick what this role can access')}
               </label>
               <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',
                 gap:'0.75rem',maxHeight:380,overflowY:'auto',padding:'0.5rem',
@@ -340,7 +343,7 @@ export default function RolesPage() {
                         style={{fontSize:10,background:'none',border:'none',
                           cursor:'pointer',color:'var(--brand)',fontWeight:600}}
                         onClick={()=>selectAll(group.category)}>
-                        {group.items.every(m=>form.permissions.includes(m.code))?'None':'All'}
+                        {group.items.every(m=>form.permissions.includes(m.code))?tc('tmpl.none','None'):tc('tmpl.all','All')}
                       </button>
                     </div>
                     {group.items.map(m=>{
@@ -362,10 +365,10 @@ export default function RolesPage() {
 
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div style={{fontSize:13,color:'var(--text-3)'}}>
-                  {form.permissions.length} permissions selected
+                  {tc('tmpl.permsSelected', '{n} permissions selected').replace('{n}', form.permissions.length)}
                 </div>
                 <button className="btn btn-primary" type="submit" disabled={loading}>
-                  {loading?'Creating...':'Create Role'}
+                  {loading?tc('tmpl.creating', 'Creating...'):tc('tmpl.createRole', 'Create Role')}
                 </button>
               </div>
             </form>
@@ -380,7 +383,7 @@ export default function RolesPage() {
           <div className="card" style={{width:460}}>
             <div style={{display:'flex',justifyContent:'space-between',marginBottom:'1.25rem'}}>
               <div>
-                <div style={{fontWeight:700,fontSize:16}}>Assign Role</div>
+                <div style={{fontWeight:700,fontSize:16}}>{tc('tmpl.assignRole', 'Assign Role')}</div>
                 <div style={{fontSize:13,color:'var(--text-3)',marginTop:2}}>
                   {assignTarget.name} · {displayMobile(assignTarget.phone)}
                 </div>
@@ -392,7 +395,7 @@ export default function RolesPage() {
             {assignments[assignTarget.id] && (
               <div style={{background:'#f0fdf4',borderRadius:8,padding:'0.75rem',
                 marginBottom:'1rem',fontSize:13,color:'#15803d'}}>
-                Current role: <strong>{assignments[assignTarget.id].roleName}</strong>
+                {tc('tmpl.currentRole', 'Current role:')} <strong>{assignments[assignTarget.id].roleName}</strong>
               </div>
             )}
 
@@ -401,7 +404,7 @@ export default function RolesPage() {
               {roles.filter(r=>!r.is_system).length>0 && (
                 <div style={{fontSize:10,fontWeight:700,color:'var(--brand)',
                   textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2}}>
-                  Custom Roles
+                  {tc('tmpl.customRoles', 'Custom Roles')}
                 </div>
               )}
               {roles.filter(r=>!r.is_system).map(r=>(
@@ -414,7 +417,7 @@ export default function RolesPage() {
                   <div style={{flex:1}}>
                     <div style={{fontWeight:600,fontSize:14}}>{r.name}</div>
                     <div style={{fontSize:11,color:'var(--text-3)',marginTop:1}}>
-                      {(r.permissions||[]).length} permissions
+                      {tc('tmpl.permsCount', '{n} permissions').replace('{n}', (r.permissions||[]).length)}
                     </div>
                   </div>
                   {assignRoleId===r.id && <Check size={16} color="var(--brand)"/>}
@@ -423,7 +426,7 @@ export default function RolesPage() {
 
               <div style={{fontSize:10,fontWeight:700,color:'var(--text-3)',
                 textTransform:'uppercase',letterSpacing:'.06em',margin:'6px 0 2px'}}>
-                Built-in Roles
+                {tc('tmpl.builtinRoles', 'Built-in Roles')}
               </div>
               {roles.filter(r=>r.is_system).map(r=>(
                 <label key={r.id} style={{display:'flex',alignItems:'center',gap:10,
@@ -435,7 +438,7 @@ export default function RolesPage() {
                   <div style={{flex:1}}>
                     <div style={{fontWeight:600,fontSize:14}}>{r.name}</div>
                     <div style={{fontSize:11,color:'var(--text-3)',marginTop:1}}>
-                      {(r.permissions||[]).length} permissions · Built-in
+                      {tc('tmpl.permsCountBuiltin', '{n} permissions · Built-in').replace('{n}', (r.permissions||[]).length)}
                     </div>
                   </div>
                   {assignRoleId===r.id && <Check size={16} color="#1A5F7A"/>}
@@ -446,12 +449,12 @@ export default function RolesPage() {
             <button className="btn btn-primary"
               style={{width:'100%',justifyContent:'center'}}
               onClick={()=>setConfirm({
-                message:`Assign "${roles.find(r=>r.id===assignRoleId)?.name}" to ${assignTarget.name}?`,
-                detail:'This will update what screens and actions this person can access immediately after their next login.',
+                message:tc('tmpl.assignConfirm', 'Assign "{role}" to {user}?').replace('{role}', roles.find(r=>r.id===assignRoleId)?.name).replace('{user}', assignTarget.name),
+                detail:tc('tmpl.assignConfirmDetail', 'This will update what screens and actions this person can access immediately after their next login.'),
                 onConfirm: handleAssign,
               })}
               disabled={loading||!assignRoleId}>
-              {loading?'Assigning...':'Assign Role'}
+              {loading?tc('tmpl.assigning', 'Assigning...'):tc('tmpl.assignRole', 'Assign Role')}
             </button>
           </div>
         </div>

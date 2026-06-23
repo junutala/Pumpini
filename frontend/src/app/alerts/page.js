@@ -15,10 +15,10 @@ const SEVERITY_STYLE = {
 };
 
 const TYPE_LABELS = {
-  cash_variance:  '💰 Cash Variance',
-  low_stock:      '⛽ Low Stock',
-  credit_limit:   '🏢 Credit Limit',
-  shift_variance: '📊 Shift Variance',
+  cash_variance:  { emoji: '💰', key: 'alertsp.typeCashVariance',  en: 'Cash Variance'  },
+  low_stock:      { emoji: '⛽', key: 'alertsp.typeLowStock',      en: 'Low Stock'      },
+  credit_limit:   { emoji: '🏢', key: 'alertsp.typeCreditLimit',   en: 'Credit Limit'   },
+  shift_variance: { emoji: '📊', key: 'alertsp.typeShiftVariance', en: 'Shift Variance' },
 };
 
 export default function AlertsPage() {
@@ -63,28 +63,28 @@ export default function AlertsPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">{t('alert.title')}</h1>
-          {unreadCount > 0 && <div style={{ fontSize: 13, color: 'var(--danger)', marginTop: 2 }}>{unreadCount} {tc('alert.unacknowledged','unacknowledged')}</div>}
+          <h1 className="page-title">{tc('alertsp.title','Alerts')}</h1>
+          {unreadCount > 0 && <div style={{ fontSize: 13, color: 'var(--danger)', marginTop: 2 }}>{tc('alertsp.unacknowledged','{n} unacknowledged').replace('{n}', unreadCount)}</div>}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className={`btn ${unreadOnly ? 'btn-primary' : 'btn-secondary'} btn-sm`}
             onClick={() => setUnreadOnly(p => !p)}>
-            <Filter size={13} /> {unreadOnly ? tc('alert.showing_unread','Showing Unread') : tc('common.all','All')}
+            <Filter size={13} /> {unreadOnly ? tc('alertsp.showingUnread','Showing Unread') : tc('alertsp.all','All')}
           </button>
           {unreadCount > 0 && (
             <button className="btn btn-secondary btn-sm" onClick={ackAll}>
-              <CheckCheck size={14} /> {tc('alert.ack_all','Acknowledge All')}
+              <CheckCheck size={14} /> {tc('alertsp.ackAll','Acknowledge All')}
             </button>
           )}
         </div>
       </div>
 
-      {loading && <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '3rem' }}>{tc('common.loading','Loading...')}</div>}
+      {loading && <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '3rem' }}>{tc('alertsp.loading','Loading...')}</div>}
 
       {!loading && alerts.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
           <Bell size={32} color="var(--text-3)" style={{ margin: '0 auto 12px' }} />
-          <div style={{ color: 'var(--text-3)' }}>{tc('alert.no_alerts','No alerts')} {unreadOnly ? tc('alert.unread','unread') : tc('alert.recorded','recorded')}</div>
+          <div style={{ color: 'var(--text-3)' }}>{unreadOnly ? tc('alertsp.noAlertsUnread','No alerts unread') : tc('alertsp.noAlertsRecorded','No alerts recorded')}</div>
         </div>
       )}
 
@@ -98,19 +98,19 @@ export default function AlertsPage() {
               <Bell size={16} style={{ flexShrink: 0, marginTop: 2 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{TYPE_LABELS[alert.alert_type] || alert.alert_type}</span>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{TYPE_LABELS[alert.alert_type] ? `${TYPE_LABELS[alert.alert_type].emoji} ${tc(TYPE_LABELS[alert.alert_type].key, TYPE_LABELS[alert.alert_type].en)}` : alert.alert_type}</span>
                   <span className={`badge ${s.cls}`} style={{ fontSize: 11 }}>{alert.severity}</span>
-                  {isRead && <span className="badge badge-gray" style={{ fontSize: 11 }}>{tc('alert.acknowledged','acknowledged')}</span>}
+                  {isRead && <span className="badge badge-gray" style={{ fontSize: 11 }}>{tc('alertsp.acknowledged','acknowledged')}</span>}
                 </div>
                 <div style={{ fontSize: 13 }}>{alert.message}</div>
                 <div style={{ fontSize: 11, color: 'inherit', opacity: 0.7, marginTop: 4 }}>
                   {new Date(alert.sent_at).toLocaleString('en-IN')}
-                  {alert.channels && ` · via ${alert.channels.join(', ')}`}
+                  {alert.channels && ` · ${tc('alertsp.via','via')} ${alert.channels.join(', ')}`}
                 </div>
               </div>
               {!isRead && (
                 <button className="btn btn-secondary btn-sm" style={{ flexShrink: 0 }} onClick={() => ack(alert.id)}>
-                  <CheckCheck size={13} /> {tc('alert.acknowledge','Ack')}
+                  <CheckCheck size={13} /> {tc('alertsp.ack','Ack')}
                 </button>
               )}
             </div>

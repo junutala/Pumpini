@@ -9,6 +9,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import { useTranslation } from 'react-i18next';
 
 const L = n => `${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })} L`;
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -17,6 +18,8 @@ export default function StockRecoPage() {
   const { user, station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
   const isOwner = user?.role === 'owner';
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [shifts, setShifts]   = useState([]);
   const [shiftId, setShiftId] = useState('');
@@ -61,9 +64,12 @@ export default function StockRecoPage() {
     setBusy(true);
     try {
       const r = await api.post(`/tank-reco/shift/${shiftId}`);
-      alert(`Reconciliation saved for ${r.stored} tank(s). ${r.breaches ? `⚠️ ${r.breaches} beyond tolerance — owner alerted.` : 'All within tolerance.'}`);
+      const breachMsg = r.breaches
+        ? tc('streco.breachAlert', '⚠️ {n} beyond tolerance — owner alerted.').replace('{n}', r.breaches)
+        : tc('streco.allWithinTol', 'All within tolerance.');
+      alert(tc('streco.recoSaved', 'Reconciliation saved for {n} tank(s).').replace('{n}', r.stored) + ' ' + breachMsg);
       loadCum();
-    } catch (e) { alert(e.response?.data?.error || e.error || 'Failed'); }
+    } catch (e) { alert(e.response?.data?.error || e.error || tc('streco.failed', 'Failed')); }
     setBusy(false);
   };
 
@@ -76,7 +82,7 @@ export default function StockRecoPage() {
         stock_tol_floor_ltrs: parseFloat(tol.stock_tol_floor_ltrs),
       });
       if (shiftId) api.get(`/tank-reco/shift/${shiftId}`).then(setReco).catch(() => {});
-    } catch (e) { alert(e.response?.data?.error || 'Failed'); }
+    } catch (e) { alert(e.response?.data?.error || tc('streco.failed', 'Failed')); }
     setSavingTol(false);
   };
 
@@ -86,48 +92,48 @@ export default function StockRecoPage() {
     <AppShell>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Stock Reconciliation</h1>
-          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>Tank dip vs book — catches evaporation, leakage and pilferage.</div>
+          <h1 className="page-title">{tc('streco.title', 'Stock Reconciliation')}</h1>
+          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('streco.subtitle', 'Tank dip vs book — catches evaporation, leakage and pilferage.')}</div>
         </div>
         <select className="input" style={{ width: 220 }} value={shiftId} onChange={e => setShiftId(e.target.value)}>
-          <option value="">Select a shift…</option>
-          {shifts.map(s => <option key={s.id} value={s.id}>Shift {s.shift_number} · {s.status}</option>)}
+          <option value="">{tc('streco.selectShift', 'Select a shift…')}</option>
+          {shifts.map(s => <option key={s.id} value={s.id}>{tc('streco.shiftOption', 'Shift {n}').replace('{n}', s.shift_number)} · {s.status}</option>)}
         </select>
       </div>
 
       {/* Tolerance config (owner) */}
       {isOwner && (
         <div className="card" style={{ marginBottom: '1.25rem' }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>Variance Tolerance</div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>{tc('streco.varianceTolerance', 'Variance Tolerance')}</div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <div><label className="label">Petrol %</label><input className="input" style={{ width: 100 }} type="number" step="0.05" value={tol.stock_tol_pct_petrol ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_pct_petrol: e.target.value }))} /></div>
-            <div><label className="label">Diesel %</label><input className="input" style={{ width: 100 }} type="number" step="0.05" value={tol.stock_tol_pct_diesel ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_pct_diesel: e.target.value }))} /></div>
-            <div><label className="label">Min floor (L)</label><input className="input" style={{ width: 100 }} type="number" step="1" value={tol.stock_tol_floor_ltrs ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_floor_ltrs: e.target.value }))} /></div>
-            <button className="btn btn-secondary" onClick={saveTol} disabled={savingTol}><Save size={14} />{savingTol ? 'Saving…' : 'Save'}</button>
+            <div><label className="label">{tc('streco.petrolPct', 'Petrol %')}</label><input className="input" style={{ width: 100 }} type="number" step="0.05" value={tol.stock_tol_pct_petrol ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_pct_petrol: e.target.value }))} /></div>
+            <div><label className="label">{tc('streco.dieselPct', 'Diesel %')}</label><input className="input" style={{ width: 100 }} type="number" step="0.05" value={tol.stock_tol_pct_diesel ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_pct_diesel: e.target.value }))} /></div>
+            <div><label className="label">{tc('streco.minFloor', 'Min floor (L)')}</label><input className="input" style={{ width: 100 }} type="number" step="1" value={tol.stock_tol_floor_ltrs ?? ''} onChange={e => setTol(p => ({ ...p, stock_tol_floor_ltrs: e.target.value }))} /></div>
+            <button className="btn btn-secondary" onClick={saveTol} disabled={savingTol}><Save size={14} />{savingTol ? tc('streco.saving', 'Saving…') : tc('streco.save', 'Save')}</button>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>Tolerance = max(floor, (opening + deliveries) × %). Petrol evaporates faster than diesel.</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 6 }}>{tc('streco.tolFormula', 'Tolerance = max(floor, (opening + deliveries) × %). Petrol evaporates faster than diesel.')}</div>
         </div>
       )}
 
       {/* Per-tank reconciliation for the selected shift */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Selected Shift</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{tc('streco.selectedShift', 'Selected Shift')}</div>
           <button className="btn btn-primary" onClick={finalize} disabled={busy || !tanks.some(t => t.has_closing)}>
-            {busy ? 'Saving…' : 'Finalize & Alert'}
+            {busy ? tc('streco.saving', 'Saving…') : tc('streco.finalizeAlert', 'Finalize & Alert')}
           </button>
         </div>
         <div className="table-wrap">
           <table className="dms-table">
             <thead>
               <tr>
-                <th>Tank</th><th style={{ textAlign: 'right' }}>Opening</th><th style={{ textAlign: 'right' }}>+ Deliveries</th>
-                <th style={{ textAlign: 'right' }}>− Sales</th><th style={{ textAlign: 'right' }}>Book</th>
-                <th style={{ textAlign: 'right' }}>Actual dip</th><th style={{ textAlign: 'right' }}>Variance</th><th style={{ textAlign: 'center' }}>Status</th>
+                <th>{tc('streco.colTank', 'Tank')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colOpening', 'Opening')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colDeliveries', '+ Deliveries')}</th>
+                <th style={{ textAlign: 'right' }}>{tc('streco.colSales', '− Sales')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colBook', 'Book')}</th>
+                <th style={{ textAlign: 'right' }}>{tc('streco.colActualDip', 'Actual dip')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colVariance', 'Variance')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colStatus', 'Status')}</th>
               </tr>
             </thead>
             <tbody>
-              {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>Select a shift to see its tank reconciliation.</td></tr>}
+              {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{tc('streco.emptyTanks', 'Select a shift to see its tank reconciliation.')}</td></tr>}
               {tanks.map(t => {
                 const loss = t.has_closing && t.variance_ltrs < 0;
                 return (
@@ -142,9 +148,9 @@ export default function StockRecoPage() {
                       {t.has_closing ? `${t.variance_ltrs > 0 ? '+' : ''}${L(t.variance_ltrs)} (${t.variance_pct}%)` : '—'}
                     </td>
                     <td style={{ textAlign: 'center', fontSize: 12 }}>
-                      {!t.has_closing ? <span style={{ color: 'var(--text-3)' }}>Awaiting dip</span>
-                        : t.beyond_tolerance ? <span style={{ color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={13} />{loss ? 'Loss' : 'Gain'}</span>
-                          : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}><CheckCircle size={13} />OK</span>}
+                      {!t.has_closing ? <span style={{ color: 'var(--text-3)' }}>{tc('streco.awaitingDip', 'Awaiting dip')}</span>
+                        : t.beyond_tolerance ? <span style={{ color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={13} />{loss ? tc('streco.loss', 'Loss') : tc('streco.gain', 'Gain')}</span>
+                          : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}><CheckCircle size={13} />{tc('streco.ok', 'OK')}</span>}
                     </td>
                   </tr>
                 );
@@ -152,17 +158,17 @@ export default function StockRecoPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.awaitingDipNote', '“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).')}</div>
       </div>
 
       {/* Cumulative drift — slow leaks that hide under per-shift tolerance */}
       <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: '0.75rem' }}>Cumulative Drift <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)' }}>· last 30 days</span></div>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: '0.75rem' }}>{tc('streco.cumulativeDrift', 'Cumulative Drift')} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)' }}>· {tc('streco.last30Days', 'last 30 days')}</span></div>
         <div className="table-wrap">
           <table className="dms-table">
-            <thead><tr><th>Tank</th><th style={{ textAlign: 'center' }}>Reconciliations</th><th style={{ textAlign: 'center' }}>Breaches</th><th style={{ textAlign: 'right' }}>Net variance (30d)</th></tr></thead>
+            <thead><tr><th>{tc('streco.colTank', 'Tank')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colReconciliations', 'Reconciliations')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colBreaches', 'Breaches')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colNetVariance', 'Net variance (30d)')}</th></tr></thead>
             <tbody>
-              {cum.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '1.5rem' }}>No finalized reconciliations yet.</td></tr>}
+              {cum.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '1.5rem' }}>{tc('streco.emptyCum', 'No finalized reconciliations yet.')}</td></tr>}
               {cum.map(c => {
                 const net = parseFloat(c.cum_variance || 0);
                 return (
@@ -177,7 +183,7 @@ export default function StockRecoPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>A persistent one-way net variance — even if each shift passes — is the fingerprint of a slow leak or steady pilferage.</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.cumNote', 'A persistent one-way net variance — even if each shift passes — is the fingerprint of a slow leak or steady pilferage.')}</div>
       </div>
     </AppShell>
   );
