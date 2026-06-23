@@ -92,10 +92,11 @@ router.get('/ageing', authenticate, authorize('owner', 'manager'),
       // Day-level charge totals per customer, oldest first (FIFO order)
       pool.query(`
         SELECT corporate_id, day, SUM(amount) AS amount FROM (
-          SELECT de.corporate_id, de.occurred_at::date AS day, de.amount
-          FROM dispense_events de
-          WHERE de.station_id = $1 AND de.payment_mode = 'credit'
-            AND de.corporate_id IS NOT NULL AND NOT COALESCE(de.is_voided, FALSE)
+          -- Fuel-credit charges = the credit invoices raised (credit isn't tagged
+          -- to a customer at the pump in the control-total model).
+          SELECT gi.corporate_id, gi.invoice_date AS day, gi.total_amount AS amount
+          FROM gst_invoices gi
+          WHERE gi.station_id = $1 AND gi.corporate_id IS NOT NULL
           UNION ALL
           SELECT pi.customer_id, pi.created_at::date, pi.grand_total
           FROM product_invoices pi
@@ -187,14 +188,12 @@ router.get('/statement/:id', authenticate, selfOrStaff,
     // opening balance and the in-range lines always agree.
     const { rows: all } = await pool.query(`
       SELECT * FROM (
-        SELECT de.occurred_at AS at, 'fuel' AS type,
-               de.fuel_type || ' · ' || TO_CHAR(de.quantity_ltrs, 'FM999990.00') || ' L' ||
-                 COALESCE(' · ' || NULLIF(de.vehicle_number, ''), '') AS description,
-               NULL::varchar AS ref, de.amount AS debit, 0 AS credit,
-               (SELECT name FROM stations WHERE id = de.station_id) AS station_name
-        FROM dispense_events de
-        WHERE de.corporate_id = $1 AND de.payment_mode = 'credit'
-          AND NOT COALESCE(de.is_voided, FALSE) ${stationCond('de')}
+        SELECT gi.invoice_date::timestamptz AS at, 'invoice' AS type,
+               'Credit invoice' AS description,
+               gi.invoice_number AS ref, gi.total_amount AS debit, 0 AS credit,
+               (SELECT name FROM stations WHERE id = gi.station_id) AS station_name
+        FROM gst_invoices gi
+        WHERE gi.corporate_id = $1 ${stationCond('gi')}
         UNION ALL
         SELECT pi.created_at, 'lube', 'Invoice', pi.invoice_number, pi.grand_total, 0,
                (SELECT name FROM stations WHERE id = pi.station_id)
@@ -264,10 +263,9 @@ router.get('/my-ageing', authenticate, async (req, res, next) => {
     const [charges, credits, stations] = await Promise.all([
       pool.query(`
         SELECT station_id, day, SUM(amount) AS amount FROM (
-          SELECT de.station_id, de.occurred_at::date AS day, de.amount
-          FROM dispense_events de
-          WHERE de.corporate_id = $1 AND de.station_id = ANY($2::uuid[])
-            AND de.payment_mode = 'credit' AND NOT COALESCE(de.is_voided, FALSE)
+          SELECT gi.station_id, gi.invoice_date AS day, gi.total_amount AS amount
+          FROM gst_invoices gi
+          WHERE gi.corporate_id = $1 AND gi.station_id = ANY($2::uuid[])
           UNION ALL
           SELECT pi.station_id, pi.created_at::date, pi.grand_total
           FROM product_invoices pi
