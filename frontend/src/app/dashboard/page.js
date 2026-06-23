@@ -62,7 +62,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const margin = d.margin;
   const cover = d.cover || [];
   const recv = d.receivables || { to_invoice: 0, outstanding: 0, overdue_90: 0 };
-  const lastSet = d.last_settlement;
+  const settlements = d.settlements || [];   // all operators settled today
+  const setTot = settlements.reduce((t, s) => ({
+    cash: t.cash + Number(s.cash_actual || 0), upi: t.upi + Number(s.upi_total || 0),
+    card: t.card + Number(s.card_total || 0), credit: t.credit + Number(s.credit_total || 0),
+    petty: t.petty + Number(s.petty_cash || 0), total: t.total + Number(s.total_sales || 0),
+  }), { cash: 0, upi: 0, card: 0, credit: 0, petty: 0, total: 0 });
   const wet = d.wetstock_mtd;
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
@@ -153,21 +158,59 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </>}
       </div>
 
-      {/* Last settlement */}
-      {lastSet && (
+      {/* Settlements today — every operator who closed */}
+      {settlements.length > 0 && (
         <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>Last settlement</span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Shift {lastSet.shift_number} · {lastSet.attendant_name} · {lastSet.at ? new Date(lastSet.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : ''}</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Settlements today</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{settlements.length} operator{settlements.length > 1 ? 's' : ''} closed</span>
           </div>
-          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
-            {[['Cash', lastSet.cash], ['UPI', lastSet.upi], ['Card', lastSet.card], ['Credit cust.', lastSet.credit], ['Petty cash', lastSet.petty]].map(([k, v]) => (
-              <div key={k} style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{k}</div><div style={{ fontSize: 16, fontWeight: 700 }}>{fmtR(v)}</div></div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border,#e5e7eb)', fontSize: 13 }}>
-            <span style={{ color: 'var(--text-2,#475569)' }}>Total collected <strong style={{ color: 'var(--text-1,#0f172a)' }}>{fmtR(lastSet.total)}</strong></span>
-            <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: Math.abs(lastSet.variance) <= 50 ? '#eaf3de' : '#fee2e2', color: Math.abs(lastSet.variance) <= 50 ? '#27500a' : '#991b1b' }}>Variance {lastSet.variance >= 0 ? '+' : ''}{fmtR(lastSet.variance)}</span>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 540 }}>
+              <thead>
+                <tr style={{ color: 'var(--text-3)', textAlign: 'right' }}>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>Operator</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Cash</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>UPI</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Card</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Credit</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Petty</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Total</th>
+                  <th style={{ padding: '6px 8px', fontWeight: 700 }}>Variance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settlements.map((s, i) => {
+                  const v = Number(s.variance || 0);
+                  return (
+                    <tr key={i} style={{ borderTop: '0.5px solid var(--border,#e5e7eb)', textAlign: 'right' }}>
+                      <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
+                      <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
+                      <td style={{ padding: 8 }}>{fmtR(s.upi_total)}</td>
+                      <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
+                      <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
+                      <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
+                      <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total_sales)}</td>
+                      <td style={{ padding: 8, fontWeight: 700, color: Math.abs(v) <= 50 ? '#27500a' : '#a32d2d' }}>{v >= 0 ? '+' : ''}{fmtR(v)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {settlements.length > 1 && (
+                <tfoot>
+                  <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
+                    <td style={{ textAlign: 'left', padding: 8 }}>Total</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(setTot.total)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
       )}
