@@ -27,13 +27,13 @@ router.get('/book-stock/:station_id', authenticate, requireStationAccess(), asyn
         t.fuel_type,
         t.capacity_ltrs,
         t.current_stock,
-        -- Opening dip
-        COALESCE((
+        -- Opening dip (NULL when none taken yet — book_stock falls back to current_stock below)
+        (
           SELECT dr.volume_ltrs FROM dipstick_readings dr
           WHERE dr.tank_id=t.id AND dr.shift_id=$2
             AND dr.reading_type='opening'
           ORDER BY dr.recorded_at LIMIT 1
-        ), t.current_stock) AS opening_dip,
+        ) AS opening_dip,
         -- Deliveries this shift
         COALESCE((
           SELECT SUM(fd.net_volume_ltrs) FROM fuel_deliveries fd
@@ -60,13 +60,15 @@ router.get('/book-stock/:station_id', authenticate, requireStationAccess(), asyn
       [req.params.station_id, shiftId, today]
     );
 
-    // Calculate book_stock in app layer
-    const result = rows.map(t => ({
-      ...t,
-      book_stock: parseFloat(t.opening_dip||0)
-               + parseFloat(t.deliveries||0)
-               - parseFloat(t.sales_ltrs||0),
-    }));
+    // Calculate book_stock in app layer. Opening base = the opening dip if taken,
+    // else the tank's current stock (so book stays sensible before the first dip).
+    const result = rows.map(t => {
+      const openingBase = t.opening_dip != null ? parseFloat(t.opening_dip) : parseFloat(t.current_stock||0);
+      return {
+        ...t,
+        book_stock: openingBase + parseFloat(t.deliveries||0) - parseFloat(t.sales_ltrs||0),
+      };
+    });
 
     res.json(result);
   } catch (err) { next(err); }

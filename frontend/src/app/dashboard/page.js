@@ -374,12 +374,19 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                 </tr>
               )}
               {tankDisplay.map(tank => {
+                // Latest physical dip — closing preferred, else the opening dip, so a dip
+                // entered at shift start shows immediately instead of "No dip yet".
+                const latestDip = tank.closing_dip != null ? tank.closing_dip
+                                : tank.opening_dip != null ? tank.opening_dip : null;
+                const dipLabel  = tank.closing_dip != null ? tc('dash_page.closing','closing')
+                                : tank.opening_dip != null ? tc('dash_page.opening','opening') : null;
                 const book   = parseFloat(tank.book_stock   || tank.current_stock || 0);
-                const actual = parseFloat(tank.closing_dip  || tank.current_stock || book);
-                const diff   = actual - book;
-                const ok     = Math.abs(diff) <= 100;
+                const actual = latestDip != null ? parseFloat(latestDip) : null;
+                const diff   = actual != null ? actual - book : null;
+                const ok     = diff != null && Math.abs(diff) <= 100;
                 const cap    = parseFloat(tank.capacity_ltrs || 0);
-                const pct    = cap > 0 ? Math.min(100, Math.round((book / cap) * 100)) : 0;
+                const level  = actual != null ? actual : book;  // bar tracks the real dip when we have one
+                const pct    = cap > 0 ? Math.min(100, Math.round((level / cap) * 100)) : 0;
                 return (
                   <tr key={tank.tank_id || tank.id}>
                     <td><strong>{tc('dash_page.tank','Tank')} {tank.tank_number}</strong></td>
@@ -391,10 +398,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     <td className="num">{fmtL(cap)} L</td>
                     <td className="num">{fmtL(book)} L</td>
                     <td className="num">
-                      {tank.closing_dip ? fmtL(actual)+' L' : <span style={{color:'var(--text-3)'}}>{tc('dash_page.no_dip','No dip yet')}</span>}
+                      {actual != null
+                        ? <>{fmtL(actual)} L {dipLabel && <span style={{fontSize:10,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase'}}>{dipLabel}</span>}</>
+                        : <span style={{color:'var(--text-3)'}}>{tc('dash_page.no_dip','No dip yet')}</span>}
                     </td>
                     <td>
-                      {tank.closing_dip ? (
+                      {actual != null ? (
                         <span style={{fontFamily:'var(--font-mono)',fontWeight:700,
                           color: ok ? 'var(--success)' : 'var(--danger)'}}>
                           {diff >= 0 ? '+' : ''}{fmtL(diff)} L
