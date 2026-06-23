@@ -1,619 +1,228 @@
 'use client';
-import DateRangePicker from '../../components/shared/DateRangePicker';
+// Manager bunk cockpit. Reused by the owner's Operational dashboard per outlet
+// (pass stationId + embedded). Blind-drop: today's money is the REVEALED portion
+// (the feed masks open-shift sales for non-owners); a chip flags sealed live shifts.
 import { useState, useEffect, useCallback, Fragment } from 'react';
-import { useTranslation } from 'react-i18next';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { AlertTriangle, Bell, RefreshCw } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Fuel, Lock, Bell, AlertTriangle, CheckCircle, Landmark, FileText,
+  Droplets, ArrowRight, Sparkles, Clock, ChevronRight, Flame } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getOwnerDashboard, getCurrentPrices } from '../../lib/api';
+import { getOwnerDashboard } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
-import LiveEventsWidget from '../../components/ui/LiveEventsWidget';
-import EarningsMarginTile from '../../components/ui/EarningsMarginTile';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
-const PAYMENT_COLORS = { cash:'#16a34a', upi:'#2563eb', credit:'#9333ea', card:'#ea580c' };
-const FUEL_COLORS    = { petrol:'#3b82f6', diesel:'#f59e0b', cng:'#10b981', premium_petrol:'#8b5cf6', lubes:'#ec4899' };
-
-const toIST = ts => {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('en-IN', {
-    timeZone:'Asia/Kolkata', day:'2-digit', month:'short',
-    year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true
-  });
-};
-const fmt  = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:0 });
-const fmtL = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:1 });
+const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
+const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
+const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '12px 14px' };
 
 export default function DashboardPage({ stationId: stationIdProp, embedded = false } = {}) {
-  const { t }             = useTranslation();
-  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
-  const { user, station } = useAuth();
-  // stationId can be overridden (e.g. the owner viewing one bunk from the group
-  // dashboard); otherwise it's the logged-in user's active station.
-  const stationId         = stationIdProp || (typeof station==='object' ? station?.id : station);
-  const today             = new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
-  // When embedded inside another page (group dashboard), skip our own AppShell.
-  const Wrapper           = embedded ? Fragment : AppShell;
+  const router = useRouter();
+  const { station } = useAuth();
+  const stationId = stationIdProp || (typeof station === 'object' ? station?.id : station);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const Wrapper = embedded ? Fragment : AppShell;
 
-  const [data,      setData]      = useState(null);
-  const [bookStock, setBookStock] = useState([]);
-  const [prices,    setPrices]    = useState([]);
-  const [corps,     setCorps]     = useState([]);
-  const [cashInt,   setCashInt]   = useState([]);
-  const [tankLive,  setTankLive]  = useState([]);
-  const [deposit,   setDeposit]   = useState(null);
-  const [loading,   setLoading]   = useState(true);
-
+  const [data, setData]       = useState(null);
+  const [deposit, setDeposit] = useState(null);
+  const [loading, setLoading] = useState(true);
   const { on } = useSocket(stationId, null);
 
   const load = useCallback(async () => {
     if (!stationId) return;
     try {
-      const [d, bs, p, c, ci, tl, dp] = await Promise.all([
+      const [d, dp] = await Promise.all([
         getOwnerDashboard(stationId, today),
-        api.get(`/deliveries/book-stock/${stationId}`).catch(() => []),
-        getCurrentPrices(stationId),
-        api.get('/corporate', {params:{station_id:stationId}}).catch(()=>[]),
-        user?.role==='owner'
-          ? api.get('/dashboard/cash-integrity', {params:{station_id:stationId, days:90}}).catch(()=>[])
-          : Promise.resolve([]),
-        api.get('/tank-reco/live', {params:{station_id:stationId}}).catch(()=>[]),
-        user?.role==='owner'
-          ? api.get('/cash-deposits', {params:{station_id:stationId}}).then(r=>r?.status||null).catch(()=>null)
-          : Promise.resolve(null),
+        api.get('/cash-deposits', { params: { station_id: stationId } }).then(r => r?.status || null).catch(() => null),
       ]);
-      setData(d);
-      setBookStock(Array.isArray(bs) ? bs : []);
-      setPrices(Array.isArray(p) ? p : []);
-      setCorps(Array.isArray(c) ? c : []);
-      setCashInt(Array.isArray(ci) ? ci : []);
-      setTankLive(Array.isArray(tl) ? tl : []);
-      setDeposit(dp || null);
+      setData(d); setDeposit(dp || null);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
-  }, [stationId, today, user?.role]);
+  }, [stationId, today]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => on('dispense:new', () => load()), [on, load]);
   useRefreshOnFocus(load);
 
-  if (!stationId) return (
-    <Wrapper>
-      <div className="card" style={{textAlign:'center',padding:'3rem',color:'var(--text-3)'}}>
-        {tc('dash_page.no_station','No station assigned. Contact your administrator.')}
-      </div>
-    </Wrapper>
-  );
+  if (!stationId) return <Wrapper><div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>No station assigned. Contact your administrator.</div></Wrapper>;
+  if (loading)    return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>Loading…</div></Wrapper>;
 
-  if (loading) return (
-    <Wrapper>
-      <div style={{padding:'3rem',textAlign:'center',color:'var(--text-3)'}}>{tc('dash_page.loading','Loading...')}</div>
-    </Wrapper>
-  );
+  const d = data || {};
+  const sales = d.sales || [];
+  const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
+  const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
+  const salesMasked = !!d.sales_masked;
+  const shifts = d.shifts || [];
+  const openShifts = shifts.filter(s => s.status === 'open');
+  const closedShifts = shifts.filter(s => s.status === 'closed');
+  const margin = d.margin;
+  const cover = d.cover || [];
+  const recv = d.receivables || { to_invoice: 0, outstanding: 0, overdue_90: 0 };
+  const lastSet = d.last_settlement;
+  const wet = d.wetstock_mtd;
+  const brief = d.ai_briefing || [];
+  const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
 
-  // ── Aggregates ────────────────────────────────────────────
-  const sales        = data?.sales || [];
-  const totalSales   = sales.reduce((s,r) => s + parseFloat(r.total_amount||0), 0);
-  const totalLtrs    = sales.reduce((s,r) => s + parseFloat(r.total_ltrs||0), 0);
-  const totalTxns    = sales.reduce((s,r) => s + parseInt(r.txn_count||0), 0);
-  const salesMasked  = !!data?.sales_masked; // blind drop: open shift, non-owner
-  const unreadAlerts = (data?.alerts || []).filter(a => !a.acknowledged_at);
+  const cashAwaiting   = Number(deposit?.awaiting || 0);
+  const depositAge     = Number(deposit?.age_days || 0);
+  const creditToInvoice = Number(recv.to_invoice || 0);
+  const lowTank = cover.filter(c => c.days != null && c.days < 2).sort((a, b) => a.days - b.days)[0];
 
-  // Per-operator settlement by payment type (today's settled operators)
-  const settlements  = data?.settlements || [];
-  const fmtR = n => '₹' + Number(n||0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
-  const settleTotals = settlements.reduce((t, s) => ({
-    cash:   t.cash   + parseFloat(s.cash_actual  || 0),
-    card:   t.card   + parseFloat(s.card_total   || 0),
-    upi:    t.upi    + parseFloat(s.upi_total    || 0),
-    credit: t.credit + parseFloat(s.credit_total || 0),
-    petty:  t.petty  + parseFloat(s.petty_cash   || 0),
-    sales:  t.sales  + parseFloat(s.total_sales  || 0),
-  }), { cash:0, card:0, upi:0, credit:0, petty:0, sales:0 });
+  const PAY = { cash: '#16a34a', upi: '#2563eb', card: '#ea580c', credit: '#9333ea' };
+  const payTotals = ['cash', 'upi', 'card', 'credit'].map(m => ({ m, v: sales.filter(r => r.payment_mode === m).reduce((s, r) => s + parseFloat(r.total_amount || 0), 0) }));
+  const payTotal = payTotals.reduce((s, p) => s + p.v, 0);
 
-  // Payment pie
-  const paymentData = ['cash','upi','credit','card'].map(mode => ({
-    name:  t(`dispense.${mode}`),
-    value: sales.filter(r=>r.payment_mode===mode).reduce((s,r)=>s+parseFloat(r.total_amount||0),0),
-    fill:  PAYMENT_COLORS[mode],
-  })).filter(d => d.value > 0);
+  const actions = [];
+  if (cashAwaiting > 0) actions.push({ k: 'cash', Icon: Landmark, bg: '#fee2e2', fg: '#991b1b', label: 'Cash to deposit', value: fmtR(cashAwaiting), sub: depositAge > 0 ? `oldest ${depositAge} day${depositAge > 1 ? 's' : ''} · banking due` : 'banking due', subColor: 'var(--danger,#dc2626)', cta: 'Record deposit', href: '/deposits' });
+  if (creditToInvoice > 0) actions.push({ k: 'credit', Icon: FileText, bg: '#ede9fe', fg: '#5b21b6', label: 'Credit to invoice', value: fmtR(creditToInvoice), sub: 'booked at shift close', subColor: 'var(--text-3)', cta: 'Raise invoices', href: '/invoices' });
+  if (lowTank) actions.push({ k: 'tank', Icon: Droplets, bg: '#fef3c7', fg: '#92400e', label: `${cap(lowTank.fuel_type)} running low`, value: `${lowTank.fill_pct ?? '—'}% · ~${lowTank.days}d`, sub: `tank ${lowTank.tank_number} · reorder window`, subColor: 'var(--warning,#d97706)', cta: 'Plan order', href: '/deliveries' });
+  if (wet?.beyond_tolerance) actions.push({ k: 'wet', Icon: AlertTriangle, bg: '#fee2e2', fg: '#991b1b', label: 'Wet-stock variance', value: `${fmtL(wet.variance_ltrs)} L`, sub: 'beyond tolerance this month', subColor: 'var(--danger,#dc2626)', cta: 'Reconcile', href: '/stock-reco' });
 
-  // Fuel bar
-  const fuelTypes = [...new Set(sales.map(r => r.fuel_type))];
-  const fuelData  = fuelTypes.map(ft => ({
-    name:   ft === 'premium_petrol' ? tc('dash_page.premium','Premium') : (t(`fuel_types.${ft}`)===`fuel_types.${ft}` ? ft.charAt(0).toUpperCase()+ft.slice(1) : t(`fuel_types.${ft}`)),
-    amount: sales.filter(r=>r.fuel_type===ft).reduce((s,r)=>s+parseFloat(r.total_amount||0),0),
-    fill:   FUEL_COLORS[ft] || '#888',
-  }));
-
-  // Tank display — prefer book stock API, fall back to dashboard stock
-  const tankDisplay = bookStock.length > 0 ? bookStock : (data?.stock || []);
+  const needCount = actions.length + unread.length;
+  const aiLines = brief.length ? brief : ['Nothing flagged — running clean.'];
 
   return (
     <Wrapper>
-      {/* Header */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">{tc('dash_page.title','Dashboard')}</h1>
-          <div style={{fontSize:13,color:'var(--text-3)'}}>{toIST(new Date())}</div>
-        </div>
-        <div style={{display:'flex',gap:8}}>
-          {unreadAlerts.length > 0 && (
-            <div className="badge badge-danger" style={{padding:'6px 10px'}}>
-              <Bell size={13}/> {unreadAlerts.length} {tc('dash_page.alerts','alerts')}
+      {/* Hero */}
+      <div style={{ background: '#23272e', borderRadius: 14, padding: '16px 18px', color: '#f1efe8', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Fuel size={19} color="#fac775" />
+              <span style={{ fontSize: 17, fontWeight: 700 }}>Bunk cockpit</span>
             </div>
-          )}
-          <button className="btn btn-secondary btn-sm" onClick={load}>
-            <RefreshCw size={14}/>
-          </button>
+            <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}</div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              {closedShifts.length > 0 && <span style={{ fontSize: 12, background: '#173404', color: '#c0dd97', padding: '3px 10px', borderRadius: 99 }}><CheckCircle size={12} style={{ verticalAlign: -2 }} /> {closedShifts.length} closed</span>}
+              {openShifts.length > 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{salesMasked ? <><Lock size={12} style={{ verticalAlign: -2 }} /> {openShifts.length} live · sealed</> : <>{openShifts.length} live</>}</span>}
+              {shifts.length === 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>no shift open</span>}
+            </div>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
+            {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {needCount} need you</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> all clear</>}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
+          <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{aiLines.slice(0, 2).join(' ')}</span>
         </div>
       </div>
 
-      {/* KPI Row */}
-      <div className="grid-4" style={{marginBottom:'1.5rem'}}>
-        <div className="stat-card">
-          <div className="stat-label">{tc('dash_page.todays_sales',"Today's Sales")}</div>
-          {salesMasked ? (
-            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>
-              🔒 {tc('dash_page.hidden_open','Hidden during open shift')}
-            </div>
-          ) : (<>
-            <div className="stat-value amount">{fmt(totalSales)}</div>
-            <div className="stat-sub">{totalTxns} {tc('dash_page.transactions','transactions')}</div>
-          </>)}
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{tc('dash_page.total_litres','Total Litres')}</div>
-          {salesMasked ? (
-            <div style={{fontSize:12.5,fontWeight:600,color:'var(--text-3)',marginTop:8,lineHeight:1.4}}>
-              🔒 {tc('dash_page.hidden_open','Hidden during open shift')}
-            </div>
-          ) : (<>
-            <div className="stat-value" style={{color:'var(--petrol)'}}>{fmtL(totalLtrs)} L</div>
-            <div className="stat-sub">{fuelData.length} {tc('dash_page.fuel_types','fuel types')}</div>
-          </>)}
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">{tc('dash_page.open_shifts','Open Shifts')}</div>
-          <div className="stat-value" style={{color:'var(--brand)'}}>
-            {(data?.shifts||[]).filter(s=>s.status==='open').length}
+      {/* Needs you */}
+      {actions.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>Needs you</div>
+          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
+            {actions.map(a => (
+              <div key={a.k} style={{ ...card, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: a.bg, color: a.fg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><a.Icon size={17} /></span>
+                  <span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{a.label}</span>
+                </div>
+                <div style={{ fontSize: 21, fontWeight: 800 }}>{a.value}</div>
+                <div style={{ fontSize: 12, color: a.subColor, margin: '2px 0 10px' }}>{a.sub}</div>
+                <button onClick={() => router.push(a.href)} style={{ width: '100%', height: 38, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>{a.cta} <ArrowRight size={14} /></button>
+              </div>
+            ))}
           </div>
-          <div className="stat-sub">{(data?.shifts||[]).length} {tc('dash_page.total_today','total today')}</div>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">{tc('dash_page.unread_alerts','Unread Alerts')}</div>
-          <div className="stat-value" style={{color:unreadAlerts.length?'var(--danger)':'var(--success)'}}>
-            {unreadAlerts.length}
+      )}
+
+      {/* Today's money */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Today's money</span>
+          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, background: 'var(--surface-2,#f1f5f9)', color: 'var(--text-2,#475569)', padding: '4px 10px', borderRadius: 99 }}><Lock size={12} style={{ verticalAlign: -2 }} /> {openShifts.length} live shift sealed — reveals at close</span>}
+        </div>
+        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: payTotal > 0 ? 12 : 0 }}>
+          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Sales{salesMasked && closedShifts.length ? ' (closed)' : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
+          <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>Margin</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{margin.pct}% · sell − buy</div>}</div>
+          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Litres</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div></div>
+        </div>
+        {payTotal > 0 && <>
+          <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden' }}>
+            {payTotals.filter(p => p.v > 0).map(p => <div key={p.m} style={{ width: `${(p.v / payTotal) * 100}%`, background: PAY[p.m] }} />)}
           </div>
-          <div className="stat-sub">{unreadAlerts.length ? tc('dash_page.action_needed','Action needed') : tc('dash_page.all_clear','All clear ✓')}</div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-2,#475569)' }}>
+            {payTotals.filter(p => p.v > 0).map(p => <span key={p.m}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: PAY[p.m] }} /> {cap(p.m)} {Math.round((p.v / payTotal) * 100)}%</span>)}
+          </div>
+        </>}
+      </div>
+
+      {/* Last settlement */}
+      {lastSet && (
+        <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Last settlement</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Shift {lastSet.shift_number} · {lastSet.attendant_name} · {lastSet.at ? new Date(lastSet.at).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : ''}</span>
+          </div>
+          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(96px,1fr))', gap: 8 }}>
+            {[['Cash', lastSet.cash], ['UPI', lastSet.upi], ['Card', lastSet.card], ['Credit cust.', lastSet.credit], ['Petty cash', lastSet.petty]].map(([k, v]) => (
+              <div key={k} style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{k}</div><div style={{ fontSize: 16, fontWeight: 700 }}>{fmtR(v)}</div></div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border,#e5e7eb)', fontSize: 13 }}>
+            <span style={{ color: 'var(--text-2,#475569)' }}>Total collected <strong style={{ color: 'var(--text-1,#0f172a)' }}>{fmtR(lastSet.total)}</strong></span>
+            <span style={{ fontSize: 12, padding: '3px 10px', borderRadius: 99, background: Math.abs(lastSet.variance) <= 50 ? '#eaf3de' : '#fee2e2', color: Math.abs(lastSet.variance) <= 50 ? '#27500a' : '#991b1b' }}>Variance {lastSet.variance >= 0 ? '+' : ''}{fmtR(lastSet.variance)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Credit receivables */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Credit receivables</div>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 120, ...mini, background: '#ede9fe' }}><div style={{ fontSize: 12, color: '#5b21b6' }}>To invoice</div><div style={{ fontSize: 18, fontWeight: 800, color: '#4c1d95' }}>{fmtR(recv.to_invoice)}</div></div>
+          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }}><ArrowRight size={16} /></div>
+          <div style={{ flex: 1, minWidth: 120, ...mini }}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>Outstanding</div><div style={{ fontSize: 18, fontWeight: 800 }}>{fmtR(recv.outstanding)}</div></div>
+          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-3)' }}><ArrowRight size={16} /></div>
+          <div style={{ flex: 1, minWidth: 120, ...mini, background: recv.overdue_90 > 0 ? '#fee2e2' : 'var(--surface-2,#f8fafc)' }}><div style={{ fontSize: 12, color: recv.overdue_90 > 0 ? '#991b1b' : 'var(--text-3)' }}>Overdue 90+</div><div style={{ fontSize: 18, fontWeight: 800, color: recv.overdue_90 > 0 ? '#7f1d1d' : 'inherit' }}>{fmtR(recv.overdue_90)}</div></div>
         </div>
       </div>
 
-      {/* Cash awaiting bank deposit — flags the overnight/T+1 custody gap */}
-      {user?.role==='owner' && deposit && deposit.awaiting>0.5 && (
-        <a href="/deposits" style={{textDecoration:'none'}}>
-          <div className="card" style={{marginBottom:'1.5rem',display:'flex',justifyContent:'space-between',alignItems:'center',
-            borderLeft:`4px solid ${deposit.stale?'#dc2626':'#FF6B00'}`,background:deposit.stale?'#fef2f2':undefined}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>🏦 Cash awaiting bank deposit</div>
-              <div style={{fontSize:12.5,color:deposit.stale?'#dc2626':'var(--text-3)',marginTop:2}}>
-                {deposit.stale ? `⚠ Sitting ${deposit.age_days} day(s) — deposit overdue` : `Oldest: ${deposit.age_days} day(s)`}
-              </div>
-            </div>
-            <div style={{fontSize:22,fontWeight:900,color:deposit.stale?'#dc2626':'var(--brand)'}}>
-              ₹{Number(deposit.awaiting||0).toLocaleString('en-IN')}
-            </div>
-          </div>
-        </a>
-      )}
-
-      {/* Held suspense — un-invoiced credit + petty-cash fund (cleared as accounted) */}
-      {user?.role==='owner' && data?.suspense && (Number(data.suspense.credit_suspense)>0.5 || Number(data.suspense.petty_cash)>0.5) && (
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1rem',marginBottom:'1.5rem'}} className="stack-mobile">
-          <a href="/invoices" style={{textDecoration:'none'}}>
-            <div className="card" style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderLeft:'4px solid #8b5cf6'}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>🧾 {tc('dash_page.credit_suspense','Credit to invoice')}</div>
-                <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:2}}>{tc('dash_page.credit_suspense_sub','Un-invoiced credit booked at shift close')}</div>
-              </div>
-              <div style={{fontSize:20,fontWeight:900,color:'#7c3aed'}}>₹{Number(data.suspense.credit_suspense||0).toLocaleString('en-IN')}</div>
-            </div>
-          </a>
-          <a href="/petty-cash" style={{textDecoration:'none'}}>
-            <div className="card" style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderLeft:'4px solid #0ea5e9'}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:14,color:'var(--text-1)'}}>💼 {tc('dash_page.petty_balance','Petty cash on hand')}</div>
-                <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:2}}>{tc('dash_page.petty_balance_sub','Fund balance — cleared by expense vouchers')}</div>
-              </div>
-              <div style={{fontSize:20,fontWeight:900,color:'#0284c7'}}>₹{Number(data.suspense.petty_cash||0).toLocaleString('en-IN')}</div>
-            </div>
-          </a>
+      {/* Fuel health */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Fuel health</span>
+          {wet && <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 99, background: wet.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wet.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wet.beyond_tolerance ? <AlertTriangle size={12} style={{ verticalAlign: -2 }} /> : <CheckCircle size={12} style={{ verticalAlign: -2 }} />} Stock variance MTD {fmtL(wet.variance_ltrs)} L{wet.beyond_tolerance ? ' · over tolerance' : ' · within tolerance'}</span>}
         </div>
-      )}
-
-      {/* Earnings/Margin + live nozzle feed — owner-only purchase economics */}
-      {user?.role==='owner' && <EarningsMarginTile stationId={stationId}/>}
-
-      {/* Cash Integrity — owner oversight: each operator's last shift-end report + undercash count */}
-      {user?.role==='owner' && cashInt.length>0 && (
-        <div className="card" style={{marginBottom:'1.5rem'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
-            <div style={{fontWeight:700,fontSize:14}}>🛡 Cash Integrity
-              <span style={{fontSize:11,fontWeight:400,color:'var(--text-3)',marginLeft:6}}>· last 90 days · over or exact, never under</span>
-            </div>
-            <a href="/cash-integrity" style={{fontSize:12,color:'var(--brand)',textDecoration:'none',fontWeight:600}}>View all →</a>
-          </div>
-          <div className="table-wrap">
-            <table className="dms-table">
-              <thead><tr>
-                <th>Operator</th><th>Last shift-end report</th>
-                <th style={{textAlign:'center'}}>Undercash</th><th style={{textAlign:'center'}}>Flag</th>
-              </tr></thead>
-              <tbody>
-                {cashInt.slice(0,6).map(r=>{
-                  const v = parseFloat(r.last_variance||0);
-                  const suspect = r.undercash_count>=3 || (r.total_recons>=4 && r.undercash_count/r.total_recons>0.4);
-                  return (
-                    <tr key={r.attendant_id} style={suspect?{background:'#fef2f2'}:undefined}>
-                      <td style={{fontWeight:600}}>{r.attendant_name}</td>
-                      <td style={{fontSize:13}}>
-                        {r.last_recon_at ? (
-                          <>
-                            <span style={{fontWeight:600,color:v<0?'#dc2626':v>0?'#16a34a':'var(--text-2)'}}>
-                              {v<0?`Short ₹${Math.abs(v).toLocaleString('en-IN')}`:v>0?`Over ₹${Math.abs(v).toLocaleString('en-IN')}`:'Exact'}
-                            </span>
-                            <span style={{color:'var(--text-3)',marginLeft:6}}>· {new Date(r.last_recon_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>
-                          </>
-                        ) : '—'}
-                      </td>
-                      <td style={{textAlign:'center',fontWeight:700,color:r.undercash_count?'#dc2626':'var(--text-3)'}}>{r.undercash_count}/{r.total_recons}</td>
-                      <td style={{textAlign:'center',fontSize:12}}>
-                        {suspect?<span style={{color:'#dc2626',fontWeight:700}}>Suspect</span>:r.undercash_count>0?<span style={{color:'#d97706'}}>Watch</span>:<span style={{color:'#16a34a'}}>Clean</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Live Tank Status — real-time wet-stock variance vs book between dips */}
-      {tankLive.length>0 && (
-        <div className="card" style={{marginBottom:'1.5rem'}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
-            <div style={{fontWeight:700,fontSize:14}}>💧 Live Tank Status
-              <span style={{fontSize:11,fontWeight:400,color:'var(--text-3)',marginLeft:6}}>· variance since last dip · 🟢 within limit / 🔴 over</span>
-            </div>
-            <a href="/stock-reco" style={{fontSize:12,color:'var(--brand)',textDecoration:'none',fontWeight:600}}>Reconcile →</a>
-          </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:10}} className="stack-mobile">
-            {tankLive.map(tk=>{
-              const mins = tk.last_reading_at ? Math.round((Date.now()-new Date(tk.last_reading_at).getTime())/60000) : null;
-              const stale = mins!=null && mins > 720; // >12h old
-              const ago = mins==null ? 'no reading' : mins<60 ? `${mins} min ago` : mins<1440 ? `${Math.round(mins/60)} h ago` : `${Math.round(mins/1440)} d ago`;
-              const dot = tk.status==='loss'||tk.status==='gain' ? '#dc2626' : tk.status==='ok' ? '#16a34a' : '#94a3b8';
+        {cover.length === 0 ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>No tanks configured.</div> : (
+          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(125px,1fr))', gap: 12 }}>
+            {cover.map(t => {
+              const isGas = (t.fuel_type || '').toLowerCase() === 'cng';
+              const pct = Number(t.fill_pct || 0);
+              const col = lvlColor(pct);
               return (
-                <div key={tk.tank_id} style={{border:'1px solid var(--border)',borderLeft:`4px solid ${dot}`,borderRadius:10,padding:'0.7rem 0.85rem'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
-                    <div style={{fontWeight:700,fontSize:13}}>T{tk.tank_number} <span style={{fontWeight:400,color:'var(--text-3)',fontSize:11}}>{tk.fuel_type}</span></div>
-                    <div style={{fontSize:11,color:stale?'#dc2626':'var(--text-3)'}}>{stale?'⚠ ':''}{ago}</div>
-                  </div>
-                  <div style={{fontSize:18,fontWeight:800,margin:'2px 0'}}>
-                    {tk.current_vol!=null?Number(tk.current_vol).toLocaleString('en-IN',{maximumFractionDigits:0}):'—'}<span style={{fontSize:11,fontWeight:400,color:'var(--text-3)'}}> L{tk.fill_pct!=null?` · ${tk.fill_pct}%`:''}</span>
-                  </div>
-                  <div style={{fontSize:12.5,fontWeight:600,color:dot}}>
-                    {tk.variance_ltrs==null
-                      ? (tk.status==='baseline'?'Baseline set':'No data')
-                      : `${tk.status==='loss'?'🔴 Loss':tk.status==='gain'?'🔴 Gain':'🟢 OK'} ${tk.variance_ltrs>0?'+':''}${Number(tk.variance_ltrs).toFixed(1)} L`}
+                <div key={t.tank_number} style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                  {isGas
+                    ? <div style={{ width: 32, height: 60, border: '1.5px solid #94a3b8', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Flame size={18} color="#94a3b8" /></div>
+                    : <div style={{ width: 32, height: 60, border: `1.5px solid ${col}`, borderRadius: 5, position: 'relative', overflow: 'hidden', flexShrink: 0 }}><div style={{ position: 'absolute', bottom: 0, width: '100%', height: `${Math.min(100, pct)}%`, background: col }} /></div>}
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>Tank {t.tank_number} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{t.fuel_type}</span></div>
+                    {isGas ? <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)' }}>by kg</div> : <div style={{ fontSize: 17, fontWeight: 800, color: col }}>{pct}%</div>}
+                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{isGas ? 'gas · no dip' : (t.days != null ? `~${t.days} days` : 'cover —')}</div>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* Charts */}
-      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>
-            {tc('dash_page.sales_by_fuel','Sales by Fuel Type (incl. Lubes)')}
-          </div>
-          {salesMasked ? (
-            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40,fontSize:13,fontWeight:600}}>🔒 {tc('dash_page.hidden_open','Hidden during open shift')}</div>
-          ) : fuelData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={fuelData} margin={{top:0,right:0,left:-20,bottom:0}}>
-                <XAxis dataKey="name" tick={{fontSize:11}}/>
-                <YAxis tick={{fontSize:11}} tickFormatter={v=>`₹${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={v=>`₹${fmt(v)}`}/>
-                <Bar dataKey="amount" radius={[4,4,0,0]}>
-                  {fuelData.map((e,i) => <Cell key={i} fill={e.fill}/>)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40}}>{tc('dash_page.no_sales','No sales yet today')}</div>
-          )}
-        </div>
-
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>{tc('dash_page.by_payment','By Payment Mode')}</div>
-          {salesMasked ? (
-            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40,fontSize:13,fontWeight:600}}>🔒 {tc('dash_page.hidden_open','Hidden during open shift')}</div>
-          ) : paymentData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={paymentData} dataKey="value" nameKey="name"
-                  cx="50%" cy="50%" innerRadius={45} outerRadius={75}
-                  label={({name,percent}) => `${name} ${(percent*100).toFixed(0)}%`}
-                  labelLine={false} fontSize={11}>
-                  {paymentData.map((e,i) => <Cell key={i} fill={e.fill}/>)}
-                </Pie>
-                <Tooltip formatter={v=>`₹${fmt(v)}`}/>
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div style={{textAlign:'center',color:'var(--text-3)',paddingTop:40}}>{tc('dash_page.no_sales','No sales yet today')}</div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* Operator settlements — per attendant, by payment type (today) */}
-      {settlements.length > 0 && (
-        <div className="card" style={{marginBottom:'1.5rem'}}>
-          <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>
-            {tc('dash_page.operator_settlements','Operator Settlements — by Payment Type (today)')}
-          </div>
-          <div className="table-wrap">
-            <table className="dms-table">
-              <thead>
-                <tr>
-                  <th>{tc('dash_page.operator','Operator')}</th>
-                  <th>{tc('dash_page.shift','Shift')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dispense.cash','Cash')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dispense.card','Card')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dispense.upi','UPI')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dispense.credit','Credit')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dash_page.petty','Petty')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dash_page.total_sales','Sales')}</th>
-                  <th style={{textAlign:'right'}}>{tc('dash_page.variance','Variance')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {settlements.map((s,i) => {
-                  const v = parseFloat(s.variance || 0);
-                  return (
-                    <tr key={`${s.attendant_id}-${i}`}>
-                      <td><strong>{s.attendant_name}</strong></td>
-                      <td>{s.shift_number}</td>
-                      <td className="num">{fmtR(s.cash_actual)}</td>
-                      <td className="num">{fmtR(s.card_total)}</td>
-                      <td className="num">{fmtR(s.upi_total)}</td>
-                      <td className="num">{fmtR(s.credit_total)}</td>
-                      <td className="num">{fmtR(s.petty_cash)}</td>
-                      <td className="num"><strong>{fmtR(s.total_sales)}</strong></td>
-                      <td className="num">
-                        <span style={{fontFamily:'var(--font-mono)',fontWeight:700,
-                          color: Math.abs(v) <= 50 ? 'var(--success)' : 'var(--danger)'}}>
-                          {v >= 0 ? '+' : ''}{fmtR(v)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {settlements.length > 1 && (
-                <tfoot>
-                  <tr style={{borderTop:'2px solid var(--border)',fontWeight:700}}>
-                    <td colSpan={2}>{tc('dash_page.total','Total')}</td>
-                    <td className="num">{fmtR(settleTotals.cash)}</td>
-                    <td className="num">{fmtR(settleTotals.card)}</td>
-                    <td className="num">{fmtR(settleTotals.upi)}</td>
-                    <td className="num">{fmtR(settleTotals.credit)}</td>
-                    <td className="num">{fmtR(settleTotals.petty)}</td>
-                    <td className="num">{fmtR(settleTotals.sales)}</td>
-                    <td/>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+      {/* AI briefing */}
+      <div style={{ background: '#ede9fe', borderRadius: 14, padding: '14px 16px', marginBottom: embedded ? 0 : 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Sparkles size={18} color="#5b21b6" />
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#4c1d95' }}>AI briefing</span>
         </div>
-      )}
-
-      {/* Tank levels — Book Stock vs Actual Dip */}
-      <div className="card" style={{marginBottom:'1.5rem'}}>
-        <div style={{fontWeight:600,marginBottom:'1rem',fontSize:14}}>
-          {tc('dash_page.tank_levels','Tank Levels — Book Stock vs Actual Dip')}
-        </div>
-        <div className="table-wrap">
-          <table className="dms-table">
-            <thead>
-              <tr>
-                <th>{tc('dash_page.tank','Tank')}</th><th>{tc('dash_page.fuel','Fuel')}</th><th>{tc('dash_page.capacity','Capacity')}</th>
-                <th>{tc('dash_page.book_stock','Book Stock')}</th><th>{tc('dash_page.actual_dip','Actual Dip')}</th>
-                <th>{tc('dash_page.variance','Variance')}</th><th>{tc('dash_page.fill_level','Fill Level')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tankDisplay.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>
-                    {tc('dash_page.no_tanks','No tanks configured')}
-                  </td>
-                </tr>
-              )}
-              {tankDisplay.map(tank => {
-                // Latest physical dip — closing preferred, else the opening dip, so a dip
-                // entered at shift start shows immediately instead of "No dip yet".
-                const latestDip = tank.closing_dip != null ? tank.closing_dip
-                                : tank.opening_dip != null ? tank.opening_dip : null;
-                const dipLabel  = tank.closing_dip != null ? tc('dash_page.closing','closing')
-                                : tank.opening_dip != null ? tc('dash_page.opening','opening') : null;
-                const book   = parseFloat(tank.book_stock   || tank.current_stock || 0);
-                const actual = latestDip != null ? parseFloat(latestDip) : null;
-                const diff   = actual != null ? actual - book : null;
-                const ok     = diff != null && Math.abs(diff) <= 100;
-                const cap    = parseFloat(tank.capacity_ltrs || 0);
-                const level  = actual != null ? actual : book;  // bar tracks the real dip when we have one
-                const pct    = cap > 0 ? Math.min(100, Math.round((level / cap) * 100)) : 0;
-                return (
-                  <tr key={tank.tank_id || tank.id}>
-                    <td><strong>{tc('dash_page.tank','Tank')} {tank.tank_number}</strong></td>
-                    <td>
-                      <span className={`fuel-chip fuel-${tank.fuel_type}`}>
-                        {t(`fuel_types.${tank.fuel_type}`) || tank.fuel_type}
-                      </span>
-                    </td>
-                    <td className="num">{fmtL(cap)} L</td>
-                    <td className="num">{fmtL(book)} L</td>
-                    <td className="num">
-                      {actual != null
-                        ? <>{fmtL(actual)} L {dipLabel && <span style={{fontSize:10,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase'}}>{dipLabel}</span>}</>
-                        : <span style={{color:'var(--text-3)'}}>{tc('dash_page.no_dip','No dip yet')}</span>}
-                    </td>
-                    <td>
-                      {actual != null ? (
-                        <span style={{fontFamily:'var(--font-mono)',fontWeight:700,
-                          color: ok ? 'var(--success)' : 'var(--danger)'}}>
-                          {diff >= 0 ? '+' : ''}{fmtL(diff)} L
-                        </span>
-                      ) : <span style={{color:'var(--text-3)',fontSize:12}}>—</span>}
-                    </td>
-                    <td>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <div className="tank-bar" style={{width:80}}>
-                          <div className="tank-bar-fill" style={{
-                            width: `${pct}%`,
-                            background: pct < 20 ? 'var(--danger)'
-                              : pct < 40 ? 'var(--warning)'
-                              : FUEL_COLORS[tank.fuel_type] || 'var(--brand)'
-                          }}/>
-                        </div>
-                        <span style={{fontSize:12,fontFamily:'var(--font-mono)'}}>{pct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <div style={{fontSize:11,color:'var(--text-3)',marginTop:8}}>
-          {tc('dash_page.book_stock_note','Book Stock = Opening Dip + Deliveries − Sales this shift. Variance shown only after closing dip is recorded.')}
-        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: '#3b0764', lineHeight: 1.7 }}>
+          {aiLines.map((l, i) => <li key={i}>{l}</li>)}
+        </ul>
       </div>
-
-      {/* Fuel Prices + Credit Customers */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>{tc('dash_page.current_prices','Current Fuel Prices')}</div>
-          {prices.length === 0 && (
-            <div style={{color:'var(--text-3)',fontSize:13}}>{tc('dash_page.no_prices','No prices set in Settings')}</div>
-          )}
-          {prices.map(p => (
-            <div key={p.id} style={{display:'flex',justifyContent:'space-between',
-              alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--border)'}}>
-              <span className={`fuel-chip fuel-${p.fuel_type}`}>
-                {t(`fuel_types.${p.fuel_type}`) || p.fuel_type}
-              </span>
-              <div style={{textAlign:'right'}}>
-                <div style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:18}}>
-                  ₹{Number(p.price).toFixed(2)}
-                  <span style={{fontSize:11,color:'var(--text-3)'}}>/L</span>
-                </div>
-                <div style={{fontSize:11,color:'var(--text-3)'}}>
-                  {tc('dash_page.updated','Updated')}: {toIST(p.effective_from)}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>
-            {tc('dash_page.credit_mtd','Credit Customers — Month to Date')}
-          </div>
-          {corps.length === 0 && (
-            <div style={{color:'var(--text-3)',fontSize:13}}>{tc('dash_page.no_credit','No credit customers')}</div>
-          )}
-          {corps.map(corp => {
-            const pct = corp.credit_limit > 0
-              ? Math.round((corp.current_outstanding / corp.credit_limit) * 100)
-              : 0;
-            return (
-              <div key={corp.id} style={{marginBottom:'1rem'}}>
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}>
-                  <span style={{fontWeight:500}}>{corp.company_name}</span>
-                  <span style={{
-                    color: pct > 80 ? 'var(--danger)' : pct > 60 ? 'var(--warning)' : 'var(--success)',
-                    fontWeight:600
-                  }}>{pct}%</span>
-                </div>
-                <div className="tank-bar">
-                  <div className="tank-bar-fill" style={{
-                    width: `${Math.min(100,pct)}%`,
-                    background: pct > 80 ? 'var(--danger)' : pct > 60 ? 'var(--warning)' : 'var(--success)'
-                  }}/>
-                </div>
-                <div style={{display:'flex',justifyContent:'space-between',
-                  fontSize:11,color:'var(--text-3)',marginTop:3}}>
-                  <span>{tc('dash_page.used','Used')}: ₹{fmt(corp.current_outstanding)}</span>
-                  <span>{tc('dash_page.limit','Limit')}: ₹{fmt(corp.credit_limit)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Variances + Alerts */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.5rem',marginBottom:'1.5rem'}}>
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>{tc('dash_page.cash_variances','Cash Variances Today')}</div>
-          {(data?.variances || []).length > 0 ? (
-            data.variances.map(v => (
-              <div key={v.id} className="alert-banner danger" style={{marginBottom:8}}>
-                <AlertTriangle size={16} style={{flexShrink:0}}/>
-                <div>
-                  <div style={{fontWeight:500}}>{v.attendant_name}</div>
-                  <div style={{fontSize:12,marginTop:2}}>
-                    {tc('dash_page.expected','Expected')} ₹{fmt(v.cash_expected)} · {tc('dash_page.got','Got')} ₹{fmt(v.cash_actual)} ·
-                    {tc('dash_page.diff','Diff')} <strong>₹{fmt(Math.abs(v.variance))}</strong>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div style={{color:'var(--text-3)',fontSize:13}}>{tc('dash_page.no_variances','No variances today ✓')}</div>
-          )}
-        </div>
-
-        <div className="card">
-          <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>{tc('dash_page.recent_alerts','Recent Alerts')}</div>
-          {unreadAlerts.length > 0 ? (
-            unreadAlerts.slice(0,4).map(a => (
-              <div key={a.id}
-                className={`alert-banner ${a.severity==='critical'?'danger':'warning'}`}
-                style={{marginBottom:8}}>
-                <Bell size={15} style={{flexShrink:0}}/>
-                <div style={{fontSize:13}}>{a.message}</div>
-              </div>
-            ))
-          ) : (
-            <div style={{color:'var(--text-3)',fontSize:13}}>{tc('dash_page.no_unread','No unread alerts ✓')}</div>
-          )}
-        </div>
-      </div>
-
-      {/* Live Events Widget — owners get the live feed inside the earnings tile */}
-      {user?.role!=='owner' && <LiveEventsWidget stationId={stationId} maxRows={8}/>}
-
     </Wrapper>
   );
 }
