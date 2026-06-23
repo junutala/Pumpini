@@ -74,12 +74,13 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
         ca.merged_into_id,
         csl.credit_limit, csl.payment_terms, csl.is_active AS link_active,
         csl.id AS link_id, csl.station_id,
-        COALESCE((
-          SELECT SUM(de.amount) FROM dispense_events de
-          WHERE de.corporate_id=ca.id AND de.station_id=csl.station_id
-            AND de.payment_mode='credit' AND (de.is_invoiced IS NULL OR de.is_invoiced=FALSE)
-            AND NOT COALESCE(de.is_voided,FALSE)
-        ),0) AS current_outstanding
+        -- Control-total model: credit isn't tagged to a customer at the pump, so
+        -- a customer's liability = what we've invoiced them − what they've paid.
+        ( COALESCE((SELECT SUM(gi.total_amount) FROM gst_invoices gi
+                    WHERE gi.corporate_id=ca.id AND gi.station_id=csl.station_id),0)
+        - COALESCE((SELECT SUM(cr.amount) FROM corporate_receipts cr
+                    WHERE cr.corporate_id=ca.id AND cr.station_id=csl.station_id),0)
+        ) AS current_outstanding
       FROM corporate_accounts ca
       JOIN corporate_station_links csl ON csl.corporate_id = ca.id
       WHERE ca.merged_into_id IS NULL AND ca.is_active = TRUE

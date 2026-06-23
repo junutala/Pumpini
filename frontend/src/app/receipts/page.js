@@ -83,7 +83,9 @@ export default function ReceiptsPage() {
   };
 
   const filteredReceipts = receipts.filter(r=>{
-    const d = r.receipt_date||r.created_at?.slice(0,10)||'';
+    // receipt_date may arrive as an ISO datetime; normalise to YYYY-MM-DD so a
+    // same-day receipt isn't excluded by a string-compare against the To date.
+    const d = String(r.receipt_date||r.created_at||'').slice(0,10);
     return d>=dateFrom && d<=dateTo;
   });
   const periodTotal = filteredReceipts.reduce((s,r)=>s+parseFloat(r.amount||0),0);
