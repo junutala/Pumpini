@@ -10,5 +10,11 @@ const nextConfig = {
       { source: '/api/:path*', destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/:path*` }
     ];
   },
+  webpack: (config) => {
+    // pdfjs-dist tries to require the native 'canvas' module (Node-only); we
+    // render to a browser <canvas>, so stub it out to keep the build clean.
+    config.resolve.alias = { ...config.resolve.alias, canvas: false };
+    return config;
+  },
 };
 module.exports = nextConfig;

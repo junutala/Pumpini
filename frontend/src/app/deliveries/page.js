@@ -6,6 +6,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import { pdfToPng } from '../../lib/pdfToPng';
 
 const fmt   = n => Number(n||0).toLocaleString('en-IN', { maximumFractionDigits:2 });
 const fmtL  = n => Number(n||0).toFixed(2);
@@ -138,11 +139,19 @@ export default function DeliveriesPage() {
     setScanErr(''); setScanning(true);
     try {
       const { base64, media_type } = await fileToBase64(file);
-      setScanFile({ base64, media_type }); setInvoiceId(null);   // keep to attach on save
+      setScanFile({ base64, media_type }); setInvoiceId(null);   // keep ORIGINAL (PDF/photo) to attach on save
+      // The model reads image-based PDFs reliably as a PNG but flakily as a raw
+      // PDF, so rasterise page 1 to a PNG just for OCR. The stored record keeps
+      // the original PDF above; only the scan payload becomes the PNG.
+      let scanB64 = base64, scanType = media_type;
+      if (media_type === 'application/pdf') {
+        try { const png = await pdfToPng(base64); scanB64 = png.base64; scanType = png.media_type; }
+        catch { /* conversion failed — fall back to sending the PDF as-is */ }
+      }
       // The first scan is occasionally flaky — one silent retry before we give up.
       let res;
-      try { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type }); }
-      catch (e1) { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: base64, media_type }); }
+      try { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }); }
+      catch (e1) { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }); }
       applyParsed(res);
     } catch (err) {
       setScanErr(err.error || tc('deliv_page.scan_fail','Could not read the invoice — enter the details manually.'));
