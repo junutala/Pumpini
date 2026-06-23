@@ -253,10 +253,13 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     let msg;
     try {
       msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 1500,
+        // Higher cap so a multi-product invoice's JSON isn't truncated mid-object
+        // (truncated JSON → parse fails → "could not read").
+        model: 'claude-sonnet-4-6', max_tokens: 4000,
         messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] }],
       });
     } catch (e) {
+      try { require('../utils/logger').error('parse-invoice API error: ' + (e.message || e)); } catch { /* noop */ }
       return res.status(503).json({ error: 'Invoice scanning is unavailable right now — enter the details manually.' });
     }
 
@@ -264,7 +267,12 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     const m = txt.match(/\{[\s\S]*\}/);
     let parsed;
     try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
-    if (!parsed) return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
+    if (!parsed) {
+      // Log what the model actually returned (stop reason + a snippet) so a real
+      // failure can be diagnosed from Railway logs instead of guessing.
+      try { require('../utils/logger').warn(`parse-invoice unparsed (stop=${msg.stop_reason}): ${txt.slice(0, 400)}`); } catch { /* noop */ }
+      return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
+    }
     if (!Array.isArray(parsed.items)) parsed.items = [];
     res.json(parsed);
   } catch (err) { next(err); }
