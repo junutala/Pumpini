@@ -133,9 +133,18 @@ export default function ShiftStartPage() {
         volume_ltrs: vol,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
+      // Reflect the save inline immediately (so the "last saved" line updates without a reload).
+      setTanks(ts => ts.map(t => t.id === tank.id
+        ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
+            last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
+        : t));
     } catch (e) { setErr(e.response?.data?.error || e.error || 'Could not save dip'); }
     setBusy(false);
   };
+
+  // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
+  const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
+  const fmtWhen = (ts) => new Date(ts).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
 
   // ── Operators ─────────────────────────────────────────────────────
   const assignedIds   = new Set(attendants.map(a => a.attendant_id));
@@ -256,25 +265,35 @@ export default function ShiftStartPage() {
         <div className="card" style={{maxWidth:620}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>Opening dip readings</div>
           <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>Enter each tank&apos;s dip (4 marks/cm). Volume is computed from the tank&apos;s calibration. This is the opening stock for today&apos;s reconciliation.</div>
-          {tanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>No tanks configured.</div>}
-          {tanks.map(tk => {
+          {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>No dip-measured tanks configured.</div>}
+          {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
             const vol = tankVol(tk);
             return (
-              <div key={tk.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
-                <div style={{width:120,fontSize:13,fontWeight:600}}>Tank {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?'dip e.g. 64.2':'dip cm'}
-                  value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                {hasChart
-                  ? <div style={{minWidth:120,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
-                  : <input style={{...inp,width:130}} type="number" step="0.01" placeholder="volume L"
-                      value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
-                <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
-                  style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
-                    background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
-                  {savedDips[tk.id]?'✓ Saved':'Save'}
-                </button>
-                {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>No calibration — type volume</span>}
+              <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <div style={{width:120,fontSize:13,fontWeight:600}}>Tank {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
+                  <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?'dip e.g. 64.2':'dip cm'}
+                    value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                  {hasChart
+                    ? <div style={{minWidth:120,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
+                    : <input style={{...inp,width:130}} type="number" step="0.01" placeholder="volume L"
+                        value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
+                  <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
+                    style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
+                      background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
+                    {savedDips[tk.id]?'✓ Saved':'Save'}
+                  </button>
+                  {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>No calibration — type volume</span>}
+                </div>
+                {/* Last saved reading — so a blank entry box never looks like lost data. */}
+                {tk.last_reading_at
+                  ? <div style={{fontSize:11.5,color:'#475569',marginTop:5,marginLeft:130}}>
+                      <span style={{color:'#16a34a',fontWeight:700}}>● Last saved</span>{' '}
+                      {tk.last_reading_type ? `${tk.last_reading_type} ` : ''}dip {tk.last_dip_cm!=null?`${tk.last_dip_cm} cm`:'—'}
+                      {tk.last_reading!=null?` → ${fmtL(tk.last_reading)} L`:''} · {fmtWhen(tk.last_reading_at)}
+                    </div>
+                  : <div style={{fontSize:11.5,color:'#94a3b8',marginTop:5,marginLeft:130}}>No reading saved yet for this tank.</div>}
               </div>
             );
           })}
