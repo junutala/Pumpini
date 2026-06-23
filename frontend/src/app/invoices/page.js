@@ -98,28 +98,20 @@ export default function InvoicesPage() {
     setLoading(true);
     setSelected(new Set());
     try {
+      // Only THIS customer's uninvoiced credit fills — scoped server-side by
+      // corporate_id so one customer can never see (or be billed for) another's.
       const events = await api.get('/dispense', { params: {
-        station_id: stationId,
-        date_from:  dateFrom,
-        date_to:    dateTo + 'T23:59:59',
-        limit:      5000,
+        station_id:   stationId,
+        corporate_id: selectedCorp,
+        payment_mode: 'credit',
+        uninvoiced:   'true',
+        date_from:    dateFrom,
+        date_to:      dateTo + 'T23:59:59',
+        limit:        5000,
       }});
 
-      // Filter to only UNINVOICED credit transactions
-      // Also get corporate transactions to match
-      const corpTxns = await api.get(`/corporate/${selectedCorp}/statement`, {
-        params: { month: dateFrom.slice(0,7) }
-      }).catch(()=>({ transactions:[] }));
-
-      // Match dispense events with corporate transactions
-      const corpTxnMap = {};
-      (corpTxns.transactions||[]).forEach(t => {
-        if (t.dispense_event_id) corpTxnMap[t.dispense_event_id] = t;
-      });
-
-      // Get all credit transactions for this station in date range
       const creditEvents = (Array.isArray(events)?events:[]).filter(e =>
-        e.payment_mode === 'credit'
+        e.payment_mode === 'credit' && e.corporate_id === selectedCorp
       );
 
       setTransactions(creditEvents);
