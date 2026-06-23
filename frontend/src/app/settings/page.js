@@ -529,16 +529,22 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
           </div>
           <div style={{marginBottom:'0.75rem'}}>
             <label className="label">Fuel Type *</label>
-            <select className="input" value={form.fuel_type} onChange={e=>f('fuel_type',e.target.value)} required>
+            <select className="input" value={form.fuel_type} onChange={e=>{
+              const v = e.target.value;
+              // CNG has no litre capacity — stamp a sentinel and hide the field. (Revisit in housekeeping.)
+              setForm(p=>({ ...p, fuel_type:v, capacity_ltrs: v==='cng' ? 0 : (p.fuel_type==='cng' ? undefined : p.capacity_ltrs) }));
+            }} required>
               {FUEL_TYPES.map(ft=><option key={ft.value} value={ft.value}>{ft.label}</option>)}
             </select>
           </div>
-          <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">Capacity (Litres) *</label>
-            <input className="input" type="number" step="100" min="0" required
-              placeholder="e.g. 20000" value={form.capacity_ltrs||''}
-              onChange={e=>f('capacity_ltrs',parseFloat(e.target.value))}/>
-          </div>
+          {form.fuel_type!=='cng' && (
+            <div style={{marginBottom:'0.75rem'}}>
+              <label className="label">Capacity (Litres) *</label>
+              <input className="input" type="number" step="100" min="0" required
+                placeholder="e.g. 20000" value={form.capacity_ltrs||''}
+                onChange={e=>f('capacity_ltrs',parseFloat(e.target.value))}/>
+            </div>
+          )}
           <div style={{marginBottom:'1.25rem'}}>
             <label className="label">Tank Calibration (size)</label>
             <select className="input" value={form.calibration_chart_id||''}
@@ -581,10 +587,11 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
                     <tr key={t.id}>
                       <td><strong>Tank {t.tank_number}</strong></td>
                       <td><span className={`fuel-chip fuel-${t.fuel_type}`}>{FUEL_TYPES.find(f=>f.value===t.fuel_type)?.label||t.fuel_type}</span></td>
-                      <td className="num">{Number(t.capacity_ltrs).toLocaleString('en-IN')} L</td>
+                      <td className="num">{t.fuel_type==='cng' ? <span style={{color:'var(--text-3)'}}>—</span> : `${Number(t.capacity_ltrs).toLocaleString('en-IN')} L`}</td>
                       <td style={{fontSize:12}}>{t.chart_name || (charts.find(c=>c.id===t.calibration_chart_id)?.name) || <span style={{color:'var(--text-3)'}}>—</span>}</td>
                       <td className="num">{Number(t.current_stock).toLocaleString('en-IN',{maximumFractionDigits:1})} L</td>
                       <td>
+                        {t.fuel_type==='cng' ? <span style={{color:'var(--text-3)'}}>—</span> : (
                         <div style={{display:'flex',alignItems:'center',gap:6}}>
                           <div className="tank-bar" style={{width:60}}>
                             <div className="tank-bar-fill" style={{width:`${Math.min(100,pct)}%`,
@@ -592,6 +599,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
                           </div>
                           <span style={{fontSize:12,fontFamily:'var(--font-mono)'}}>{pct}%</span>
                         </div>
+                        )}
                       </td>
                       <td>
                         <div style={{display:'flex',gap:6}}>
