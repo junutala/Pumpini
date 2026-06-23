@@ -234,3 +234,56 @@ the whole point of the confirm step is independent verification). If A is chosen
 relax the confirm route to `authorize('owner','manager')` + add a `deposits.confirm`
 permission, and decide whether a manager can confirm his *own* deposit or only
 another's. No build until the owner confirms the model.
+
+## 13. Dashboard cockpit redesign — DESIGNED + FROZEN, build PAUSED (2026-06-23)
+Reimagined the dashboards as role-aware "cockpits" that drive decisions, not raw
+numbers. Designs frozen via mockups. **Build paused pending ground acceptance** —
+see the ⚠️ at the end.
+
+DECISIONS locked:
+- Margin cost basis = **LAST delivery rate** per fuel (owner's pick "B").
+- AI briefing = **rule-based v1** (LLM version a fast-follow).
+- Credit-liability simulator period = **actual collection lag** (invoice→receipt), not contracted terms.
+- Earnings-to-procurement = **gross margin** (sell−buy); no overhead visibility.
+- Simulator granularity = **outlet level** (managers control credit, not the owner).
+
+MANAGER cockpit (frozen): dark hero (shift state + AI one-liner) · "Needs you"
+action band (cash to deposit, credit to invoice, tank low) · Today's money
+(sales/margin/litres + payment mix, **blind-drop sealed per shift, reveals at
+close**) · Last settlement breakdown (Cash/UPI/Card/Credit/Petty + variance) ·
+Receivables ladder (to-invoice→outstanding→overdue 90+) · Fuel health (tank
+gauges + days-of-cover + per-tank variance + MTD wet-stock meter) · AI briefing.
+
+OWNER = TWO surfaces (Leazify-style):
+- **Operational** — outlet picker = the manager cockpit unmasked, + a **Global**
+  rollup (sum of all outlets' manager views; tanks aggregate by fuel; "needs you"
+  = cross-outlet exceptions).
+- **Intelligence** — Managers' Balanced Scorecard (credit% of sales, gross margin,
+  overdue%, wet-stock loss% — ranked, gap-to-best) · interactive **credit-liability
+  IRR simulator** (slide cost-of-capital → break-even credit days → flag underwater
+  outlets + ₹ at risk; d* = (m/(1−m))×(365/IRR)) · "**recoverable ₹/month**" leak
+  ledger (shrinkage + credit drag + idle cash + overdue) · AI recommendations.
+
+BUILD STATE: **PR 1 (bunk-feed metrics) MERGED** (#49 — additive, unused until
+pages land). Pending: PR 2 manager page · PR 3 owner feed (per-outlet ratios +
+actual collection lag + vs-yesterday) · PR 4 Operational owner dashboard · PR 5
+Intelligence owner dashboard.
+
+HELD by owner (2026-06-23) — do NOT build yet:
+- [ ] **#2 Targets on the scorecard** (per-metric target + gap-to-target ₹ + streak).
+      HELD: heavy **on-the-ground resistance**; owner worried managers may quit if
+      pushed on accountability. Acceptance must mature first.
+- [ ] **#3 Product-mix / non-fuel margin lever** (non-fuel share of margin per
+      outlet). HELD: **sensitive**. Outlets are forced to sell fuel above the local
+      market (roadside automobile shops undercut); to hit OMC targets, stock is
+      sometimes moved on paper (paying the GST component to the supplier). Surfacing
+      non-fuel margin would expose this. Revisit carefully.
+
+FUTURE: once there are **more outlets**, **anonymize cross-owner data** and feed
+owners anonymous peer-benchmark inputs — a network-effect intelligence play.
+
+⚠️ WHY PAUSED: an owner who fears his manager won't turn up tomorrow is signalling
+that *sequencing* beats features. A manager-accountability cockpit shipped into
+active resistance risks attrition. Resume on the owner's go — lead with the
+manager-FRIENDLY surfaces (the action/ops help that makes the manager's day
+easier), and bring accountability/benchmarking in only once trust is there.
