@@ -215,3 +215,22 @@ then in the ~8-day gap fix Section B before the next 4 (Vizag).
 The 5h was first-time-RLS-in-prod discovery + generic errors, not inherent
 fragility. With Section A fixed and Section B done before Vizag, a fresh outlet
 should be close to the ~30min it ought to be.
+
+## 12. Bank deposit confirmation (reco) — who confirms? (pending owner, 2026-06-23)
+On Bank Deposits, a recorded deposit shows **"Bank Confirmed: Pending"** until
+someone confirms it actually hit the bank. Today that confirm is **owner-only**
+(`PATCH /api/cash-deposits/:id/confirm` → `authorize('owner')`), so a MANAGER can
+record a deposit but cannot confirm it — it sits Pending. Example: J Madhu
+(manager) recorded ₹4,00,000 on 22 Jun → Pending (no owner has confirmed).
+
+This is a **maker-checker / segregation-of-duties** decision, NOT a bug:
+- Option A — give the **manager** the confirm (reco) capability (self-serve, faster).
+- Option B — **leave confirmation to the accountant/owner** — a separate person
+  who *checks what the manager does* (stronger control; manager records, checker
+  verifies it reached the bank).
+
+Owner (junutala) to decide and revert. Default lean = **B** (keep maker≠checker;
+the whole point of the confirm step is independent verification). If A is chosen:
+relax the confirm route to `authorize('owner','manager')` + add a `deposits.confirm`
+permission, and decide whether a manager can confirm his *own* deposit or only
+another's. No build until the owner confirms the model.
