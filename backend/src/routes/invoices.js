@@ -10,7 +10,8 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
     const {
       station_id, corporate_id, invoice_number, invoice_date,
       period_from, period_to, subtotal, cgst_rate, sgst_rate,
-      cgst_amount, sgst_amount, total_amount, line_items
+      cgst_amount, sgst_amount, total_amount, line_items,
+      is_opening_balance,   // pre-go-live balance: create the receivable but DON'T draw down the control total
     } = req.body;
 
     // One transaction for invoice + line-item marking + sequence bump. The old
@@ -78,7 +79,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       // best-effort + idempotent per invoice, so invoicing never fails on it.
       try {
         await client.query(`DELETE FROM credit_suspense_entries WHERE reference_type='credit_invoice' AND reference_id=$1`, [invoice.id]);
-        if (Number(total_amount) > 0) {
+        if (!is_opening_balance && Number(total_amount) > 0) {
           await client.query(
             `INSERT INTO credit_suspense_entries(station_id, direction, amount, corporate_id, description, reference_type, reference_id, created_by)
              VALUES($1,'out',$2,$3,$4,'credit_invoice',$5,$6)`,
