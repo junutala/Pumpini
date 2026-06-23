@@ -119,10 +119,8 @@ const NAV_LABELS = {
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
 };
 
-const GROUP_KEYS = {
-  Dashboard:'grp_dashboard', Transactions:'grp_transactions',
-  Manage:'grp_manage', Lubes:'grp_lubes', Masters:'grp_masters', Settings:'grp_settings'
-};
+// Group header key is derived as nav.grp_<label> (e.g. Shift -> nav.grp_shift),
+// so every group translates as long as the key exists in the locale files.
 
 export default function Sidebar({ open, onClose }) {
   const { user, logout, station } = useAuth();
@@ -136,10 +134,9 @@ export default function Sidebar({ open, onClose }) {
   };
 
   const groupLabel = (label) => {
-    const key = GROUP_KEYS[label];
-    if (!key) return label;
-    const tr = t(`nav.${key}`);
-    return tr === `nav.${key}` ? label : tr;
+    const key = `nav.grp_${label.toLowerCase()}`;
+    const tr = t(key);
+    return tr === key ? label : tr;
   };
 
   const isVisible = (item) => {
