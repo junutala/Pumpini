@@ -222,7 +222,7 @@ router.post('/:id/photo', authenticate, requireStationVia('SELECT station_id FRO
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const isOwner = req.user.role === 'owner';
-    const { shift_id, attendant_id, date_from, date_to, station_id, limit = 200 } = req.query;
+    const { shift_id, attendant_id, date_from, date_to, station_id, corporate_id, payment_mode, limit = 200 } = req.query;
     let q = `
       SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel,
              sh.status AS shift_status
@@ -238,6 +238,8 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     if (attendant_id) { p.push(attendant_id);q += ` AND de.attendant_id=$${p.length}`; }
     if (date_from)    { p.push(date_from);   q += ` AND de.occurred_at>=$${p.length}`; }
     if (date_to)      { p.push(date_to);     q += ` AND de.occurred_at<=$${p.length}`; }
+    if (corporate_id) { p.push(corporate_id);q += ` AND de.corporate_id=$${p.length}`; }   // scope to one credit customer
+    if (payment_mode) { p.push(payment_mode);q += ` AND de.payment_mode=$${p.length}`; }
     if (req.query.uninvoiced === 'true') { q += ` AND (de.is_invoiced = FALSE OR de.is_invoiced IS NULL)`; }
     p.push(parseInt(limit));
     q += ` ORDER BY de.event_seq DESC LIMIT $${p.length}`;
