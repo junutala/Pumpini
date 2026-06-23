@@ -54,17 +54,36 @@ export default function ShiftEndPage() {
   const pickShift = async (s) => {
     setBusy('pick'); setErr('');
     try {
-      const [d, tk, pr] = await Promise.all([
+      const [d, tk, pr, reco] = await Promise.all([
         api.get(`/shifts/${s.id}`),
         api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
         api.get(`/prices/${stationId}/current`).catch(()=>[]),
+        api.get(`/reconcile/${s.id}`).catch(()=>[]),   // already-settled operators
       ]);
       setShift(d);
       setActiveShift({ id:d.id, shift_number:d.shift_number, start_time:d.start_time, station_id:d.station_id });
       setTanks(Array.isArray(tk)?tk:[]);
       const pm = {}; (Array.isArray(pr)?pr:[]).forEach(p => { pm[p.fuel_type] = num(p.price); }); setPrices(pm);
-      const seed = {}; (d?.attendants||[]).forEach(a => { seed[a.attendant_id] = { closings:{}, cash:'', card:'', upi:'', credit:'', petty:'' }; });
-      setForms(seed); setClosed({}); setStep(1);
+
+      // Re-hydrate operators already settled server-side, so a pause/refresh/remount
+      // never wipes a recorded settlement and forces the manager to re-enter it.
+      const byAtt = {}; (Array.isArray(reco)?reco:[]).forEach(r => { byAtt[r.attendant_id] = r; });
+      const seed = {}; const closedSeed = {};
+      (d?.attendants||[]).forEach(a => {
+        const r = byAtt[a.attendant_id];
+        if (r && r.manager_confirmed) {
+          seed[a.attendant_id] = { closings:{},
+            cash:   r.cash_actual  != null ? String(r.cash_actual)  : '',
+            card:   r.card_total   != null ? String(r.card_total)   : '',
+            upi:    r.upi_total    != null ? String(r.upi_total)    : '',
+            credit: r.credit_total != null ? String(r.credit_total) : '',
+            petty:  r.petty_cash   != null ? String(r.petty_cash)   : '' };
+          closedSeed[a.attendant_id] = { variance: num(r.cash_actual) - num(r.cash_expected), total_sales: num(r.total_sales) };
+        } else {
+          seed[a.attendant_id] = { closings:{}, cash:'', card:'', upi:'', credit:'', petty:'' };
+        }
+      });
+      setForms(seed); setClosed(closedSeed); setStep(1);
     } catch(e){ setErr(e.response?.data?.error||e.error||'Could not load shift'); }
     setBusy('');
   };
