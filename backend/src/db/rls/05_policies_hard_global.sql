@@ -16,9 +16,17 @@ create policy stations_isolation on public.stations
 -- ── corporate family (scoped via my_corporates) ──────────────────────
 alter table public.corporate_accounts enable row level security;
 drop policy if exists corporate_accounts_isolation on public.corporate_accounts;
+-- WITH CHECK must test created_by_station DIRECTLY on the new row: on INSERT the
+-- just-inserted id is not yet visible to my_corporates() (which re-selects this
+-- table), and the station link is created only afterwards — so an id-based check
+-- can never pass for a new account. created_by_station is set to the creator's
+-- own station (app-layer canAccessStation already verifies it), so this both
+-- unblocks creation and forbids stamping an account to a foreign station.
 create policy corporate_accounts_isolation on public.corporate_accounts
   using      (id in (select my_corporates()) or app_is_superadmin())
-  with check (id in (select my_corporates()) or app_is_superadmin());
+  with check (created_by_station in (select my_stations())
+              or id in (select my_corporates())
+              or app_is_superadmin());
 
 alter table public.corporate_drivers enable row level security;
 drop policy if exists corporate_drivers_isolation on public.corporate_drivers;
