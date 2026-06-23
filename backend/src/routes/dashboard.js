@@ -62,6 +62,20 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       WHERE sh.station_id=$1 AND sh.date=$2 AND ABS(r.variance) > 50
       ORDER BY ABS(r.variance) DESC`, [station_id, date]);
 
+    // Per-operator settlement, broken down by payment type (today's settled
+    // operators) — the recon view. Settlement is the blind-drop reveal point,
+    // so only manager-confirmed (completed) settlements are surfaced.
+    const { rows: settlements } = await pool.query(`
+      SELECT r.attendant_id, u.name AS attendant_name, sh.shift_number,
+             r.total_sales, r.cash_actual, r.cash_expected, r.variance,
+             r.card_total, r.upi_total, r.credit_total, r.petty_cash,
+             r.reconciled_at
+      FROM shift_reconciliation r
+      JOIN shifts sh ON sh.id = r.shift_id
+      JOIN users u ON u.id = r.attendant_id
+      WHERE sh.station_id=$1 AND sh.date=$2 AND r.manager_confirmed = TRUE
+      ORDER BY sh.shift_number, u.name`, [station_id, date]);
+
     // Held suspense balances (running, station-wide): petty-cash fund and
     // un-invoiced credit. Best-effort + separate so a not-yet-migrated table
     // can't break the dashboard.
@@ -83,6 +97,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       alerts: alerts.rows,
       attendance: attendance.rows,
       variances,
+      settlements,
       suspense: { credit_suspense, petty_cash },
       sales_masked: !isOwner && shifts.rows.some(s => s.status === 'open'),
     });
