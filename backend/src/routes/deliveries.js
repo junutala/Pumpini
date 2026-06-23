@@ -88,12 +88,9 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       invoice_id, invoice_base64, invoice_media_type,
     } = req.body;
 
-    // Calculate net volume
-    let netVol = parseFloat(gross_volume_ltrs);
-    if (temperature_c && density) {
-      netVol = parseFloat(gross_volume_ltrs) * parseFloat(density)
-             * (1 - 0.00090 * (parseFloat(temperature_c) - 15));
-    }
+    // net_volume_ltrs is a GENERATED ALWAYS column in the DB (same VCF formula:
+    // round(gross*density*(1-0.0009*(temp-15)),2), else gross) — we must NOT
+    // insert it, Postgres rejects a value for a generated column.
 
     // Re-scope tank to the validated station — reject a tank_id from another outlet.
     if (tank_id) {
@@ -122,10 +119,10 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       `INSERT INTO fuel_deliveries(
          station_id,tank_id,shift_id,dc_number,dc_date,received_at,
          fuel_type,oil_company,depot_name,tanker_number,compartment_no,
-         gross_volume_ltrs,temperature_c,density,net_volume_ltrs,
+         gross_volume_ltrs,temperature_c,density,
          batch_number,seal_number,rate_per_ltr,freight,total_value,
          received_by,notes,invoice_id
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [
         station_id, tank_id, shift_id||null,
@@ -133,7 +130,7 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
         received_at||new Date(),
         fuel_type, oil_company||null, depot_name||null,
         tanker_number||null, compartment_no||null,
-        gross_volume_ltrs, temperature_c||null, density||null, netVol.toFixed(2),
+        gross_volume_ltrs, temperature_c||null, density||null,
         batch_number||null, seal_number||null,
         rate_per_ltr||null, freight||0, total_value||null,
         req.user.id, notes||null, invoiceId,
