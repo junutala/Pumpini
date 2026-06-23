@@ -173,6 +173,14 @@ export default function DeliveriesPage() {
     : '';
   const totalValue = () => (form.total_value !== '' && form.total_value != null) ? String(form.total_value) : computedTotal();
 
+  // Multi-product invoice progress — drives the save button + banner so the user
+  // always knows whether a press records a NEW product or would be a re-submit.
+  const totalItems     = items.length;
+  const doneItems      = recorded.length;
+  const isMultiProduct = totalItems > 1;
+  const remainingAfter = items.map((_, i) => i).filter(i => i !== activeItem && !recorded.includes(i)).length;
+  const currentItemNo  = Math.min(doneItems + 1, totalItems);
+
   const load = async () => {
     if (!stationId) return;
     const [d, t, s] = await Promise.all([
@@ -545,9 +553,22 @@ export default function DeliveriesPage() {
                   value={form.notes||''} onChange={e=>f('notes',e.target.value)}/>
               </div>
 
+              {isMultiProduct && (
+                <div style={{fontSize:12.5,marginBottom:8,padding:'8px 10px',borderRadius:8,
+                             background:'#fef3c7',color:'#92400e',fontWeight:600}}>
+                  {doneItems>0 && <>✓ {doneItems} of {totalItems} products saved · </>}
+                  Now recording <b>product {currentItemNo} of {totalItems}</b>: {form.fuel_type} · {fmtL(form.gross_volume_ltrs)}L
+                  {remainingAfter>0 ? ' — another product follows after this.' : ' — this is the last product.'}
+                </div>
+              )}
               <button className="btn btn-primary btn-lg" type="submit"
                 style={{width:'100%',justifyContent:'center'}} disabled={loading}>
-                {loading ? tc('deliv_page.saving','Saving...') : tc('deliv_page.record_update','✓ Record Delivery & Update Tank Stock')}
+                {loading ? tc('deliv_page.saving','Saving...')
+                  : remainingAfter>0
+                    ? `✓ Record this product → ${remainingAfter} more to go`
+                    : isMultiProduct
+                      ? '✓ Record last product & finish'
+                      : tc('deliv_page.record_update','✓ Record Delivery & Update Tank Stock')}
               </button>
               <div style={{fontSize:12,color:'var(--text-3)',textAlign:'center',marginTop:8}}>
                 {tc('deliv_page.stock_auto','Tank stock will be updated automatically on save')}

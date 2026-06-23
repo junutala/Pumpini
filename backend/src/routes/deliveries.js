@@ -98,6 +98,23 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
     }
 
+    // Duplicate guard: the same invoice/DC + product + volume is the same delivery
+    // line. One invoice carries several products (different fuel) — those are fine;
+    // re-submitting the SAME product (double-click, retry, two browsers) is not.
+    // App-level check + the DB unique index (ux_fuel_deliveries_dedup) as the
+    // race-proof backstop. Only guards when a DC/invoice number is present.
+    if (dc_number) {
+      const { rows: dup } = await pool.query(
+        `SELECT received_at FROM fuel_deliveries
+         WHERE station_id=$1 AND dc_number=$2 AND fuel_type=$3 AND gross_volume_ltrs=$4 LIMIT 1`,
+        [station_id, dc_number, fuel_type, gross_volume_ltrs]
+      );
+      if (dup.length) {
+        const when = new Date(dup[0].received_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+        return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}, ${gross_volume_ltrs}L (on ${when}). Not saved again.` });
+      }
+    }
+
     // Attach the scanned invoice. The first compartment of a multi-product invoice
     // stores the file; later compartments pass back the returned invoice_id so they
     // share the one record (no duplicate blobs).
@@ -115,27 +132,36 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       if (!iv.length) invoiceId = null;
     }
 
-    const { rows } = await pool.query(
-      `INSERT INTO fuel_deliveries(
-         station_id,tank_id,shift_id,dc_number,dc_date,received_at,
-         fuel_type,oil_company,depot_name,tanker_number,compartment_no,
-         gross_volume_ltrs,temperature_c,density,
-         batch_number,seal_number,rate_per_ltr,freight,total_value,
-         received_by,notes,invoice_id
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-       RETURNING *`,
-      [
-        station_id, tank_id, shift_id||null,
-        dc_number||null, dc_date||new Date().toISOString().slice(0,10),
-        received_at||new Date(),
-        fuel_type, oil_company||null, depot_name||null,
-        tanker_number||null, compartment_no||null,
-        gross_volume_ltrs, temperature_c||null, density||null,
-        batch_number||null, seal_number||null,
-        rate_per_ltr||null, freight||0, total_value||null,
-        req.user.id, notes||null, invoiceId,
-      ]
-    );
+    let rows;
+    try {
+      ({ rows } = await pool.query(
+        `INSERT INTO fuel_deliveries(
+           station_id,tank_id,shift_id,dc_number,dc_date,received_at,
+           fuel_type,oil_company,depot_name,tanker_number,compartment_no,
+           gross_volume_ltrs,temperature_c,density,
+           batch_number,seal_number,rate_per_ltr,freight,total_value,
+           received_by,notes,invoice_id
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         RETURNING *`,
+        [
+          station_id, tank_id, shift_id||null,
+          dc_number||null, dc_date||new Date().toISOString().slice(0,10),
+          received_at||new Date(),
+          fuel_type, oil_company||null, depot_name||null,
+          tanker_number||null, compartment_no||null,
+          gross_volume_ltrs, temperature_c||null, density||null,
+          batch_number||null, seal_number||null,
+          rate_per_ltr||null, freight||0, total_value||null,
+          req.user.id, notes||null, invoiceId,
+        ]
+      ));
+    } catch (e) {
+      // Race backstop: the DB unique index caught a duplicate the app pre-check missed.
+      if (e.code === '23505') {
+        return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}, ${gross_volume_ltrs}L. Not saved again.` });
+      }
+      throw e;
+    }
 
     req.io.to(`station:${station_id}`).emit('delivery:new', rows[0]);
     res.status(201).json(rows[0]);
