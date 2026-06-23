@@ -166,10 +166,17 @@ router.get('/tanks/:station_id', authenticate, requireStationAccess(), async (re
     const { rows } = await pool.query(
       `SELECT t.*,
         c.name AS chart_name, c.diameter_cm, c.length_cm,
-        (SELECT dr.volume_ltrs FROM dipstick_readings dr WHERE dr.tank_id=t.id ORDER BY dr.recorded_at DESC LIMIT 1) AS last_reading,
-        (SELECT dr.recorded_at FROM dipstick_readings dr WHERE dr.tank_id=t.id ORDER BY dr.recorded_at DESC LIMIT 1) AS last_reading_at
+        lr.volume_ltrs  AS last_reading,
+        lr.recorded_at  AS last_reading_at,
+        lr.dip_cm       AS last_dip_cm,
+        lr.reading_type AS last_reading_type
        FROM tanks t
        LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
+       LEFT JOIN LATERAL (
+         SELECT dr.volume_ltrs, dr.recorded_at, dr.dip_cm, dr.reading_type
+         FROM dipstick_readings dr WHERE dr.tank_id = t.id
+         ORDER BY dr.recorded_at DESC LIMIT 1
+       ) lr ON true
        WHERE t.station_id=$1 ORDER BY t.tank_number`, [req.params.station_id]
     );
     res.json(rows);
