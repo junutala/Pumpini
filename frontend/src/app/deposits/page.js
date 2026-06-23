@@ -96,7 +96,7 @@ export default function DepositsPage() {
         <div className="stat-card">
           <div className="stat-label">Collected (all time)</div>
           <div className="stat-value">{fmt(status?.collected)}</div>
-          <div className="stat-sub">Sales cash handed over</div>
+          <div className="stat-sub">Sales cash + cash credit-receipts</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Deposited (all time)</div>

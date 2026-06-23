@@ -12,19 +12,23 @@ const { sendAlert } = require('../services/alertService');
 
 // Compute the live deposit status for a station.
 async function computeDepositStatus(station_id) {
-  const [coll, dep, setRows] = await Promise.all([
+  const [coll, recpt, dep, setRows] = await Promise.all([
     pool.query(`
       SELECT COALESCE(SUM(r.cash_actual - COALESCE(sa.opening_cash,0)),0) AS collected
       FROM shift_reconciliation r
       JOIN shifts s ON s.id = r.shift_id
       LEFT JOIN shift_attendants sa ON sa.shift_id = r.shift_id AND sa.attendant_id = r.attendant_id
       WHERE s.station_id = $1 AND r.manager_confirmed = TRUE`, [station_id]),
+    // Cash payments collected from credit customers are also physical cash that
+    // must reach the bank — fold them into the awaiting-deposit pool.
+    pool.query(`SELECT COALESCE(SUM(amount),0) AS cash_receipts
+                FROM corporate_receipts WHERE station_id = $1 AND payment_type = 'cash'`, [station_id]),
     pool.query(`SELECT COALESCE(SUM(amount),0) AS deposited, MAX(deposit_date) AS last_deposit
                 FROM cash_deposits WHERE station_id = $1`, [station_id]),
     pool.query(`SELECT deposit_alert_days, deposit_alert_amount FROM station_settings WHERE station_id = $1`, [station_id]),
   ]);
 
-  const collected   = parseFloat(coll.rows[0].collected || 0);
+  const collected   = +(parseFloat(coll.rows[0].collected || 0) + parseFloat(recpt.rows[0].cash_receipts || 0)).toFixed(2);
   const deposited   = parseFloat(dep.rows[0].deposited || 0);
   const awaiting     = +(collected - deposited).toFixed(2);
   const lastDeposit  = dep.rows[0].last_deposit; // DATE or null
