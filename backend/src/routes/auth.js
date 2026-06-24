@@ -137,7 +137,14 @@ router.get('/me', authenticate, async (req, res, next) => {
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
+    // Return the user's stations too, so the client can restore station context
+    // on reload / biometric login (logout clears the localStorage cache).
+    const { rows: stations } = await pool.query(
+      `SELECT s.id, s.name FROM stations s
+       JOIN station_users su ON su.station_id = s.id
+       WHERE su.user_id = $1`, [req.user.id]
+    );
+    res.json({ ...rows[0], stations });
   } catch (err) { next(err); }
 });
 
