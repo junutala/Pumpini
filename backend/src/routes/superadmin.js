@@ -3,6 +3,7 @@ const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
+const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/responsibilities');
 
 const authAdmin = (req, res, next) => {
   const header = req.headers.authorization;
@@ -239,9 +240,9 @@ router.post('/stations', authAdmin, async (req, res, next) => {
       if (!mlEx.length) {
         const { rows: ml } = await client.query(
           `INSERT INTO role_templates(station_id,name,description,is_system)
-           VALUES($1,'Manager_lite','Operational manager — shifts, deliveries, stock reco, credit invoices, petty cash, deposits, reports, credit customers',TRUE)
-           RETURNING id`, [sid]);
-        for (const c of ['shifts.view','deliveries.view','stock.reconcile','invoice.generate','pettycash.manage','deposits.manage','reports.view','corporate.view','attendant.add']) {
+           VALUES($1,'Manager_lite',$2,TRUE)
+           RETURNING id`, [sid, MANAGER_LITE_DESCRIPTION]);
+        for (const c of MANAGER_LITE_MODULES) {
           await client.query('INSERT INTO template_permissions(template_id,module_code) VALUES($1,$2) ON CONFLICT DO NOTHING', [ml[0].id, c]);
         }
       }
