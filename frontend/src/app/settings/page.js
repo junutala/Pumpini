@@ -673,9 +673,11 @@ function NozzlesTab({ stationId, nozzles, tanks, reload, askConfirm }) {
         <form onSubmit={save}>
           <div style={{marginBottom:'0.75rem'}}>
             <label className="label">{tc('setp.nozzleNumber', 'Nozzle Number *')}</label>
-            <input className="input" type="number" min="1" max="50" required
-              placeholder={tc('setp.egOne', 'e.g. 1')} value={form.nozzle_number||''}
-              onChange={e=>f('nozzle_number',parseInt(e.target.value))}/>
+            {/* Text, not number: lets a pump's nozzles be labelled 5.1, 5.2, 5.3, 5.4
+                (pump.nozzle) — the value is a free label, nothing does arithmetic on it. */}
+            <input className="input" type="text" required maxLength={8}
+              placeholder={tc('setp.egNozzle', 'e.g. 1 or 5.1')} value={form.nozzle_number||''}
+              onChange={e=>f('nozzle_number', e.target.value.trim())}/>
           </div>
           <div style={{marginBottom:'0.75rem'}}>
             <label className="label">{tc('setp.fuelType', 'Fuel Type *')}</label>

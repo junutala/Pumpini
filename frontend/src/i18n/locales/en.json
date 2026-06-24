@@ -2219,7 +2219,8 @@
     "shiftName": "Name",
     "shiftStart": "Start",
     "shiftEnd": "End",
-    "saveShiftBtn": "Save Shift Timings"
+    "saveShiftBtn": "Save Shift Timings",
+    "egNozzle": "e.g. 1 or 5.1"
   },
   "sstart": {
     "dashboard": "Dashboard",

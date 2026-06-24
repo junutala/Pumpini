@@ -2219,7 +2219,8 @@
     "shiftName": "పేరు",
     "shiftStart": "ప్రారంభం",
     "shiftEnd": "ముగింపు",
-    "saveShiftBtn": "షిఫ్ట్ సమయాలు సేవ్ చేయండి"
+    "saveShiftBtn": "షిఫ్ట్ సమయాలు సేవ్ చేయండి",
+    "egNozzle": "ఉదా. 1 లేదా 5.1"
   },
   "sstart": {
     "dashboard": "డాష్‌బోర్డ్",
