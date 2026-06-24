@@ -21,9 +21,20 @@ export function AuthProvider({ children }) {
     getMe()
       .then(u => {
         setUser(u);
-        const savedStation = localStorage.getItem('station');
-        if (savedStation) {
-          try { setStation(JSON.parse(savedStation)); } catch {}
+        // Prefer the stations the server just returned (always correct, with the
+        // name) — this restores station context after a biometric login or a
+        // reload even when logout cleared the localStorage cache.
+        if (Array.isArray(u.stations) && u.stations.length) {
+          setStation(u.stations[0]);
+          localStorage.setItem('station', JSON.stringify(u.stations[0]));
+        } else {
+          const savedStation = localStorage.getItem('station');
+          if (savedStation) {
+            // Tolerate both a JSON object (password login) and a bare id string
+            // (older biometric path wrote user.station_id raw → JSON.parse threw).
+            try { setStation(JSON.parse(savedStation)); }
+            catch { setStation(savedStation); }
+          }
         }
         const savedShift = localStorage.getItem('activeShift');
         if (savedShift) { try { setActiveShiftState(JSON.parse(savedShift)); } catch {} }

@@ -23,7 +23,7 @@ const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding
 
 export default function DashboardPage({ stationId: stationIdProp, embedded = false } = {}) {
   const router = useRouter();
-  const { station } = useAuth();
+  const { station, loading: authLoading } = useAuth();
   const stationId = stationIdProp || (typeof station === 'object' ? station?.id : station);
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const Wrapper = embedded ? Fragment : AppShell;
@@ -51,6 +51,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   useEffect(() => on('dispense:new', () => load()), [on, load]);
   useRefreshOnFocus(load);
 
+  // Don't flash "No station" while auth is still restoring the session (e.g. just
+  // after a biometric login) — wait for it to resolve first.
+  if (authLoading && !stationIdProp) return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.loading', 'Loading…')}</div></Wrapper>;
   if (!stationId) return <Wrapper><div className="card" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-3)' }}>{tc('bunk.noStation', 'No station assigned. Contact your administrator.')}</div></Wrapper>;
   if (loading)    return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.loading', 'Loading…')}</div></Wrapper>;
 
