@@ -2070,7 +2070,14 @@
     "dip": "dip",
     "noReadingSaved": "No reading saved yet for this tank.",
     "operatorsSettled": "Operators settled",
-    "closeShift": "Close Shift"
+    "closeShift": "Close Shift",
+    "scanSlip": "Scan pump slip → fill all closing meters",
+    "slipReading": "Reading slip…",
+    "slipFilled": "Filled {n} closing reading(s) from the slip.",
+    "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
+    "slipNoMatchSome": "No operator nozzle for: {x}.",
+    "slipVerify": "⚠ Some digits unclear — verify.",
+    "slipFailed": "Slip scan failed"
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2291,7 +2298,14 @@
     "errScanFailed": "Scan failed",
     "errPickOperator": "Pick an operator",
     "errOpeningCash": "Enter opening cash (0 if no float)",
-    "errAddOperator": "Could not add operator"
+    "errAddOperator": "Could not add operator",
+    "scanSlip": "Scan pump slip → fill all nozzles",
+    "slipReading": "Reading slip…",
+    "slipFilled": "Filled {n} opening reading(s) from the slip.",
+    "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
+    "slipNoMatchSome": "No app nozzle for: {x}.",
+    "slipVerify": "⚠ Some digits unclear — verify.",
+    "slipFailed": "Slip scan failed"
   },
   "streco": {
     "title": "Stock Reconciliation",

@@ -127,6 +127,34 @@ export default function ShiftEndPage() {
     setScanning('');
   };
 
+  // Scan the whole printed pump slip (Slip A/B) — fills the CLOSING meter for
+  // every nozzle on it across all operators, matched by label "{pump}.{nozzle}".
+  const scanSlip = async (file) => {
+    if (!file || !shift) return;
+    setScanning('slip'); setErr('');
+    try {
+      const b64 = await readB64(file);
+      const r = await api.post('/reconcile/parse-slip', { shift_id: shift.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      let matched = 0; const miss = [];
+      (r.nozzles || []).forEach(n => {
+        if (n.cumulative_volume == null) return;
+        let found = false;
+        attendants.forEach(a => (a.nozzles || []).forEach(nz => {
+          if (String(nz.nozzle_number) === n.label) { setCl(a.attendant_id, nz.nozzle_id, n.cumulative_volume); matched++; found = true; }
+        }));
+        if (!found && n.label) miss.push(n.label);
+      });
+      if (!matched) setErr(tc('send.slipNoMatch', 'Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
+      else {
+        let msg = tc('send.slipFilled', 'Filled {n} closing reading(s) from the slip.').replace('{n}', matched);
+        if (miss.length) msg += ' ' + tc('send.slipNoMatchSome', 'No operator nozzle for: {x}.').replace('{x}', miss.join(', '));
+        if (!r.legible)  msg += ' ' + tc('send.slipVerify', '⚠ Some digits unclear — verify.');
+        setErr(msg);
+      }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipFailed', 'Slip scan failed')); }
+    setScanning('');
+  };
+
   const closeOperator = async (a) => {
     const fm = forms[a.attendant_id] || {};
     const nz = a.nozzles || [];
@@ -242,6 +270,12 @@ export default function ShiftEndPage() {
       {/* STEP 1 — Per-operator settlement */}
       {step===1 && shift && (
         <div style={{maxWidth:680}}>
+          {attendants.length>0 && (
+            <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:12,padding:'9px 14px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
+              📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
+              <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
+            </label>
+          )}
           {attendants.length===0 && <div className="card" style={{color:'#aaa',fontSize:13}}>{tc('send.noOperatorsOnShift','No operators on this shift.')}</div>}
           {attendants.map(a=>{
             const c = closed[a.attendant_id]; const fm = forms[a.attendant_id]||{};
