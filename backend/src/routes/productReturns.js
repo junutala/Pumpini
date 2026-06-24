@@ -51,6 +51,71 @@ router.get('/eligible', authenticate, requireStationAccess({ required: true }), 
   } catch (err) { next(err); }
 });
 
+// ── PETROL/DIESEL credit notes (against gst_invoices, not product invoices) ──
+// A credit customer's "open invoices" are their petrol/diesel credit invoices.
+// A credit note here is an AMOUNT adjustment (no product lines) that reduces the
+// customer's outstanding, recorded as a corporate_receipts row of payment_type
+// 'credit_note' (counts in invoices−receipts, excluded from cash/deposit reports).
+
+// GET /credit-invoices?station_id=&customer_id= — open petrol credit invoices
+router.get('/credit-invoices', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id, customer_id } = req.query;
+    if (!customer_id) return res.status(400).json({ error: 'customer_id is required' });
+    const { rows } = await pool.query(`
+      SELECT gi.id, gi.invoice_number, gi.invoice_date, gi.total_amount,
+             gi.total_amount - COALESCE((SELECT SUM(cr.amount) FROM corporate_receipts cr
+                                         WHERE cr.invoice_id = gi.id),0) AS outstanding
+      FROM gst_invoices gi
+      WHERE gi.station_id = $1 AND gi.corporate_id = $2
+      ORDER BY gi.invoice_date DESC, gi.created_at DESC`,
+      [station_id, customer_id]);
+    res.json(rows.filter(r => Number(r.outstanding) > 0.009));
+  } catch (err) { next(err); }
+});
+
+// POST /credit-adjustment — issue a credit note against a petrol credit invoice.
+// Reduces the customer's outstanding; optionally also draws down the station credit
+// suspense (control total) when reduce_suspense is set (mirrors the opening-balance flag).
+router.post('/credit-adjustment', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+  const { station_id, corporate_id, invoice_id, amount, reason, reduce_suspense } = req.body;
+  const amt = parseFloat(amount);
+  if (!corporate_id || !invoice_id) return res.status(400).json({ error: 'Customer and invoice are required' });
+  if (!amt || amt <= 0)             return res.status(400).json({ error: 'Enter a credit note amount greater than zero' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: inv } = await client.query(`
+      SELECT gi.id, gi.invoice_number,
+             gi.total_amount - COALESCE((SELECT SUM(cr.amount) FROM corporate_receipts cr
+                                         WHERE cr.invoice_id = gi.id),0) AS outstanding
+      FROM gst_invoices gi
+      WHERE gi.id = $1 AND gi.station_id = $2 AND gi.corporate_id = $3`,
+      [invoice_id, station_id, corporate_id]);
+    if (!inv.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Invoice not found for this customer/station' }); }
+    const outstanding = Number(inv[0].outstanding);
+    if (amt > outstanding + 1e-6) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Credit note (₹${amt.toFixed(2)}) exceeds the invoice outstanding (₹${outstanding.toFixed(2)}).` });
+    }
+    const note = ('Credit note vs ' + (inv[0].invoice_number || '') + (reason ? ' — ' + reason : '')).slice(0, 250);
+    const { rows: rc } = await client.query(`
+      INSERT INTO corporate_receipts(corporate_id, station_id, receipt_date, amount, payment_type, invoice_id, remarks, recorded_by)
+      VALUES($1,$2,CURRENT_DATE,$3,'credit_note',$4,$5,$6) RETURNING id`,
+      [corporate_id, station_id, amt.toFixed(2), invoice_id, note, req.user.id]);
+    if (reduce_suspense) {
+      await client.query(`
+        INSERT INTO credit_suspense_entries(station_id, direction, amount, corporate_id, description, reference_type, reference_id, created_by)
+        VALUES($1,'out',$2,$3,$4,'credit_note',$5,$6)`,
+        [station_id, amt.toFixed(2), corporate_id, ('Credit note vs ' + (inv[0].invoice_number || '')).slice(0, 250), rc[0].id, req.user.id]);
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ id: rc[0].id, amount: amt, invoice_number: inv[0].invoice_number, reduce_suspense: !!reduce_suspense });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
 // GET /invoice/:id/returnable — invoice lines with remaining returnable qty
 router.get('/invoice/:id/returnable', authenticate,
   requireStationVia('SELECT station_id FROM product_invoices WHERE id=$1', 'id'),

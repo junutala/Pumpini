@@ -30,6 +30,12 @@ export default function CreditNotesPage() {
   const [invoiceId, setInvoiceId] = useState('');
   const [lines,     setLines]     = useState([]);          // returnable items with returnQty
   const [reason,    setReason]    = useState('');
+  // Petrol/diesel credit-note flow (credit customers): adjust against a gst_invoice
+  const [creditInvs,     setCreditInvs]     = useState([]);
+  const [creditInvId,    setCreditInvId]    = useState('');
+  const [cnAmount,       setCnAmount]       = useState('');
+  const [reduceSuspense, setReduceSuspense] = useState(false);
+  const [saved,          setSaved]          = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -44,16 +50,44 @@ export default function CreditNotesPage() {
   };
   useEffect(() => { if (stationId) load(); }, [stationId]);
 
-  // Load eligible invoices when the customer changes
+  // Load eligible invoices when the customer changes.
+  // Cash → product invoices (returns). Credit → open petrol/diesel credit invoices.
   useEffect(() => {
     if (!modal || !stationId) return;
     setInvoices([]); setInvoiceId(''); setLines([]);
-    const params = custKey === 'cash'
-      ? { station_id:stationId, customer_type:'cash' }
-      : { station_id:stationId, customer_type:'credit', customer_id:custKey };
-    api.get('/product-credit-notes/eligible', { params })
-      .then(r => setInvoices(Array.isArray(r)?r:[])).catch(()=>setInvoices([]));
+    setCreditInvs([]); setCreditInvId(''); setCnAmount(''); setReduceSuspense(false);
+    if (custKey === 'cash') {
+      api.get('/product-credit-notes/eligible', { params:{ station_id:stationId, customer_type:'cash' } })
+        .then(r => setInvoices(Array.isArray(r)?r:[])).catch(()=>setInvoices([]));
+    } else {
+      api.get('/product-credit-notes/credit-invoices', { params:{ station_id:stationId, customer_id:custKey } })
+        .then(r => setCreditInvs(Array.isArray(r)?r:[])).catch(()=>setCreditInvs([]));
+    }
   }, [custKey, modal, stationId]);
+
+  const selectCreditInv = (id) => {
+    setCreditInvId(id);
+    const ci = creditInvs.find(i => i.id === id);
+    setCnAmount(ci ? Number(ci.outstanding).toFixed(2) : '');
+  };
+
+  const submitCredit = async () => {
+    if (!creditInvId) { setErr(tc('cnotes.errSelectInvoice', 'Select the original invoice')); return; }
+    const amt = parseFloat(cnAmount);
+    const ci  = creditInvs.find(i => i.id === creditInvId);
+    if (!amt || amt <= 0) { setErr(tc('cnotes.errAmount', 'Enter a credit note amount greater than zero')); return; }
+    if (ci && amt > Number(ci.outstanding) + 0.001) { setErr(tc('cnotes.errExceeds', 'Amount exceeds the invoice outstanding')); return; }
+    setSaving(true); setErr('');
+    try {
+      await api.post('/product-credit-notes/credit-adjustment', {
+        station_id: stationId, corporate_id: custKey, invoice_id: creditInvId,
+        amount: amt, reason, reduce_suspense: reduceSuspense,
+      });
+      setModal(false); setSaved(tc('cnotes.savedCredit', 'Credit note issued — customer outstanding reduced.')); load();
+      setTimeout(() => setSaved(''), 4000);
+    } catch(e) { setErr(e.response?.data?.error || e.error || tc('cnotes.errCreateFailed', 'Could not create credit note')); }
+    setSaving(false);
+  };
 
   const loadReturnable = async (id) => {
     setInvoiceId(id); setLines([]);
@@ -74,7 +108,8 @@ export default function CreditNotesPage() {
   const lineAmt = (l) => l.returnQty * parseFloat(l.unit_price) * (1 + parseFloat(l.gst_rate)/100);
   const grand = lines.reduce((s,l) => s + lineAmt(l), 0);
 
-  const openNew = () => { setCustKey('cash'); setInvoiceId(''); setInvoices([]); setLines([]); setReason(''); setErr(''); setModal(true); };
+  const openNew = () => { setCustKey('cash'); setInvoiceId(''); setInvoices([]); setLines([]); setReason(''); setErr('');
+    setCreditInvs([]); setCreditInvId(''); setCnAmount(''); setReduceSuspense(false); setModal(true); };
 
   const submit = async () => {
     const toReturn = lines.filter(l => l.returnQty > 0).map(l => ({ invoice_item_id: l.id, quantity: l.returnQty }));
@@ -107,6 +142,8 @@ export default function CreditNotesPage() {
         </div>
         <button className="btn btn-primary" onClick={openNew}><RotateCcw size={15}/> {tc('cnotes.newReturn', 'New Return')}</button>
       </div>
+
+      {saved && <div className="alert-banner success" style={{ marginBottom:'1rem' }}>{saved}</div>}
 
       <div className="table-wrap">
         <table className="dms-table">
@@ -157,62 +194,113 @@ export default function CreditNotesPage() {
               </select>
             </div>
 
-            <div style={{ marginBottom:'0.85rem' }}>
-              <label className="label">{tc('cnotes.originalInvoice', 'Original invoice')} *{' '}
-                <span style={{ fontWeight:400, color:'var(--text-3)' }}>{tc('cnotes.withinReturnPolicy', '(within return policy)')}</span>
-              </label>
-              <select style={inp} value={invoiceId} onChange={e=>loadReturnable(e.target.value)}>
-                <option value="">{invoices.length ? tc('cnotes.selectInvoice', 'Select invoice…') : tc('cnotes.noInvoicesInWindow', 'No invoices in the return window')}</option>
-                {invoices.map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.invoice_number} · {new Date(i.created_at).toLocaleDateString('en-IN')} · ₹{fmt(i.grand_total)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {lines.length > 0 && (
+            {/* CASH customer → product return against a product invoice */}
+            {!isCredit && (<>
               <div style={{ marginBottom:'0.85rem' }}>
-                <div style={{ fontSize:12, fontWeight:600, color:'var(--text-2)', marginBottom:6 }}>{tc('cnotes.itemsToReturn', 'Items to return')}</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {lines.map(l => (
-                    <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8,
-                      background:'var(--surface-2)', borderRadius:8, padding:'8px 10px',
-                      opacity: parseFloat(l.returnable) === 0 ? 0.5 : 1 }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:600 }}>{l.product_name}</div>
-                        <div style={{ fontSize:11, color:'var(--text-3)' }}>
-                          ₹{fmt(l.unit_price)} · {l.gst_rate}% GST · {tc('cnotes.sold', 'sold {n}').replace('{n}', Number(l.quantity))} · {tc('cnotes.returnable', 'returnable {n}').replace('{n}', Number(l.returnable))}
-                        </div>
-                      </div>
-                      <input type="number" step="0.1" min="0" max={l.returnable}
-                        disabled={parseFloat(l.returnable) === 0}
-                        value={l.returnQty || ''} placeholder="0"
-                        onChange={e=>setQty(l.id, e.target.value)}
-                        style={{ ...inp, width:72, textAlign:'center' }}/>
-                    </div>
+                <label className="label">{tc('cnotes.originalInvoice', 'Original invoice')} *{' '}
+                  <span style={{ fontWeight:400, color:'var(--text-3)' }}>{tc('cnotes.withinReturnPolicy', '(within return policy)')}</span>
+                </label>
+                <select style={inp} value={invoiceId} onChange={e=>loadReturnable(e.target.value)}>
+                  <option value="">{invoices.length ? tc('cnotes.selectInvoice', 'Select invoice…') : tc('cnotes.noInvoicesInWindow', 'No invoices in the return window')}</option>
+                  {invoices.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.invoice_number} · {new Date(i.created_at).toLocaleDateString('en-IN')} · ₹{fmt(i.grand_total)}
+                    </option>
                   ))}
-                </div>
+                </select>
               </div>
-            )}
+
+              {lines.length > 0 && (
+                <div style={{ marginBottom:'0.85rem' }}>
+                  <div style={{ fontSize:12, fontWeight:600, color:'var(--text-2)', marginBottom:6 }}>{tc('cnotes.itemsToReturn', 'Items to return')}</div>
+                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                    {lines.map(l => (
+                      <div key={l.id} style={{ display:'flex', alignItems:'center', gap:8,
+                        background:'var(--surface-2)', borderRadius:8, padding:'8px 10px',
+                        opacity: parseFloat(l.returnable) === 0 ? 0.5 : 1 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600 }}>{l.product_name}</div>
+                          <div style={{ fontSize:11, color:'var(--text-3)' }}>
+                            ₹{fmt(l.unit_price)} · {l.gst_rate}% GST · {tc('cnotes.sold', 'sold {n}').replace('{n}', Number(l.quantity))} · {tc('cnotes.returnable', 'returnable {n}').replace('{n}', Number(l.returnable))}
+                          </div>
+                        </div>
+                        <input type="number" step="0.1" min="0" max={l.returnable}
+                          disabled={parseFloat(l.returnable) === 0}
+                          value={l.returnQty || ''} placeholder="0"
+                          onChange={e=>setQty(l.id, e.target.value)}
+                          style={{ ...inp, width:72, textAlign:'center' }}/>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>)}
+
+            {/* CREDIT customer → credit note against an open petrol/diesel credit invoice */}
+            {isCredit && (<>
+              <div style={{ marginBottom:'0.85rem' }}>
+                <label className="label">{tc('cnotes.openInvoice', 'Open credit invoice')} *</label>
+                <select style={inp} value={creditInvId} onChange={e=>selectCreditInv(e.target.value)}>
+                  <option value="">{creditInvs.length ? tc('cnotes.selectInvoice', 'Select invoice…') : tc('cnotes.noOpenInvoices', 'No open credit invoices for this customer')}</option>
+                  {creditInvs.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.invoice_number} · {new Date(i.invoice_date).toLocaleDateString('en-IN')} · {tc('cnotes.outstandingShort', 'outstanding')} ₹{fmt(i.outstanding)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {creditInvId && (
+                <div style={{ marginBottom:'0.85rem' }}>
+                  <label className="label">{tc('cnotes.creditAmount', 'Credit note amount')} *</label>
+                  <input type="number" step="0.01" min="0" style={inp} value={cnAmount}
+                    onChange={e=>setCnAmount(e.target.value)} placeholder="0.00"/>
+                  {(() => { const ci = creditInvs.find(i=>i.id===creditInvId); return ci
+                    ? <div style={{ fontSize:11, color:'var(--text-3)', marginTop:3 }}>{tc('cnotes.maxOutstanding', 'Max (outstanding): ₹{n}').replace('{n}', fmt(ci.outstanding))}</div>
+                    : null; })()}
+                </div>
+              )}
+            </>)}
 
             <div style={{ marginBottom:'0.85rem' }}>
               <label className="label">{tc('cnotes.reason', 'Reason (optional)')}</label>
               <input style={inp} value={reason} onChange={e=>setReason(e.target.value)} placeholder={tc('cnotes.reasonPlaceholder', 'e.g. wrong item, damaged in transit')} />
             </div>
 
+            {/* Suspense toggle — credit customers only (mirrors the opening-balance flag) */}
+            {isCredit && (
+              <label style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:'0.85rem',
+                fontSize:13, cursor:'pointer', color: reduceSuspense?'#9a3412':'var(--text-2)' }}>
+                <input type="checkbox" checked={reduceSuspense} onChange={e=>setReduceSuspense(e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }}/>
+                <span>{tc('cnotes.reduceSuspense', 'Also reduce the credit suspense (control total) by this amount')}</span>
+              </label>
+            )}
+
             {err && <div className="alert-banner danger" style={{ marginBottom:'0.85rem' }}>{err}</div>}
 
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
-              <span style={{ fontSize:13, color:'var(--text-3)' }}>
-                {isCredit ? tc('cnotes.reducesOutstanding', 'Reduces customer outstanding') : tc('cnotes.refundPettyCash', 'Refund from petty cash')} {tc('cnotes.inclGst', '(incl. GST)')}
-              </span>
-              <span style={{ fontSize:20, fontWeight:800 }}>₹{fmt(grand)}</span>
-            </div>
-            <button className="btn btn-primary" style={{ width:'100%', justifyContent:'center', height:46 }}
-              onClick={submit} disabled={saving || grand <= 0}>
-              {saving ? tc('cnotes.issuing', 'Issuing…') : tc('cnotes.issueCreditNote', 'Issue Credit Note')}
-            </button>
+            {!isCredit ? (<>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
+                <span style={{ fontSize:13, color:'var(--text-3)' }}>
+                  {tc('cnotes.refundPettyCash', 'Refund from petty cash')} {tc('cnotes.inclGst', '(incl. GST)')}
+                </span>
+                <span style={{ fontSize:20, fontWeight:800 }}>₹{fmt(grand)}</span>
+              </div>
+              <button className="btn btn-primary" style={{ width:'100%', justifyContent:'center', height:46 }}
+                onClick={submit} disabled={saving || grand <= 0}>
+                {saving ? tc('cnotes.issuing', 'Issuing…') : tc('cnotes.issueCreditNote', 'Issue Credit Note')}
+              </button>
+            </>) : (<>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
+                <span style={{ fontSize:13, color:'var(--text-3)' }}>
+                  {tc('cnotes.reducesOutstanding', 'Reduces customer outstanding')}{reduceSuspense ? tc('cnotes.andControlTotal', ' + control total') : ''}
+                </span>
+                <span style={{ fontSize:20, fontWeight:800 }}>₹{fmt(parseFloat(cnAmount) || 0)}</span>
+              </div>
+              <button className="btn btn-primary" style={{ width:'100%', justifyContent:'center', height:46 }}
+                onClick={submitCredit} disabled={saving || !(parseFloat(cnAmount) > 0)}>
+                {saving ? tc('cnotes.issuing', 'Issuing…') : tc('cnotes.issueCreditNote', 'Issue Credit Note')}
+              </button>
+            </>)}
           </div>
         </div>
       )}

@@ -1456,7 +1456,17 @@
     "issueCreditNote": "Issue Credit Note",
     "errSelectInvoice": "Select the original invoice",
     "errEnterReturnQty": "Enter a return quantity for at least one item",
-    "errCreateFailed": "Could not create credit note"
+    "errCreateFailed": "Could not create credit note",
+    "openInvoice": "Open credit invoice",
+    "noOpenInvoices": "No open credit invoices for this customer",
+    "outstandingShort": "outstanding",
+    "creditAmount": "Credit note amount",
+    "maxOutstanding": "Max (outstanding): ₹{n}",
+    "reduceSuspense": "Also reduce the credit suspense (control total) by this amount",
+    "andControlTotal": " + control total",
+    "errAmount": "Enter a credit note amount greater than zero",
+    "errExceeds": "Amount exceeds the invoice outstanding",
+    "savedCredit": "Credit note issued — customer outstanding reduced."
   },
   "deppage": {
     "enterAmount": "Enter a deposit amount",
