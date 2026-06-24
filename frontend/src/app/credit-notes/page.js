@@ -272,7 +272,7 @@ export default function CreditNotesPage() {
               <label style={{ display:'inline-flex', alignItems:'center', gap:8, marginBottom:'0.85rem',
                 fontSize:13, cursor:'pointer', color: reduceSuspense?'#9a3412':'var(--text-2)' }}>
                 <input type="checkbox" checked={reduceSuspense} onChange={e=>setReduceSuspense(e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }}/>
-                <span>{tc('cnotes.reduceSuspense', 'Also reduce the credit suspense (control total) by this amount')}</span>
+                <span>{tc('cnotes.reduceSuspense', 'Add this back to the credit control total (reverses the invoice — e.g. correcting an over-invoice)')}</span>
               </label>
             )}
 
@@ -292,7 +292,7 @@ export default function CreditNotesPage() {
             </>) : (<>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', margin:'4px 0 12px' }}>
                 <span style={{ fontSize:13, color:'var(--text-3)' }}>
-                  {tc('cnotes.reducesOutstanding', 'Reduces customer outstanding')}{reduceSuspense ? tc('cnotes.andControlTotal', ' + control total') : ''}
+                  {tc('cnotes.reducesOutstanding', 'Reduces customer outstanding')}{reduceSuspense ? tc('cnotes.andControlTotal', ' + adds back to control total') : ''}
                 </span>
                 <span style={{ fontSize:20, fontWeight:800 }}>₹{fmt(parseFloat(cnAmount) || 0)}</span>
               </div>

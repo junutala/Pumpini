@@ -105,10 +105,13 @@ router.post('/credit-adjustment', authenticate, authorize('owner', 'manager'), r
       VALUES($1,$2,CURRENT_DATE,$3,'credit_note',$4,$5,$6) RETURNING id`,
       [corporate_id, station_id, amt.toFixed(2), invoice_id, note, req.user.id]);
     if (reduce_suspense) {
+      // A credit note REVERSES the invoice. Raising the invoice posted 'out'
+      // (drew the control total down), so the credit note posts 'in' — it ADDS
+      // the amount back to the control total (e.g. correcting an over-invoice).
       await client.query(`
         INSERT INTO credit_suspense_entries(station_id, direction, amount, corporate_id, description, reference_type, reference_id, created_by)
-        VALUES($1,'out',$2,$3,$4,'credit_note',$5,$6)`,
-        [station_id, amt.toFixed(2), corporate_id, ('Credit note vs ' + (inv[0].invoice_number || '')).slice(0, 250), rc[0].id, req.user.id]);
+        VALUES($1,'in',$2,$3,$4,'credit_note',$5,$6)`,
+        [station_id, amt.toFixed(2), corporate_id, ('Credit note vs ' + (inv[0].invoice_number || '') + ' — added back to control total').slice(0, 250), rc[0].id, req.user.id]);
     }
     await client.query('COMMIT');
     res.status(201).json({ id: rc[0].id, amount: amt, invoice_number: inv[0].invoice_number, reduce_suspense: !!reduce_suspense });
@@ -242,11 +245,30 @@ router.post('/', authenticate, authorize('owner', 'manager'), requireStationAcce
 // GET /?station_id= — list credit notes
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
+    // Product returns (product_credit_notes) AND petrol/diesel credit notes
+    // (corporate_receipts of type credit_note) share this grid.
     const { rows } = await pool.query(`
-      SELECT cn.*, u.name AS created_by_name
+      SELECT cn.id, cn.cn_number, cn.created_at, cn.customer_name,
+             cn.original_invoice_number, cn.settlement, cn.grand_total,
+             u.name AS created_by_name, 'product' AS kind
       FROM product_credit_notes cn
       LEFT JOIN users u ON u.id = cn.created_by
-      WHERE cn.station_id = $1 ORDER BY cn.created_at DESC LIMIT 100`, [req.query.station_id]);
+      WHERE cn.station_id = $1
+      UNION ALL
+      SELECT cr.id,
+             'CN/' || upper(substr(cr.id::text, 1, 8)) AS cn_number,
+             cr.created_at,
+             COALESCE(ca.company_name, 'Credit customer') AS customer_name,
+             gi.invoice_number AS original_invoice_number,
+             'outstanding' AS settlement,
+             cr.amount AS grand_total,
+             u2.name AS created_by_name, 'credit_invoice' AS kind
+      FROM corporate_receipts cr
+      LEFT JOIN corporate_accounts ca ON ca.id = cr.corporate_id
+      LEFT JOIN gst_invoices gi ON gi.id = cr.invoice_id
+      LEFT JOIN users u2 ON u2.id = cr.recorded_by
+      WHERE cr.station_id = $1 AND cr.payment_type = 'credit_note'
+      ORDER BY created_at DESC LIMIT 100`, [req.query.station_id]);
     res.json(rows);
   } catch (err) { next(err); }
 });
