@@ -167,6 +167,32 @@ export default function ShiftStartPage() {
     setScanning('');
   };
 
+  // Scan the whole printed pump slip (Slip A/B) — fills the OPENING meter for
+  // every nozzle on it, matched by label = "{pump}.{nozzle}" (e.g. 1.1).
+  const scanSlip = async (file) => {
+    if (!file || !shift) return;
+    setScanning('slip'); setErr('');
+    try {
+      const b64 = await readB64(file);
+      const r = await api.post('/reconcile/parse-slip', { shift_id: shift.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      let matched = 0; const miss = [];
+      (r.nozzles || []).forEach(n => {
+        if (n.cumulative_volume == null) return;
+        const noz = nozzles.find(x => String(x.nozzle_number) === n.label);
+        if (noz) { pickNoz(noz.id, { selected:true, opening: n.cumulative_volume }); matched++; }
+        else if (n.label) miss.push(n.label);
+      });
+      if (!matched) setErr(tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
+      else {
+        let msg = tc('sstart.slipFilled','Filled {n} opening reading(s) from the slip.').replace('{n}', matched);
+        if (miss.length)  msg += ' ' + tc('sstart.slipNoMatchSome','No app nozzle for: {x}.').replace('{x}', miss.join(', '));
+        if (!r.legible)   msg += ' ' + tc('sstart.slipVerify','⚠ Some digits unclear — verify.');
+        setErr(msg);
+      }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipFailed','Slip scan failed')); }
+    setScanning('');
+  };
+
   const addOperator = async () => {
     if (!asg.attendant_id) return setErr(tc('sstart.errPickOperator','Pick an operator'));
     if (asg.opening_cash === undefined || asg.opening_cash === '') return setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)'));
@@ -322,6 +348,10 @@ export default function ShiftStartPage() {
 
               <div>
                 <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint','(tick each; opening auto-carries from last close)')}</span></label>
+                <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:8,padding:'8px 12px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
+                  📄 {scanning==='slip' ? tc('sstart.slipReading','Reading slip…') : tc('sstart.scanSlip','Scan pump slip → fill all nozzles')}
+                  <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
+                </label>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;

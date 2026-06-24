@@ -727,4 +727,81 @@ router.post('/ocr-meter', authenticate, authorize('owner','manager'),
   } catch (err) { next(err); }
 });
 
+// POST /api/reconcile/parse-slip — read a printed pump "Electronic Totalizer"
+// slip (ALL nozzles of one pump at once) via Claude vision. Auto-detects the two
+// layouts and returns each nozzle's CUMULATIVE VOLUME — the anchor the shift
+// open/close uses (litres sold = closing slip − opening slip). One slip can be
+// too long for one photo, so the client may call this per photo and merge.
+const SLIP_PROMPT = `This image is a printed fuel-dispenser "Electronic Totalizer" / pump report slip. It belongs to ONE pump and lists that pump's nozzles, each with a CUMULATIVE volume totalizer (total litres dispensed over the pump's life).
+
+Two layouts exist — detect which:
+- Layout A: header has "FP. ID"; each "Nozzle No1 / No2 …" block has Shif/ShDay/ShMTH lines and a "CumVolume:" (litres) plus "CumSale:" (rupees). Use CumVolume as the nozzle's cumulative volume.
+- Layout B: header has "FIP No."; an "Electronic Totalizer" block lists each "Nozzle No. : 0X" with "Ecal Factor", "Atot" (rupees) and "Vtot" (litres). Use Vtot as the nozzle's cumulative volume.
+
+Extract the CUMULATIVE VOLUME for EVERY nozzle visible. Read digits exactly; drop leading zeros and separators but KEEP the decimal point.
+
+Respond with ONLY a JSON object, nothing else:
+{
+ "slip_type": "A" or "B",
+ "pump_id": "<the FP. ID / FIP No. as a plain number string>",
+ "nozzles": [ { "nozzle_no": "<1..N>", "cumulative_volume": <number>, "legible": <true|false> } ],
+ "legible": <true|false overall>,
+ "notes": "<short note; mention any nozzle cut off the page or unclear>"
+}
+Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
+
+router.post('/parse-slip', authenticate, authorize('owner', 'manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+  try {
+    const { shift_id, image_base64, media_type = 'image/jpeg' } = req.body;
+    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
+
+    let parsed = null, notes = '';
+    try {
+      const ai = await aiClient.messages.create({
+        model: 'claude-sonnet-4-6', max_tokens: 1500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
+            { type: 'text', text: SLIP_PROMPT },
+          ],
+        }],
+      });
+      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
+      const m = txt.match(/\{[\s\S]*\}/);
+      parsed = m ? JSON.parse(m[0]) : null;
+    } catch (e) {
+      try { require('../utils/logger').warn('parse-slip OCR failed: ' + (e.message || e)); } catch { /* noop */ }
+      return res.status(422).json({ error: 'Could not read the slip — enter the readings manually.' });
+    }
+    if (!parsed || !Array.isArray(parsed.nozzles)) {
+      return res.status(422).json({ error: 'Could not read the slip — enter the readings manually.' });
+    }
+    // Normalise: keep numeric cumulative_volume, build the {pump}.{nozzle} label.
+    const pump = String(parsed.pump_id ?? '').replace(/[^\d]/g, '') || null;
+    const nozzles = parsed.nozzles
+      .map(n => {
+        const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
+        const vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        return {
+          nozzle_no: no || null,
+          label: pump && no ? `${pump}.${no}` : null,   // matches our decimal nozzle_number
+          cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
+          legible: n.legible === true && isFinite(vol) && vol > 0,
+        };
+      })
+      .filter(n => n.nozzle_no);
+
+    res.json({
+      slip_type: parsed.slip_type === 'B' ? 'B' : (parsed.slip_type === 'A' ? 'A' : null),
+      pump_id: pump,
+      nozzles,
+      legible: parsed.legible === true && nozzles.length > 0 && nozzles.every(n => n.legible),
+      notes: notes || String(parsed.notes ?? ''),
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
