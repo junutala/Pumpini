@@ -335,6 +335,16 @@ ALTER TABLE product_invoices       ADD COLUMN IF NOT EXISTS location VARCHAR(8) 
 -- owners in the read-only customer portal). Code already writes pan; ensure it
 -- exists and is indexed for the consolidation lookup.
 ALTER TABLE corporate_accounts ADD COLUMN IF NOT EXISTS pan VARCHAR(10);
+
+-- Attendant end-dating: the last working day. NULL = currently employed.
+-- Set together with is_active=FALSE when an attendant leaves (reversible —
+-- clearing it + is_active=TRUE brings them back into the shift picker).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS end_date DATE;
+
+-- Superadmin go-live seeding writes opening-balance invoices with no creator
+-- (a superadmin is not a users row), so created_by must accept NULL. No-op if
+-- the column is already nullable.
+ALTER TABLE gst_invoices ALTER COLUMN created_by DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_corporate_pan ON corporate_accounts(UPPER(TRIM(pan)));
 
 -- ═════════════════════════════════════════════

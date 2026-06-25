@@ -755,6 +755,192 @@ router.delete('/station-users/:id', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Go-live seeding: Credit customers + opening balances ──────────────────
+// Superadmin-only fast lane for go-live. Runs on the BYPASSRLS owner role (no
+// req.user identity), so RLS does not apply. The manager keeps his own
+// credit-customer screen untouched — this is purely additive.
+const obInvoiceNo = corpId => `OB-${String(corpId).slice(0, 8)}`;
+
+router.get('/credit-customers/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    const sid = req.params.station_id;
+    const { rows } = await pool.query(`
+      SELECT ca.id, ca.company_name, ca.contact_phone,
+        COALESCE((SELECT SUM(gi.total_amount) FROM gst_invoices gi
+                  WHERE gi.corporate_id=ca.id AND gi.station_id=$1),0)
+      - COALESCE((SELECT SUM(cr.amount) FROM corporate_receipts cr
+                  WHERE cr.corporate_id=ca.id AND cr.station_id=$1),0) AS outstanding
+      FROM corporate_accounts ca
+      JOIN corporate_station_links csl ON csl.corporate_id=ca.id AND csl.station_id=$1
+      WHERE COALESCE(ca.is_active,TRUE)=TRUE
+      ORDER BY ca.company_name`, [sid]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// Bulk add credit customers (grid). body: { station_id, rows:[{company_name, contact_phone, opening_balance}] }
+router.post('/credit-customers', authAdmin, async (req, res, next) => {
+  const { station_id, rows: items = [] } = req.body;
+  if (!station_id) return res.status(400).json({ error: 'station_id is required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const created = [];
+    for (const it of items) {
+      const name = (it.company_name || '').trim();
+      if (!name) continue;
+      const digits = (it.contact_phone || '').replace(/\D/g, '');
+      const phone  = digits ? (digits.startsWith('91') ? `+${digits}` : `+91${digits}`) : null;
+      const ob = Math.round(Number(it.opening_balance || 0) * 100) / 100;
+
+      // Dedupe within the outlet on mobile (optional field — only when given).
+      let corpId = null;
+      if (phone) {
+        const { rows: ex } = await client.query(
+          `SELECT ca.id FROM corporate_accounts ca
+           JOIN corporate_station_links csl ON csl.corporate_id=ca.id
+           WHERE csl.station_id=$1 AND ca.contact_phone=$2 LIMIT 1`, [station_id, phone]);
+        if (ex.length) corpId = ex[0].id;
+      }
+      if (!corpId) {
+        // credit_limit defaults to 0 — the manager raises it later, like GSTN.
+        const { rows: c } = await client.query(
+          `INSERT INTO corporate_accounts(company_name, contact_phone, credit_limit)
+           VALUES($1,$2,0) RETURNING id`, [name, phone]);
+        corpId = c[0].id;
+      }
+      // Link to the outlet (idempotent without relying on a constraint name).
+      const { rows: lk } = await client.query(
+        `SELECT 1 FROM corporate_station_links WHERE corporate_id=$1 AND station_id=$2 LIMIT 1`,
+        [corpId, station_id]);
+      if (!lk.length) {
+        await client.query(
+          `INSERT INTO corporate_station_links(corporate_id, station_id) VALUES($1,$2)`,
+          [corpId, station_id]);
+      }
+      // Opening balance = a per-station opening receivable (gst_invoice, no GST,
+      // NO credit-suspense drawdown). created_by is NULL — a superadmin id is not
+      // a users row. Idempotent per (corp, station) via the OB-<corp8> number.
+      if (ob > 0) {
+        const invNo = obInvoiceNo(corpId);
+        const { rows: exInv } = await client.query(
+          `SELECT id FROM gst_invoices WHERE station_id=$1 AND corporate_id=$2 AND invoice_number=$3 LIMIT 1`,
+          [station_id, corpId, invNo]);
+        const li = JSON.stringify([{ description: 'Opening balance as on go-live', amount: ob }]);
+        if (exInv.length) {
+          await client.query(
+            `UPDATE gst_invoices SET subtotal=$1, total_amount=$1, line_items=$2 WHERE id=$3`,
+            [ob, li, exInv[0].id]);
+        } else {
+          await client.query(
+            `INSERT INTO gst_invoices(station_id, corporate_id, invoice_number, invoice_date,
+               period_from, period_to, subtotal, cgst_rate, sgst_rate, cgst_amount, sgst_amount,
+               total_amount, line_items, created_by)
+             VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE,CURRENT_DATE,$4,0,0,0,0,$4,$5,NULL)`,
+            [station_id, corpId, invNo, ob, li]);
+        }
+      }
+      created.push({ id: corpId, company_name: name });
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ created });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+// Remove a seeded credit customer's outlet link + its opening balance (typo fix).
+// Keeps the customer record if it has activity elsewhere; never deletes if real
+// invoices/receipts exist beyond the OB row.
+router.delete('/credit-customers/:corporate_id', authAdmin, async (req, res, next) => {
+  const { station_id } = req.query;
+  const corpId = req.params.corporate_id;
+  if (!station_id) return res.status(400).json({ error: 'station_id is required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `DELETE FROM gst_invoices WHERE station_id=$1 AND corporate_id=$2 AND invoice_number=$3`,
+      [station_id, corpId, obInvoiceNo(corpId)]);
+    const { rows: other } = await client.query(
+      `SELECT 1 FROM gst_invoices WHERE corporate_id=$1
+       UNION ALL SELECT 1 FROM corporate_receipts WHERE corporate_id=$1 LIMIT 1`, [corpId]);
+    await client.query(`DELETE FROM corporate_station_links WHERE corporate_id=$1 AND station_id=$2`,
+      [corpId, station_id]);
+    if (!other.length) {
+      const { rows: links } = await client.query(
+        `SELECT 1 FROM corporate_station_links WHERE corporate_id=$1 LIMIT 1`, [corpId]);
+      if (!links.length) await client.query(`DELETE FROM corporate_accounts WHERE id=$1`, [corpId]);
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+// ── Go-live seeding: Attendants (name + mobile grid) ──────────────────────
+router.get('/attendants/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.phone, u.is_active, u.end_date
+      FROM users u
+      JOIN station_users su ON su.user_id=u.id
+      WHERE su.station_id=$1 AND u.role='attendant'
+      ORDER BY COALESCE(u.is_active,TRUE) DESC, u.name`, [req.params.station_id]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// Bulk add attendants. body: { station_id, rows:[{name, phone}] }. Mobile is
+// mandatory + the unique key — re-entering an existing number links, not dupes.
+router.post('/attendants', authAdmin, async (req, res, next) => {
+  const { station_id, rows: items = [] } = req.body;
+  if (!station_id) return res.status(400).json({ error: 'station_id is required' });
+  const bcrypt = require('bcryptjs');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const created = [];
+    for (const it of items) {
+      const name   = (it.name || '').trim();
+      const digits = (it.phone || '').replace(/\D/g, '');
+      if (!name || !digits) continue;   // both required for attendants
+      const phone = digits.startsWith('91') ? `+${digits}` : `+91${digits}`;
+      let { rows: ex } = await client.query('SELECT id FROM users WHERE phone=$1 LIMIT 1', [phone]);
+      let uid;
+      if (ex.length) {
+        uid = ex[0].id;
+        await client.query(`UPDATE users SET is_active=TRUE, end_date=NULL WHERE id=$1`, [uid]);
+      } else {
+        const hash = await bcrypt.hash('Welcome@123', 12);   // dummy — attendants don't log in yet
+        const { rows: u } = await client.query(
+          `INSERT INTO users(name,phone,password_hash,role,must_change_password)
+           VALUES($1,$2,$3,'attendant',TRUE) RETURNING id`, [name, phone, hash]);
+        uid = u[0].id;
+      }
+      const { rows: lk } = await client.query(
+        `SELECT 1 FROM station_users WHERE station_id=$1 AND user_id=$2 LIMIT 1`, [station_id, uid]);
+      if (!lk.length) await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2)', [station_id, uid]);
+      created.push({ id: uid, name, phone });
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ created });
+  } catch (e) { await client.query('ROLLBACK'); next(e); }
+  finally { client.release(); }
+});
+
+// End-date / reactivate an attendant. body: { end_date } (date → leaves, drops
+// from the shift picker) or { end_date:null } (reactivate).
+router.patch('/attendants/:id', authAdmin, async (req, res, next) => {
+  try {
+    const ending = req.body.end_date != null && req.body.end_date !== '';
+    const { rows } = await pool.query(
+      `UPDATE users SET end_date=$1, is_active=$2 WHERE id=$3 AND role='attendant'
+       RETURNING id,name,phone,is_active,end_date`,
+      [ending ? req.body.end_date : null, !ending, req.params.id]);
+    res.json(rows[0] || { ok: true });
+  } catch (err) { next(err); }
+});
+
 // ── Leads / Enquiries ─────────────────────────────────────
 const LEAD_FIELDS = ['name','station_name','city','state','phone','email','message','source','status','notes'];
 

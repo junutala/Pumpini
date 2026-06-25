@@ -38,7 +38,6 @@ export default function InvoicesPage() {
   const [lines,   setLines]   = useState([emptyLine()]);
   const [busy,    setBusy]    = useState(false);
   const [msg,     setMsg]     = useState(null);   // { ok, text }
-  const [opening, setOpening] = useState(false);  // opening-balance invoice → don't draw down the control total
 
   const load = useCallback(async () => {
     if (!stationId) return;
@@ -95,15 +94,13 @@ export default function InvoicesPage() {
         cgst_rate: 0, sgst_rate: 0, cgst_amount: 0, sgst_amount: 0,
         total_amount: t,
         line_items,
-        is_opening_balance: opening,
+        is_opening_balance: false,   // opening balances are seeded by superadmin now
       });
       const name = corps.find(c=>c.id===corp)?.company_name || tc('invp.customerFallback', 'customer');
-      const suffix = opening
-        ? tc('invp.successOpening', ' Opening balance — control total unaffected.')
-        : tc('invp.successReduced', ' Control total reduced.');
+      const suffix = tc('invp.successReduced', ' Control total reduced.');
       setMsg({ ok:true, text: tc('invp.successInvoice', '✓ Invoice {invNo} raised for {name} — ₹{amt}.')
         .replace('{invNo}', invNo).replace('{name}', name).replace('{amt}', fmt(t)) + suffix });
-      setLines([emptyLine()]); setCorp(''); setOpening(false);
+      setLines([emptyLine()]); setCorp('');
       load();
     } catch (e) {
       setMsg({ ok:false, text: e.response?.data?.error || e.error || tc('invp.errGeneric', 'Could not raise the invoice.') });
@@ -200,12 +197,6 @@ export default function InvoicesPage() {
         <button onClick={addLine} style={{marginTop:10,display:'inline-flex',alignItems:'center',gap:5,background:'#f1f5f9',border:'1px solid #e2e8f0',borderRadius:8,padding:'7px 12px',fontSize:13,fontWeight:600,cursor:'pointer'}}>
           <Plus size={14}/> {tc('invp.addLine', 'Add line')}
         </button>
-
-        {/* Opening-balance flag — loads a pre-go-live balance without touching the control total */}
-        <label style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:'1rem',fontSize:13,cursor:'pointer',color: opening?'#9a3412':'var(--text-2)'}}>
-          <input type="checkbox" checked={opening} onChange={e=>setOpening(e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
-          <span><strong>{tc('invp.openingBalance', 'Opening balance')}</strong> {tc('invp.openingBalanceHint1', '— pre-go-live entry; do')} <u>{tc('invp.openingBalanceNot', 'not')}</u> {tc('invp.openingBalanceHint2', 'draw down the credit control total.')}</span>
-        </label>
 
         {/* Total + generate */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,flexWrap:'wrap',marginTop:'1rem',paddingTop:'1rem',borderTop:'1px solid #eef0f2'}}>

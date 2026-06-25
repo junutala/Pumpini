@@ -1045,7 +1045,12 @@
     "addAttendant": "Add attendant",
     "attendantsAtBunk": "Attendants at this bunk ({n})",
     "noAttendants": "No attendants yet.",
-    "inactive": "inactive"
+    "inactive": "inactive",
+    "endDate": "End-date",
+    "reactivate": "Reactivate",
+    "endedOn": "ended {d}",
+    "confirmEndDate": "End-date {name}? They stop appearing in the operator list. You can reactivate later.",
+    "errCouldNotUpdate": "Could not update attendant"
   },
   "adminp": {
     "superadminConsole": "SuperAdmin Console",

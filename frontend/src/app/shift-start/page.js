@@ -68,7 +68,7 @@ export default function ShiftStartPage() {
       api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
       api.get(`/prices/${stationId}/current`).catch(()=>[]),
     ]).then(([d,u,n,os,tk,pr]) => {
-      setDefs(Array.isArray(d)?d:[]); setUsers(Array.isArray(u)?u:[]);
+      setDefs(Array.isArray(d)?d:[]); setUsers((Array.isArray(u)?u:[]).filter(x=>x.is_active!==false));
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
       setOpenShifts(Array.isArray(os)?os:[]);
       setTanks(Array.isArray(tk)?tk:[]);

@@ -34,7 +34,7 @@ router.get('/', authenticate, authorize('owner','manager'), async (req, res, nex
     const scopeIds = station_id ? [station_id] : await getAccessibleStationIds(req.user.id);
     if (!scopeIds.length) return res.json([]);
     const p = [scopeIds];
-    let q = `SELECT DISTINCT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.created_at,u.must_change_password
+    let q = `SELECT DISTINCT u.id,u.name,u.phone,u.email,u.role,u.language,u.is_active,u.end_date,u.created_at,u.must_change_password
              FROM users u
              JOIN station_users su ON su.user_id=u.id
              WHERE su.station_id = ANY($1::uuid[])`;
@@ -50,18 +50,20 @@ router.patch('/:id', authenticate, authorize('owner','manager'), async (req, res
     if (!(await canManageUser(req.user.id, req.params.id))) {
       return res.status(403).json({ error: 'You do not have access to this user.' });
     }
-    const { name, email, language, is_active, password } = req.body;
+    const { name, email, language, is_active, end_date, password } = req.body;
     const sets = []; const p = [];
     if (name !== undefined)      { p.push(name);      sets.push(`name=$${p.length}`); }
     if (email !== undefined)     { p.push(email);     sets.push(`email=$${p.length}`); }
     if (language !== undefined)  { p.push(language);  sets.push(`language=$${p.length}`); }
     if (is_active !== undefined) { p.push(is_active); sets.push(`is_active=$${p.length}`); }
+    // Attendant end-dating (null clears it = reactivate). Pair with is_active from the caller.
+    if (end_date !== undefined)  { p.push(end_date || null); sets.push(`end_date=$${p.length}`); }
     if (password)                { p.push(await bcrypt.hash(password,12)); sets.push(`password_hash=$${p.length}`); }
     if (req.body.corporate_id !== undefined){ p.push(req.body.corporate_id); sets.push(`corporate_id=$${p.length}`); }
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
     p.push(req.params.id);
     const { rows } = await pool.query(
-      `UPDATE users SET ${sets.join(',')} WHERE id=$${p.length} RETURNING id,name,phone,email,role,language,is_active`,
+      `UPDATE users SET ${sets.join(',')} WHERE id=$${p.length} RETURNING id,name,phone,email,role,language,is_active,end_date`,
       p
     );
     res.json(rows[0]);
