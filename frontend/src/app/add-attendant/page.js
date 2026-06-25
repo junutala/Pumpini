@@ -24,11 +24,19 @@ export default function AddAttendantPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
   const [saved, setSaved] = useState('');
+  const [loaded, setLoaded]   = useState(false);
+  const [loadErr, setLoadErr] = useState('');
 
   const load = async () => {
     if (!stationId) return;
-    const u = await getUsers({ station_id: stationId, role: 'attendant' }).catch(()=>[]);
-    setList(Array.isArray(u) ? u : []);
+    setLoadErr('');
+    try {
+      // Don't swallow the error — a failed fetch must NOT look like "no attendants".
+      const u = await getUsers({ station_id: stationId, role: 'attendant' });
+      setList(Array.isArray(u) ? u : []);
+    } catch (e) {
+      setLoadErr(e?.error || e?.message || tc('addatt.errLoad', 'Could not load attendants — try refreshing.'));
+    } finally { setLoaded(true); }
   };
   useEffect(() => { load(); }, [stationId]);
 
@@ -94,19 +102,28 @@ export default function AddAttendantPage() {
 
         <div className="card">
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('addatt.attendantsAtBunk', 'Attendants at this bunk ({n})').replace('{n}', list.length)}</div>
-          {list.length === 0
+          {loadErr
+            ? <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13}}>{loadErr}</div>
+            : !loaded
+            ? <div style={{color:'#aaa',fontSize:13}}>{tc('addatt.loading', 'Loading…')}</div>
+            : list.length === 0
             ? <div style={{color:'#aaa',fontSize:13}}>{tc('addatt.noAttendants', 'No attendants yet.')}</div>
             : list.map(a => {
                 const inactive = a.is_active === false;
                 return (
-                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:6,opacity:inactive?0.7:1}}>
+                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:6,opacity:inactive?0.75:1}}>
                   <div style={{minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:13}}>{a.name}{inactive && <span style={{color:'#dc2626',fontWeight:600,marginLeft:6,fontSize:11}}>{tc('addatt.endedOn', 'ended {d}').replace('{d}', a.end_date || tc('addatt.inactive','inactive'))}</span>}</div>
+                    <div style={{fontWeight:600,fontSize:13}}>{a.name}{inactive && <span style={{color:'#dc2626',fontWeight:600,marginLeft:6,fontSize:11}}>{tc('addatt.endedOn', 'ended {d}').replace('{d}', a.end_date || '')}</span>}</div>
                     <div style={{fontSize:12,color:'#888',fontFamily:'var(--font-mono)'}}>{a.phone}</div>
                   </div>
-                  <button onClick={()=>toggleEndDate(a)} style={{flexShrink:0,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid',borderRadius:7,padding:'5px 10px',background:'#fff',borderColor:inactive?'#16a34a':'#e5e3de',color:inactive?'#16a34a':'#9a3412'}}>
-                    {inactive ? tc('addatt.reactivate', 'Reactivate') : tc('addatt.endDate', 'End-date')}
-                  </button>
+                  {/* Active/Ended toggle switch */}
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                    <span style={{fontSize:11,fontWeight:600,color:inactive?'#9a3412':'#16a34a'}}>{inactive?tc('addatt.statusEnded','Ended'):tc('addatt.statusActive','Active')}</span>
+                    <button onClick={()=>toggleEndDate(a)} aria-label={tc('addatt.toggleAria','Toggle attendant active')} title={inactive?tc('addatt.reactivate','Reactivate'):tc('addatt.endDate','End-date')}
+                      style={{width:42,height:24,borderRadius:99,border:'none',cursor:'pointer',background:inactive?'#cbd5e1':'#16a34a',position:'relative',padding:0,flexShrink:0,transition:'background .15s'}}>
+                      <span style={{position:'absolute',top:3,left:inactive?3:21,width:18,height:18,borderRadius:'50%',background:'#fff',boxShadow:'0 1px 2px rgba(0,0,0,.25)',transition:'left .15s'}}/>
+                    </button>
+                  </div>
                 </div>
                 );
               })}
