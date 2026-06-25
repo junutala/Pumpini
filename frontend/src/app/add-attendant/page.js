@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { UserPlus, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { addAttendant, getUsers } from '../../lib/api';
+import api, { addAttendant, getUsers } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -50,6 +50,18 @@ export default function AddAttendantPage() {
     finally { setBusy(false); }
   };
 
+  // End-date a leaving attendant (drops them from the Start-Shift picker) or
+  // bring one back. Reversible — reactivating clears the end date.
+  const toggleEndDate = async (a) => {
+    const leaving = a.is_active !== false;
+    if (leaving && !window.confirm(tc('addatt.confirmEndDate', 'End-date {name}? They stop appearing in the operator list. You can reactivate later.').replace('{name}', a.name))) return;
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    try {
+      await api.patch(`/users/${a.id}`, leaving ? { is_active:false, end_date: today } : { is_active:true, end_date:null });
+      load();
+    } catch (e) { setErr(e?.error || e?.message || tc('addatt.errCouldNotUpdate', 'Could not update attendant')); }
+  };
+
   return (
     <AppShell>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
@@ -84,12 +96,20 @@ export default function AddAttendantPage() {
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('addatt.attendantsAtBunk', 'Attendants at this bunk ({n})').replace('{n}', list.length)}</div>
           {list.length === 0
             ? <div style={{color:'#aaa',fontSize:13}}>{tc('addatt.noAttendants', 'No attendants yet.')}</div>
-            : list.map(a => (
-                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
-                  <div style={{fontWeight:600,fontSize:13}}>{a.name}</div>
-                  <div style={{fontSize:12,color:'#888',fontFamily:'var(--font-mono)'}}>{a.phone}{a.is_active===false && <span style={{color:'#dc2626',marginLeft:6}}>{tc('addatt.inactive', 'inactive')}</span>}</div>
+            : list.map(a => {
+                const inactive = a.is_active === false;
+                return (
+                <div key={a.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:6,opacity:inactive?0.7:1}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13}}>{a.name}{inactive && <span style={{color:'#dc2626',fontWeight:600,marginLeft:6,fontSize:11}}>{tc('addatt.endedOn', 'ended {d}').replace('{d}', a.end_date || tc('addatt.inactive','inactive'))}</span>}</div>
+                    <div style={{fontSize:12,color:'#888',fontFamily:'var(--font-mono)'}}>{a.phone}</div>
+                  </div>
+                  <button onClick={()=>toggleEndDate(a)} style={{flexShrink:0,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid',borderRadius:7,padding:'5px 10px',background:'#fff',borderColor:inactive?'#16a34a':'#e5e3de',color:inactive?'#16a34a':'#9a3412'}}>
+                    {inactive ? tc('addatt.reactivate', 'Reactivate') : tc('addatt.endDate', 'End-date')}
+                  </button>
                 </div>
-              ))}
+                );
+              })}
         </div>
       </div>
     </AppShell>

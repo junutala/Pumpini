@@ -62,12 +62,12 @@ function PwField({value,onChange,placeholder}){
   );
 }
 
-function Modal({title,onClose,children}){
+function Modal({title,onClose,children,width=520}){
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',
       alignItems:'center',justifyContent:'center',zIndex:300,overflowY:'auto',padding:'1rem'}}>
       <div style={{background:'#fff',borderRadius:16,padding:'1.75rem',width:'100%',
-        maxWidth:520,boxShadow:'0 20px 60px rgba(0,0,0,.3)',maxHeight:'90vh',overflowY:'auto'}}>
+        maxWidth:width,boxShadow:'0 20px 60px rgba(0,0,0,.3)',maxHeight:'90vh',overflowY:'auto'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
           <span style={{fontWeight:700,fontSize:16}}>{title}</span>
           <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',padding:4}}><X size={18}/></button>
@@ -184,6 +184,49 @@ export default function AdminPage(){
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   const openModal  = (type,data={}) => { setForm({...data}); setModal({type,data}); };
   const closeModal = () => { setModal(null); setForm({}); };
+
+  // ── Go-live seeding grids (superadmin, per outlet) ──────────────────────
+  const [ccList,setCcList]   = useState([]);   // existing credit customers
+  const [ccRows,setCcRows]   = useState([]);   // new rows being entered
+  const [attList,setAttList] = useState([]);
+  const [attRows,setAttRows] = useState([]);
+  const [gridBusy,setGridBusy] = useState(false);
+  const loadCC  = async sid => { const r = await adminFetch(`/credit-customers/${sid}`); setCcList(Array.isArray(r)?r:[]); };
+  const loadAtt = async sid => { const r = await adminFetch(`/attendants/${sid}`);        setAttList(Array.isArray(r)?r:[]); };
+  const openCreditCustomers = s => { setModal({type:'creditCustomers',data:{station_id:s.id,name:s.name}}); setCcRows([{company_name:'',contact_phone:'',opening_balance:''}]); loadCC(s.id); };
+  const openAttendants      = s => { setModal({type:'attendants',     data:{station_id:s.id,name:s.name}}); setAttRows([{name:'',phone:''}]); loadAtt(s.id); };
+  const setCcRow  = (i,k,v) => setCcRows(rs=>rs.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+  const setAttRow = (i,k,v) => setAttRows(rs=>rs.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+  const saveCreditCustomers = async () => {
+    const rows = ccRows.filter(r=>(r.company_name||'').trim());
+    if(!rows.length) return;
+    setGridBusy(true);
+    const r = await adminFetch('/credit-customers',{method:'POST',body:JSON.stringify({station_id:modal.data.station_id,rows})});
+    setGridBusy(false);
+    if(r.error){alert(r.error);return;}
+    setCcRows([{company_name:'',contact_phone:'',opening_balance:''}]); loadCC(modal.data.station_id);
+    showToast(tc('adminp.ccSaved','Credit customers saved.'));
+  };
+  const delCreditCustomer = async id => {
+    if(!window.confirm(tc('adminp.ccDeleteConfirm','Remove this customer and its opening balance from this outlet?'))) return;
+    await adminFetch(`/credit-customers/${id}?station_id=${modal.data.station_id}`,{method:'DELETE'});
+    loadCC(modal.data.station_id);
+  };
+  const saveAttendants = async () => {
+    const rows = attRows.filter(r=>(r.name||'').trim() && (r.phone||'').trim());
+    if(!rows.length) return;
+    setGridBusy(true);
+    const r = await adminFetch('/attendants',{method:'POST',body:JSON.stringify({station_id:modal.data.station_id,rows})});
+    setGridBusy(false);
+    if(r.error){alert(r.error);return;}
+    setAttRows([{name:'',phone:''}]); loadAtt(modal.data.station_id);
+    showToast(tc('adminp.attSaved','Attendants saved.'));
+  };
+  const toggleAttEnd = async a => {
+    const leaving = a.is_active!==false;
+    await adminFetch(`/attendants/${a.id}`,{method:'PATCH',body:JSON.stringify({end_date: leaving? todayIST():null})});
+    loadAtt(modal.data.station_id);
+  };
   const todayIST   = () => new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 
   useEffect(()=>{
@@ -487,9 +530,11 @@ export default function AdminPage(){
                       <td style={{padding:'11px 14px',fontSize:12,fontFamily:'monospace'}}>{s.start_date||'—'}</td>
                       <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date||<span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>{tc('adminp.active', 'Active')}</span>}</td>
                       <td style={{padding:'11px 14px'}}>
-                        <div style={{display:'flex',gap:5}}>
+                        <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                           <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company,owner_id:(s.owner_ids&&s.owner_ids[0])||'',owner_group_id:s.owner_group_id||''})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
                           <button style={btn('#fff7ed','#9a3412')} onClick={()=>{setForm({station_id:s.id,plan:s.plan||'pro',status:s.sub_status||'active',start_date:s.start_date||todayIST(),end_date:s.end_date||''});setModal({type:'editSub',data:s});}}><Calendar size={12}/>{tc('adminp.plan', 'Plan')}</button>
+                          <button style={btn('#f0fdf4','#15803d')} onClick={()=>openCreditCustomers(s)}><IndianRupee size={12}/>{tc('adminp.creditCustomers', 'Credit Customers')}</button>
+                          <button style={btn('#eff6ff','#1d4ed8')} onClick={()=>openAttendants(s)}><Users size={12}/>{tc('adminp.attendants', 'Attendants')}</button>
                         </div>
                       </td>
                     </tr>
@@ -1027,6 +1072,66 @@ export default function AdminPage(){
         </Modal>
       )}
 
+      {modal?.type==='creditCustomers'&&(
+        <Modal title={tc('adminp.ccTitle','Credit customers — {n}').replace('{n}',modal.data.name)} onClose={closeModal} width={680}>
+          <div style={{fontSize:12.5,color:'#666',marginBottom:14}}>{tc('adminp.ccHint','Seed customers with their go-live opening balance. Name required; mobile recommended. The manager adds GSTN etc. later.')}</div>
+          {ccList.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{tc('adminp.ccExisting','Already added ({n})').replace('{n}',ccList.length)}</div>
+              {ccList.map(c=>(
+                <div key={c.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#f8fafc',borderRadius:8,padding:'7px 10px',marginBottom:5}}>
+                  <div style={{minWidth:0}}><span style={{fontWeight:600,fontSize:13}}>{c.company_name}</span> <span style={{fontSize:12,color:'#888',fontFamily:'monospace'}}>{c.contact_phone||'—'}</span></div>
+                  <div style={{display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+                    <span style={{fontSize:13,fontWeight:700}}>{fmtAmt(c.outstanding)}</span>
+                    <button onClick={()=>delCreditCustomer(c.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626'}}><Trash2 size={15}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 130px 130px 30px',gap:8,fontSize:11,fontWeight:700,color:'#888',marginBottom:6,textTransform:'uppercase'}}>
+            <div>{tc('adminp.ccName','Customer name')}</div><div>{tc('adminp.ccMobile','Mobile')}</div><div>{tc('adminp.ccOB','Opening bal ₹')}</div><div/>
+          </div>
+          {ccRows.map((r,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 130px 130px 30px',gap:8,marginBottom:6,alignItems:'center'}}>
+              <input style={inp} value={r.company_name} onChange={e=>setCcRow(i,'company_name',e.target.value)} placeholder={tc('adminp.ccNamePh','e.g. ABC Transports')}/>
+              <input style={inp} value={r.contact_phone} onChange={e=>setCcRow(i,'contact_phone',e.target.value)} placeholder="9xxxxxxxxx"/>
+              <input style={inp} type="number" value={r.opening_balance} onChange={e=>setCcRow(i,'opening_balance',e.target.value)} placeholder="0"/>
+              <button onClick={()=>setCcRows(rs=>rs.length>1?rs.filter((_,idx)=>idx!==i):[{company_name:'',contact_phone:'',opening_balance:''}])} style={{background:'none',border:'none',cursor:'pointer',color:'#aaa'}}><X size={16}/></button>
+            </div>
+          ))}
+          <button onClick={()=>setCcRows(rs=>[...rs,{company_name:'',contact_phone:'',opening_balance:''}])} style={{...btn('#f1f5f9','#334155'),marginTop:4}}><Plus size={14}/>{tc('adminp.addRow','Add row')}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:44,marginTop:14}} disabled={gridBusy} onClick={saveCreditCustomers}>{gridBusy?tc('adminp.saving','Saving...'):tc('adminp.ccSave','Save customers')}</button>
+        </Modal>
+      )}
+      {modal?.type==='attendants'&&(
+        <Modal title={tc('adminp.attTitle','Attendants — {n}').replace('{n}',modal.data.name)} onClose={closeModal} width={620}>
+          <div style={{fontSize:12.5,color:'#666',marginBottom:14}}>{tc('adminp.attHint','Seed currently-available attendants. Name + mobile both required. The manager can add/remove and end-date later.')}</div>
+          {attList.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{tc('adminp.attExisting','Already added ({n})').replace('{n}',attList.length)}</div>
+              {attList.map(a=>{const inactive=a.is_active===false;return(
+                <div key={a.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#f8fafc',borderRadius:8,padding:'7px 10px',marginBottom:5,opacity:inactive?0.65:1}}>
+                  <div style={{minWidth:0}}><span style={{fontWeight:600,fontSize:13}}>{a.name}</span> <span style={{fontSize:12,color:'#888',fontFamily:'monospace'}}>{a.phone}</span>{inactive&&<span style={{color:'#dc2626',fontSize:11,marginLeft:6}}>{tc('adminp.attEnded','ended {d}').replace('{d}',a.end_date||'')}</span>}</div>
+                  <button onClick={()=>toggleAttEnd(a)} style={{flexShrink:0,fontSize:12,fontWeight:600,cursor:'pointer',border:'1px solid',borderRadius:7,padding:'4px 9px',background:'#fff',borderColor:inactive?'#16a34a':'#e5e3de',color:inactive?'#16a34a':'#9a3412'}}>{inactive?tc('adminp.reactivate','Reactivate'):tc('adminp.endDate','End-date')}</button>
+                </div>
+              );})}
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 150px 30px',gap:8,fontSize:11,fontWeight:700,color:'#888',marginBottom:6,textTransform:'uppercase'}}>
+            <div>{tc('adminp.attName','Name')}</div><div>{tc('adminp.attMobile','Mobile')}</div><div/>
+          </div>
+          {attRows.map((r,i)=>(
+            <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 150px 30px',gap:8,marginBottom:6,alignItems:'center'}}>
+              <input style={inp} value={r.name} onChange={e=>setAttRow(i,'name',e.target.value)} placeholder={tc('adminp.attNamePh','e.g. Suresh')}/>
+              <input style={inp} value={r.phone} onChange={e=>setAttRow(i,'phone',e.target.value)} placeholder="9xxxxxxxxx"/>
+              <button onClick={()=>setAttRows(rs=>rs.length>1?rs.filter((_,idx)=>idx!==i):[{name:'',phone:''}])} style={{background:'none',border:'none',cursor:'pointer',color:'#aaa'}}><X size={16}/></button>
+            </div>
+          ))}
+          <button onClick={()=>setAttRows(rs=>[...rs,{name:'',phone:''}])} style={{...btn('#f1f5f9','#334155'),marginTop:4}}><Plus size={14}/>{tc('adminp.addRow','Add row')}</button>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:44,marginTop:14}} disabled={gridBusy} onClick={saveAttendants}>{gridBusy?tc('adminp.saving','Saving...'):tc('adminp.attSave','Save attendants')}</button>
+        </Modal>
+      )}
       {modal?.type==='lead'&&(
         <Modal title={tc('adminp.addLead','Add Lead')} onClose={closeModal}>
           <Field label={tc('adminp.name','Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
