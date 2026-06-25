@@ -523,7 +523,7 @@ export default function AdminPage(){
                 <tbody>
                   {stations.map(s=>(
                     <tr key={s.id} style={{borderBottom:'1px solid #f0f0f0'}}>
-                      <td style={{padding:'11px 14px',fontWeight:600}}>{s.name}</td>
+                      <td style={{padding:'11px 14px',fontWeight:800,fontSize:15,color:'#1a1a1a'}}>{s.name || <span style={{color:'#dc2626',fontWeight:600,fontSize:13}}>{tc('adminp.unnamedBunk','⚠ Unnamed — edit to set name')}</span>}</td>
                       <td style={{padding:'11px 14px'}}>{s.city||'—'}</td>
                       <td style={{padding:'11px 14px',fontSize:12}}>{s.oil_company||'—'}</td>
                       <td style={{padding:'11px 14px'}}><SubBadge plan={s.plan} status={s.sub_status}/></td>
