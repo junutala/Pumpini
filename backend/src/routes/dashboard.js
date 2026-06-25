@@ -151,8 +151,12 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       const avgDaily = {}; trail.rows.forEach(r => { avgDaily[r.fuel_type] = parseFloat(r.avg_daily); });
       cover = stock.rows.map(t => {
         const ad = avgDaily[t.fuel_type] || 0;
+        // CNG has no dipstick, so current_stock is never refreshed — a days-of-cover
+        // figure off that stale value is meaningless (and triggered false "running low"
+        // alerts). Suppress it; the UI already shows CNG as "by kg · no dip".
+        const isGas = (t.fuel_type || '').toLowerCase() === 'cng';
         return { tank_number: t.tank_number, fuel_type: t.fuel_type, fill_pct: t.fill_pct,
-                 days: ad > 0 ? +(parseFloat(t.current_stock) / ad).toFixed(1) : null };
+                 days: (!isGas && ad > 0) ? +(parseFloat(t.current_stock) / ad).toFixed(1) : null };
       });
 
       const rv = recv.rows[0];
