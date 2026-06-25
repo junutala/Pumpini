@@ -2,13 +2,14 @@
 // Horizontal-cylinder tank calibration (dip -> volume) computed from the tank
 // type's diameter x length (cm). Mirror of backend/src/lib/calibration.js.
 
-// Dip-stick entry: 4 minor marks per cm (0.2 cm each). The operator enters the
-// mark ordinal as a decimal, e.g. "64.2" = 64 + 2nd mark = 64.4 cm true.
+// The dip is recorded directly in CENTIMETRES (decimal = literal cm), e.g.
+// 72.5 = 72.5 cm. Sticks differ by outlet (HPCL 9 marks/cm = 0.1 cm; Kamala
+// 4 marks/cm = 0.2 cm) but the operator records the real cm either way, so no
+// conversion — earlier builds doubled the decimal and over-read fractional dips.
 export function markToTrueDip(entered) {
   const n = Number(entered);
   if (!isFinite(n)) return null;
-  const whole = Math.floor(n);
-  return +(whole + (n - whole) * 2).toFixed(2);
+  return +n.toFixed(2);
 }
 
 // dip (cm, true) -> litres
