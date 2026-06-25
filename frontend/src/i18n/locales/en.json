@@ -1050,7 +1050,12 @@
     "reactivate": "Reactivate",
     "endedOn": "ended {d}",
     "confirmEndDate": "End-date {name}? They stop appearing in the operator list. You can reactivate later.",
-    "errCouldNotUpdate": "Could not update attendant"
+    "errCouldNotUpdate": "Could not update attendant",
+    "errLoad": "Could not load attendants — try refreshing.",
+    "loading": "Loading…",
+    "statusActive": "Active",
+    "statusEnded": "Ended",
+    "toggleAria": "Toggle attendant active"
   },
   "adminp": {
     "superadminConsole": "SuperAdmin Console",
