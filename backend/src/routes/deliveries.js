@@ -246,8 +246,8 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
    "quantity_kl": number or null,
    "gross_volume_ltrs": number (LITRES = KL*1000),
    "density": number (kg/L @15C, e.g. 0.7522),
-   "rate_per_ltr": number or null,
-   "total_value": number — the "Total for material" for THIS product: its all-inclusive grand total (basic value PLUS every duty & tax), NOT the basic/assessable/taxable value before tax; or null,
+   "rate_per_ltr": number — the ALL-INCLUSIVE cost per litre = total_value / gross_volume_ltrs (NOT the ex-depot basic rate); or null,
+   "total_value": number — the product's FULL all-inclusive total in ₹ (every component added together), NOT the pre-tax basic value; or null,
    "sample_no": "string or null",
    "hsn": "string or null"
  }],
@@ -259,9 +259,13 @@ Rules:
 - fuel_type: MS / EBMS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; XtraPremium / Speed / Power / branded premium -> "premium_petrol"; CNG -> "cng".
 - gross_volume_ltrs is LITRES: convert KL x 1000.
 - density is kg/L @15C. If printed as kg/m3 (e.g. 752.200 / 837.900) divide by 1000 -> 0.7522 / 0.8379.
-- total_value: ALWAYS read the per-product "Total for material" line — the all-inclusive amount (basic value PLUS every duty and tax). NEVER use the basic price / assessable value / taxable value (the pre-tax figure); on oil-company invoices these differ a lot (e.g. basic 331453.56 vs "Total for material" 448125.21 -> pick 448125.21). Apply the same to every product (petrol, diesel, etc.). If no all-inclusive line is labelled, sum that product's basic value + its taxes.
-- invoice_total_value is the whole invoice's grand total (sum of all materials' "Total for material" + any common charges).
-- rate_per_ltr is the ex-depot price PER LITRE in ₹ — normally ₹70-120. If the invoice quotes the rate per KL (a 5-6 digit figure like 82863.39), divide by 1000 -> 82.86. NEVER return a per-litre rate above ~200; if you computed one, you read a per-KL number.
+- total_value = the product's FULL taxes-included total. Two invoice styles:
+  (a) IOCL prints a single per-product "Total for material" line — use it directly.
+  (b) HPCL itemises components with NO combined line — under the product (e.g. MS / HSD) there are separate amount rows: basic value, A/R VAT %, LF Recovery, Idn SSLF Recovery (and any cess/duty). ADD all of that product's amount rows together = its total_value.
+  NEVER use the basic / assessable / taxable value alone (pre-tax). We only need the per-product TOTAL — do not return the individual components.
+- CROSS-CHECK: the sum of every product's total_value must equal the invoice grand "Total Value" (e.g. MS 1005427.11 + HSD 506479.91 = 1511907.02). Re-add if they don't match.
+- invoice_total_value = the invoice grand "Total Value" (the printed total incl. taxes).
+- rate_per_ltr = total_value ÷ gross_volume_ltrs (the all-inclusive landed cost per litre, typically ₹95-125). Do NOT read the ex-depot basic per-KL rate.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
 router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {

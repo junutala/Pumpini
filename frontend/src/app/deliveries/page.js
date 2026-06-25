@@ -102,13 +102,18 @@ export default function DeliveriesPage() {
     const it = list[i]; if (!it) return;
     setActiveItem(i);
     const match = tanks.filter(t => t.fuel_type === it.fuel_type);
+    // Rate is the all-inclusive cost per litre = full value ÷ litres (owner rule),
+    // derived deterministically from the total so it never depends on OCR division.
+    const vol = it.gross_volume_ltrs != null ? Number(it.gross_volume_ltrs) : null;
+    const tot = it.total_value != null ? Number(it.total_value) : null;
+    const rate = (tot && vol) ? +(tot / vol).toFixed(2) : (it.rate_per_ltr != null ? Number(it.rate_per_ltr) : null);
     setForm(p => ({
       ...p,
       fuel_type:         it.fuel_type || p.fuel_type,
       tank_id:           match.length === 1 ? match[0].id : '',
       gross_volume_ltrs: it.gross_volume_ltrs != null ? String(it.gross_volume_ltrs) : '',
       density:           it.density != null ? String(it.density) : '',
-      rate_per_ltr:      it.rate_per_ltr != null ? String(it.rate_per_ltr) : '',
+      rate_per_ltr:      rate != null ? String(rate) : '',
       total_value:       it.total_value != null ? String(it.total_value) : '',
       compartment_no:    it.compartment_no || '',
       notes:             [it.product_name && `Product: ${it.product_name}`, it.sample_no && `Sample ${it.sample_no}`].filter(Boolean).join(' · '),
