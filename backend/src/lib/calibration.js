@@ -3,15 +3,16 @@
 // (cm); dip -> volume and the per-level tolerance are computed, never stored.
 // Mirror of frontend/src/lib/calibration.js — keep the two in sync.
 
-// Dip-stick entry convention: 4 minor marks per cm (0.2 cm each). The operator
-// enters the mark ordinal as a decimal, e.g. "64.2" = 64 + 2nd mark = 64.4 cm.
-// NOTE: marks-per-cm is fixed at 5 (0.2 cm) for now; make configurable per
-// stick/outlet if a different stick shows up. (open point)
+// The dip is recorded directly in CENTIMETRES (the decimal is literal cm), e.g.
+// 72.5 = 72.5 cm. Sticks differ by outlet — HPCL has 9 marks/cm (0.1 cm each, a
+// proper mm stick) so the reading is already literal; Kamala's coarse 4-mark/cm
+// stick (0.2 cm each) is recorded as the real cm too (2nd mark = .4, not .2).
+// So no conversion — earlier builds doubled the decimal, which over-read every
+// fractional dip. Kept as a pass-through hook in case a future stick needs one.
 function markToTrueDip(entered) {
   const n = Number(entered);
   if (!isFinite(n)) return null;
-  const whole = Math.floor(n);
-  return +(whole + (n - whole) * 2).toFixed(2);
+  return +n.toFixed(2);
 }
 
 // dip (cm, true) -> litres, via the circular-segment volume of a horizontal cylinder
