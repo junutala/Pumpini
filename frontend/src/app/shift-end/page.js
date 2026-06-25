@@ -14,6 +14,7 @@ import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '';
 const fmtL = n => Number(n||0).toFixed(2);
 const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 const STEPS = ['Select', 'Operators', 'Close'];
@@ -256,7 +257,7 @@ export default function ShiftEndPage() {
                 style={{width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',
                   background:stale?'#fef2f2':'#f8fafc',border:'1.5px solid '+(stale?'#fca5a5':'#eef0f2'),borderRadius:10,padding:'10px 12px',marginBottom:8,cursor:'pointer'}}>
                 <div>
-                  <div style={{fontWeight:700,fontSize:14}}>{tc('send.shiftLabel','Shift')} {s.shift_number} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {s.date} · {s.attendant_count} {s.attendant_count===1?tc('send.operator','operator'):tc('send.operators','operators')}</span></div>
+                  <div style={{fontWeight:700,fontSize:14}}>{tc('send.shiftLabel','Shift')} {s.shift_number} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {fmtDate(s.date)} · {s.attendant_count} {s.attendant_count===1?tc('send.operator','operator'):tc('send.operators','operators')}</span></div>
                   <div style={{fontSize:12,color:stale?'#dc2626':'#888',display:'flex',alignItems:'center',gap:4,marginTop:2}}>
                     <Clock size={12}/> {tc('send.opened','opened')} {openedLabel(s.start_time)} {stale && <span style={{fontWeight:700}}>· {tc('send.openOver24h','OPEN >24h')}</span>}
                   </div>

@@ -13,6 +13,7 @@ const fmt   = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2}
 const fmtL  = n => Number(n||0).toFixed(2);
 const toIST = ts => ts ? new Date(ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',
   day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
+const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—';
 const todayIST = () => new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 const monthStart = () => {
   const d = new Date(); d.setDate(1);
@@ -127,7 +128,7 @@ export default function CreditDashboardPage() {
     </style></head><body>
       <h2>${inv.station_name || ''}</h2>
       <div class="muted">Invoice <b>${inv.invoice_number}</b> · ${toIST(inv.invoice_date || inv.created_at)}
-        ${kind === 'fuel' && inv.period_from ? ` · Period ${inv.period_from} – ${inv.period_to}` : ''}</div>
+        ${kind === 'fuel' && inv.period_from ? ` · Period ${fmtDate(inv.period_from)} – ${fmtDate(inv.period_to)}` : ''}</div>
       <div class="muted">${tc('credit_page.bill_to', 'Bill to')}: <b>${corp?.company_name || inv.customer_name || ''}</b></div>
       <table><thead>${headHtml}</thead><tbody>${rowsHtml}</tbody></table>
       <div class="tot">${gst}<br/><b>Total: ₹${fmt(total)}</b></div>
@@ -547,7 +548,7 @@ export default function CreditDashboardPage() {
                         <td style={{fontFamily:'var(--font-mono)',fontWeight:600}}>{inv.invoice_number}</td>
                         <td style={{fontSize:12}}>{new Date(inv.invoice_date||inv.created_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'})}</td>
                         <td style={{fontSize:12}}>{inv.station_name||'—'}</td>
-                        <td style={{fontSize:12}}>{inv.period_from?`${inv.period_from} – ${inv.period_to}`:'—'}</td>
+                        <td style={{fontSize:12}}>{inv.period_from?`${fmtDate(inv.period_from)} – ${fmtDate(inv.period_to)}`:'—'}</td>
                         <td className="num" style={{fontWeight:700}}>₹{fmt(inv.total_amount)}</td>
                         <td><button className="btn btn-secondary btn-sm" onClick={()=>printInvoice(inv,'fuel')}>{tc('credit_page.view_print','View / Print')}</button></td>
                       </tr>
