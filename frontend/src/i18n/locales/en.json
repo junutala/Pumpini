@@ -1391,9 +1391,12 @@
     "gasNoDip": "gas · no dip",
     "daysCover": "~{n} days",
     "coverDash": "cover —",
-    "daysOfCoverHint": "Days of cover · based on last 7 days’ sale",
+    "daysOfCoverHint": "Days of cover (7-day avg sale) · stock as of last dip",
     "pctFull": "{n}% full",
     "noRecentSale": " · no recent sale",
+    "litresSold": "Litres sold",
+    "stockLFull": "{l} L · {n}% full",
+    "stockAsOf": "stock as of {d}",
     "aiBriefing": "AI briefing"
   },
   "cashint": {

@@ -16,6 +16,7 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtDip = ts => { try { return new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }); } catch { return ''; } };
 const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
 // Days-of-cover urgency: <2d red, <4d amber, else green.
@@ -163,7 +164,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.sales', 'Sales')}{salesMasked && closedShifts.length ? tc('bunk.closedSuffix', ' (closed)') : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
           {isOwnerView && <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>}
           <div style={mini}>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litres', 'Litres')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litresSold', 'Litres sold')}</div>
             <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div>
             {fuelLtrs.length > 0 && (
               <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -263,7 +264,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.fuelHealth', 'Fuel health')}</span>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{tc('bunk.daysOfCoverHint', 'Days of cover · based on last 7 days’ sale')}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{tc('bunk.daysOfCoverHint', 'Days of cover (7-day avg sale) · stock as of last dip')}</div>
           </div>
           {wet && <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 99, background: wet.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wet.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wet.beyond_tolerance ? <AlertTriangle size={12} style={{ verticalAlign: -2 }} /> : <CheckCircle size={12} style={{ verticalAlign: -2 }} />} {tc('bunk.stockVarianceMtd', 'Stock variance MTD {n} L').replace('{n}', fmtL(wet.variance_ltrs))}{wet.beyond_tolerance ? tc('bunk.overTolerance', ' · over tolerance') : tc('bunk.withinTolerance', ' · within tolerance')}</span>}
         </div>
@@ -285,7 +286,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     <div style={{ fontSize: 13, fontWeight: 700 }}>{tc('bunk.tankN', 'Tank {n}').replace('{n}', t.tank_number)} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{t.fuel_type}</span></div>
                     {isGas
                       ? <><div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-3)' }}>{tc('bunk.byKg', 'by kg')}</div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>{tc('bunk.gasNoDip', 'gas · no dip')}</div></>
-                      : <><div style={{ fontSize: 18, fontWeight: 800, color: col }}>{hasDays ? tc('bunk.daysCover', '~{n} days').replace('{n}', t.days) : '—'}</div><div style={{ fontSize: 11, color: 'var(--text-3)' }}>{tc('bunk.pctFull', '{n}% full').replace('{n}', pct)}{hasDays ? '' : tc('bunk.noRecentSale', ' · no recent sale')}</div></>}
+                      : <><div style={{ fontSize: 18, fontWeight: 800, color: col }}>{hasDays ? tc('bunk.daysCover', '~{n} days').replace('{n}', t.days) : '—'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.litres != null ? tc('bunk.stockLFull', '{l} L · {n}% full').replace('{l}', fmtL(t.litres)).replace('{n}', pct) : tc('bunk.pctFull', '{n}% full').replace('{n}', pct)}{hasDays ? '' : tc('bunk.noRecentSale', ' · no recent sale')}</div>
+                          {t.as_of && <div style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{tc('bunk.stockAsOf', 'stock as of {d}').replace('{d}', fmtDip(t.as_of))}</div>}</>}
                   </div>
                 </div>
               );
