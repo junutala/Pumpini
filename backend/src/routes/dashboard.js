@@ -37,9 +37,10 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
 
       // Tank stock
       pool.query(
-        `SELECT tank_number, fuel_type, current_stock, capacity_ltrs,
-                ROUND(current_stock/NULLIF(capacity_ltrs,0)*100,1) AS fill_pct
-         FROM tanks WHERE station_id=$1 ORDER BY tank_number`, [station_id]),
+        `SELECT t.tank_number, t.fuel_type, t.current_stock, t.capacity_ltrs,
+                ROUND(t.current_stock/NULLIF(t.capacity_ltrs,0)*100,1) AS fill_pct,
+                (SELECT MAX(dr.recorded_at) FROM dipstick_readings dr WHERE dr.tank_id=t.id) AS last_dip_at
+         FROM tanks t WHERE t.station_id=$1 ORDER BY t.tank_number`, [station_id]),
 
       // Unacknowledged alerts
       pool.query(
@@ -156,6 +157,8 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
         // alerts). Suppress it; the UI already shows CNG as "by kg · no dip".
         const isGas = (t.fuel_type || '').toLowerCase() === 'cng';
         return { tank_number: t.tank_number, fuel_type: t.fuel_type, fill_pct: t.fill_pct,
+                 litres: t.current_stock != null ? Math.round(parseFloat(t.current_stock)) : null,
+                 as_of: t.last_dip_at || null,   // last dip timestamp (null for CNG / never dipped)
                  days: (!isGas && ad > 0) ? +(parseFloat(t.current_stock) / ad).toFixed(1) : null };
       });
 
