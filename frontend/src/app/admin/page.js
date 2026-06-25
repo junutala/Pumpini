@@ -228,6 +228,7 @@ export default function AdminPage(){
     loadAtt(modal.data.station_id);
   };
   const todayIST   = () => new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+  const fmtDate    = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—';
 
   useEffect(()=>{
     const token = localStorage.getItem('admin_token');
@@ -527,8 +528,8 @@ export default function AdminPage(){
                       <td style={{padding:'11px 14px'}}>{s.city||'—'}</td>
                       <td style={{padding:'11px 14px',fontSize:12}}>{s.oil_company||'—'}</td>
                       <td style={{padding:'11px 14px'}}><SubBadge plan={s.plan} status={s.sub_status}/></td>
-                      <td style={{padding:'11px 14px',fontSize:12,fontFamily:'monospace'}}>{s.start_date||'—'}</td>
-                      <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date||<span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>{tc('adminp.active', 'Active')}</span>}</td>
+                      <td style={{padding:'11px 14px',fontSize:12}}>{fmtDate(s.start_date)}</td>
+                      <td style={{padding:'11px 14px',fontSize:12}}>{s.end_date ? fmtDate(s.end_date) : <span style={{color:'#16a34a',fontWeight:600,fontSize:11}}>{tc('adminp.active', 'Active')}</span>}</td>
                       <td style={{padding:'11px 14px'}}>
                         <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                           <button style={btn('#f0f9ff','#1A5F7A')} onClick={()=>openModal('editStation',{id:s.id,name:s.name,address:s.address,city:s.city,state:s.state,gst_number:s.gst_number,oil_company:s.oil_company,owner_id:(s.owner_ids&&s.owner_ids[0])||'',owner_group_id:s.owner_group_id||''})}><Edit2 size={12}/>{tc('adminp.edit', 'Edit')}</button>
