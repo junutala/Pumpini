@@ -190,7 +190,10 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       variances,
       settlements,
       suspense: { credit_suspense, petty_cash },
-      margin, cover, receivables, last_settlement, wetstock_mtd, ai_briefing,
+      // Margin (sell − buy) is owner-only — managers must not see it. Null it out
+      // server-side rather than hiding client-side, same posture as blind-drop sales.
+      margin: isOwner ? margin : null,
+      cover, receivables, last_settlement, wetstock_mtd, ai_briefing,
       sales_masked: !isOwner && shifts.rows.some(s => s.status === 'open'),
     });
   } catch (err) { next(err); }

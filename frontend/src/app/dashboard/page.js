@@ -18,12 +18,15 @@ const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFracti
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
+// Litres-by-fuel swatch: petrol→green, diesel→amber, CNG→blue, premium→red; else grey.
+const FUEL_COLORS = { petrol: '#16a34a', diesel: '#d97706', cng: '#2563eb', power: '#dc2626', premium: '#dc2626' };
+const fuelColor = ft => { const k = (ft || '').toLowerCase(); return FUEL_COLORS[Object.keys(FUEL_COLORS).find(c => k.includes(c))] || '#64748b'; };
 const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
 const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '12px 14px' };
 
 export default function DashboardPage({ stationId: stationIdProp, embedded = false } = {}) {
   const router = useRouter();
-  const { station, loading: authLoading } = useAuth();
+  const { user, station, loading: authLoading } = useAuth();
   const stationId = stationIdProp || (typeof station === 'object' ? station?.id : station);
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const Wrapper = embedded ? Fragment : AppShell;
@@ -61,6 +64,11 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const sales = d.sales || [];
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
+  // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
+  const ltrsByFuel = {};
+  sales.forEach(r => { const ft = r.fuel_type || tc('bunk.otherFuel', 'Other'); ltrsByFuel[ft] = (ltrsByFuel[ft] || 0) + parseFloat(r.total_ltrs || 0); });
+  const fuelLtrs = Object.entries(ltrsByFuel).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const isOwnerView = user?.role === 'owner';   // margin is owner-only
   const salesMasked = !!d.sales_masked;
   const shifts = d.shifts || [];
   const openShifts = shifts.filter(s => s.status === 'open');
@@ -151,8 +159,21 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
         <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: payTotal > 0 ? 12 : 0 }}>
           <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.sales', 'Sales')}{salesMasked && closedShifts.length ? tc('bunk.closedSuffix', ' (closed)') : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
-          <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>
-          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litres', 'Litres')}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div></div>
+          {isOwnerView && <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>}
+          <div style={mini}>
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litres', 'Litres')}</div>
+            <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div>
+            {fuelLtrs.length > 0 && (
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {fuelLtrs.map(([ft, v]) => (
+                  <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--text-2,#475569)' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft), flexShrink: 0 }} />{cap(ft)}</span>
+                    <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         {payTotal > 0 && <>
           <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden' }}>
