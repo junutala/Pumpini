@@ -1386,6 +1386,9 @@
     "gasNoDip": "గ్యాస్ · డిప్ లేదు",
     "daysCover": "~{n} రోజులు",
     "coverDash": "కవర్ —",
+    "daysOfCoverHint": "నిల్వ ఎన్ని రోజులకు సరిపోతుంది · గత 7 రోజుల అమ్మకం ఆధారంగా",
+    "pctFull": "{n}% నిండింది",
+    "noRecentSale": " · ఇటీవల అమ్మకం లేదు",
     "aiBriefing": "AI బ్రీఫింగ్"
   },
   "cashint": {
