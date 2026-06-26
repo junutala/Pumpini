@@ -268,33 +268,39 @@ Rules:
 - rate_per_ltr = total_value ÷ gross_volume_ltrs (the all-inclusive landed cost per litre, typically ₹95-125). Do NOT read the ex-depot basic per-KL rate.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
-// ── Google Vision OCR pre-pass (optional) ─────────────────────────────────
+// ── OCR.space pre-pass (optional) ─────────────────────────────────────────
 // HPCL has no invoice portal, so managers photograph smudged physical copies on
 // a phone. A general vision model intermittently returns prose ("Could not read")
 // on those; a dedicated document OCR reads the figures reliably, and Claude then
 // structures the clean *text* (a text call essentially never refuses/returns
 // prose the way a vision call on a bad photo does). Active only when
-// GOOGLE_VISION_API_KEY is set — otherwise the endpoint behaves exactly as before
+// OCRSPACE_API_KEY is set — otherwise the endpoint behaves exactly as before
 // (Claude vision only), and any OCR miss falls through to that same path.
-async function googleVisionOcr(base64) {
-  const key = process.env.GOOGLE_VISION_API_KEY;
+async function ocrSpaceOcr(base64, mediaType) {
+  const key = process.env.OCRSPACE_API_KEY;
   if (!key) return null;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15000);
+  const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${key}`, {
+    const body = new URLSearchParams();
+    body.set('base64Image', `data:${mediaType};base64,${base64}`);
+    body.set('OCREngine', '2');        // engine 2: better on photos, auto-rotates
+    body.set('scale', 'true');         // upscale low-res text
+    body.set('detectOrientation', 'true');
+    body.set('isTable', 'true');       // keep the rate/amount columns aligned
+    const r = await fetch('https://api.ocr.space/parse/image', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
+      headers: { apikey: key, 'content-type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
       signal: ctrl.signal,
     });
-    if (!r.ok) { try { require('../utils/logger').warn(`vision-ocr http ${r.status}`); } catch { /* noop */ } return null; }
+    if (!r.ok) { try { require('../utils/logger').warn(`ocrspace http ${r.status}`); } catch { /* noop */ } return null; }
     const j = await r.json();
-    const resp = j?.responses?.[0];
-    if (resp?.error) { try { require('../utils/logger').warn('vision-ocr error: ' + (resp.error.message || '')); } catch { /* noop */ } return null; }
-    return resp?.fullTextAnnotation?.text || null;
+    if (j?.IsErroredOnProcessing) { try { require('../utils/logger').warn('ocrspace error: ' + (Array.isArray(j.ErrorMessage) ? j.ErrorMessage.join('; ') : j.ErrorMessage || '')); } catch { /* noop */ } return null; }
+    const text = (j?.ParsedResults || []).map(p => p?.ParsedText || '').join('\n').trim();
+    return text || null;
   } catch (e) {
-    try { require('../utils/logger').warn('vision-ocr failed: ' + (e.message || e)); } catch { /* noop */ }
+    try { require('../utils/logger').warn('ocrspace failed: ' + (e.message || e)); } catch { /* noop */ }
     return null;
   } finally { clearTimeout(timer); }
 }
@@ -324,10 +330,10 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!INVOICE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
 
-    // Preferred path: Google Vision OCR → Claude text structuring (robust on
-    // smudged HPCL phone photos). Any miss falls through to Claude vision below.
+    // Preferred path: OCR.space → Claude text structuring (robust on smudged
+    // HPCL phone photos). Any miss falls through to Claude vision below.
     try {
-      const ocrText = await googleVisionOcr(file_base64);
+      const ocrText = await ocrSpaceOcr(file_base64, media_type);
       if (ocrText && ocrText.replace(/\s/g, '').length > 60) {
         const parsedOcr = await structureInvoiceText(ocrText);
         if (parsedOcr && Array.isArray(parsedOcr.items) && parsedOcr.items.length) {
