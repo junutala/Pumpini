@@ -155,10 +155,15 @@ export default function DeliveriesPage() {
         try { const png = await pdfToPng(base64); scanB64 = png.base64; scanType = png.media_type; }
         catch { /* conversion failed — fall back to sending the PDF as-is */ }
       }
-      // The first scan is occasionally flaky — one silent retry before we give up.
+      // Longer timeout: OCR (Google Vision) + Claude structuring + a possible
+      // Claude-vision fallback + Railway cold start can exceed the default 15s,
+      // and the server still completes (logs 200) — don't let the browser abort
+      // early. The first scan is occasionally flaky — one silent retry before we
+      // give up.
+      const scanOpts = { timeout: 90000 };
       let res;
-      try { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }); }
-      catch (e1) { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }); }
+      try { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }, scanOpts); }
+      catch (e1) { res = await api.post('/deliveries/parse-invoice', { station_id: stationId, file_base64: scanB64, media_type: scanType }, scanOpts); }
       applyParsed(res);
     } catch (err) {
       setScanErr(err.error || tc('deliv_page.scan_fail','Could not read the invoice — enter the details manually.'));
