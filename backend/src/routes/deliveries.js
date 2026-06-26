@@ -268,11 +268,75 @@ Rules:
 - rate_per_ltr = total_value ÷ gross_volume_ltrs (the all-inclusive landed cost per litre, typically ₹95-125). Do NOT read the ex-depot basic per-KL rate.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
+// ── Google Vision OCR pre-pass (optional) ─────────────────────────────────
+// HPCL has no invoice portal, so managers photograph smudged physical copies on
+// a phone. A general vision model intermittently returns prose ("Could not read")
+// on those; a dedicated document OCR reads the figures reliably, and Claude then
+// structures the clean *text* (a text call essentially never refuses/returns
+// prose the way a vision call on a bad photo does). Active only when
+// GOOGLE_VISION_API_KEY is set — otherwise the endpoint behaves exactly as before
+// (Claude vision only), and any OCR miss falls through to that same path.
+async function googleVisionOcr(base64) {
+  const key = process.env.GOOGLE_VISION_API_KEY;
+  if (!key) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${key}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) { try { require('../utils/logger').warn(`vision-ocr http ${r.status}`); } catch { /* noop */ } return null; }
+    const j = await r.json();
+    const resp = j?.responses?.[0];
+    if (resp?.error) { try { require('../utils/logger').warn('vision-ocr error: ' + (resp.error.message || '')); } catch { /* noop */ } return null; }
+    return resp?.fullTextAnnotation?.text || null;
+  } catch (e) {
+    try { require('../utils/logger').warn('vision-ocr failed: ' + (e.message || e)); } catch { /* noop */ }
+    return null;
+  } finally { clearTimeout(timer); }
+}
+
+// Structure OCR text into our JSON shape via a TEXT-only Claude call. Returns the
+// parsed object, or null on any miss so the caller falls back to Claude vision.
+async function structureInvoiceText(ocrText) {
+  let msg;
+  try {
+    msg = await ai.messages.create({
+      model: 'claude-sonnet-4-6', max_tokens: 4000,
+      messages: [{ role: 'user', content: [{ type: 'text',
+        text: `${INVOICE_PROMPT}\n\nBelow is OCR-extracted text from the invoice (layout may be imperfect — rely on the labels and the CROSS-CHECK that products sum to the grand Total Value):\n\n${ocrText}` }] }],
+    });
+  } catch (e) {
+    try { require('../utils/logger').error('parse-invoice (ocr->text) Claude error: ' + (e.message || e)); } catch { /* noop */ }
+    return null;
+  }
+  const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+  const m = txt.match(/\{[\s\S]*\}/);
+  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+}
+
 router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { file_base64, media_type } = req.body;
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!INVOICE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
+
+    // Preferred path: Google Vision OCR → Claude text structuring (robust on
+    // smudged HPCL phone photos). Any miss falls through to Claude vision below.
+    try {
+      const ocrText = await googleVisionOcr(file_base64);
+      if (ocrText && ocrText.replace(/\s/g, '').length > 60) {
+        const parsedOcr = await structureInvoiceText(ocrText);
+        if (parsedOcr && Array.isArray(parsedOcr.items) && parsedOcr.items.length) {
+          return res.json(parsedOcr);
+        }
+      }
+    } catch (e) {
+      try { require('../utils/logger').warn('parse-invoice OCR pre-pass failed: ' + (e.message || e)); } catch { /* noop */ }
+    }
 
     const fileBlock = media_type === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type, data: file_base64 } }

@@ -87,12 +87,14 @@ export default function DeliveriesPage() {
     }
     const img = new Image(); const url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = 2000, scale = Math.min(1, max / Math.max(img.width, img.height));
+      // Crisper than before (2600px / q0.92): smudged HPCL phone photos sit right
+      // at the OCR legibility edge, so don't degrade them more than necessary.
+      const max = 2600, scale = Math.min(1, max / Math.max(img.width, img.height));
       const cw = Math.round(img.width * scale), ch = Math.round(img.height * scale);
       const c = document.createElement('canvas'); c.width = cw; c.height = ch;
       c.getContext('2d').drawImage(img, 0, 0, cw, ch);
       URL.revokeObjectURL(url);
-      resolve({ base64: c.toDataURL('image/jpeg', 0.85).split(',')[1], media_type: 'image/jpeg' });
+      resolve({ base64: c.toDataURL('image/jpeg', 0.92).split(',')[1], media_type: 'image/jpeg' });
     };
     img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
     img.src = url;
