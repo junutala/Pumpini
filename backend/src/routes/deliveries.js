@@ -268,35 +268,35 @@ Rules:
 - rate_per_ltr = total_value ÷ gross_volume_ltrs (the all-inclusive landed cost per litre, typically ₹95-125). Do NOT read the ex-depot basic per-KL rate.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
-// ── Mistral OCR pre-pass (optional) ───────────────────────────────────────
+// ── Google Vision OCR pre-pass (optional) ─────────────────────────────────
 // HPCL has no invoice portal, so managers photograph smudged physical copies on
 // a phone. A general vision model intermittently returns prose ("Could not read")
-// on those; a dedicated document OCR reads the figures reliably, and Claude then
-// structures the clean *text* (a text call essentially never refuses/returns
-// prose the way a vision call on a bad photo does). Active only when
-// MISTRAL_API_KEY is set — otherwise the endpoint behaves exactly as before
-// (Claude vision only), and any OCR miss falls through to that same path.
-async function mistralOcr(base64, mediaType) {
-  const key = process.env.MISTRAL_API_KEY;
+// on those; Google Vision DOCUMENT_TEXT_DETECTION reads the figures reliably
+// (validated on a real failing HPCL invoice — every volume, rate, component
+// amount and the grand total came through correct), and Claude then structures
+// the clean *text* (a text call essentially never refuses/returns prose the way a
+// vision call on a bad photo does). Active only when GOOGLE_VISION_API_KEY is set
+// — otherwise the endpoint behaves exactly as before (Claude vision only), and
+// any OCR miss falls through to that same path.
+async function googleVisionOcr(base64) {
+  const key = process.env.GOOGLE_VISION_API_KEY;
   if (!key) return null;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 25000);
+  const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
-    const r = await fetch('https://api.mistral.ai/v1/ocr', {
+    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${key}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'mistral-ocr-latest',
-        document: { type: 'image_url', image_url: `data:${mediaType};base64,${base64}` },
-      }),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
       signal: ctrl.signal,
     });
-    if (!r.ok) { try { require('../utils/logger').warn(`mistral-ocr http ${r.status}`); } catch { /* noop */ } return null; }
+    if (!r.ok) { try { require('../utils/logger').warn(`vision-ocr http ${r.status}`); } catch { /* noop */ } return null; }
     const j = await r.json();
-    const text = (j?.pages || []).map(p => p?.markdown || '').join('\n').trim();
-    return text || null;
+    const resp = j?.responses?.[0];
+    if (resp?.error) { try { require('../utils/logger').warn('vision-ocr error: ' + (resp.error.message || '')); } catch { /* noop */ } return null; }
+    return resp?.fullTextAnnotation?.text || null;
   } catch (e) {
-    try { require('../utils/logger').warn('mistral-ocr failed: ' + (e.message || e)); } catch { /* noop */ }
+    try { require('../utils/logger').warn('vision-ocr failed: ' + (e.message || e)); } catch { /* noop */ }
     return null;
   } finally { clearTimeout(timer); }
 }
@@ -326,10 +326,10 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!INVOICE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
 
-    // Preferred path: Mistral OCR → Claude text structuring (robust on smudged
-    // HPCL phone photos). Any miss falls through to Claude vision below.
+    // Preferred path: Google Vision OCR → Claude text structuring (robust on
+    // smudged HPCL phone photos). Any miss falls through to Claude vision below.
     try {
-      const ocrText = await mistralOcr(file_base64, media_type);
+      const ocrText = await googleVisionOcr(file_base64);
       if (ocrText && ocrText.replace(/\s/g, '').length > 60) {
         const parsedOcr = await structureInvoiceText(ocrText);
         if (parsedOcr && Array.isArray(parsedOcr.items) && parsedOcr.items.length) {
