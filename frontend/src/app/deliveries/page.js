@@ -125,7 +125,7 @@ export default function DeliveriesPage() {
   const applyParsed = (res) => {
     const its = Array.isArray(res.items) ? res.items : [];
     setItems(its); setRecorded([]); setActiveItem(0);
-    setScanMeta({ confidence: res.confidence, notes: res.notes });
+    setScanMeta({ confidence: res.confidence, notes: res.notes, reconciled: res.reconciled, items_total: res.items_total, invoice_total_value: res.invoice_total_value });
     setForm(p => ({
       ...p,
       dc_number:     res.dc_number   || p.dc_number,
@@ -402,6 +402,18 @@ export default function DeliveriesPage() {
                 </div>
                 {scanning && <div style={{fontSize:12,color:'var(--brand)',marginTop:8}}>⏳ {tc('deliv_page.reading','Reading the invoice…')}</div>}
                 {scanErr  && <div style={{fontSize:12,color:'var(--danger)',marginTop:8}}>{scanErr}</div>}
+                {scanMeta?.reconciled === false && (
+                  <div style={{fontSize:12,color:'var(--danger)',marginTop:8,fontWeight:600,lineHeight:1.5}}>
+                    ⚠ {tc('deliv_page.reconcile_warn',"Scanned amounts don't add up to the invoice total — re-check each Total Value against the paper before saving.")}
+                    {scanMeta.invoice_total_value!=null && (
+                      <div style={{fontWeight:400,color:'var(--text-2)',marginTop:2}}>
+                        {tc('deliv_page.reconcile_nums','Invoice total ₹{g} · scanned sum ₹{s}')
+                          .replace('{g}',Number(scanMeta.invoice_total_value).toLocaleString('en-IN',{maximumFractionDigits:2}))
+                          .replace('{s}',Number(scanMeta.items_total||0).toLocaleString('en-IN',{maximumFractionDigits:2}))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {items.length>0 && (
                   <div style={{marginTop:10}}>
                     <div style={{fontSize:11,color:'var(--text-3)',marginBottom:4}}>

@@ -263,8 +263,9 @@ Rules:
   (a) IOCL prints a single per-product "Total for material" line — use it directly.
   (b) HPCL itemises components with NO combined line — under the product (e.g. MS / HSD) there are separate amount rows: basic value, A/R VAT %, LF Recovery, Idn SSLF Recovery (and any cess/duty). ADD all of that product's amount rows together = its total_value.
   NEVER use the basic / assessable / taxable value alone (pre-tax). We only need the per-product TOTAL — do not return the individual components.
-- CROSS-CHECK: the sum of every product's total_value must equal the invoice grand "Total Value" (e.g. MS 1005427.11 + HSD 506479.91 = 1511907.02). Re-add if they don't match.
-- invoice_total_value = the invoice grand "Total Value" (the printed total incl. taxes).
+- TAX/RECOVERY ROWS ARE ALWAYS ADDED, NEVER SUBTRACTED. A/R VAT, LF Recovery, SSLF/Idn SSLF Recovery, cess and duty are charges PAYABLE — add every one to the basic value. They are never deductions or credits. If OCR shows a stray minus sign next to one (e.g. "144,471.66-"), it is noise — use the POSITIVE value. So for HPCL, total_value = basic + |VAT| + |LF| + |SSLF| + |any other tax row|.
+- CROSS-CHECK IS MANDATORY: the sum of every product's total_value MUST equal the invoice grand "Total Value" to the paise (e.g. MS 1005427.11 + HSD 506479.91 = 1511907.02). If they don't reconcile, you have MISREAD a component row — re-read the amount column and recompute until Σ(items) == grand total. NEVER output a per-product total_value that contradicts your own component arithmetic, and NEVER output items whose totals don't sum to the grand total. If after re-reading you genuinely cannot make them reconcile, set confidence "low" and explain exactly which figure is unreadable in notes.
+- invoice_total_value = the invoice grand "Total Value" (the printed total incl. taxes). Read this carefully — it is the anchor the per-product totals must sum to.
 - rate_per_ltr = total_value ÷ gross_volume_ltrs (the all-inclusive landed cost per litre, typically ₹95-125). Do NOT read the ex-depot basic per-KL rate.
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
@@ -320,6 +321,22 @@ async function structureInvoiceText(ocrText) {
   try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
 }
 
+// Reconciliation guard: flag whether the per-product totals add up to the printed
+// grand "Total Value". A mismatch means a money figure was misread — we surface
+// `reconciled:false` so the form warns the manager to verify, instead of silently
+// trusting wrong totals. Never blocks the scan; just annotates it.
+function withReconciliation(parsed) {
+  try {
+    const items = Array.isArray(parsed.items) ? parsed.items : [];
+    const sum   = items.reduce((s, it) => s + (Number(it.total_value) || 0), 0);
+    const grand = Number(parsed.invoice_total_value) || 0;
+    parsed.items_total = +sum.toFixed(2);
+    // Tolerate sub-rupee rounding only; anything more is a genuine misread.
+    parsed.reconciled  = grand > 0 && items.length > 0 && Math.abs(sum - grand) <= 1;
+  } catch { /* noop */ }
+  return parsed;
+}
+
 router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { file_base64, media_type } = req.body;
@@ -333,7 +350,7 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
       if (ocrText && ocrText.replace(/\s/g, '').length > 60) {
         const parsedOcr = await structureInvoiceText(ocrText);
         if (parsedOcr && Array.isArray(parsedOcr.items) && parsedOcr.items.length) {
-          return res.json(parsedOcr);
+          return res.json(withReconciliation(parsedOcr));
         }
       }
     } catch (e) {
@@ -366,7 +383,7 @@ router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requi
       return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
     }
     if (!Array.isArray(parsed.items)) parsed.items = [];
-    res.json(parsed);
+    res.json(withReconciliation(parsed));
   } catch (err) { next(err); }
 });
 
