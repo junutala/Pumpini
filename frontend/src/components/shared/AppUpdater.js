@@ -1,33 +1,56 @@
 'use client';
-// Pulls a device off a stale build. The bundle bakes in the build id it was
-// compiled from (NEXT_PUBLIC_BUILD_ID); we poll /build-version for the build id
-// that's actually deployed right now. When they differ, a newer version is live,
-// so we surface a one-tap "Update now".
+// Keeps a device on the latest build automatically. The bundle bakes in the
+// build id it was compiled from (NEXT_PUBLIC_BUILD_ID); we poll /build-version
+// for the build id that's actually deployed right now. When they differ, a newer
+// version is live, so we show a brief "Updating…" notice and refresh the page —
+// no button to tap, but never a mystery reload.
 //
-// We PROMPT rather than auto-reload on purpose: this app is used for live data
-// entry, and a silent reload would discard a half-filled form. The owner can flip
-// this to auto-reload later if preferred.
-import { useEffect, useState, useCallback } from 'react';
+// Safety: this app is used for live data entry, so we never reload while a field
+// is focused (mid-typing). We wait until the user isn't actively entering data,
+// then show the notice and refresh.
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || 'dev';
-const POLL_MS = 5 * 60 * 1000;
+const POLL_MS = 5 * 60 * 1000;   // re-check for a new deploy every 5 min
+const RETRY_MS = 15 * 1000;      // if mid-typing, re-check for idle every 15s
+const NOTICE_MS = 1500;          // how long the "Updating…" notice shows first
+
+// True while the user is actively in a form control — don't reload out from
+// under them.
+function isEntering() {
+  if (typeof document === 'undefined') return false;
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
 
 export default function AppUpdater() {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
-  const [ready, setReady] = useState(false);
+  const pending = useRef(false);
+  const [updating, setUpdating] = useState(false);
+
+  const reloadWhenIdle = useCallback(() => {
+    if (isEntering()) { setTimeout(reloadWhenIdle, RETRY_MS); return; }
+    setUpdating(true);                                      // show the notice…
+    setTimeout(() => window.location.reload(), NOTICE_MS);  // …then refresh
+  }, []);
 
   const check = useCallback(async () => {
     // 'dev' = a local build with no deploy id; nothing meaningful to compare.
-    if (BUILD === 'dev' || ready) return;
+    if (BUILD === 'dev' || pending.current) return;
     try {
       const res = await fetch('/build-version', { cache: 'no-store' });
       if (!res.ok) return;
       const { build } = await res.json();
-      if (build && build !== 'dev' && build !== BUILD) setReady(true);
+      if (build && build !== 'dev' && build !== BUILD) {
+        pending.current = true;        // a newer build is live
+        reloadWhenIdle();
+      }
     } catch { /* offline / transient — ignore and retry on the next tick */ }
-  }, [ready]);
+  }, [reloadWhenIdle]);
 
   useEffect(() => {
     check();
@@ -37,23 +60,28 @@ export default function AppUpdater() {
     return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
   }, [check]);
 
-  if (!ready) return null;
+  if (!updating) return null;
 
   return (
     <div style={{
-      position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 9999,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      gap: 12, flexWrap: 'wrap',
-      padding: '10px 16px', background: '#0F1923', color: '#fff',
-      boxShadow: '0 -2px 12px rgba(0,0,0,.25)', fontSize: 14,
+      position: 'fixed', inset: 0, zIndex: 9999, display: 'flex',
+      alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(15,25,35,.55)', backdropFilter: 'blur(2px)',
     }}>
-      <span>{tc('update.banner', 'A new version of Pumpini is available.')}</span>
-      <button onClick={() => window.location.reload()} style={{
-        background: '#FF6B00', color: '#fff', border: 'none', borderRadius: 8,
-        padding: '7px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 14,
+      <div style={{
+        background: '#0F1923', color: '#fff', borderRadius: 12,
+        padding: '16px 22px', fontSize: 14, fontWeight: 600,
+        boxShadow: '0 8px 30px rgba(0,0,0,.35)',
+        display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        {tc('update.action', 'Update now')}
-      </button>
+        <span style={{
+          width: 16, height: 16, border: '2px solid rgba(255,255,255,.3)',
+          borderTopColor: '#FF6B00', borderRadius: '50%', display: 'inline-block',
+          animation: 'pmnSpin .8s linear infinite',
+        }} />
+        {tc('update.updating', 'Updating Pumpini to the latest version…')}
+      </div>
+      <style>{'@keyframes pmnSpin{to{transform:rotate(360deg)}}'}</style>
     </div>
   );
 }

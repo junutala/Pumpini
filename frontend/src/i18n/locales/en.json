@@ -13,8 +13,7 @@
   "success": "Success",
   "no_data": "No data available",
   "update": {
-    "banner": "A new version of Pumpini is available.",
-    "action": "Update now"
+    "updating": "Updating Pumpini to the latest version…"
   },
   "search": "Search",
   "filter": "Filter",
