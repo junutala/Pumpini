@@ -61,6 +61,32 @@ applied, and break.** When a change needs schema:
 - **Backend changes need a Railway redeploy**; **frontend is live on Vercel automatically.**
 - Never `cd` into or hardcode a local worktree path. Work via GitHub.
 
+---
+
+## 🔴 Change-management rules (owner-set) — how EVERY change ships
+
+There is now a full **staging** mirror (`staging` branch → staging Railway →
+`staging.pumpini.in` → separate Supabase project). See `STAGING.md`. These rules sit
+on top of the impact analysis above and are not optional:
+
+1. **Impact analysis is mandatory.** Work the checklist at the top of this file and
+   state the findings in the PR. No change ships without it.
+2. **Low / no impact** — degrades gracefully, no schema/money/masking/RLS/multi-tenant
+   or hot-read-path surface, trivial rollback → raise **two PRs: one into `main`
+   (prod) and one into `staging`**, and merge both, so the two environments stay in
+   lockstep. No physical test required.
+3. **Medium / high impact** — touches schema, money (sales/credit/cash/petty/margin),
+   RLS/multi-tenant, blind-drop masking, a core flow, or a hot read path → deploy to
+   **`staging` only** first. **The owner tests it physically** on `staging.pumpini.in`.
+   Only after the owner's explicit all-clear does it go to **production** (`main`).
+4. **SQL runs step-by-step, gated on the owner.** Present DDL/migrations as discrete,
+   ordered steps. After each step, **wait for the owner to confirm it ran in Supabase**
+   before giving the next. Never hand over a multi-step SQL sequence to run all at once.
+
+When unsure which bucket a change is in, treat it as **medium/high** and route it
+through staging. Staging exists precisely so the owner verifies risky changes before
+they touch real outlets.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
