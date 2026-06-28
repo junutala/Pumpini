@@ -37,6 +37,11 @@ If you can't answer these, do not merge.
 - **Database → Supabase Postgres**: schema changes (`ALTER`/`CREATE`) are **run MANUALLY by
   the owner**. They do NOT happen automatically on deploy. `pumpini-schema.sql` is the
   canonical place to append idempotent DDL; `backend/src/db/migrate.js` is a separate runner.
+- **To check whether a column/table/constraint exists in prod, trust
+  `pumpini-schema.snapshot.sql`** (a full `pg_dump` of prod), NOT `pumpini-schema.sql` —
+  the latter is a partial hand-maintained file (~23 of 60 tables) that has drifted. This
+  is the #1 prod-break risk: code shipping a `SELECT` of a column the repo schema doesn't
+  show but prod-checking the snapshot would have caught.
 
 **Therefore: code that depends on a new column/table WILL deploy before the migration is
 applied, and break.** When a change needs schema:

@@ -1,3 +1,10 @@
+-- ⚠️ PARTIAL / LEGACY FILE — this hand-maintained schema has drifted from prod.
+--    It defines only ~23 of the 60 tables that actually exist in production.
+--    For the COMPLETE, authoritative current schema (all tables, RLS, functions,
+--    triggers, grants) see  →  pumpini-schema.snapshot.sql  (pg_dump from prod).
+--    When checking "does this column/table exist in prod?", trust the snapshot.
+--    New idempotent DDL may still be appended here, but verify against the snapshot.
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 

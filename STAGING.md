@@ -65,12 +65,12 @@ Rule of thumb:
 
 1. **Git:** create the long-lived `staging` branch from `main`.
 2. **Supabase:** create the `pumpini-staging` project. Copy its connection string + keys.
-3. **Schema:** apply `pumpini-schema.sql`, then `backend/src/db/migrations/*` in order, then `backend/src/db/rls/*` to the staging project. (All DDL is idempotent.)
+3. **Schema:** ⚠️ do **not** replay `pumpini-schema.sql` — it has drifted (only ~23 of 60 tables). Instead **clone the live prod schema**: `pg_dump --schema-only --no-owner --schema=public` from a prod project → load into staging. Then run the **post-clone grant** (see §6) so the app can assume the RLS role. (`pumpini-schema.snapshot.sql` is a committed copy of this dump.)
 4. **Railway:** add a `staging` environment/service deploying from `staging`; set the env vars above (`DATABASE_URL` = staging Supabase, fresh `JWT_SECRET`, AI keys, alerts off). Note the backend public URL.
 5. **Vercel:** add a staging deploy from `staging`; set `NEXT_PUBLIC_API_URL` = the staging backend URL.
 6. **DNS:** point `staging.pumpini.in` at Vercel; add it as the staging custom domain.
 7. **Domain-bound vars:** set `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGIN`, `FRONTEND_URL` to the staging domain on Railway; redeploy.
-8. **Seed:** load demo/sandbox data into staging Supabase (seed script).
+8. **Data:** load data into staging — either a demo seed, or a full prod-data clone (`pg_dump --data-only`). The data-load procedure and its gotchas are in §6.
 9. **Smoke test:** see §5, as each role under live RLS.
 
 ---
@@ -113,10 +113,69 @@ What promotes how, at a glance:
 
 ---
 
-## 6. Notes
+## 6. Rebuilding / refreshing staging from prod — the EXACT procedure + gotchas
 
-- Keep staging's **schema in lock-step** with prod — apply every migration to both.
-  This is what makes the prod run boring.
-- To test against realistic data, load a **sanitized** snapshot of prod (masked
-  customer PII), or synthetic seed data — never raw prod data.
+Staging is a **point-in-time clone**; nothing syncs from prod afterwards. To build
+or refresh it, copy **schema** then **data** with `pg_dump`/`psql`. The steps below
+are battle-tested — each "gotcha" cost time the first time, so follow them in order.
+
+### 6a. Schema (structure only)
+```
+pg_dump "<PROD_session_pooler_uri>" --schema-only --no-owner --schema=public -f schema.sql
+# In staging SQL editor FIRST (the role the RLS policies reference; pg_dump can't copy it):
+#   create role app_authenticated nologin nobypassrls;   -- if it doesn't exist
+#   create extension if not exists "uuid-ossp" with schema extensions;
+psql "<STAGING_session_pooler_uri>" -f schema.sql
+```
+Benign load errors to ignore: `schema "public" already exists`, `permission denied
+to change default privileges` (Supabase-managed roles — cosmetic).
+
+### 6b. 🔴 GOTCHA #1 — re-grant the RLS role (or every login bounces back to login)
+`pg_dump` does **not** copy role memberships. Without this, `SET ROLE
+app_authenticated` fails on the first authenticated request, the frontend clears the
+token, and login silently bounces. In the **staging SQL editor**:
+```sql
+GRANT app_authenticated TO postgres;            -- the role the app connects as
+GRANT USAGE ON SCHEMA public TO app_authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_authenticated;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_authenticated;
+```
+
+### 6c. Data (only for a full prod-data clone)
+`pg_dump --data-only` trips on triggers (double-counted stock) and a circular FK.
+So, in the **staging SQL editor**, BEFORE loading:
+```sql
+-- GOTCHA #2: AFTER-INSERT triggers would re-fire side effects during a bulk load
+ALTER TABLE public.corporate_accounts DISABLE TRIGGER trg_detect_corp_duplicates;
+ALTER TABLE public.fuel_deliveries    DISABLE TRIGGER trg_increase_stock;
+ALTER TABLE public.gst_invoices       DISABLE TRIGGER trg_mark_invoiced;
+ALTER TABLE public.dispense_events    DISABLE TRIGGER trg_reduce_stock;
+-- GOTCHA #3: corporate_accounts.merged_into_id is a self-FK → circular; drop while loading
+ALTER TABLE public.corporate_accounts DROP CONSTRAINT corporate_accounts_merged_into_id_fkey;
+```
+Then dump + load:
+```
+pg_dump "<PROD_uri>" --data-only --no-owner --schema=public -f data.sql
+psql "<STAGING_uri>" -f data.sql
+```
+Then re-enable everything:
+```sql
+ALTER TABLE public.corporate_accounts
+  ADD CONSTRAINT corporate_accounts_merged_into_id_fkey
+  FOREIGN KEY (merged_into_id) REFERENCES public.corporate_accounts(id);
+ALTER TABLE public.corporate_accounts ENABLE TRIGGER trg_detect_corp_duplicates;
+ALTER TABLE public.fuel_deliveries    ENABLE TRIGGER trg_increase_stock;
+ALTER TABLE public.gst_invoices       ENABLE TRIGGER trg_mark_invoiced;
+ALTER TABLE public.dispense_events    ENABLE TRIGGER trg_reduce_stock;
+```
+Use the **Session pooler** URIs (port 5432); the Transaction pooler (6543) won't work
+with `pg_dump`. URL-encode special chars in passwords (`@` → `%40`).
+
+Note: a full prod-data clone carries **real customer PII** into staging — fine for the
+owner's own testing, but mask/sanitize if a non-owner will see it. **Prod password
+changes do NOT propagate to staging** (it's frozen at clone time).
+
+## 7. Notes
+- Keep staging's **schema in lock-step** with prod. The authoritative current schema
+  is `pumpini-schema.snapshot.sql` (refresh it whenever prod schema changes).
 - Base deploy details (build, ports, CORS) live in `DEPLOYMENT.md`.
