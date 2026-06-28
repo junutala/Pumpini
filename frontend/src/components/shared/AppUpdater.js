@@ -1,18 +1,23 @@
 'use client';
-// Keeps a device on the latest build automatically. The bundle bakes in the
-// build id it was compiled from (NEXT_PUBLIC_BUILD_ID); we poll /build-version
-// for the build id that's actually deployed right now. When they differ, a newer
-// version is live, so we show a brief "Updating…" notice and refresh the page —
-// no button to tap, but never a mystery reload.
+// Keeps a device on the latest build. The bundle bakes in the build id it was
+// compiled from (NEXT_PUBLIC_BUILD_ID); we ask /build-version for the build id
+// that's actually deployed right now. When they differ, a newer version is live,
+// so we show a brief "Updating…" notice and refresh the page — no button to tap,
+// but never a mystery reload.
+//
+// Cadence (otherwise dormant — no background polling):
+//   • on login / when a restored session loads, and
+//   • on wake — when the tab becomes visible again (returning to it, or the
+//     laptop resuming from sleep).
 //
 // Safety: this app is used for live data entry, so we never reload while a field
 // is focused (mid-typing). We wait until the user isn't actively entering data,
 // then show the notice and refresh.
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../lib/auth';
 
 const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || 'dev';
-const POLL_MS = 5 * 60 * 1000;   // re-check for a new deploy every 5 min
 const RETRY_MS = 15 * 1000;      // if mid-typing, re-check for idle every 15s
 const NOTICE_MS = 1500;          // how long the "Updating…" notice shows first
 
@@ -28,6 +33,7 @@ function isEntering() {
 
 export default function AppUpdater() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const pending = useRef(false);
   const [updating, setUpdating] = useState(false);
@@ -49,15 +55,17 @@ export default function AppUpdater() {
         pending.current = true;        // a newer build is live
         reloadWhenIdle();
       }
-    } catch { /* offline / transient — ignore and retry on the next tick */ }
+    } catch { /* offline / transient — ignore, the next wake/login retries */ }
   }, [reloadWhenIdle]);
 
+  // On login (and when a restored session resolves a user).
+  useEffect(() => { if (user?.id) check(); }, [user?.id, check]);
+
+  // On wake — returning to the tab, or the device resuming from sleep.
   useEffect(() => {
-    check();
-    const id = setInterval(check, POLL_MS);
     const onVis = () => { if (document.visibilityState === 'visible') check(); };
     document.addEventListener('visibilitychange', onVis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVis); };
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, [check]);
 
   if (!updating) return null;
