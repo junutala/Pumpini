@@ -2,6 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   images: { unoptimized: true },
+  // Build id of this deploy, baked into the client bundle so a running tab can
+  // tell when a newer build has gone live (compared against /build-version).
+  env: {
+    NEXT_PUBLIC_BUILD_ID: (process.env.VERCEL_GIT_COMMIT_SHA || 'dev').slice(0, 7),
+  },
   // Lint runs separately (`npm run lint`); pre-existing rule violations across
   // the app should not block production builds. Matches current Vercel behaviour.
   eslint: { ignoreDuringBuilds: true },

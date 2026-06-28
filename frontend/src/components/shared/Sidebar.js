@@ -12,6 +12,10 @@ import {
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus
 } from 'lucide-react';
 
+// Build id of the running bundle — shown in the footer so a device's version is
+// verifiable at a glance (handy right before a demo).
+const BUILD = process.env.NEXT_PUBLIC_BUILD_ID || 'dev';
+
 const NAV_GROUPS = [
   {
     label: 'Dashboard',
@@ -242,6 +246,9 @@ export default function Sidebar({ open, onClose }) {
             }}>
               <LogOut size={12}/>{t('nav.logout') === 'nav.logout' ? 'Logout' : t('nav.logout')}
             </button>
+            <div style={{marginTop:8,fontSize:9,color:'rgba(255,255,255,.2)',textAlign:'center',letterSpacing:'.04em'}}>
+              v{BUILD}
+            </div>
           </div>
         )}
       </aside>
