@@ -287,3 +287,44 @@ that *sequencing* beats features. A manager-accountability cockpit shipped into
 active resistance risks attrition. Resume on the owner's go — lead with the
 manager-FRIENDLY surfaces (the action/ops help that makes the manager's day
 easier), and bring accountability/benchmarking in only once trust is there.
+
+## 14. Environment / connector security hardening (deferred 2026-06-28)
+Owner asked to use the security tooling Supabase/Vercel provide. None are fires;
+they make the platform "stronger over time". Pick a calm slot. Prioritised:
+
+Tier 1 (high value, low effort — mostly dashboard, no code):
+- [ ] **2FA on ALL four dashboard accounts** — GitHub, Vercel, Railway, Supabase.
+      These control prod DB, deploys and secrets; a leaked dashboard login dwarfs any
+      app-level risk. Biggest bang for buck.
+- [ ] **Lock down staging access** — `staging.pumpini.in` is currently PUBLIC and, since
+      we loaded the real-data copy, holds **real customer PII** behind the login. Turn on
+      **Vercel → Deployment Protection** (Vercel Auth or password) on the staging project.
+- [ ] **Run Supabase Security Advisor** (Dashboard → Advisors) on prod + staging; fix
+      what it flags (RLS gaps, exposed views, function search_path, etc.).
+Tier 2 (defence-in-depth):
+- [ ] Supabase: **enforce SSL** + consider **Network Restrictions** (allowlist Railway
+      egress IPs) so only the backend can reach the DB.
+- [ ] Supabase **PITR** (point-in-time-recovery backup add-on) — cheap insurance for a
+      money system.
+- [ ] Vercel **WAF / rate-limiting** on prod (bot/abuse protection).
+- [ ] **Rotate the prod DB password** (it was typed into a chat during the staging
+      build-out) — reset in Supabase + update prod Railway `DATABASE_URL` + redeploy.
+      Also rotate the staging password. ~2 min, brief redeploy blip.
+
+## 15. Get document images OUT of Postgres → object storage (deferred 2026-06-28)
+Most images are already stored as references (`photo_url`, `plate_photo_url`,
+`challan_photo_url`, `bank_statement_url`, `logo_url`, `qr_code_url`) — good. BUT two
+columns embed the raw image **as base64 text inside Postgres**: `file_base64` and
+`image_base64`. base64 inflates size ~33%, bloats every backup, and slows the DB.
+
+Decision (owner-approved direction): the fix is **object storage, NOT a second DB**.
+- [ ] Move the `file_base64` / `image_base64` blobs into **Supabase Storage** (buckets);
+      keep only the URL/path in the DB — same pattern the other images already use.
+- [ ] For old-document lifecycle, use **Storage lifecycle/retention rules** (auto-archive
+      or cheapen objects >1 month old) — far simpler than a separate archive database.
+- Why NOT a second Postgres DB: adds sync complexity, cross-DB queries, and another
+      thing to secure/back up, without fixing the root cause (images shouldn't be in
+      Postgres at all).
+- ⚠️ **Medium/high impact** (changes how documents are written/read across deliveries,
+      invoices, receipts, meter photos) → per the change-management rules, ship to
+      **staging first, owner physical-tests**, then prod.
