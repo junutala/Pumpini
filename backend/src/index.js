@@ -44,9 +44,23 @@ const logger = require('./utils/logger');
 
 const app    = express();
 const server = http.createServer(app);
+
+// Allowed browser origins for CORS — shared by REST and Socket.IO so they can't
+// drift. FRONTEND_URL may be a comma-separated list, letting each environment
+// (prod, staging) declare its own origin(s) via env with no code change. The
+// prod + localhost origins stay as a permanent baseline.
+const allowedOrigins = [
+  ...String(process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean),
+  'https://pumpini.vercel.app',
+  'https://www.pumpini.in',
+  'https://pumpini.in',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+
 const io     = new Server(server, {
   cors: {
-    origin: ['https://pumpini.vercel.app','https://www.pumpini.in','https://pumpini.in','http://localhost:3000','http://localhost:3001'],
+    origin: allowedOrigins,
     credentials: true
   }
 });
@@ -56,17 +70,9 @@ app.set('trust proxy', 1); // Railway proxy → req.ip = real client IP (rate li
 app.use(helmet());
 app.use(cors({
   origin: function(origin, callback) {
-    const allowed = [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'https://pumpini.vercel.app',
-      'https://www.pumpini.in',
-      'https://pumpini.in',
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ];
     // Allow requests with no origin (mobile apps, curl, etc.)
     // Exact match only — startsWith would let pumpini.in.attacker.com through.
-    if (!origin || allowed.includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
