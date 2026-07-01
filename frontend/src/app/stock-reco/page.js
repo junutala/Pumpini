@@ -23,18 +23,22 @@ export default function StockRecoPage() {
 
   const [shifts, setShifts]   = useState([]);
   const [shiftId, setShiftId] = useState('');
+  const [date, setDate]       = useState(today());  // which day to reconcile — NOT locked to today
   const [reco, setReco]       = useState(null);   // { tanks: [...] }
   const [cum, setCum]         = useState([]);     // cumulative drift
   const [busy, setBusy]       = useState(false);
   const [tol, setTol]         = useState({});     // tolerance settings
   const [savingTol, setSavingTol] = useState(false);
 
-  const loadShifts = async () => {
+  // Shifts for the CHOSEN day. Must not be hard-locked to today(): a shift often
+  // settles the next morning, and past days routinely need (re-)reconciling — so
+  // scoping to today() left the picker empty whenever no shift was open today.
+  const loadShifts = async (d = date) => {
     if (!stationId) return;
-    const s = await api.get('/shifts', { params: { station_id: stationId, date: today() } }).catch(() => []);
+    const s = await api.get('/shifts', { params: { station_id: stationId, date: d } }).catch(() => []);
     const arr = Array.isArray(s) ? s : [];
     setShifts(arr);
-    if (arr.length && !shiftId) setShiftId(arr[0].id);
+    setShiftId(arr.length ? arr[0].id : '');
   };
   const loadCum = async () => {
     if (!stationId) return;
@@ -51,7 +55,8 @@ export default function StockRecoPage() {
     });
   };
 
-  useEffect(() => { loadShifts(); loadCum(); loadTol(); }, [stationId]);
+  useEffect(() => { loadCum(); loadTol(); }, [stationId]);
+  useEffect(() => { loadShifts(); }, [stationId, date]);   // reload the picker when the day changes
   useRefreshOnFocus(loadCum);
 
   useEffect(() => {
@@ -95,10 +100,13 @@ export default function StockRecoPage() {
           <h1 className="page-title">{tc('streco.title', 'Stock Reconciliation')}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('streco.subtitle', 'Tank dip vs book — catches evaporation, leakage and pilferage.')}</div>
         </div>
-        <select className="input" style={{ width: 220 }} value={shiftId} onChange={e => setShiftId(e.target.value)}>
-          <option value="">{tc('streco.selectShift', 'Select a shift…')}</option>
-          {shifts.map(s => <option key={s.id} value={s.id}>{tc('streco.shiftOption', 'Shift {n}').replace('{n}', s.shift_number)} · {s.status}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="date" className="input" style={{ width: 150 }} value={date} max={today()} onChange={e => setDate(e.target.value)} />
+          <select className="input" style={{ width: 220 }} value={shiftId} onChange={e => setShiftId(e.target.value)}>
+            <option value="">{shifts.length ? tc('streco.selectShift', 'Select a shift…') : tc('streco.noShifts', 'No shifts on this day')}</option>
+            {shifts.map(s => <option key={s.id} value={s.id}>{tc('streco.shiftOption', 'Shift {n}').replace('{n}', s.shift_number)} · {s.status}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* Tolerance config (owner) */}
