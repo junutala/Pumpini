@@ -16,6 +16,10 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtTime = t => t ? new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
+// Per-shift tile palette: 1 morning=warm, 2 day=blue, 3 night=indigo (cycles for >3).
+const SHIFT_THEME = { 1: { bg: '#fff7ed', fg: '#9a3412', bar: '#ea580c' }, 2: { bg: '#eff6ff', fg: '#1e40af', bar: '#2563eb' }, 3: { bg: '#eef2ff', fg: '#3730a3', bar: '#4f46e5' } };
 const fmtDip = ts => { try { return new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }); } catch { return ''; } };
 const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
@@ -65,6 +69,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
 
   const d = data || {};
   const sales = d.sales || [];
+  const salesByShift = d.sales_by_shift;   // per-shift tiles; undefined on older backend
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
   // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
@@ -154,38 +159,60 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
       )}
 
-      {/* Today's money */}
-      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.todaysMoney', "Today's money")}</span>
-          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, background: 'var(--surface-2,#f1f5f9)', color: 'var(--text-2,#475569)', padding: '4px 10px', borderRadius: 99 }}><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.liveShiftsSealedReveals', '{n} live shift sealed — reveals at close').replace('{n}', openShifts.length)}</span>}
+      {/* Sales by shift — one tile per shift (dynamic count + colour), filed by the
+          day the shift CLOSES. No merged daily total (misleading for multi-shift ops). */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{tc('bunk.salesByShift', 'Sales by shift')}</span>
+          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, color: 'var(--text-2,#475569)' }}><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.liveSealedTilClose', 'live shift sealed until close')}</span>}
         </div>
-        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: payTotal > 0 ? 12 : 0 }}>
-          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.sales', 'Sales')}{salesMasked && closedShifts.length ? tc('bunk.closedSuffix', ' (closed)') : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
-          {isOwnerView && <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>}
-          <div style={mini}>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litresSold', 'Litres sold')}</div>
-            <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div>
-            {fuelLtrs.length > 0 && (
-              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {fuelLtrs.map(([ft, v]) => (
-                  <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--text-2,#475569)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft), flexShrink: 0 }} />{cap(ft)}</span>
-                    <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+        {(!Array.isArray(salesByShift) || salesByShift.length === 0) ? (
+          <div style={{ ...card, padding: '18px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{tc('bunk.noShiftSales', 'No shift sales recorded for this day yet.')}</div>
+        ) : (
+          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10 }}>
+            {salesByShift.map((sh, i) => {
+              const theme = SHIFT_THEME[sh.shift_number] || SHIFT_THEME[(i % 3) + 1];
+              const shFuels = Object.entries(sh.fuels || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+              const shPays  = Object.entries(sh.payments || {}).filter(([, v]) => v > 0);
+              const shPayT  = shPays.reduce((s, [, v]) => s + v, 0);
+              return (
+                <div key={sh.shift_id} style={{ ...card, padding: '12px 14px', background: theme.bg, borderTop: `3px solid ${theme.bar}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: theme.fg }}>{tc('bunk.shiftN', 'Shift {n}').replace('{n}', sh.shift_number)}</div>
+                      <div style={{ fontSize: 11.5, color: theme.fg, opacity: .8 }}>{fmtDay(sh.end_time || sh.start_time)} · {fmtTime(sh.start_time)} → {fmtTime(sh.end_time)}</div>
+                    </div>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#fff', color: theme.fg }}>{sh.status === 'open' ? tc('bunk.live', 'live') : tc('bunk.closed', 'closed')}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937', marginTop: 8 }}>{fmtR(sh.total_amount)}</div>
+                  <div style={{ fontSize: 12.5, color: 'var(--text-2,#475569)', marginBottom: shFuels.length ? 6 : 0 }}>{fmtL(sh.total_ltrs)} L</div>
+                  {shFuels.map(([ft, v]) => (
+                    <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-2,#475569)' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft) }} />{cap(ft)}</span>
+                      <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+                    </div>
+                  ))}
+                  {shPayT > 0 && (
+                    <>
+                      <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
+                        {shPays.map(([m, v]) => <div key={m} style={{ width: `${(v / shPayT) * 100}%`, background: PAY[m] || '#94a3b8' }} />)}
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--text-2,#475569)' }}>
+                        {shPays.map(([m, v]) => <span key={m}>{cap(m)} {Math.round((v / shPayT) * 100)}%</span>)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-        {payTotal > 0 && <>
-          <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden' }}>
-            {payTotals.filter(p => p.v > 0).map(p => <div key={p.m} style={{ width: `${(p.v / payTotal) * 100}%`, background: PAY[p.m] }} />)}
+        )}
+        {isOwnerView && margin?.amount != null && (
+          <div style={{ ...card, padding: '10px 14px', marginTop: 10, background: '#eaf3de', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 12.5, color: '#3b6d11', fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#27500a' }}>{fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</span>
           </div>
-          <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-2,#475569)' }}>
-            {payTotals.filter(p => p.v > 0).map(p => <span key={p.m}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: PAY[p.m] }} /> {cap(p.m)} {Math.round((p.v / payTotal) * 100)}%</span>)}
-          </div>
-        </>}
+        )}
       </div>
 
       {/* Latest shift settlement — every operator of the most recently closed shift */}
