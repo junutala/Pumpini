@@ -188,9 +188,11 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
     } catch (e) { /* cockpit metrics are additive — keep the core dashboard alive */ }
 
     // ── Per-shift sales — one tile per shift (owner UX), NOT a merged daily total.
-    // Filed by the day the shift CLOSES (end_time), so a shift crossing midnight
-    // lands on its close date. Blind-drop preserved: non-owners get closed shifts
-    // only. Best-effort — never break the core dashboard.
+    // Filed by the shift's declared trade day (shifts.date). We deliberately do NOT
+    // use end_time/occurred_at: those are the data-ENTRY timestamps, which lag badly
+    // when a manager closes days late (a 28-Jun shift can be entered on 01-Jul), and
+    // would mis-file the sales. shifts.date is the manager's trade-day label. Blind-
+    // drop preserved: non-owners get closed shifts only. Best-effort.
     let sales_by_shift = [];
     try {
       const { rows } = await pool.query(`
@@ -203,8 +205,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
         FROM shifts s
         JOIN dispense_events de ON de.shift_id = s.id AND NOT COALESCE(de.is_voided, FALSE)
         WHERE s.station_id = $1
-          AND COALESCE((s.end_time   AT TIME ZONE 'Asia/Kolkata')::date,
-                       (s.start_time AT TIME ZONE 'Asia/Kolkata')::date, s.date) = $2
+          AND s.date = $2
           AND (s.status = 'closed' OR $3 = TRUE)
         GROUP BY s.id, s.shift_number, s.date, s.start_time, s.end_time, s.status,
                  de.fuel_type, de.payment_mode
