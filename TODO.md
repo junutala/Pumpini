@@ -388,6 +388,12 @@ auto-close.
       suspense) + safe cleanup of the orphan's opening dips; Delete button on the
       shift-start "Currently open shifts" list, shown only when eligible. **Pending
       staging test**, then prod.
+- [x] BUILT (2026-07-02): empty-shift **close** on End-Shift. The delete guard needs a
+      sibling shift with operators; when there's none, an empty shift was stuck (can't
+      delete, can't close — "Close every operator first" with no operators). End-Shift
+      now shows "Close empty shift" when the shift has no operators (backend already
+      closes a 0-operator shift). Allowed for any empty shift (close is harmless);
+      delete still offered when a sibling exists.
 - [ ] (later) warn/block opening a *second* concurrent shift for one-shift outlets.
 
 ## 18. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY

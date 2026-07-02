@@ -176,6 +176,9 @@ export default function ShiftEndPage() {
   };
 
   const allClosed = attendants.length > 0 && attendants.every(a => closed[a.attendant_id]);
+  // An empty shift (opened by mistake, no operators) has nothing to reconcile —
+  // allow closing it directly so it doesn't sit open as an eyesore.
+  const emptyShift = !!shift && attendants.length === 0;
 
   // Closing dipstick (stock continuity)
   const tankVol = (tk) => {
@@ -327,10 +330,17 @@ export default function ShiftEndPage() {
               </div>
             );
           })}
+          {emptyShift ? (
+            <button onClick={closeShift} disabled={busy==='close'}
+              style={{width:'100%',height:44,marginTop:'0.25rem',background:'#dc2626',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:busy==='close'?'default':'pointer'}}>
+              {busy==='close'?tc('send.closingEllipsis','Closing…'):tc('send.closeEmptyShift','Close empty shift (nothing to reconcile)')}
+            </button>
+          ) : (
           <button onClick={()=>setStep(2)} disabled={!allClosed}
             style={{width:'100%',height:44,marginTop:'0.25rem',background:allClosed?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:allClosed?'pointer':'not-allowed'}}>
             {allClosed?tc('send.nextClosingDip','Next: Closing dip & close shift →'):tc('send.closeEveryOperatorFirst','Close every operator first')}
           </button>
+          )}
         </div>
       )}
 
