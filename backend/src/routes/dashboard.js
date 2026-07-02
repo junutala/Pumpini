@@ -217,10 +217,62 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       sales_by_shift = Array.from(byId.values());
     } catch (e) { /* additive — keep the core dashboard alive */ }
 
+    // ── T2 MTD tiles: quantity-by-fuel + amount, this month-to-viewed-date vs last
+    //    month's same window (filed by trade day, shifts.date). Best-effort.
+    let mtd = { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
+    try {
+      const { rows } = await pool.query(`
+        SELECT scope, fuel_type, SUM(qty) AS qty, SUM(amt) AS amt FROM (
+          SELECT 'current' AS scope, de.fuel_type, de.quantity_ltrs AS qty, de.amount AS amt
+          FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+          WHERE de.station_id=$1 AND NOT COALESCE(de.is_voided,FALSE) AND (s.status='closed' OR $3=TRUE)
+            AND s.date BETWEEN date_trunc('month', $2::date)::date AND $2::date
+          UNION ALL
+          SELECT 'last', de.fuel_type, de.quantity_ltrs, de.amount
+          FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+          WHERE de.station_id=$1 AND NOT COALESCE(de.is_voided,FALSE) AND (s.status='closed' OR $3=TRUE)
+            AND s.date BETWEEN date_trunc('month', ($2::date - INTERVAL '1 month'))::date
+                           AND ($2::date - INTERVAL '1 month')::date
+        ) x GROUP BY scope, fuel_type`, [station_id, date, isOwner]);
+      for (const r of rows) {
+        const bucket = r.scope === 'current' ? mtd.current : mtd.last_month;
+        bucket.amount += parseFloat(r.amt || 0);
+        if (r.fuel_type) bucket.by_fuel[r.fuel_type] = (bucket.by_fuel[r.fuel_type] || 0) + parseFloat(r.qty || 0);
+      }
+      mtd.current.amount = +mtd.current.amount.toFixed(2);
+      mtd.last_month.amount = +mtd.last_month.amount.toFixed(2);
+    } catch (e) { /* additive */ }
+
+    // ── T3/T4 per-operator fuel qty + target revenue for the picked day. Target =
+    //    litres × current sell rate; the settlement compares it to actual for the
+    //    per-operator revenue variance.
+    let settlement_fuel = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT de.attendant_id, de.fuel_type,
+               SUM(de.quantity_ltrs) AS litres, SUM(de.amount) AS amount,
+               (SELECT fp.price FROM fuel_prices fp
+                 WHERE fp.station_id=$1 AND fp.fuel_type=de.fuel_type
+                 ORDER BY fp.effective_from DESC LIMIT 1) AS rate
+        FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+        WHERE de.station_id=$1 AND s.date=$2 AND NOT COALESCE(de.is_voided,FALSE)
+          AND (s.status='closed' OR $3=TRUE) AND de.attendant_id IS NOT NULL
+        GROUP BY de.attendant_id, de.fuel_type`, [station_id, date, isOwner]);
+      settlement_fuel = rows.map(r => {
+        const litres = parseFloat(r.litres || 0);
+        const rate = r.rate != null ? parseFloat(r.rate) : null;
+        return { attendant_id: r.attendant_id, fuel_type: r.fuel_type, litres,
+                 amount: parseFloat(r.amount || 0), rate,
+                 target_revenue: rate != null ? +(litres * rate).toFixed(2) : null };
+      });
+    } catch (e) { /* additive */ }
+
     res.json({
       date,
       sales: sales.rows,
       sales_by_shift,
+      mtd,
+      settlement_fuel,
       shifts: shifts.rows,
       stock: stock.rows,
       alerts: alerts.rows,
