@@ -22,6 +22,8 @@ const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'As
 const SHIFT_THEME = { 1: { bg: '#fff7ed', fg: '#9a3412', bar: '#ea580c' }, 2: { bg: '#eff6ff', fg: '#1e40af', bar: '#2563eb' }, 3: { bg: '#eef2ff', fg: '#3730a3', bar: '#4f46e5' } };
 const fmtDip = ts => { try { return new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }); } catch { return ''; } };
 const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+// CNG is sold by weight (kg); every other fuel by volume (litres).
+const unitFor = ft => ((ft || '').toLowerCase() === 'cng' ? 'kg' : 'L');
 const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
 // Days-of-cover urgency: <2d red, <4d amber, else green.
 const dayColor = d => (d == null ? '#64748b' : d < 2 ? '#dc2626' : d < 4 ? '#d97706' : '#16a34a');
@@ -193,7 +195,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           {mtdFuels.map(([ft, v]) => (
             <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-2,#475569)', marginTop: 3 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft) }} />{cap(ft)}</span>
-              <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+              <span style={{ fontWeight: 700 }}>{fmtL(v)} {unitFor(ft)}</span>
             </div>
           ))}
         </div>
@@ -239,7 +241,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
                     <td style={{ textAlign: 'left', padding: 8 }}>
                       {s.fuels.length === 0 ? <span style={{ color: 'var(--text-3)' }}>—</span> : s.fuels.map((f, j) => (
-                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(f.fuel_type) }} />{cap(f.fuel_type)} · {fmtL(f.litres)} L</div>
+                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(f.fuel_type) }} />{cap(f.fuel_type)} · {fmtL(f.litres)} {unitFor(f.fuel_type)}</div>
                       ))}
                     </td>
                     <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
@@ -255,7 +257,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
               <tfoot>
                 <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
                   <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
-                  <td style={{ textAlign: 'left', padding: 8, fontWeight: 400, fontSize: 12 }}>{Object.entries(totQtyByFuel).filter(([, v]) => v > 0).map(([ft, v]) => <div key={ft}>{cap(ft)} · {fmtL(v)} L</div>)}</td>
+                  <td style={{ textAlign: 'left', padding: 8, fontWeight: 400, fontSize: 12 }}>{Object.entries(totQtyByFuel).filter(([, v]) => v > 0).map(([ft, v]) => <div key={ft}>{cap(ft)} · {fmtL(v)} {unitFor(ft)}</div>)}</td>
                   <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
                   <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
                   <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
