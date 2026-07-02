@@ -4,6 +4,7 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
+const { recomputeShift } = require('../services/settlementLedger');
 const Anthropic = require('@anthropic-ai/sdk');
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -333,6 +334,10 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
 
       await client.query('COMMIT');
 
+      // Freeze this close into the reconciliation ledger (best-effort — the
+      // source tables stay the truth; a ledger hiccup must not fail the close).
+      try { await recomputeShift(shift_id); } catch (e) { console.error('[settlementLedger]', e.message); }
+
       // Owner alert on shortage beyond threshold; overage stays silent.
       if (variance < 0 && Math.abs(variance) > 50) {
         const { rows: who } = await pool.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
@@ -467,6 +472,7 @@ router.post('/operator-cash', authenticate, authorize('owner','manager'),
        RETURNING *`,
       [shift_id, attendant_id, collected, cash, upi, card, req.user.id]
     );
+    try { await recomputeShift(shift_id); } catch (e) { console.error('[settlementLedger]', e.message); }
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -563,6 +569,10 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
     }
 
     await client.query('COMMIT');
+
+    // Freeze the recomputed sales into the reconciliation ledger (best-effort).
+    try { await recomputeShift(shift_id); } catch (e) { console.error('[settlementLedger]', e.message); }
+
     res.json({
       wet_sales: wetSales, dry_sales: dryNonCredit, credit, collections, expected, variance,
       nozzles: wetByNozzle, unvalued_readings: unvalued, source_conflicts: closeConflicts,

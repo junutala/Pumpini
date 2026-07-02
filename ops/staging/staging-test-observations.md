@@ -17,6 +17,7 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | 🔧 |
 | T12 | Settlement "huge variance" — REAL cause: **petty omitted** from accounted total (rate was fine) | ✅ fixed (branch) |
 | T1c | Keep Highway's **1st-close shift** (30 Jun 6AM→1 Jul 6AM); prod cleanup must preserve it | 🔧 |
+| T13 | **Materialized reco ledger** — freeze reco at close (6 AM trade-date rate); tiles read from it | 🚢 staging (DDL gated) |
 | T9 | Consolidated PR for T2–T5 (+T11) → staging test | 🚢 |
 | T10 | Prod go-live: merge → `main`, gated `occurred_at` backfill | 🚢 |
 
@@ -123,6 +124,30 @@ Model: already supported — `fuel_deliveries.invoice_id` lets ONE invoice back 
 delivery rows (migration 002). So a split = N `fuel_deliveries` rows (one per tank, each
 its own `tank_id` + `gross_volume_ltrs`) sharing the DC/invoice. Only the ENTRY UI needs
 to accept multiple tank+quantity lines and total them for the invoice. Build in Batch 1.
+
+## T13 — Materialized reconciliation ledger  🚢 staging (DDL owner-gated)
+Root problem the owner raised: reco was **re-derived from raw tables on every read**
+(dispense_events + shift_reconciliation + fuel_prices + dipstick), so a past date is
+slow/fragile and one wrong join (valuing old litres at today's rate) silently corrupts a
+number. Fix: compute reco **once at shift close** and **freeze** it; tiles/reports read
+straight from the ledger.
+**Rate rule (owner):** OMCs push the price at 06:00 and the opening dip is at 06:00, so a
+trade day carries the price effective at **06:00 IST of shifts.date** — we freeze THAT
+rate, never the latest.
+Two levels, header+detail:
+- `settlement_ledger` / `settlement_ledger_fuel` — **Layer 1 (operator)**: book_sales =
+  Σ(litres × 6 AM rate); collections = (cash−float)+card+upi+credit+petty; variance =
+  collections − book (0 = clean → operator cleared).
+- `outlet_reco` / `outlet_reco_fuel` — **Layer 2 (manager/outlet)**: dip_sold = opening
+  dip + deliveries − closing dip; book = Σ dip_sold × 6 AM rate; money_variance =
+  Σ collections − book (0 = clean → day shining). **This layer did not exist before.**
+Writer `backend/src/services/settlementLedger.js` (idempotent upsert), called after
+COMMIT in all three close paths (`/manager`, `/operator-cash`, `/shift-meters`) — wrapped
+best-effort so a ledger hiccup (or missing tables pre-migration) never fails a close.
+Backfill `backend/src/db/backfill-settlement-ledger.js` rebuilds history from source.
+- [ ] ⚠️ RUN `ops/staging/settlement-ledger.sql` on **staging Supabase** first (4 tables,
+      idempotent, no data change). Then `node src/db/backfill-settlement-ledger.js` on the
+      backend to populate history. Tiles/reports repointed to the ledger in a follow-up.
 
 ## T9 — Consolidated PR (T2–T5) → staging test → sign-off
 ## T10 — Prod go-live: merge branch → `main`; run gated `occurred_at` backfill (snapshot → apply)
