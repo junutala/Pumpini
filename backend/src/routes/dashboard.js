@@ -63,13 +63,11 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       WHERE sh.station_id=$1 AND sh.date=$2 AND ABS(r.variance) > 50
       ORDER BY ABS(r.variance) DESC`, [station_id, date]);
 
-    // Per-operator settlement, broken down by payment type — every attendant of
-    // the LATEST closed shift. Keyed on the most-recent reconciliation's
-    // (date, shift_number), NOT a single shift_id: one operating shift can be
-    // split across multiple shift records (e.g. Mahesh on his own shift_id while
-    // the other operators share another, both "Shift 1, Jun 22"), and we want ALL
-    // of them. Deliberately not calendar-scoped (a shift can settle next morning).
-    // Settlement is the blind-drop reveal point, so only manager-confirmed rows.
+    // Per-operator settlement for the SELECTED day (shifts.date = $2), by payment
+    // type. Follows the dashboard date picker — a chosen day shows THAT day's
+    // settlement, not "the latest". A day can have >1 shift record (operators split
+    // across shift_ids); scoping by date captures all of them. Settlement is the
+    // blind-drop reveal point, so only manager-confirmed rows.
     const { rows: settlements } = await pool.query(`
       SELECT r.attendant_id, u.name AS attendant_name, sh.shift_number, sh.date AS shift_date,
              r.total_sales, r.cash_actual, r.cash_expected, r.variance,
@@ -78,16 +76,8 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       FROM shift_reconciliation r
       JOIN shifts sh ON sh.id = r.shift_id
       JOIN users u ON u.id = r.attendant_id
-      WHERE sh.station_id = $1 AND r.manager_confirmed = TRUE
-        AND (sh.date, sh.shift_number) = (
-          SELECT sh2.date, sh2.shift_number
-          FROM shift_reconciliation r2
-          JOIN shifts sh2 ON sh2.id = r2.shift_id
-          WHERE sh2.station_id = $1 AND r2.manager_confirmed = TRUE
-          ORDER BY r2.reconciled_at DESC
-          LIMIT 1
-        )
-      ORDER BY r.reconciled_at`, [station_id]);
+      WHERE sh.station_id = $1 AND sh.date = $2 AND r.manager_confirmed = TRUE
+      ORDER BY sh.shift_number, r.reconciled_at`, [station_id, date]);
 
     // Held suspense balances (running, station-wide): petty-cash fund and
     // un-invoiced credit. Best-effort + separate so a not-yet-migrated table
