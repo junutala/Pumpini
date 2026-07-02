@@ -37,6 +37,15 @@ DECISION (owner): (a) deep-dive per-shift to reconcile the pre-1-Jul figures, OR
 Highway data up to 30 Jun** and start clean from 1 Jul. Recommend (b) — it's demo data.
 - [ ] Owner picks (a) or (b). Then: I give the diagnostic (a) or the guarded delete SQL (b).
 
+## OBSERVATION (2026-07-02) — Highway shows no dashboard data (likely EXPECTED, revisit in testing)
+After T1 cleanup, Highway shows MTD 0 + empty settlement. Likely NOT a bug: Highway's
+only real sales were the June demo shifts we deleted; its 01-Jul shift was open with no
+completed sales → nothing to show. Also it's 02 Jul, so **MTD (July) = 0 for all outlets**
+(all data is June) — the dashboard only populates when the settlement date is stepped back
+to a June day on Kamala/Adhoc, or once an outlet runs a fresh shift. Confirm during full
+testing; if a date WITH data (e.g. a June day on Kamala) also shows blank, that's a real
+bug to chase.
+
 ## T2 — Dashboard: two MTD tiles
 - Tile 1 **MTD Quantity** with **fuel/SKU breakdown** (litres by fuel only).
 - Tile 2 **MTD Amount** (₹).
