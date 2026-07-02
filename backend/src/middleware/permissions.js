@@ -26,10 +26,11 @@ const roleDefaults = {
     'lubes.manage','pettycash.manage','deposits.manage','stock.reconcile','tally.export','ai_chat.use',
     'attendant.add',
   ],
-  attendant: [
-    'dashboard.view','dispense.entry','dispense.view',
-    'dipstick.entry','dipstick.view','attendance.view','shifts.view','ai_chat.use',
-  ],
+  // Operators are locked to their own self-settlement screen — no default access to
+  // dashboard, POS, shifts, dipstick, etc. The Settlement screen and its endpoints
+  // are not permission-gated (auth + geofence + own-line-only guard the flow), so an
+  // empty default gives an operator exactly one capability: settle their own shift.
+  attendant: [],
   rsa: [
     'dashboard.view','dispense.entry','dispense.view','corporate.view','shifts.view','ai_chat.use',
   ],
