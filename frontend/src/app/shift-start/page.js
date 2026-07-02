@@ -114,31 +114,51 @@ export default function ShiftStartPage() {
     setBusy(false);
   };
 
+  // An orphan (opened by mistake) can be deleted only when it has NO operators AND
+  // another shift the same day DOES have operators — never the real working shift.
+  const canDelete = (s) => (s.attendant_count||0) === 0 &&
+    openShifts.some(o => o.id !== s.id && dateKey(o.date) === dateKey(s.date) && (o.attendant_count||0) > 0);
+  const deleteShift = async (s) => {
+    if (!window.confirm(tc('sstart.confirmDeleteShift','Delete this empty shift opened by mistake? This cannot be undone.'))) return;
+    setBusy(true); setErr('');
+    try { await api.delete(`/shifts/${s.id}`); refreshOpen(); }
+    catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errDeleteShift','Could not delete shift')); }
+    setBusy(false);
+  };
+
   // ── Dipstick ──────────────────────────────────────────────────────
+  // Volume for a tank — from the DIP (a physical check) if a dip was entered, else
+  // straight from the LITRES field (a reading typed off the ATG/HPCL system).
   const tankVol = (tank) => {
-    const entered = dips[tank.id];
-    if (entered === '' || entered == null) return null;
-    if (tank.diameter_cm && tank.length_cm) return dipToVolume(tank.diameter_cm, tank.length_cm, markToTrueDip(entered));
-    return dipVol[tank.id] !== '' && dipVol[tank.id] != null ? parseFloat(dipVol[tank.id]) : null;
+    const dip = dips[tank.id], litres = dipVol[tank.id];
+    const hasChart = tank.diameter_cm && tank.length_cm;
+    if (dip !== '' && dip != null) {
+      if (hasChart) return dipToVolume(tank.diameter_cm, tank.length_cm, markToTrueDip(dip));
+      return litres !== '' && litres != null ? parseFloat(litres) : null;  // no chart → needs manual litres
+    }
+    return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres entered directly (system)
   };
   const saveDip = async (tank) => {
-    const entered = dips[tank.id];
-    if (entered === '' || entered == null) return;
+    const dip = dips[tank.id], litres = dipVol[tank.id];
+    const hasDip = dip !== '' && dip != null;
+    const hasLitres = litres !== '' && litres != null;
+    if (!hasDip && !hasLitres) return;
     const hasChart = tank.diameter_cm && tank.length_cm;
     const vol = tankVol(tank);
-    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a volume.').replace('{n}', tank.tank_number));
+    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number));
+    // Dip entered → physical reading (store dip_cm). Litres only → system (ATG/HPCL)
+    // reading: dip_cm stays null, which is how we tell the two apart.
+    const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
     setBusy(true); setErr('');
     try {
       await api.post('/dipstick', {
         station_id: stationId, tank_id: tank.id, shift_id: shift.id,
-        reading_type: 'opening',
-        dip_cm: hasChart ? markToTrueDip(entered) : entered,
-        volume_ltrs: vol,
+        reading_type: 'opening', dip_cm, volume_ltrs: vol,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
       setTanks(ts => ts.map(t => t.id === tank.id
-        ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
+        ? { ...t, last_dip_cm: dip_cm, last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
         : t));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); }
@@ -194,8 +214,8 @@ export default function ShiftStartPage() {
   };
 
   const addOperator = async () => {
-    if (!asg.attendant_id) return setErr(tc('sstart.errPickOperator','Pick an operator'));
-    if (asg.opening_cash === undefined || asg.opening_cash === '') return setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)'));
+    if (!asg.attendant_id) { setErr(tc('sstart.errPickOperator','Pick an operator')); return false; }
+    if (asg.opening_cash === undefined || asg.opening_cash === '') { setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)')); return false; }
     const chosen = nozzles.filter(n => nozPick[n.id]?.selected).map(n => {
       const v = nozPick[n.id].opening;
       const opening = v !== '' && v != null ? parseFloat(v) : (openings[n.id] != null ? Number(openings[n.id]) : 0);
@@ -205,8 +225,20 @@ export default function ShiftStartPage() {
     try {
       await api.post(`/shifts/${shift.id}/assign`, { attendant_id: asg.attendant_id, opening_cash: asg.opening_cash, nozzles: chosen });
       setAsg({}); setNozPick({}); await refreshShift(shift.id); refreshOpen();
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); }
-    setBusy(false);
+      return true;
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); return false; }
+    finally { setBusy(false); }
+  };
+
+  // An operator is "ready" once picked with at least one nozzle ticked. The Start
+  // CTA below goes live the moment ONE operator's readings are in — if the form
+  // holds an un-added operator, we add him first (he goes live immediately), then
+  // finish. No need to wait for the rest of the operators.
+  const formReady = !!asg.attendant_id && nozzles.some(n => nozPick[n.id]?.selected);
+  const startShift = async () => {
+    if (formReady) { const ok = await addOperator(); if (!ok) return; }
+    else if (attendants.length === 0) { setErr(tc('sstart.errNeedOperatorToStart','Add an operator with their nozzle readings to start.')); return; }
+    router.push('/dashboard');
   };
 
   return (
@@ -282,7 +314,15 @@ export default function ShiftStartPage() {
                     <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
                     <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {tc('sstart.nOperators','{n} operators').replace('{n}', s.attendant_count||0)}</div>
                   </div>
-                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
+                  <div style={{display:'flex',gap:8,flexShrink:0}}>
+                    {canDelete(s) && (
+                      <button onClick={()=>deleteShift(s)} disabled={busy} title={tc('sstart.deleteEmptyShift','Delete this empty shift (opened by mistake)')}
+                        style={{padding:'8px 10px',background:'#fef2f2',color:'#b91c1c',border:'1.5px solid #fecaca',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
+                        <X size={13}/>{tc('sstart.delete','Delete')}
+                      </button>
+                    )}
+                    <button onClick={()=>resumeShift(s)} disabled={busy} style={{padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
+                  </div>
                 </div>
               ))}
           </div>
@@ -293,7 +333,7 @@ export default function ShiftStartPage() {
       {step===1 && shift && (
         <div className="card" style={{maxWidth:620}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','Enter each tank’s dip (4 marks/cm). Volume is computed from the tank’s calibration. This is the opening stock for today’s reconciliation.')}</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','For each tank enter EITHER the dip (a physical check) OR the litres shown on the ATG/HPCL system — we compute the other. This is the opening stock; the reconciliation shows any variance.')}</div>
           {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
@@ -302,18 +342,19 @@ export default function ShiftStartPage() {
               <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                   <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                  <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
+                  <input style={{...inp,width:110}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
                     value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  {hasChart
-                    ? <div style={{minWidth:120,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
-                    : <input style={{...inp,width:130}} type="number" step="0.01" placeholder={tc('sstart.volumeL','volume L')}
-                        value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
+                  <span style={{fontSize:12,color:'#94a3b8'}}>{tc('sstart.orWord','or')}</span>
+                  <input style={{...inp,width:130,...((dips[tk.id]!=='' && dips[tk.id]!=null && hasChart)?{background:'#f1f5f9',color:'#0369a1',fontWeight:600}:{})}}
+                    type="number" step="0.01" placeholder={tc('sstart.litresSystem','litres (system)')}
+                    readOnly={dips[tk.id]!=='' && dips[tk.id]!=null && hasChart}
+                    value={(dips[tk.id]!=='' && dips[tk.id]!=null && hasChart) ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
+                    onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                   <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
                     style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
                       background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
                     {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
                   </button>
-                  {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>{tc('sstart.noCalibration','No calibration — type volume')}</span>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
@@ -404,9 +445,10 @@ export default function ShiftStartPage() {
                     : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                 </div>
               ))}
-            <button onClick={()=>router.push('/dashboard')} disabled={attendants.length===0}
-              style={{width:'100%',height:46,marginTop:12,background:attendants.length?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:attendants.length?'pointer':'not-allowed'}}>
-              {tc('sstart.startShiftLive','Start — Shift is live ✓')}
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:12,marginBottom:6}}>{tc('sstart.staggerHint','Add each operator as they arrive — each goes live immediately. Stay here to add the next; click Done when you’re finished.')}</div>
+            <button onClick={startShift} disabled={busy || (attendants.length===0 && !formReady)}
+              style={{width:'100%',height:46,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
+              {tc('sstart.doneToDashboard','Done — go to dashboard')}
             </button>
           </div>
         </div>

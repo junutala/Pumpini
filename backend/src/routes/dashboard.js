@@ -63,13 +63,11 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       WHERE sh.station_id=$1 AND sh.date=$2 AND ABS(r.variance) > 50
       ORDER BY ABS(r.variance) DESC`, [station_id, date]);
 
-    // Per-operator settlement, broken down by payment type — every attendant of
-    // the LATEST closed shift. Keyed on the most-recent reconciliation's
-    // (date, shift_number), NOT a single shift_id: one operating shift can be
-    // split across multiple shift records (e.g. Mahesh on his own shift_id while
-    // the other operators share another, both "Shift 1, Jun 22"), and we want ALL
-    // of them. Deliberately not calendar-scoped (a shift can settle next morning).
-    // Settlement is the blind-drop reveal point, so only manager-confirmed rows.
+    // Per-operator settlement for the SELECTED day (shifts.date = $2), by payment
+    // type. Follows the dashboard date picker — a chosen day shows THAT day's
+    // settlement, not "the latest". A day can have >1 shift record (operators split
+    // across shift_ids); scoping by date captures all of them. Settlement is the
+    // blind-drop reveal point, so only manager-confirmed rows.
     const { rows: settlements } = await pool.query(`
       SELECT r.attendant_id, u.name AS attendant_name, sh.shift_number, sh.date AS shift_date,
              r.total_sales, r.cash_actual, r.cash_expected, r.variance,
@@ -78,16 +76,8 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       FROM shift_reconciliation r
       JOIN shifts sh ON sh.id = r.shift_id
       JOIN users u ON u.id = r.attendant_id
-      WHERE sh.station_id = $1 AND r.manager_confirmed = TRUE
-        AND (sh.date, sh.shift_number) = (
-          SELECT sh2.date, sh2.shift_number
-          FROM shift_reconciliation r2
-          JOIN shifts sh2 ON sh2.id = r2.shift_id
-          WHERE sh2.station_id = $1 AND r2.manager_confirmed = TRUE
-          ORDER BY r2.reconciled_at DESC
-          LIMIT 1
-        )
-      ORDER BY r.reconciled_at`, [station_id]);
+      WHERE sh.station_id = $1 AND sh.date = $2 AND r.manager_confirmed = TRUE
+      ORDER BY sh.shift_number, r.reconciled_at`, [station_id, date]);
 
     // Held suspense balances (running, station-wide): petty-cash fund and
     // un-invoiced credit. Best-effort + separate so a not-yet-migrated table
@@ -187,9 +177,102 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       if (credit_suspense > 0) ai_briefing.push(`${inr(credit_suspense)} credit is waiting to be invoiced.`);
     } catch (e) { /* cockpit metrics are additive — keep the core dashboard alive */ }
 
+    // ── Per-shift sales — one tile per shift (owner UX), NOT a merged daily total.
+    // Filed by the shift's declared trade day (shifts.date). We deliberately do NOT
+    // use end_time/occurred_at: those are the data-ENTRY timestamps, which lag badly
+    // when a manager closes days late (a 28-Jun shift can be entered on 01-Jul), and
+    // would mis-file the sales. shifts.date is the manager's trade-day label. Blind-
+    // drop preserved: non-owners get closed shifts only. Best-effort.
+    let sales_by_shift = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT s.id AS shift_id, s.shift_number, s.date AS shift_date,
+               s.start_time, s.end_time, s.status,
+               de.fuel_type, de.payment_mode,
+               COUNT(*)::int         AS txn_count,
+               SUM(de.quantity_ltrs) AS total_ltrs,
+               SUM(de.amount)        AS total_amount
+        FROM shifts s
+        JOIN dispense_events de ON de.shift_id = s.id AND NOT COALESCE(de.is_voided, FALSE)
+        WHERE s.station_id = $1
+          AND s.date = $2
+          AND (s.status = 'closed' OR $3 = TRUE)
+        GROUP BY s.id, s.shift_number, s.date, s.start_time, s.end_time, s.status,
+                 de.fuel_type, de.payment_mode
+        ORDER BY s.start_time NULLS LAST, s.shift_number`, [station_id, date, isOwner]);
+      const byId = new Map();
+      for (const r of rows) {
+        let sh = byId.get(r.shift_id);
+        if (!sh) {
+          sh = { shift_id: r.shift_id, shift_number: r.shift_number, shift_date: r.shift_date,
+                 start_time: r.start_time, end_time: r.end_time, status: r.status,
+                 total_amount: 0, total_ltrs: 0, fuels: {}, payments: {} };
+          byId.set(r.shift_id, sh);
+        }
+        const amt = parseFloat(r.total_amount || 0), ltr = parseFloat(r.total_ltrs || 0);
+        sh.total_amount += amt; sh.total_ltrs += ltr;
+        if (r.fuel_type)    sh.fuels[r.fuel_type]       = (sh.fuels[r.fuel_type] || 0) + ltr;
+        if (r.payment_mode) sh.payments[r.payment_mode] = (sh.payments[r.payment_mode] || 0) + amt;
+      }
+      sales_by_shift = Array.from(byId.values());
+    } catch (e) { /* additive — keep the core dashboard alive */ }
+
+    // ── T2 MTD tiles: quantity-by-fuel + amount, this month-to-viewed-date vs last
+    //    month's same window (filed by trade day, shifts.date). Best-effort.
+    let mtd = { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
+    try {
+      const { rows } = await pool.query(`
+        SELECT scope, fuel_type, SUM(qty) AS qty, SUM(amt) AS amt FROM (
+          SELECT 'current' AS scope, de.fuel_type, de.quantity_ltrs AS qty, de.amount AS amt
+          FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+          WHERE de.station_id=$1 AND NOT COALESCE(de.is_voided,FALSE) AND (s.status='closed' OR $3=TRUE)
+            AND s.date BETWEEN date_trunc('month', $2::date)::date AND $2::date
+          UNION ALL
+          SELECT 'last', de.fuel_type, de.quantity_ltrs, de.amount
+          FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+          WHERE de.station_id=$1 AND NOT COALESCE(de.is_voided,FALSE) AND (s.status='closed' OR $3=TRUE)
+            AND s.date BETWEEN date_trunc('month', ($2::date - INTERVAL '1 month'))::date
+                           AND ($2::date - INTERVAL '1 month')::date
+        ) x GROUP BY scope, fuel_type`, [station_id, date, isOwner]);
+      for (const r of rows) {
+        const bucket = r.scope === 'current' ? mtd.current : mtd.last_month;
+        bucket.amount += parseFloat(r.amt || 0);
+        if (r.fuel_type) bucket.by_fuel[r.fuel_type] = (bucket.by_fuel[r.fuel_type] || 0) + parseFloat(r.qty || 0);
+      }
+      mtd.current.amount = +mtd.current.amount.toFixed(2);
+      mtd.last_month.amount = +mtd.last_month.amount.toFixed(2);
+    } catch (e) { /* additive */ }
+
+    // ── T3/T4 per-operator fuel qty + target revenue for the picked day. Target =
+    //    litres × current sell rate; the settlement compares it to actual for the
+    //    per-operator revenue variance.
+    let settlement_fuel = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT de.attendant_id, de.fuel_type,
+               SUM(de.quantity_ltrs) AS litres, SUM(de.amount) AS amount,
+               (SELECT fp.price FROM fuel_prices fp
+                 WHERE fp.station_id=$1 AND fp.fuel_type=de.fuel_type
+                 ORDER BY fp.effective_from DESC LIMIT 1) AS rate
+        FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+        WHERE de.station_id=$1 AND s.date=$2 AND NOT COALESCE(de.is_voided,FALSE)
+          AND (s.status='closed' OR $3=TRUE) AND de.attendant_id IS NOT NULL
+        GROUP BY de.attendant_id, de.fuel_type`, [station_id, date, isOwner]);
+      settlement_fuel = rows.map(r => {
+        const litres = parseFloat(r.litres || 0);
+        const rate = r.rate != null ? parseFloat(r.rate) : null;
+        return { attendant_id: r.attendant_id, fuel_type: r.fuel_type, litres,
+                 amount: parseFloat(r.amount || 0), rate,
+                 target_revenue: rate != null ? +(litres * rate).toFixed(2) : null };
+      });
+    } catch (e) { /* additive */ }
+
     res.json({
       date,
       sales: sales.rows,
+      sales_by_shift,
+      mtd,
+      settlement_fuel,
       shifts: shifts.rows,
       stock: stock.rows,
       alerts: alerts.rows,

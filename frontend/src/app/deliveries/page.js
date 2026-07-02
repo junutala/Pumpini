@@ -56,6 +56,14 @@ export default function DeliveriesPage() {
   const [invoiceId, setInvoiceId] = useState(null); // shared across an invoice's compartments
   const [viewDoc,   setViewDoc]   = useState(null); // {media_type,url} for the viewer
 
+  // ── Split discharge: one product into >1 EXISTING tank (e.g. 6KL→tank1, 4KL→tank2).
+  // Tanks are fixed infrastructure (defined in Settings), so we just show a litres
+  // box against each tank that already exists for the fuel — nothing to add here.
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitQty,  setSplitQty]  = useState({});   // { tank_id: litres-string }
+  const splitAllocated = () => Object.values(splitQty).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const resetSplit = () => { setSplitMode(false); setSplitQty({}); };
+
   const openInvoice = async (deliveryId) => {
     try {
       const r = await api.get(`/deliveries/${deliveryId}/invoice`);
@@ -73,7 +81,7 @@ export default function DeliveriesPage() {
   const openForm = () => {
     setForm(blankForm());
     setItems([]); setRecorded([]); setActiveItem(0); setScanMeta(null); setScanErr('');
-    setScanFile(null); setInvoiceId(null);
+    setScanFile(null); setInvoiceId(null); resetSplit();
     setShowForm(true);
   };
 
@@ -210,12 +218,39 @@ export default function DeliveriesPage() {
 
   const handleSubmit = async e => {
     e.preventDefault(); setLoading(true);
-    // Validate against tank capacity
-    if (form.tank_id) {
+    const gross = parseFloat(form.gross_volume_ltrs) || 0;
+
+    // Build the tank split lines (or the single tank). Validate the split adds up
+    // to the DC gross and each tank has room.
+    let tankSplits = null;
+    if (splitMode) {
+      const forFuel = tanks.filter(t=>t.fuel_type===form.fuel_type);
+      const lines = forFuel
+        .map(t => ({ tank_id: t.id, gross: parseFloat(splitQty[t.id]) || 0 }))
+        .filter(l => l.gross > 0);
+      if (!lines.length) { alert(tc('deliv_page.split_min','Enter litres against at least one tank, or turn off split.')); setLoading(false); return; }
+      const alloc = lines.reduce((s,r)=>s+r.gross,0);
+      if (Math.abs(alloc - gross) > 0.5) {
+        alert(tc('deliv_page.split_sum','⚠ The tank quantities ({a}L) must add up to the gross volume ({g}L).').replace('{a}',alloc.toFixed(2)).replace('{g}',gross.toFixed(2)));
+        setLoading(false); return;
+      }
+      for (const l of lines) {
+        const tank = tanks.find(t=>t.id===l.tank_id);
+        if (tank) {
+          const available = parseFloat(tank.capacity_ltrs) - parseFloat(tank.current_stock);
+          if (l.gross > available) {
+            alert(tc('deliv_page.exceeds','⚠ Delivery quantity ({q}L) exceeds available tank space ({a}L).').replace('{q}',l.gross).replace('{a}',available.toFixed(0))+'\n'+tc('deliv_page.tank_cap','Tank {n} capacity: {c}L, current stock: {s}L.').replace('{n}',tank.tank_number).replace('{c}',tank.capacity_ltrs).replace('{s}',tank.current_stock));
+            setLoading(false); return;
+          }
+        }
+      }
+      tankSplits = lines.map(l => ({ tank_id: l.tank_id, gross_volume_ltrs: l.gross }));
+    } else if (form.tank_id) {
+      // Single-tank capacity check (unchanged).
       const tank = tanks.find(t=>t.id===form.tank_id);
       if (tank) {
         const available = parseFloat(tank.capacity_ltrs) - parseFloat(tank.current_stock);
-        if (parseFloat(form.gross_volume_ltrs) > available) {
+        if (gross > available) {
           alert(tc('deliv_page.exceeds','⚠ Delivery quantity ({q}L) exceeds available tank space ({a}L).').replace('{q}',form.gross_volume_ltrs).replace('{a}',available.toFixed(0))+'\n'+tc('deliv_page.tank_cap','Tank {n} capacity: {c}L, current stock: {s}L.').replace('{n}',tank.tank_number).replace('{c}',tank.capacity_ltrs).replace('{s}',tank.current_stock));
           setLoading(false);
           return;
@@ -227,21 +262,25 @@ export default function DeliveriesPage() {
         ...form,
         station_id:      stationId,
         received_at:     new Date(form.received_at).toISOString(),
-        gross_volume_ltrs: parseFloat(form.gross_volume_ltrs),
-        net_volume_ltrs:   parseFloat(netVolume())||parseFloat(form.gross_volume_ltrs),
+        gross_volume_ltrs: gross,
+        net_volume_ltrs:   parseFloat(netVolume())||gross,
         total_value:       parseFloat(totalValue())||null,
         temperature_c:     form.temperature_c ? parseFloat(form.temperature_c) : null,
         density:           form.density ? parseFloat(form.density) : null,
         rate_per_ltr:      form.rate_per_ltr ? parseFloat(form.rate_per_ltr) : null,
         freight:           parseFloat(form.freight||0),
       };
+      if (tankSplits) { payload.tank_splits = tankSplits; delete payload.tank_id; }
       // Attach the scanned invoice: first compartment uploads the file, the rest
       // reuse the returned invoice_id so they share one stored record.
       if (invoiceId) payload.invoice_id = invoiceId;
       else if (scanFile) { payload.invoice_base64 = scanFile.base64; payload.invoice_media_type = scanFile.media_type; }
 
       const created = await api.post('/deliveries', payload);
-      if (created?.invoice_id && !invoiceId) setInvoiceId(created.invoice_id);
+      // A split returns an array of rows; a single delivery returns one object.
+      const firstRow = Array.isArray(created) ? created[0] : created;
+      if (firstRow?.invoice_id && !invoiceId) setInvoiceId(firstRow.invoice_id);
+      resetSplit();
 
       // Multi-product invoice: keep the modal open and tee up the next compartment.
       const stillLeft = items.map((_,i)=>i).filter(i => i!==activeItem && !recorded.includes(i));
@@ -496,14 +535,22 @@ export default function DeliveriesPage() {
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:'1rem'}}>
                 <div>
                   <label className="label">{tc('deliv_page.fuel_type','Fuel Type')} *</label>
-                  <select className="input" value={form.fuel_type} onChange={e=>f('fuel_type',e.target.value)} required>
+                  <select className="input" value={form.fuel_type} onChange={e=>{f('fuel_type',e.target.value);resetSplit();}} required>
                     {FUEL_TYPES.map(ft=><option key={ft} value={ft}>{ft}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="label">{tc('deliv_page.deliver_tank','Deliver to Tank')} *</label>
-                  <select className="input" value={form.tank_id||''} onChange={e=>f('tank_id',e.target.value)} required>
-                    <option value="">{tc('deliv_page.select_tank','Select tank...')}</option>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <label className="label">{tc('deliv_page.deliver_tank','Deliver to Tank')} *</label>
+                    {tanks.filter(t=>t.fuel_type===form.fuel_type).length>=2 && (
+                      <label style={{fontSize:11,fontWeight:600,color:'var(--brand,#e07b0c)',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
+                        <input type="checkbox" checked={splitMode} onChange={e=>setSplitMode(e.target.checked)} style={{cursor:'pointer'}}/>
+                        {tc('deliv_page.split_tanks','Split across tanks')}
+                      </label>
+                    )}
+                  </div>
+                  <select className="input" value={splitMode?'':(form.tank_id||'')} onChange={e=>f('tank_id',e.target.value)} required={!splitMode} disabled={splitMode}>
+                    <option value="">{splitMode?tc('deliv_page.split_below','Set tanks below'):tc('deliv_page.select_tank','Select tank...')}</option>
                     {tanks.filter(t=>t.fuel_type===form.fuel_type).map(t=>(
                       <option key={t.id} value={t.id}>{tc('deliv_page.tank','Tank')} {t.tank_number} — {t.fuel_type} ({fmtL(t.current_stock)}L {tc('deliv_page.current','current')})</option>
                     ))}
@@ -517,6 +564,33 @@ export default function DeliveriesPage() {
                   </select>
                 </div>
               </div>
+
+              {/* Split discharge: a litres box against each EXISTING tank for the fuel. */}
+              {splitMode && (() => {
+                const gross = parseFloat(form.gross_volume_ltrs) || 0;
+                const alloc = splitAllocated();
+                const remaining = +(gross - alloc).toFixed(2);
+                const ok = gross > 0 && Math.abs(remaining) <= 0.5;
+                const forFuel = tanks.filter(t=>t.fuel_type===form.fuel_type);
+                return (
+                  <div style={{border:'1px solid var(--brand,#e07b0c)',borderRadius:10,padding:'12px 14px',marginBottom:'1rem',background:'var(--brand-light,#fff8ed)'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'var(--brand-dark,#9a4607)',marginBottom:8}}>
+                      {tc('deliv_page.split_title','Litres discharged into each tank')}
+                    </div>
+                    {forFuel.map(t=>(
+                      <div key={t.id} style={{display:'grid',gridTemplateColumns:'1fr 160px',gap:10,marginBottom:8,alignItems:'center'}}>
+                        <span style={{fontSize:13,fontWeight:600}}>{tc('deliv_page.tank','Tank')} {t.tank_number}<span style={{color:'var(--text-3)',fontWeight:400}}> · {fmtL(t.current_stock)}L {tc('deliv_page.current','current')}</span></span>
+                        <input className="input" type="number" step="0.01" placeholder="0" value={splitQty[t.id]||''}
+                          onChange={e=>setSplitQty(p=>({...p,[t.id]:e.target.value}))}/>
+                      </div>
+                    ))}
+                    <div style={{textAlign:'right',marginTop:6,fontSize:12,fontWeight:700,color:ok?'#27500a':'#a32d2d'}}>
+                      {tc('deliv_page.allocated','Allocated')} {fmtL(alloc)}L / {fmtL(gross)}L
+                      {gross>0 && !ok && ` · ${remaining>0?tc('deliv_page.short','short'):tc('deliv_page.over','over')} ${fmtL(Math.abs(remaining))}L`}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Section: Quantity */}
               <div style={{fontSize:12,fontWeight:700,color:'var(--text-3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:'0.75rem',borderBottom:'1px solid var(--border)',paddingBottom:4}}>

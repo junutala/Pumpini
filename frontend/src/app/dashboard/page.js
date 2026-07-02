@@ -16,6 +16,10 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtTime = t => t ? new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
+// Per-shift tile palette: 1 morning=warm, 2 day=blue, 3 night=indigo (cycles for >3).
+const SHIFT_THEME = { 1: { bg: '#fff7ed', fg: '#9a3412', bar: '#ea580c' }, 2: { bg: '#eff6ff', fg: '#1e40af', bar: '#2563eb' }, 3: { bg: '#eef2ff', fg: '#3730a3', bar: '#4f46e5' } };
 const fmtDip = ts => { try { return new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }); } catch { return ''; } };
 const cap  = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const lvlColor = pct => (pct < 20 ? '#dc2626' : pct < 40 ? '#d97706' : '#16a34a');
@@ -37,6 +41,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const [data, setData]       = useState(null);
   const [deposit, setDeposit] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [date, setDate]       = useState(today);   // global date picker — view any trade day
   const { on } = useSocket(stationId, null);
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
@@ -45,13 +50,13 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
     if (!stationId) return;
     try {
       const [d, dp] = await Promise.all([
-        getOwnerDashboard(stationId, today),
+        getOwnerDashboard(stationId, date),
         api.get('/cash-deposits', { params: { station_id: stationId } }).then(r => r?.status || null).catch(() => null),
       ]);
       setData(d); setDeposit(dp || null);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
-  }, [stationId, today]);
+  }, [stationId, date]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => on('dispense:new', () => load()), [on, load]);
@@ -65,6 +70,16 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
 
   const d = data || {};
   const sales = d.sales || [];
+  const salesByShift = d.sales_by_shift;   // per-shift tiles; undefined on older backend
+  const isToday = date === today;          // live-state tiles show only for today
+  // MTD tiles (T2): month-to-viewed-date vs last month's same window.
+  const mtd = d.mtd || { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
+  const mtdFuels   = Object.entries(mtd.current.by_fuel || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const mtdQtyCur  = Object.values(mtd.current.by_fuel || {}).reduce((s, v) => s + v, 0);
+  const mtdQtyLast = Object.values(mtd.last_month.by_fuel || {}).reduce((s, v) => s + v, 0);
+  const pctDelta   = (cur, last) => (last > 0 ? ((cur - last) / last) * 100 : null);
+  const deltaChip  = (cur, last) => { const dd = pctDelta(cur, last); return dd == null ? null : <span style={{ color: dd >= 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{dd >= 0 ? '▲' : '▼'} {Math.abs(dd).toFixed(0)}%</span>; };
+  const settlementFuel = d.settlement_fuel || [];   // per-operator fuel qty + target revenue (T3/T4)
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
   // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
@@ -85,6 +100,20 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
     card: t.card + Number(s.card_total || 0), credit: t.credit + Number(s.credit_total || 0),
     petty: t.petty + Number(s.petty_cash || 0), total: t.total + Number(s.total_sales || 0),
   }), { cash: 0, upi: 0, card: 0, credit: 0, petty: 0, total: 0 });
+  // T3/T4 settlement rows: per-operator payments (settlements) + fuel qty/target (settlement_fuel).
+  const fuelByOp = {};
+  settlementFuel.forEach(f => { (fuelByOp[f.attendant_id] = fuelByOp[f.attendant_id] || []).push(f); });
+  const settleRows = settlements.map(s => {
+    const fuels = fuelByOp[s.attendant_id] || [];
+    const target = fuels.reduce((a, f) => a + (f.target_revenue || 0), 0);   // Σ qty × rate
+    // Accounted = every money column incl. PETTY (cash taken out of the drawer for
+    // expenses still has to be accounted). Variance = accounted − target ≈ 0 when clean.
+    const total = Number(s.cash_actual || 0) + Number(s.upi_total || 0) + Number(s.card_total || 0) + Number(s.credit_total || 0) + Number(s.petty_cash || 0);
+    return { ...s, fuels, target, total, revVar: +(total - target).toFixed(2) };
+  });
+  const totQtyByFuel = {};
+  settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
+  const stepDate = (n) => { const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
   const wet = d.wetstock_mtd;
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
@@ -130,12 +159,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
           <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{aiLines.slice(0, 2).join(' ')}</span>
+          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{isToday ? aiLines.slice(0, 2).join(' ') : tc('bunk.viewingPastDay', 'Viewing a past day — sales & settlement are for the selected date. Live status (stock, deposits, receivables) reflects today only.')}</span>
         </div>
       </div>
 
-      {/* Needs you */}
-      {actions.length > 0 && (
+      {/* Needs you — live 'now' actions; only when viewing today */}
+      {isToday && actions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{tc('bunk.needsYou', 'Needs you')}</div>
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
@@ -154,54 +183,47 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
       )}
 
-      {/* Today's money */}
-      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.todaysMoney', "Today's money")}</span>
-          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, background: 'var(--surface-2,#f1f5f9)', color: 'var(--text-2,#475569)', padding: '4px 10px', borderRadius: 99 }}><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.liveShiftsSealedReveals', '{n} live shift sealed — reveals at close').replace('{n}', openShifts.length)}</span>}
+      {/* MTD tiles (T2) — month-to-date quantity (by fuel) + amount, vs last month's
+          same window. Follows the viewed date. */}
+      <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 10, marginBottom: 14 }}>
+        <div style={{ ...card, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdQuantity', 'MTD quantity')}</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtL(mtdQtyCur)} L</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: mtdFuels.length ? 8 : 0 }}>{tc('bunk.lastMonth', 'last month')} {fmtL(mtdQtyLast)} L {deltaChip(mtdQtyCur, mtdQtyLast)}</div>
+          {mtdFuels.map(([ft, v]) => (
+            <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-2,#475569)', marginTop: 3 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft) }} />{cap(ft)}</span>
+              <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+            </div>
+          ))}
         </div>
-        <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: payTotal > 0 ? 12 : 0 }}>
-          <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.sales', 'Sales')}{salesMasked && closedShifts.length ? tc('bunk.closedSuffix', ' (closed)') : ''}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(totalSales)}</div></div>
-          {isOwnerView && <div style={{ ...mini, background: '#eaf3de' }}><div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.margin', 'Margin')}</div><div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{margin?.amount != null ? fmtR(margin.amount) : '—'}</div>{margin?.pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('bunk.pctSellMinusBuy', '{n}% · sell − buy').replace('{n}', margin.pct)}</div>}</div>}
-          <div style={mini}>
-            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.litresSold', 'Litres sold')}</div>
-            <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(totalLtrs)} L</div>
-            {fuelLtrs.length > 0 && (
-              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {fuelLtrs.map(([ft, v]) => (
-                  <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--text-2,#475569)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft), flexShrink: 0 }} />{cap(ft)}</span>
-                    <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        <div style={{ ...card, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdAmount', 'MTD amount')}</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtR(mtd.current.amount)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.lastMonth', 'last month')} {fmtR(mtd.last_month.amount)} {deltaChip(mtd.current.amount, mtd.last_month.amount)}</div>
+          {isOwnerView && margin?.amount != null && <div style={{ fontSize: 12.5, color: '#3b6d11', marginTop: 8, fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}: {fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</div>}
         </div>
-        {payTotal > 0 && <>
-          <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden' }}>
-            {payTotals.filter(p => p.v > 0).map(p => <div key={p.m} style={{ width: `${(p.v / payTotal) * 100}%`, background: PAY[p.m] }} />)}
-          </div>
-          <div style={{ display: 'flex', gap: 14, marginTop: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-2,#475569)' }}>
-            {payTotals.filter(p => p.v > 0).map(p => <span key={p.m}><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: PAY[p.m] }} /> {cap(p.m)} {Math.round((p.v / payTotal) * 100)}%</span>)}
-          </div>
-        </>}
       </div>
 
-      {/* Latest shift settlement — every operator of the most recently closed shift */}
-      {settlements.length > 0 && (
-        <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>
-              {tc('bunk.latestShiftSettlement', 'Latest shift settlement')}{settlements[0]?.shift_number ? tc('bunk.shiftNumberSuffix', ' — Shift {n}').replace('{n}', settlements[0].shift_number) : ''}
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.operatorsClosed', '{n} operator{s} closed').replace('{n}', settlements.length).replace('{s}', settlements.length > 1 ? 's' : '')}</span>
+      {/* Shift settlement (T3/T4) — date-navigable; per-operator fuel qty + target-vs-actual revenue variance */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.shiftSettlement', 'Shift settlement')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => stepDate(-1)} title={tc('bunk.prevDay', 'Previous day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: 'pointer', fontSize: 12 }}>◀</button>
+            <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)} style={{ padding: '5px 9px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 12.5 }} />
+            <button onClick={() => stepDate(1)} disabled={date >= today} title={tc('bunk.nextDay', 'Next day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: date >= today ? 'default' : 'pointer', opacity: date >= today ? .4 : 1, fontSize: 12 }}>▶</button>
           </div>
+        </div>
+        {settleRows.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: '1.5rem' }}>{tc('bunk.noSettlement', 'No settled operators for this day.')}</div>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 540 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 660 }}>
               <thead>
                 <tr style={{ color: 'var(--text-3)', textAlign: 'right' }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.operator', 'Operator')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.fuelQty', 'Fuel · Qty')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.cash', 'Cash')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.upi', 'UPI')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.card', 'Card')}</th>
@@ -212,41 +234,45 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                 </tr>
               </thead>
               <tbody>
-                {settlements.map((s, i) => {
-                  const v = Number(s.variance || 0);
-                  return (
-                    <tr key={i} style={{ borderTop: '0.5px solid var(--border,#e5e7eb)', textAlign: 'right' }}>
-                      <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.upi_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
-                      <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total_sales)}</td>
-                      <td style={{ padding: 8, fontWeight: 700, color: Math.abs(v) <= 50 ? '#27500a' : '#a32d2d' }}>{v >= 0 ? '+' : ''}{fmtR(v)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {settlements.length > 1 && (
-                <tfoot>
-                  <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
-                    <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.total)}</td>
-                    <td />
+                {settleRows.map((s, i) => (
+                  <tr key={i} style={{ borderTop: '0.5px solid var(--border,#e5e7eb)', textAlign: 'right', verticalAlign: 'top' }}>
+                    <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
+                    <td style={{ textAlign: 'left', padding: 8 }}>
+                      {s.fuels.length === 0 ? <span style={{ color: 'var(--text-3)' }}>—</span> : s.fuels.map((f, j) => (
+                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(f.fuel_type) }} />{cap(f.fuel_type)} · {fmtL(f.litres)} L</div>
+                      ))}
+                    </td>
+                    <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.upi_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
+                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total)}<div style={{ fontSize: 10.5, color: 'var(--brand,#e07b0c)', fontWeight: 700 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
+                    <td style={{ padding: 8, fontWeight: 700, color: Math.abs(s.revVar) <= 50 ? '#27500a' : '#a32d2d' }}>{s.revVar >= 0 ? '+' : ''}{fmtR(s.revVar)}</td>
                   </tr>
-                </tfoot>
-              )}
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
+                  <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
+                  <td style={{ textAlign: 'left', padding: 8, fontWeight: 400, fontSize: 12 }}>{Object.entries(totQtyByFuel).filter(([, v]) => v > 0).map(([ft, v]) => <div key={ft}>{cap(ft)} · {fmtL(v)} L</div>)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.cash + setTot.upi + setTot.card + setTot.credit + setTot.petty)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
+      {/* Live 'now' status (receivables · fuel health · AI briefing) — today only.
+          Past dates have no stock/receivables snapshot, so we don't fake them. */}
+      {isToday && (<>
       {/* Credit receivables */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('bunk.creditReceivables', 'Credit receivables')}</div>
@@ -307,6 +333,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           {aiLines.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
       </div>
+      </>)}
     </Wrapper>
   );
 }

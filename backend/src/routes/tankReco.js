@@ -44,8 +44,8 @@ async function computeShiftReco(shift_id) {
       (SELECT dr.volume_ltrs FROM dipstick_readings dr
          WHERE dr.shift_id=$1 AND dr.tank_id=t.id AND dr.reading_type='closing'
          ORDER BY dr.recorded_at DESC LIMIT 1) AS actual_closing,
-      COALESCE((SELECT SUM(fd.quantity_ltrs) FROM fuel_deliveries fd
-         WHERE fd.tank_id=t.id AND fd.delivered_at BETWEEN $2 AND $3),0) AS deliveries_ltrs,
+      COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs)) FROM fuel_deliveries fd
+         WHERE fd.tank_id=t.id AND fd.received_at BETWEEN $2 AND $3),0) AS deliveries_ltrs,
       COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
          JOIN nozzles n ON n.id=de.nozzle_id
          WHERE de.shift_id=$1 AND n.tank_id=t.id
@@ -132,9 +132,9 @@ async function computeLiveTankStatus(station_id) {
          WHERE n.tank_id=t.id AND pr.recorded_at IS NOT NULL
            AND de.occurred_at > pr.recorded_at AND de.occurred_at <= lr.recorded_at
            AND NOT COALESCE(de.is_voided,FALSE)),0) AS sales,
-      COALESCE((SELECT SUM(fd.quantity_ltrs) FROM fuel_deliveries fd
+      COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs)) FROM fuel_deliveries fd
          WHERE fd.tank_id=t.id AND pr.recorded_at IS NOT NULL
-           AND fd.delivered_at > pr.recorded_at AND fd.delivered_at <= lr.recorded_at),0) AS deliveries
+           AND fd.received_at > pr.recorded_at AND fd.received_at <= lr.recorded_at),0) AS deliveries
     FROM tanks t
     LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings
       WHERE tank_id=t.id ORDER BY recorded_at DESC LIMIT 1) lr ON TRUE

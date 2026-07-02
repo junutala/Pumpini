@@ -3,6 +3,9 @@
 Items the owner asked to keep on the list. Pick these up when he says
 "let's visit the TODO".
 
+Items tagged **🔴 OPERATIONAL · PRIORITY** are the exception — the owner wants
+these addressed on priority (not parked), ahead of the general backlog.
+
 ## 1. Credit ageing report
 Ageing of credit-customer outstanding (e.g. 0–30 / 31–60 / 61–90 / 90+ days
 buckets, by customer, with totals and drill-down to invoices). Discussed
@@ -328,3 +331,87 @@ Decision (owner-approved direction): the fix is **object storage, NOT a second D
 - ⚠️ **Medium/high impact** (changes how documents are written/read across deliveries,
       invoices, receipts, meter photos) → per the change-management rules, ship to
       **staging first, owner physical-tests**, then prod.
+
+## 16. Data-entry out-of-sync detection + Highway reconciliation learnings (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+Context: chasing "Highway dashboard off by ₹72" opened a deeper audit. What we
+learned (all now understood; owner to advise on the data fix):
+- **Sales were filed by data-ENTRY time, not trade day.** Manager closes stamped
+  `occurred_at = NOW()`, and the dashboard bucketed by `occurred_at::date`. When a
+  manager closes days late / in batches, multiple trade days pile onto one calendar
+  day → totals that don't reconcile. Affects ALL outlets (Kamala 1-day lag, Highway
+  1–3 days). FIXED in code (synthesis now stamps the shift's trade day; per-shift
+  dashboard files by `shifts.date`); historical rows need the gated `occurred_at`
+  backfill (`ops/staging/backfill-occurred-at.sql`).
+- **`shifts.date` is the reliable trade-day label** — trust it over
+  `start_time`/`end_time`/`occurred_at`, which are entry-time and lag by days.
+- **Dips not entered as agreed.** Owner has AUTOMATED (ATG/HPCL) dip readings, so
+  staff skip physical dips. The agreed cadence — enter the HPCL reading DAILY, and a
+  PHYSICAL dip confirmation ONCE A WEEK — is not being followed. Highway has ZERO
+  dips → wet-stock reco can't run. (Adhoc Highway, by contrast, had demo/garbage
+  meter values — separate item, validate later.)
+
+OWNER REFINED (2026-07-02): **no cadence enforcement, no schema field.** Staff keep
+entering the ATG/HPCL reading as they please. The real gap was that shift-start only
+accepted a **dip** (we compute litres via calibration), but HPCL shows **litres** —
+so staff couldn't enter what they see. Fix = accept EITHER on shift-start and compute
+the other; **source is inferred from the input**: litres typed = system (ATG/HPCL)
+reading (`dip_cm` left NULL); dip typed = physical check (`dip_cm` set). No
+`method`/`source` column needed — the null-vs-set `dip_cm` distinguishes them.
+- [x] BUILT (2026-07-02, on branch → staging): shift-start dip step now takes a dip
+      OR a litres value per tank (litres field shows the computed value when a dip is
+      entered on a calibrated tank). Backend already tolerant (nullable `dip_cm`;
+      computes litres from dip when a chart exists). **Pending staging test.**
+
+TODO (later, lower priority) — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
+- [ ] Flag **missing daily dip entry** (no dip for a tank for N days).
+- [ ] Flag **overdue weekly physical-dip confirmation**.
+- [ ] Flag **late/batch closes** (shift closed ≫ its trade day) and **shifts left
+      open** past their day — the mis-dating early-warning.
+- [ ] Surface as a small **"data health"** indicator on the dashboard AND in the
+      owner/global rollup, so out-of-sync entry is obvious at a glance.
+
+LEARNING to keep visible (fold into GO-LIVE LEARNINGS §11 before Vizag): staff skip
+cadence (dips, timely closes) unless the system nags — ship the tripwire, and add
+reconciliation (meter↔POS↔dip, trade-day dating) to the per-role smoke test.
+
+## 17. Orphan / duplicate open shifts — auto-clean or manual delete (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+At bring-up staff make mistakes and **open multiple shifts** that never close. E.g.
+Highway had TWO open shifts at once: `96f749ce` (dated 28 Jun but opened 01 Jul and
+never closed = orphan) and `0ba36329` (the real current one). Orphan opens skew the
+"live" tiles and block clean reconciliation.
+OWNER DECISION (2026-07-02): **manual delete**, guarded — a delete button enabled
+ONLY when the shift has **no operators** AND **another shift the same date has
+operators** (so you can remove an empty stray, never the real working shift). No
+auto-close.
+- [x] BUILT (2026-07-02, on branch → staging): `DELETE /api/shifts/:id` with the
+      guard + refusal on any real activity (sales/settlement/invoices/deliveries/
+      suspense) + safe cleanup of the orphan's opening dips; Delete button on the
+      shift-start "Currently open shifts" list, shown only when eligible. **Pending
+      staging test**, then prod.
+- [x] BUILT (2026-07-02): empty-shift **close** on End-Shift. The delete guard needs a
+      sibling shift with operators; when there's none, an empty shift was stuck (can't
+      delete, can't close — "Close every operator first" with no operators). End-Shift
+      now shows "Close empty shift" when the shift has no operators (backend already
+      closes a 0-operator shift). Allowed for any empty shift (close is harmless);
+      delete still offered when a sibling exists.
+- [ ] (later) warn/block opening a *second* concurrent shift for one-shift outlets.
+
+## 18. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+Owner: "We can't start the shift until ALL attendants are assigned — start-shift
+makes no sense. Let an attendant start operations as soon as HIS nozzle readings
+are entered."
+Finding: the backend ALREADY activates per-attendant — `POST /shifts/:id/assign`
+persists immediately and `/shifts/active` returns that operator's shift right away,
+so an operator is live the moment he's added (no all-operators gate in the API). The
+friction is the **3-step wizard** (Open → Dipstick → Operators, ending in one "Start —
+Shift is live ✓" button), which *feels* like a single upfront setup that isn't live
+until the end.
+OWNER CLARIFIED (2026-07-02): make the bottom CTA a **"Start shift"** that activates
+as soon as ONE operator + his nozzle readings are entered, so an attendant goes live
+the moment his readings are recorded — no waiting for the rest.
+- [x] BUILT (2026-07-02, on branch → staging): bottom CTA relabelled "Start shift";
+      enabled once one operator is added OR the add-form holds a picked operator with
+      a nozzle. On click, if the form holds an un-added operator it assigns him first
+      (he goes live via the existing `/assign` → `/shifts/active` path), then finishes.
+      **Pending staging test.**
+- [ ] (later, if wanted) make the Dipstick step skippable at start too.
