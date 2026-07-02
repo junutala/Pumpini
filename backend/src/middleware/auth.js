@@ -92,7 +92,10 @@ const authenticate = async (req, res, next) => {
     req.user = decoded;
     // Operators are hard-locked to the settlement flow at the server, whatever
     // the client. (Managers/owners/others are unaffected.)
-    if (decoded.role === 'attendant' && !attendantAllowed(req.method, (req.baseUrl || '') + req.path)) {
+    // Normalise a trailing slash — a router's root route (e.g. GET /corporate)
+    // resolves to '/api/corporate/', which must still match the allowlist.
+    const reqPath = ((req.baseUrl || '') + req.path).replace(/\/+$/, '') || '/';
+    if (decoded.role === 'attendant' && !attendantAllowed(req.method, reqPath)) {
       return res.status(403).json({ error: 'Operators can only use the settlement screen.' });
     }
     // Open the RLS identity context (runs the rest of the request on the
