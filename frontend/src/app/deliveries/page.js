@@ -56,11 +56,13 @@ export default function DeliveriesPage() {
   const [invoiceId, setInvoiceId] = useState(null); // shared across an invoice's compartments
   const [viewDoc,   setViewDoc]   = useState(null); // {media_type,url} for the viewer
 
-  // ── Split discharge: one product into >1 tank (e.g. 6KL→tank1, 4KL→tank2) ──
+  // ── Split discharge: one product into >1 EXISTING tank (e.g. 6KL→tank1, 4KL→tank2).
+  // Tanks are fixed infrastructure (defined in Settings), so we just show a litres
+  // box against each tank that already exists for the fuel — nothing to add here.
   const [splitMode, setSplitMode] = useState(false);
-  const [splits,    setSplits]    = useState([{ tank_id:'', gross:'' }, { tank_id:'', gross:'' }]);
-  const splitAllocated = () => splits.reduce((s, r) => s + (parseFloat(r.gross) || 0), 0);
-  const resetSplit = () => { setSplitMode(false); setSplits([{ tank_id:'', gross:'' }, { tank_id:'', gross:'' }]); };
+  const [splitQty,  setSplitQty]  = useState({});   // { tank_id: litres-string }
+  const splitAllocated = () => Object.values(splitQty).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const resetSplit = () => { setSplitMode(false); setSplitQty({}); };
 
   const openInvoice = async (deliveryId) => {
     try {
@@ -222,16 +224,16 @@ export default function DeliveriesPage() {
     // to the DC gross and each tank has room.
     let tankSplits = null;
     if (splitMode) {
-      const lines = splits
-        .map(r => ({ tank_id: r.tank_id, gross: parseFloat(r.gross) || 0 }))
-        .filter(r => r.tank_id && r.gross > 0);
-      if (lines.length < 2) { alert(tc('deliv_page.split_min','Add at least two tanks with quantities, or turn off split.')); setLoading(false); return; }
+      const forFuel = tanks.filter(t=>t.fuel_type===form.fuel_type);
+      const lines = forFuel
+        .map(t => ({ tank_id: t.id, gross: parseFloat(splitQty[t.id]) || 0 }))
+        .filter(l => l.gross > 0);
+      if (!lines.length) { alert(tc('deliv_page.split_min','Enter litres against at least one tank, or turn off split.')); setLoading(false); return; }
       const alloc = lines.reduce((s,r)=>s+r.gross,0);
       if (Math.abs(alloc - gross) > 0.5) {
         alert(tc('deliv_page.split_sum','⚠ The tank quantities ({a}L) must add up to the gross volume ({g}L).').replace('{a}',alloc.toFixed(2)).replace('{g}',gross.toFixed(2)));
         setLoading(false); return;
       }
-      if (new Set(lines.map(l=>l.tank_id)).size !== lines.length) { alert(tc('deliv_page.split_dupe','Each split line must be a different tank.')); setLoading(false); return; }
       for (const l of lines) {
         const tank = tanks.find(t=>t.id===l.tank_id);
         if (tank) {
@@ -563,7 +565,7 @@ export default function DeliveriesPage() {
                 </div>
               </div>
 
-              {/* Split discharge: one product into several tanks (tank + litres per line). */}
+              {/* Split discharge: a litres box against each EXISTING tank for the fuel. */}
               {splitMode && (() => {
                 const gross = parseFloat(form.gross_volume_ltrs) || 0;
                 const alloc = splitAllocated();
@@ -573,32 +575,18 @@ export default function DeliveriesPage() {
                 return (
                   <div style={{border:'1px solid var(--brand,#e07b0c)',borderRadius:10,padding:'12px 14px',marginBottom:'1rem',background:'var(--brand-light,#fff8ed)'}}>
                     <div style={{fontSize:12,fontWeight:700,color:'var(--brand-dark,#9a4607)',marginBottom:8}}>
-                      {tc('deliv_page.split_title','Split this delivery across tanks')}
+                      {tc('deliv_page.split_title','Litres discharged into each tank')}
                     </div>
-                    {splits.map((r,i)=>(
-                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 140px 32px',gap:8,marginBottom:8,alignItems:'center'}}>
-                        <select className="input" value={r.tank_id} onChange={e=>setSplits(p=>p.map((x,j)=>j===i?{...x,tank_id:e.target.value}:x))}>
-                          <option value="">{tc('deliv_page.select_tank','Select tank...')}</option>
-                          {forFuel.map(t=>(
-                            <option key={t.id} value={t.id}>{tc('deliv_page.tank','Tank')} {t.tank_number} ({fmtL(t.current_stock)}L {tc('deliv_page.current','current')})</option>
-                          ))}
-                        </select>
-                        <input className="input" type="number" step="0.01" placeholder={tc('deliv_page.litres','Litres')} value={r.gross}
-                          onChange={e=>setSplits(p=>p.map((x,j)=>j===i?{...x,gross:e.target.value}:x))}/>
-                        <button type="button" title={tc('deliv_page.remove','Remove')} disabled={splits.length<=2}
-                          onClick={()=>setSplits(p=>p.filter((_,j)=>j!==i))}
-                          style={{height:34,borderRadius:8,border:'1px solid var(--border,#e5e7eb)',background:'#fff',cursor:splits.length<=2?'default':'pointer',opacity:splits.length<=2?.4:1}}>✕</button>
+                    {forFuel.map(t=>(
+                      <div key={t.id} style={{display:'grid',gridTemplateColumns:'1fr 160px',gap:10,marginBottom:8,alignItems:'center'}}>
+                        <span style={{fontSize:13,fontWeight:600}}>{tc('deliv_page.tank','Tank')} {t.tank_number}<span style={{color:'var(--text-3)',fontWeight:400}}> · {fmtL(t.current_stock)}L {tc('deliv_page.current','current')}</span></span>
+                        <input className="input" type="number" step="0.01" placeholder="0" value={splitQty[t.id]||''}
+                          onChange={e=>setSplitQty(p=>({...p,[t.id]:e.target.value}))}/>
                       </div>
                     ))}
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}}>
-                      <button type="button" onClick={()=>setSplits(p=>[...p,{tank_id:'',gross:''}])}
-                        style={{fontSize:12,fontWeight:600,color:'var(--brand,#e07b0c)',background:'none',border:'none',cursor:'pointer',padding:0}}>
-                        + {tc('deliv_page.add_tank','Add another tank')}
-                      </button>
-                      <span style={{fontSize:12,fontWeight:700,color:ok?'#27500a':'#a32d2d'}}>
-                        {tc('deliv_page.allocated','Allocated')} {fmtL(alloc)}L / {fmtL(gross)}L
-                        {gross>0 && !ok && ` · ${remaining>0?tc('deliv_page.short','short'):tc('deliv_page.over','over')} ${fmtL(Math.abs(remaining))}L`}
-                      </span>
+                    <div style={{textAlign:'right',marginTop:6,fontSize:12,fontWeight:700,color:ok?'#27500a':'#a32d2d'}}>
+                      {tc('deliv_page.allocated','Allocated')} {fmtL(alloc)}L / {fmtL(gross)}L
+                      {gross>0 && !ok && ` · ${remaining>0?tc('deliv_page.short','short'):tc('deliv_page.over','over')} ${fmtL(Math.abs(remaining))}L`}
                     </div>
                   </div>
                 );
