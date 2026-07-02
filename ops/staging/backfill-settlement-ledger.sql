@@ -76,8 +76,13 @@ WITH day_tanks AS (
         AND dr.reading_type='closing'
       ORDER BY dr.recorded_at DESC LIMIT 1) AS closing_ltrs,
     COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
-              FROM fuel_deliveries fd JOIN shifts s2 ON s2.id = fd.shift_id
-              WHERE fd.tank_id=t.id AND s2.station_id=s.station_id AND s2.date=s.trade_date),0) AS deliveries_ltrs,
+              FROM fuel_deliveries fd
+              WHERE fd.tank_id=t.id AND (
+                fd.dc_date = s.trade_date
+                OR (fd.dc_date IS NULL
+                    AND fd.received_at >= ((s.trade_date + TIME '06:00') AT TIME ZONE 'Asia/Kolkata')
+                    AND fd.received_at <  (((s.trade_date + 1) + TIME '06:00') AT TIME ZONE 'Asia/Kolkata'))
+              )),0) AS deliveries_ltrs,
     COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
               JOIN nozzles n ON n.id=de.nozzle_id JOIN shifts s2 ON s2.id = de.shift_id
               WHERE n.tank_id=t.id AND s2.station_id=s.station_id AND s2.date=s.trade_date
