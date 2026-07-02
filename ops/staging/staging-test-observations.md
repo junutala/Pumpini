@@ -53,3 +53,33 @@ Build-details to resolve at build time:
 - [ ] Do the current **per-shift tiles** stay, or is the day view now just this
       settlement table? (Reading the spec: settlement table replaces the per-shift
       tiles; MTD tiles replace the top summary.)
+
+## 4. NEW FEATURE — Operator self-close (mobile settlement) screen  🔧 TO-BUILD (larger; likely its OWN PR/phase)
+An operator-facing, **mobile-first** screen that feeds shift-close + credit invoicing.
+Access: **only the operator whose own shift is OPEN** (resolve via `/shifts/active`);
+operators tied to the outlet by **mobile number**. Show the **outlet name** prominently.
+Operator does, on their phone:
+  1. Capture (photo/OCR) OR manually enter **closing meter readings** for their nozzle(s).
+  2. Enter closing **Cash, Card, Credit, UPI, Petty cash**.
+  3. NEW field **"Cash adj"** — added to cash (effective cash = cash + cash_adj).
+  4. Wires into **credit-customer invoice creation** (record credit → invoice).
+Backend: populate THIS attendant's shift-close values (`shift_reconciliation`). Reuse
+existing routes where possible: `POST /reconcile/operator-cash` (creates the recon row),
+`/reconcile/pos-meter` + `/reconcile/ocr-meter` (totalizer photo/OCR). Consider the
+existing **voice** route for voice-to-action.
+
+⚠️ BIG DEPENDENCY: **operator login does not exist yet.** Today attendants are
+`users role='attendant'` with a dummy password and **no POS/login** (see TODO §5/§7;
+mobile is the intended key). This feature introduces an operator auth surface on a
+money system → RLS/station-scoping and credential handling must be right. This is why
+it's its own phase, not part of the small consolidated dashboard PR.
+
+OPEN QUESTIONS (resolve before build):
+- [ ] Operator auth: mobile + password? OTP? passkey? (new surface — security-sensitive)
+- [ ] "cash adj" — store as a **separate column** on shift_reconciliation (audit trail;
+      schema add, owner-gated) or fold into cash_actual? (recommend separate.)
+- [ ] Credit invoicing: operator picks the credit customer + qty and CREATES the invoice,
+      or just records a credit total the manager invoices later?
+- [ ] Does operator self-close **replace** the manager-driven `/reconcile` flow, or
+      **complement** it (operator submits → manager confirms at shift close)?
+- [ ] Voice-to-action: in scope for v1, or fast-follow?
