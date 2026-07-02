@@ -574,3 +574,15 @@ CREATE TABLE IF NOT EXISTS outlet_reco_fuel (
   book_sales       numeric(12,2) NOT NULL DEFAULT 0, -- dip_sold × rate
   CONSTRAINT outlet_reco_fuel_uq UNIQUE (station_id, trade_date, fuel_type)
 );
+
+-- ──────────────────────────────────────────────────────────────
+-- Split discharge (Jul 2026). One product can be discharged into >1 tank, so the
+-- same DC+fuel now legitimately has several rows differing only by tank/volume.
+-- Add tank_id to the dedup unique index so an even split (e.g. 5KL+5KL) doesn't
+-- collide, while still blocking a true double-submit (same DC+fuel+volume+tank).
+-- Idempotent. Run on the live DB before/with the split-discharge code.
+-- ──────────────────────────────────────────────────────────────
+DROP INDEX IF EXISTS ux_fuel_deliveries_dedup;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_fuel_deliveries_dedup
+  ON public.fuel_deliveries (station_id, dc_number, fuel_type, gross_volume_ltrs, tank_id)
+  WHERE (dc_number IS NOT NULL);

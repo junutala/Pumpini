@@ -14,7 +14,7 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | T6 | **Operator login** (mobile-based) — new auth surface; dependency for T7/T8 | 🔧 ❓ |
 | T7 | **Operator self-close** mobile settlement screen | 🔧 |
 | T8 | **"Settlement2" responsibility** + assign in Add-Attendant (superadmin + manager) | 🔧 |
-| T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | 🔧 |
+| T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | ✅ built (branch, DDL gated) |
 | T12 | Settlement "huge variance" — REAL cause: **petty omitted** from accounted total (rate was fine) | ✅ fixed (branch) |
 | T1c | Keep Highway's **1st-close shift** (30 Jun 6AM→1 Jul 6AM); prod cleanup must preserve it | 🔧 |
 | T13 | **Materialized reco ledger** — freeze reco at close (6 AM trade-date rate); tiles read from it | 🚢 staging (DDL gated) |

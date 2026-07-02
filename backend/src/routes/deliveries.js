@@ -86,32 +86,70 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       batch_number, seal_number,
       rate_per_ltr, freight, total_value, notes,
       invoice_id, invoice_base64, invoice_media_type,
+      tank_splits,   // optional: [{ tank_id, gross_volume_ltrs }] — one product discharged into >1 tank
     } = req.body;
 
     // net_volume_ltrs is a GENERATED ALWAYS column in the DB (same VCF formula:
     // round(gross*density*(1-0.0009*(temp-15)),2), else gross) — we must NOT
     // insert it, Postgres rejects a value for a generated column.
 
-    // Re-scope tank to the validated station — reject a tank_id from another outlet.
-    if (tank_id) {
-      const { rows: tk } = await pool.query('SELECT 1 FROM tanks WHERE id=$1 AND station_id=$2', [tank_id, station_id]);
-      if (!tk.length) return res.status(400).json({ error: 'Tank does not belong to this station.' });
+    // Split discharge: one product can be discharged into several tanks. Normalise
+    // to a list of lines. Without splits it's the single (tank_id, gross) as before.
+    let lines;
+    if (Array.isArray(tank_splits) && tank_splits.length) {
+      lines = tank_splits
+        .map(s => ({ tank_id: s.tank_id, gross: Number(s.gross_volume_ltrs) }))
+        .filter(l => l.tank_id && Number.isFinite(l.gross) && l.gross > 0);
+      if (!lines.length) return res.status(400).json({ error: 'Each tank split needs a tank and a positive quantity.' });
+    } else {
+      lines = [{ tank_id, gross: Number(gross_volume_ltrs) }];
     }
 
-    // Duplicate guard: the same invoice/DC + product + volume is the same delivery
-    // line. One invoice carries several products (different fuel) — those are fine;
-    // re-submitting the SAME product (double-click, retry, two browsers) is not.
-    // App-level check + the DB unique index (ux_fuel_deliveries_dedup) as the
-    // race-proof backstop. Only guards when a DC/invoice number is present.
+    // Re-scope every line's tank to the validated station — reject any from another outlet.
+    for (const l of lines) {
+      if (!l.tank_id) continue;
+      const { rows: tk } = await pool.query('SELECT 1 FROM tanks WHERE id=$1 AND station_id=$2', [l.tank_id, station_id]);
+      if (!tk.length) return res.status(400).json({ error: 'A selected tank does not belong to this station.' });
+    }
+
+    // Apportion the product's money across the split lines by litre share, so the
+    // invoice value = Σ per-tank (litres × rate). The LAST line absorbs the rounding
+    // remainder so Σ(line totals) equals the product total to the paise.
+    const totalGross = lines.reduce((a, l) => a + l.gross, 0);
+    const prodTotal  = total_value != null ? Number(total_value) : null;
+    const prodFreight = Number(freight || 0);
+    let allocTotal = 0, allocFreight = 0;
+    lines.forEach((l, i) => {
+      const last = i === lines.length - 1;
+      if (prodTotal != null) {
+        l.total_value = last ? +(prodTotal - allocTotal).toFixed(2) : +(prodTotal * l.gross / totalGross).toFixed(2);
+        allocTotal += l.total_value;
+      } else if (rate_per_ltr != null) {
+        l.total_value = +(l.gross * Number(rate_per_ltr)).toFixed(2);
+      } else {
+        l.total_value = null;
+      }
+      l.freight = last ? +(prodFreight - allocFreight).toFixed(2) : +(prodFreight * l.gross / totalGross).toFixed(2);
+      allocFreight += l.freight;
+    });
+
+    // Duplicate guard: the same invoice/DC + product + volume + tank is the same
+    // delivery line. One invoice carries several products (different fuel) — fine;
+    // a split puts the same product into different tanks (different tank/volume) —
+    // also fine. Re-submitting the SAME product+volume+tank (double-click, retry,
+    // two browsers) is not. App-level check + DB unique index as the race backstop.
     if (dc_number) {
-      const { rows: dup } = await pool.query(
-        `SELECT received_at FROM fuel_deliveries
-         WHERE station_id=$1 AND dc_number=$2 AND fuel_type=$3 AND gross_volume_ltrs=$4 LIMIT 1`,
-        [station_id, dc_number, fuel_type, gross_volume_ltrs]
-      );
-      if (dup.length) {
-        const when = new Date(dup[0].received_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-        return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}, ${gross_volume_ltrs}L (on ${when}). Not saved again.` });
+      for (const l of lines) {
+        const { rows: dup } = await pool.query(
+          `SELECT received_at FROM fuel_deliveries
+           WHERE station_id=$1 AND dc_number=$2 AND fuel_type=$3 AND gross_volume_ltrs=$4
+             AND tank_id IS NOT DISTINCT FROM $5 LIMIT 1`,
+          [station_id, dc_number, fuel_type, l.gross, l.tank_id || null]
+        );
+        if (dup.length) {
+          const when = new Date(dup[0].received_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+          return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}, ${l.gross}L (on ${when}). Not saved again.` });
+        }
       }
     }
 
@@ -132,39 +170,51 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
       if (!iv.length) invoiceId = null;
     }
 
-    let rows;
+    // Insert one row per tank (splits share the DC/invoice/fuel/rate). All-or-nothing
+    // in a transaction so a partial split can't leave a lopsided stock picture.
+    const created = [];
+    const client = await pool.connect();
     try {
-      ({ rows } = await pool.query(
-        `INSERT INTO fuel_deliveries(
-           station_id,tank_id,shift_id,dc_number,dc_date,received_at,
-           fuel_type,oil_company,depot_name,tanker_number,compartment_no,
-           gross_volume_ltrs,temperature_c,density,
-           batch_number,seal_number,rate_per_ltr,freight,total_value,
-           received_by,notes,invoice_id
-         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-         RETURNING *`,
-        [
-          station_id, tank_id, shift_id||null,
-          dc_number||null, dc_date||new Date().toISOString().slice(0,10),
-          received_at||new Date(),
-          fuel_type, oil_company||null, depot_name||null,
-          tanker_number||null, compartment_no||null,
-          gross_volume_ltrs, temperature_c||null, density||null,
-          batch_number||null, seal_number||null,
-          rate_per_ltr||null, freight||0, total_value||null,
-          req.user.id, notes||null, invoiceId,
-        ]
-      ));
+      await client.query('BEGIN');
+      for (const l of lines) {
+        const { rows: r } = await client.query(
+          `INSERT INTO fuel_deliveries(
+             station_id,tank_id,shift_id,dc_number,dc_date,received_at,
+             fuel_type,oil_company,depot_name,tanker_number,compartment_no,
+             gross_volume_ltrs,temperature_c,density,
+             batch_number,seal_number,rate_per_ltr,freight,total_value,
+             received_by,notes,invoice_id
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+           RETURNING *`,
+          [
+            station_id, l.tank_id || null, shift_id||null,
+            dc_number||null, dc_date||new Date().toISOString().slice(0,10),
+            received_at||new Date(),
+            fuel_type, oil_company||null, depot_name||null,
+            tanker_number||null, compartment_no||null,
+            l.gross, temperature_c||null, density||null,
+            batch_number||null, seal_number||null,
+            rate_per_ltr||null, l.freight, l.total_value,
+            req.user.id, notes||null, invoiceId,
+          ]
+        );
+        created.push(r[0]);
+      }
+      await client.query('COMMIT');
     } catch (e) {
+      await client.query('ROLLBACK');
       // Race backstop: the DB unique index caught a duplicate the app pre-check missed.
       if (e.code === '23505') {
-        return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}, ${gross_volume_ltrs}L. Not saved again.` });
+        return res.status(409).json({ error: `Already recorded — DC ${dc_number}, ${fuel_type}. Not saved again.` });
       }
       throw e;
+    } finally {
+      client.release();
     }
 
-    req.io.to(`station:${station_id}`).emit('delivery:new', rows[0]);
-    res.status(201).json(rows[0]);
+    created.forEach(row => req.io.to(`station:${station_id}`).emit('delivery:new', row));
+    // Back-compat: a single line returns the object (as before); a split returns the array.
+    res.status(201).json(created.length === 1 ? created[0] : created);
   } catch (err) { next(err); }
 });
 
