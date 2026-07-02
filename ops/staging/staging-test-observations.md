@@ -15,6 +15,8 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | T7 | **Operator self-close** mobile settlement screen | 🔧 |
 | T8 | **"Settlement2" responsibility** + assign in Add-Attendant (superadmin + manager) | 🔧 |
 | T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | 🔧 |
+| T12 | Settlement variance must use **trade-date rate**, not current (fixes "huge variance") | 🔧 |
+| T1c | Keep Highway's **1st-close shift** (30 Jun 6AM→1 Jul 6AM); prod cleanup must preserve it | 🔧 |
 | T9 | Consolidated PR for T2–T5 (+T11) → staging test | 🚢 |
 | T10 | Prod go-live: merge → `main`, gated `occurred_at` backfill | 🚢 |
 
@@ -36,6 +38,20 @@ synthesized `dispense_events` amounts on the demo days; 1 Jul (clean shift) tall
 DECISION (owner): (a) deep-dive per-shift to reconcile the pre-1-Jul figures, OR (b) **delete
 Highway data up to 30 Jun** and start clean from 1 Jul. Recommend (b) — it's demo data.
 - [ ] Owner picks (a) or (b). Then: I give the diagnostic (a) or the guarded delete SQL (b).
+
+## T12 — Settlement revenue variance uses CURRENT rate, must use TRADE-DATE rate  🔧 TO-FIX
+The new settlement's Variance = collections − target, where target = qty × **current**
+`fuel_prices` rate. Owner's rule: target = (closing − opening) × **the rate on that
+date**. Using the latest rate instead of the trade-date rate inflates the variance when
+a price changed → the "huge variance". Fix: in the `settlement_fuel` query, pick the
+price effective on `shifts.date` (fuel_prices where effective_from <= trade day, latest),
+not the newest. (Quantity source is fine: SUM(dispense_events)=meter delta for mgr closes.)
+
+## T1-CORRECTION — keep Highway's 1st-close shift (30 Jun 6AM → 1 Jul 6AM)  🔧
+That shift was MATCHING and must be kept; my cleanup `date < 2026-07-01` deleted it
+(its shift-date is 30 Jun). Staging: re-refresh from prod to restore, then re-run a
+cleanup that EXCLUDES that shift. PROD cleanup MUST preserve it (delete only the
+mismatching earlier demo shifts, not the 30→1 close).
 
 ## OBSERVATION (2026-07-02) — Highway shows no dashboard data (likely EXPECTED, revisit in testing)
 After T1 cleanup, Highway shows MTD 0 + empty settlement. Likely NOT a bug: Highway's
