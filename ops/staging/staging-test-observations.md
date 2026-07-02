@@ -7,9 +7,9 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | # | Item | Status |
 |---|------|--------|
 | T1 | Highway data: amount not tallying with shift breakdown (except 1 Jul) — deep-dive OR delete pre-1-Jul | ❓ decision |
-| T2 | Dashboard: two **MTD tiles** — Quantity (fuel breakdown) + Amount, vs **last-month MTD** (YAGO later) | 🔧 |
-| T3 | Dashboard: **settlement tile** — move date picker in with ◀/▶; columns + by-fuel total row | 🔧 |
-| T4 | Settlement: **target revenue** = Σ(qty×rate)/operator vs actual → **revenue variance** | 🔧 |
+| T2 | Dashboard: two **MTD tiles** — Quantity (fuel breakdown) + Amount, vs **last-month MTD** (YAGO later) | ✅ built (branch) |
+| T3 | Dashboard: **settlement tile** — move date picker in with ◀/▶; columns + by-fuel total row | ✅ built (branch) |
+| T4 | Settlement: **target revenue** = Σ(qty×rate)/operator vs actual → **revenue variance** | ✅ built (branch) |
 | T5 | Shift-start: **staggered operators** — stay on Operators screen; explicit Done→dashboard | ✅ built (branch, Batch 1) |
 | T6 | **Operator login** (mobile-based) — new auth surface; dependency for T7/T8 | 🔧 ❓ |
 | T7 | **Operator self-close** mobile settlement screen | 🔧 |

@@ -72,6 +72,14 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const sales = d.sales || [];
   const salesByShift = d.sales_by_shift;   // per-shift tiles; undefined on older backend
   const isToday = date === today;          // live-state tiles show only for today
+  // MTD tiles (T2): month-to-viewed-date vs last month's same window.
+  const mtd = d.mtd || { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
+  const mtdFuels   = Object.entries(mtd.current.by_fuel || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const mtdQtyCur  = Object.values(mtd.current.by_fuel || {}).reduce((s, v) => s + v, 0);
+  const mtdQtyLast = Object.values(mtd.last_month.by_fuel || {}).reduce((s, v) => s + v, 0);
+  const pctDelta   = (cur, last) => (last > 0 ? ((cur - last) / last) * 100 : null);
+  const deltaChip  = (cur, last) => { const dd = pctDelta(cur, last); return dd == null ? null : <span style={{ color: dd >= 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{dd >= 0 ? '▲' : '▼'} {Math.abs(dd).toFixed(0)}%</span>; };
+  const settlementFuel = d.settlement_fuel || [];   // per-operator fuel qty + target revenue (T3/T4)
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
   // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
@@ -92,6 +100,18 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
     card: t.card + Number(s.card_total || 0), credit: t.credit + Number(s.credit_total || 0),
     petty: t.petty + Number(s.petty_cash || 0), total: t.total + Number(s.total_sales || 0),
   }), { cash: 0, upi: 0, card: 0, credit: 0, petty: 0, total: 0 });
+  // T3/T4 settlement rows: per-operator payments (settlements) + fuel qty/target (settlement_fuel).
+  const fuelByOp = {};
+  settlementFuel.forEach(f => { (fuelByOp[f.attendant_id] = fuelByOp[f.attendant_id] || []).push(f); });
+  const settleRows = settlements.map(s => {
+    const fuels = fuelByOp[s.attendant_id] || [];
+    const target = fuels.reduce((a, f) => a + (f.target_revenue || 0), 0);   // Σ qty × rate
+    const collected = Number(s.cash_actual || 0) + Number(s.upi_total || 0) + Number(s.card_total || 0) + Number(s.credit_total || 0);
+    return { ...s, fuels, target, collected, revVar: +(collected - target).toFixed(2) };
+  });
+  const totQtyByFuel = {};
+  settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
+  const stepDate = (n) => { const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
   const wet = d.wetstock_mtd;
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
@@ -131,16 +151,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
               {shifts.length === 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{tc('bunk.noShiftOpen', 'no shift open')}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#b4b2a9' }}>
-              {tc('bunk.viewing', 'Viewing')}
-              <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)}
-                style={{ background: '#2f343c', color: '#f1efe8', border: '1px solid #5f5e5a', borderRadius: 8, padding: '5px 9px', fontSize: 12.5, colorScheme: 'dark' }} />
-            </label>
-            <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
-              {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.nNeedYou', '{n} need you').replace('{n}', needCount)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.allClear', 'all clear')}</>}
-            </span>
-          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
+            {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.nNeedYou', '{n} need you').replace('{n}', needCount)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.allClear', 'all clear')}</>}
+          </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
           <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
@@ -168,76 +181,47 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
       )}
 
-      {/* Sales by shift — one tile per shift (dynamic count + colour), filed by the
-          day the shift CLOSES. No merged daily total (misleading for multi-shift ops). */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{tc('bunk.salesByShift', 'Sales by shift')}</span>
-          {salesMasked && openShifts.length > 0 && <span style={{ fontSize: 12, color: 'var(--text-2,#475569)' }}><Lock size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.liveSealedTilClose', 'live shift sealed until close')}</span>}
+      {/* MTD tiles (T2) — month-to-date quantity (by fuel) + amount, vs last month's
+          same window. Follows the viewed date. */}
+      <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 10, marginBottom: 14 }}>
+        <div style={{ ...card, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdQuantity', 'MTD quantity')}</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtL(mtdQtyCur)} L</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: mtdFuels.length ? 8 : 0 }}>{tc('bunk.lastMonth', 'last month')} {fmtL(mtdQtyLast)} L {deltaChip(mtdQtyCur, mtdQtyLast)}</div>
+          {mtdFuels.map(([ft, v]) => (
+            <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-2,#475569)', marginTop: 3 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft) }} />{cap(ft)}</span>
+              <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
+            </div>
+          ))}
         </div>
-        {(!Array.isArray(salesByShift) || salesByShift.length === 0) ? (
-          <div style={{ ...card, padding: '18px', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>{tc('bunk.noShiftSales', 'No shift sales recorded for this day yet.')}</div>
-        ) : (
-          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10 }}>
-            {salesByShift.map((sh, i) => {
-              const theme = SHIFT_THEME[sh.shift_number] || SHIFT_THEME[(i % 3) + 1];
-              const shFuels = Object.entries(sh.fuels || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-              const shPays  = Object.entries(sh.payments || {}).filter(([, v]) => v > 0);
-              const shPayT  = shPays.reduce((s, [, v]) => s + v, 0);
-              return (
-                <div key={sh.shift_id} style={{ ...card, padding: '12px 14px', background: theme.bg, borderTop: `3px solid ${theme.bar}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: theme.fg }}>{tc('bunk.shiftN', 'Shift {n}').replace('{n}', sh.shift_number)}</div>
-                      <div style={{ fontSize: 11.5, color: theme.fg, opacity: .8 }}>{fmtDay(sh.end_time || sh.start_time)} · {fmtTime(sh.start_time)} → {fmtTime(sh.end_time)}</div>
-                    </div>
-                    <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#fff', color: theme.fg }}>{sh.status === 'open' ? tc('bunk.live', 'live') : tc('bunk.closed', 'closed')}</span>
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937', marginTop: 8 }}>{fmtR(sh.total_amount)}</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-2,#475569)', marginBottom: shFuels.length ? 6 : 0 }}>{fmtL(sh.total_ltrs)} L</div>
-                  {shFuels.map(([ft, v]) => (
-                    <div key={ft} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-2,#475569)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(ft) }} />{cap(ft)}</span>
-                      <span style={{ fontWeight: 700 }}>{fmtL(v)} L</span>
-                    </div>
-                  ))}
-                  {shPayT > 0 && (
-                    <>
-                      <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
-                        {shPays.map(([m, v]) => <div key={m} style={{ width: `${(v / shPayT) * 100}%`, background: PAY[m] || '#94a3b8' }} />)}
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--text-2,#475569)' }}>
-                        {shPays.map(([m, v]) => <span key={m}>{cap(m)} {Math.round((v / shPayT) * 100)}%</span>)}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {isOwnerView && margin?.amount != null && (
-          <div style={{ ...card, padding: '10px 14px', marginTop: 10, background: '#eaf3de', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12.5, color: '#3b6d11', fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}</span>
-            <span style={{ fontSize: 18, fontWeight: 800, color: '#27500a' }}>{fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</span>
-          </div>
-        )}
+        <div style={{ ...card, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdAmount', 'MTD amount')}</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtR(mtd.current.amount)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.lastMonth', 'last month')} {fmtR(mtd.last_month.amount)} {deltaChip(mtd.current.amount, mtd.last_month.amount)}</div>
+          {isOwnerView && margin?.amount != null && <div style={{ fontSize: 12.5, color: '#3b6d11', marginTop: 8, fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}: {fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</div>}
+        </div>
       </div>
 
-      {/* Latest shift settlement — every operator of the most recently closed shift */}
-      {settlements.length > 0 && (
-        <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700 }}>
-              {tc('bunk.shiftSettlement', 'Shift settlement')}{settlements[0]?.shift_number ? tc('bunk.shiftNumberSuffix', ' — Shift {n}').replace('{n}', settlements[0].shift_number) : ''}
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.operatorsClosed', '{n} operator{s} closed').replace('{n}', settlements.length).replace('{s}', settlements.length > 1 ? 's' : '')}</span>
+      {/* Shift settlement (T3/T4) — date-navigable; per-operator fuel qty + target-vs-actual revenue variance */}
+      <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.shiftSettlement', 'Shift settlement')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button onClick={() => stepDate(-1)} title={tc('bunk.prevDay', 'Previous day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: 'pointer', fontSize: 12 }}>◀</button>
+            <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)} style={{ padding: '5px 9px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 12.5 }} />
+            <button onClick={() => stepDate(1)} disabled={date >= today} title={tc('bunk.nextDay', 'Next day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: date >= today ? 'default' : 'pointer', opacity: date >= today ? .4 : 1, fontSize: 12 }}>▶</button>
           </div>
+        </div>
+        {settleRows.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: '1.5rem' }}>{tc('bunk.noSettlement', 'No settled operators for this day.')}</div>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 540 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 660 }}>
               <thead>
                 <tr style={{ color: 'var(--text-3)', textAlign: 'right' }}>
                   <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.operator', 'Operator')}</th>
+                  <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.fuelQty', 'Fuel · Qty')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.cash', 'Cash')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.upi', 'UPI')}</th>
                   <th style={{ padding: '6px 8px', fontWeight: 700 }}>{tc('bunk.card', 'Card')}</th>
@@ -248,40 +232,41 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                 </tr>
               </thead>
               <tbody>
-                {settlements.map((s, i) => {
-                  const v = Number(s.variance || 0);
-                  return (
-                    <tr key={i} style={{ borderTop: '0.5px solid var(--border,#e5e7eb)', textAlign: 'right' }}>
-                      <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.upi_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
-                      <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
-                      <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total_sales)}</td>
-                      <td style={{ padding: 8, fontWeight: 700, color: Math.abs(v) <= 50 ? '#27500a' : '#a32d2d' }}>{v >= 0 ? '+' : ''}{fmtR(v)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {settlements.length > 1 && (
-                <tfoot>
-                  <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
-                    <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
-                    <td style={{ padding: 8 }}>{fmtR(setTot.total)}</td>
-                    <td />
+                {settleRows.map((s, i) => (
+                  <tr key={i} style={{ borderTop: '0.5px solid var(--border,#e5e7eb)', textAlign: 'right', verticalAlign: 'top' }}>
+                    <td style={{ textAlign: 'left', padding: 8 }}><strong>{s.attendant_name}</strong>{s.shift_number != null && <span style={{ color: 'var(--text-3)', fontWeight: 400 }}> · S{s.shift_number}</span>}</td>
+                    <td style={{ textAlign: 'left', padding: 8 }}>
+                      {s.fuels.length === 0 ? <span style={{ color: 'var(--text-3)' }}>—</span> : s.fuels.map((f, j) => (
+                        <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}><span style={{ width: 7, height: 7, borderRadius: 2, background: fuelColor(f.fuel_type) }} />{cap(f.fuel_type)} · {fmtL(f.litres)} L</div>
+                      ))}
+                    </td>
+                    <td style={{ padding: 8 }}>{fmtR(s.cash_actual)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.upi_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
+                    <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
+                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.collected)}<div style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 400 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
+                    <td style={{ padding: 8, fontWeight: 700, color: Math.abs(s.revVar) <= 50 ? '#27500a' : '#a32d2d' }}>{s.revVar >= 0 ? '+' : ''}{fmtR(s.revVar)}</td>
                   </tr>
-                </tfoot>
-              )}
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '1.5px solid var(--border,#e5e7eb)', textAlign: 'right', fontWeight: 700 }}>
+                  <td style={{ textAlign: 'left', padding: 8 }}>{tc('bunk.total', 'Total')}</td>
+                  <td style={{ textAlign: 'left', padding: 8, fontWeight: 400, fontSize: 12 }}>{Object.entries(totQtyByFuel).filter(([, v]) => v > 0).map(([ft, v]) => <div key={ft}>{cap(ft)} · {fmtL(v)} L</div>)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.cash)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.upi)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.cash + setTot.upi + setTot.card + setTot.credit)}</td>
+                  <td />
+                </tr>
+              </tfoot>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Live 'now' status (receivables · fuel health · AI briefing) — today only.
           Past dates have no stock/receivables snapshot, so we don't fake them. */}
