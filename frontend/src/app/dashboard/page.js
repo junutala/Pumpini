@@ -71,6 +71,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const d = data || {};
   const sales = d.sales || [];
   const salesByShift = d.sales_by_shift;   // per-shift tiles; undefined on older backend
+  const isToday = date === today;          // live-state tiles show only for today
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
   // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
@@ -143,12 +144,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
           <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{aiLines.slice(0, 2).join(' ')}</span>
+          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{isToday ? aiLines.slice(0, 2).join(' ') : tc('bunk.viewingPastDay', 'Viewing a past day — sales & settlement are for the selected date. Live status (stock, deposits, receivables) reflects today only.')}</span>
         </div>
       </div>
 
-      {/* Needs you */}
-      {actions.length > 0 && (
+      {/* Needs you — live 'now' actions; only when viewing today */}
+      {isToday && actions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{tc('bunk.needsYou', 'Needs you')}</div>
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
@@ -228,7 +229,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
             <span style={{ fontSize: 14, fontWeight: 700 }}>
-              {tc('bunk.latestShiftSettlement', 'Latest shift settlement')}{settlements[0]?.shift_number ? tc('bunk.shiftNumberSuffix', ' — Shift {n}').replace('{n}', settlements[0].shift_number) : ''}
+              {tc('bunk.shiftSettlement', 'Shift settlement')}{settlements[0]?.shift_number ? tc('bunk.shiftNumberSuffix', ' — Shift {n}').replace('{n}', settlements[0].shift_number) : ''}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.operatorsClosed', '{n} operator{s} closed').replace('{n}', settlements.length).replace('{s}', settlements.length > 1 ? 's' : '')}</span>
           </div>
@@ -282,6 +283,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
       )}
 
+      {/* Live 'now' status (receivables · fuel health · AI briefing) — today only.
+          Past dates have no stock/receivables snapshot, so we don't fake them. */}
+      {isToday && (<>
       {/* Credit receivables */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('bunk.creditReceivables', 'Credit receivables')}</div>
@@ -342,6 +346,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           {aiLines.map((l, i) => <li key={i}>{l}</li>)}
         </ul>
       </div>
+      </>)}
     </Wrapper>
   );
 }
