@@ -272,9 +272,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         )}
       </div>
 
-      {/* Live 'now' status (receivables · fuel health · AI briefing) — today only.
-          Past dates have no stock/receivables snapshot, so we don't fake them. */}
-      {isToday && (<>
+      {/* Live 'now' status (receivables · fuel health · AI briefing). These are
+          current station status (not per-date), so they always render — the hero
+          note already tells the viewer live status reflects today, not the past
+          date being viewed. Previously gated to today, which made the tiles vanish
+          on a past date and read as a broken scroll. */}
+      {(<>
       {/* Credit receivables */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('bunk.creditReceivables', 'Credit receivables')}</div>
