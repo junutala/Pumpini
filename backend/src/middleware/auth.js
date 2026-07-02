@@ -53,6 +53,23 @@ async function bumpTokenVersion(userId) {
   clearAuthState(userId);
 }
 
+// Server-side lockdown: an OPERATOR (role='attendant') token may reach ONLY the
+// settlement flow + auth. Every other endpoint is 403 — so a leaked/jailbroken
+// operator credential (another browser, a crafted request, a competitor probing
+// the API) cannot read outlet data or write anything but their own settlement.
+// This is enforced here, at the single auth choke point, independent of the UI.
+const ATTENDANT_ALLOW = [
+  { m: /.*/,     re: /^\/api\/auth(\/|$)/ },                 // me · logout · change-password · passkey enrol
+  { m: /^GET$/,  re: /^\/api\/shifts\/[^/]+$/ },             // their active shift + its detail (to load nozzles)
+  { m: /^GET$/,  re: /^\/api\/prices\/[^/]+\/current$/ },    // board rates for amount-due
+  { m: /^GET$/,  re: /^\/api\/corporate$/ },                 // credit-customer LOV
+  { m: /^GET$/,  re: /^\/api\/stations\/[^/]+\/settings$/ }, // geofence + outlet name
+  { m: /^GET$/,  re: /^\/api\/templates\/user-permissions$/ }, // app-shell perms (returns empty for operators)
+  { m: /^POST$/, re: /^\/api\/reconcile\/(self-settle|pos-meter)$/ }, // settle own line · scan meter
+];
+const attendantAllowed = (method, path) =>
+  ATTENDANT_ALLOW.some(a => a.m.test(method) && a.re.test(path));
+
 const authenticate = async (req, res, next) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
@@ -73,6 +90,11 @@ const authenticate = async (req, res, next) => {
       return res.status(401).json({ error: 'Session expired. Please log in again.' });
     }
     req.user = decoded;
+    // Operators are hard-locked to the settlement flow at the server, whatever
+    // the client. (Managers/owners/others are unaffected.)
+    if (decoded.role === 'attendant' && !attendantAllowed(req.method, (req.baseUrl || '') + req.path)) {
+      return res.status(403).json({ error: 'Operators can only use the settlement screen.' });
+    }
     // Open the RLS identity context (runs the rest of the request on the
     // non-bypass role as this user). Note: everything ABOVE here — JWT verify +
     // getAuthState — deliberately ran on the bypass role, before any identity
