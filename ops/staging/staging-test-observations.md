@@ -24,22 +24,32 @@ start this operator"). Make the bottom CTA an explicit "Done — go to dashboard
 does NOT auto-navigate on every add. (Going-live already happens on Add via
 `/assign` → `/shifts/active`, so no operator waits for the rest.)
 
-## 3. Dashboard — intended MTD layout not built  🔧 TO-FIX (needs layout confirm)
-Owner's intended dashboard: **(a)** two TOP tiles = MTD running totals — **total
-amount** + **fuel-type breakup** (litres by fuel); **(b)** a date picker; **(c)** the
-picked date shows **attendant-wise settlement INCLUDING fuel type + quantity sold**
-per operator.
-What we built instead: N per-shift sales tiles (colour-coded) + top date picker +
-payment-only settlement (no per-operator fuel type/qty). So:
-- NOT built: the two MTD tiles (amount + fuel breakup).
-- NOT built: fuel type + quantity per operator in the settlement.
-- Date picker is at the TOP, not the bottom.
-Data availability (all buildable): MTD amount + fuel litres = SUM(dispense_events)
-for the month (station, occurred_at in month) grouped by fuel_type; per-operator fuel
-qty = SUM(dispense_events) by attendant_id + fuel_type for the shift.
-CONFIRM before building: exact target layout —
-- [ ] Do the two MTD tiles REPLACE the per-shift tiles, or sit ABOVE them (keep both)?
-- [ ] Keep the per-shift tiles at all, or is the day view = just the attendant
-      settlement (with fuel qty)?
-- [ ] Date picker at top (as now) or bottom (as recalled)?
-- [ ] MTD = calendar month-to-date of the *viewed* date, or always current month?
+## 3. Dashboard — MTD tiles + date-driven settlement  🔧 TO-BUILD (refined spec 2026-07-02)
+**A) Two MTD tiles (top):**
+  - Tile 1 — **MTD Quantity**, with **SKU/fuel-type breakdown** (litres by fuel only).
+  - Tile 2 — **MTD Amount** (₹).
+  - Comparison: show **last month's MTD** alongside for now (trend baseline). Later,
+    once there's enough history, add **YAGO** (year-ago) for year-on-year trend.
+**B) Date nav moves INTO the settlement tile:**
+  - the date picker sits on the settlement tile with **◀ / ▶ arrows** to step day by
+    day (if aesthetics allow). (Retire the top-hero date picker for this view.)
+**C) Attendant-wise settlement for the picked date — columns:**
+  `Operator · Fuel type · Quantity sold · Cash · UPI · Card · Credit · Petty · Total · Variance`
+  Plus a **TOTAL row**: quantity **by fuel type** + total amount → a full day's view
+  with all relevant details.
+
+Current build differs: N per-shift sales tiles + top date picker + payment-only
+settlement (no fuel type/qty). This spec REPLACES that body layout.
+
+Data (all buildable): MTD & last-month-MTD = SUM(dispense_events) by fuel over the
+month windows; per-operator payments + variance from shift_reconciliation; per-operator
+fuel qty = SUM(dispense_events) by attendant_id + fuel_type.
+
+Build-details to resolve at build time:
+- [ ] Operator mans multiple fuels (multi-nozzle) → one row per **operator×fuel**, or
+      one row per **operator** with fuel(s) listed? (Total row aggregates qty by fuel
+      either way — recommend operator×fuel sub-rows, subtotalled per operator.)
+- [ ] MTD window = 1st-of-month → viewed date; last month = same 1st→same-day window?
+- [ ] Do the current **per-shift tiles** stay, or is the day view now just this
+      settlement table? (Reading the spec: settlement table replaces the per-shift
+      tiles; MTD tiles replace the top summary.)
