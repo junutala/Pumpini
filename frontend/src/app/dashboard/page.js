@@ -106,8 +106,10 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const settleRows = settlements.map(s => {
     const fuels = fuelByOp[s.attendant_id] || [];
     const target = fuels.reduce((a, f) => a + (f.target_revenue || 0), 0);   // Σ qty × rate
-    const collected = Number(s.cash_actual || 0) + Number(s.upi_total || 0) + Number(s.card_total || 0) + Number(s.credit_total || 0);
-    return { ...s, fuels, target, collected, revVar: +(collected - target).toFixed(2) };
+    // Accounted = every money column incl. PETTY (cash taken out of the drawer for
+    // expenses still has to be accounted). Variance = accounted − target ≈ 0 when clean.
+    const total = Number(s.cash_actual || 0) + Number(s.upi_total || 0) + Number(s.card_total || 0) + Number(s.credit_total || 0) + Number(s.petty_cash || 0);
+    return { ...s, fuels, target, total, revVar: +(total - target).toFixed(2) };
   });
   const totQtyByFuel = {};
   settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
@@ -245,7 +247,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
                     <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
                     <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
-                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.collected)}<div style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 400 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
+                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total)}<div style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 400 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
                     <td style={{ padding: 8, fontWeight: 700, color: Math.abs(s.revVar) <= 50 ? '#27500a' : '#a32d2d' }}>{s.revVar >= 0 ? '+' : ''}{fmtR(s.revVar)}</td>
                   </tr>
                 ))}
@@ -259,7 +261,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                   <td style={{ padding: 8 }}>{fmtR(setTot.card)}</td>
                   <td style={{ padding: 8 }}>{fmtR(setTot.credit)}</td>
                   <td style={{ padding: 8 }}>{fmtR(setTot.petty)}</td>
-                  <td style={{ padding: 8 }}>{fmtR(setTot.cash + setTot.upi + setTot.card + setTot.credit)}</td>
+                  <td style={{ padding: 8 }}>{fmtR(setTot.cash + setTot.upi + setTot.card + setTot.credit + setTot.petty)}</td>
                   <td />
                 </tr>
               </tfoot>
