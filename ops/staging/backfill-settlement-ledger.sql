@@ -65,11 +65,21 @@ ON CONFLICT (shift_id, attendant_id) DO UPDATE SET
 -- 3) Layer 2 detail — per outlet × fuel: dips aggregated across the day's shifts.
 WITH day_tanks AS (
   SELECT s.station_id, s.trade_date, t.id AS tank_id, t.fuel_type,
-    (SELECT dr.volume_ltrs FROM dipstick_readings dr
-       JOIN shifts s2 ON s2.id = dr.shift_id
-      WHERE dr.tank_id=t.id AND s2.station_id=s.station_id AND s2.date=s.trade_date
-        AND dr.reading_type='opening'
-      ORDER BY dr.recorded_at ASC LIMIT 1) AS opening_ltrs,
+    -- Opening = prior day's CLOSING dip (handover chain); fall back to a same-day
+    -- 'opening' only when there is no prior closing. recorded_at is entry time and
+    -- unreliable for picking among duplicate/mis-tagged openings.
+    COALESCE(
+      (SELECT dr.volume_ltrs FROM dipstick_readings dr
+         JOIN shifts sp ON sp.id = dr.shift_id
+        WHERE dr.tank_id=t.id AND sp.station_id=s.station_id AND sp.date < s.trade_date
+          AND dr.reading_type='closing'
+        ORDER BY sp.date DESC, sp.shift_number DESC, dr.recorded_at DESC LIMIT 1),
+      (SELECT dr.volume_ltrs FROM dipstick_readings dr
+         JOIN shifts s2 ON s2.id = dr.shift_id
+        WHERE dr.tank_id=t.id AND s2.station_id=s.station_id AND s2.date=s.trade_date
+          AND dr.reading_type='opening'
+        ORDER BY dr.recorded_at ASC LIMIT 1)
+    ) AS opening_ltrs,
     (SELECT dr.volume_ltrs FROM dipstick_readings dr
        JOIN shifts s2 ON s2.id = dr.shift_id
       WHERE dr.tank_id=t.id AND s2.station_id=s.station_id AND s2.date=s.trade_date

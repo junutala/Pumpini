@@ -123,9 +123,22 @@ async function recomputeOutlet(client, stationId, tradeDate) {
   // delivery days and drove dip_sold negative.
   const { rows: tanks } = await client.query(`
     SELECT t.id AS tank_id, t.fuel_type,
-      (SELECT dr.volume_ltrs FROM dipstick_readings dr
-        WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='opening'
-        ORDER BY dr.recorded_at ASC LIMIT 1) AS opening_ltrs,
+      -- Opening dip = the prior day's CLOSING dip (the handover chain), same as
+      -- reconcile.js does for meters. We deliberately do NOT trust an 'opening'-
+      -- typed reading picked by recorded_at: that is data-entry time and a tank
+      -- with duplicate/mis-tagged openings would hand back the wrong value (this
+      -- drove dip_sold wildly wrong). Fall back to a same-day 'opening' only when
+      -- there is no prior closing (a tank's very first day).
+      COALESCE(
+        (SELECT dr.volume_ltrs FROM dipstick_readings dr
+           JOIN shifts sp ON sp.id = dr.shift_id
+          WHERE dr.tank_id=t.id AND sp.station_id=$1 AND sp.date < $3::date
+            AND dr.reading_type='closing'
+          ORDER BY sp.date DESC, sp.shift_number DESC, dr.recorded_at DESC LIMIT 1),
+        (SELECT dr.volume_ltrs FROM dipstick_readings dr
+          WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='opening'
+          ORDER BY dr.recorded_at ASC LIMIT 1)
+      ) AS opening_ltrs,
       (SELECT dr.volume_ltrs FROM dipstick_readings dr
         WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='closing'
         ORDER BY dr.recorded_at DESC LIMIT 1) AS closing_ltrs,
