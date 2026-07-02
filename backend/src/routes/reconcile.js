@@ -258,7 +258,8 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
               `INSERT INTO dispense_events
                  (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
                   quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',NOW())`,
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',
+                 (((SELECT date FROM shifts WHERE id=$2)::date + TIME '12:00') AT TIME ZONE 'Asia/Kolkata'))`,
               [sa.station_id, shift_id, attendant_id, leg.nozzle_id, leg.fuel_type,
                +(val / leg.price).toFixed(3), leg.price, mode]);
           }
@@ -555,7 +556,8 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
         await client.query(
           `INSERT INTO dispense_events(station_id, shift_id, nozzle_id, fuel_type,
              quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
-           VALUES($1,$2,$3,$4,$5,$6,$7,'manager',NOW())`,
+           VALUES($1,$2,$3,$4,$5,$6,$7,'manager',
+             (((SELECT date FROM shifts WHERE id=$2)::date + TIME '12:00') AT TIME ZONE 'Asia/Kolkata'))`,
           [stationId, shift_id, w.nozzle_id, w.fuel_type, +(v / w.price).toFixed(3), w.price, mode]);
       }
     }

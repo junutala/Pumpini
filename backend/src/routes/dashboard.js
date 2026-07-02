@@ -187,9 +187,50 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       if (credit_suspense > 0) ai_briefing.push(`${inr(credit_suspense)} credit is waiting to be invoiced.`);
     } catch (e) { /* cockpit metrics are additive — keep the core dashboard alive */ }
 
+    // ── Per-shift sales — one tile per shift (owner UX), NOT a merged daily total.
+    // Filed by the shift's declared trade day (shifts.date). We deliberately do NOT
+    // use end_time/occurred_at: those are the data-ENTRY timestamps, which lag badly
+    // when a manager closes days late (a 28-Jun shift can be entered on 01-Jul), and
+    // would mis-file the sales. shifts.date is the manager's trade-day label. Blind-
+    // drop preserved: non-owners get closed shifts only. Best-effort.
+    let sales_by_shift = [];
+    try {
+      const { rows } = await pool.query(`
+        SELECT s.id AS shift_id, s.shift_number, s.date AS shift_date,
+               s.start_time, s.end_time, s.status,
+               de.fuel_type, de.payment_mode,
+               COUNT(*)::int         AS txn_count,
+               SUM(de.quantity_ltrs) AS total_ltrs,
+               SUM(de.amount)        AS total_amount
+        FROM shifts s
+        JOIN dispense_events de ON de.shift_id = s.id AND NOT COALESCE(de.is_voided, FALSE)
+        WHERE s.station_id = $1
+          AND s.date = $2
+          AND (s.status = 'closed' OR $3 = TRUE)
+        GROUP BY s.id, s.shift_number, s.date, s.start_time, s.end_time, s.status,
+                 de.fuel_type, de.payment_mode
+        ORDER BY s.start_time NULLS LAST, s.shift_number`, [station_id, date, isOwner]);
+      const byId = new Map();
+      for (const r of rows) {
+        let sh = byId.get(r.shift_id);
+        if (!sh) {
+          sh = { shift_id: r.shift_id, shift_number: r.shift_number, shift_date: r.shift_date,
+                 start_time: r.start_time, end_time: r.end_time, status: r.status,
+                 total_amount: 0, total_ltrs: 0, fuels: {}, payments: {} };
+          byId.set(r.shift_id, sh);
+        }
+        const amt = parseFloat(r.total_amount || 0), ltr = parseFloat(r.total_ltrs || 0);
+        sh.total_amount += amt; sh.total_ltrs += ltr;
+        if (r.fuel_type)    sh.fuels[r.fuel_type]       = (sh.fuels[r.fuel_type] || 0) + ltr;
+        if (r.payment_mode) sh.payments[r.payment_mode] = (sh.payments[r.payment_mode] || 0) + amt;
+      }
+      sales_by_shift = Array.from(byId.values());
+    } catch (e) { /* additive — keep the core dashboard alive */ }
+
     res.json({
       date,
       sales: sales.rows,
+      sales_by_shift,
       shifts: shifts.rows,
       stock: stock.rows,
       alerts: alerts.rows,
