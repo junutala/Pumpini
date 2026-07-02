@@ -206,8 +206,8 @@ export default function ShiftStartPage() {
   };
 
   const addOperator = async () => {
-    if (!asg.attendant_id) return setErr(tc('sstart.errPickOperator','Pick an operator'));
-    if (asg.opening_cash === undefined || asg.opening_cash === '') return setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)'));
+    if (!asg.attendant_id) { setErr(tc('sstart.errPickOperator','Pick an operator')); return false; }
+    if (asg.opening_cash === undefined || asg.opening_cash === '') { setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)')); return false; }
     const chosen = nozzles.filter(n => nozPick[n.id]?.selected).map(n => {
       const v = nozPick[n.id].opening;
       const opening = v !== '' && v != null ? parseFloat(v) : (openings[n.id] != null ? Number(openings[n.id]) : 0);
@@ -217,8 +217,20 @@ export default function ShiftStartPage() {
     try {
       await api.post(`/shifts/${shift.id}/assign`, { attendant_id: asg.attendant_id, opening_cash: asg.opening_cash, nozzles: chosen });
       setAsg({}); setNozPick({}); await refreshShift(shift.id); refreshOpen();
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); }
-    setBusy(false);
+      return true;
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); return false; }
+    finally { setBusy(false); }
+  };
+
+  // An operator is "ready" once picked with at least one nozzle ticked. The Start
+  // CTA below goes live the moment ONE operator's readings are in — if the form
+  // holds an un-added operator, we add him first (he goes live immediately), then
+  // finish. No need to wait for the rest of the operators.
+  const formReady = !!asg.attendant_id && nozzles.some(n => nozPick[n.id]?.selected);
+  const startShift = async () => {
+    if (formReady) { const ok = await addOperator(); if (!ok) return; }
+    else if (attendants.length === 0) { setErr(tc('sstart.errNeedOperatorToStart','Add an operator with their nozzle readings to start.')); return; }
+    router.push('/dashboard');
   };
 
   return (
@@ -424,9 +436,9 @@ export default function ShiftStartPage() {
                     : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                 </div>
               ))}
-            <button onClick={()=>router.push('/dashboard')} disabled={attendants.length===0}
-              style={{width:'100%',height:46,marginTop:12,background:attendants.length?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:attendants.length?'pointer':'not-allowed'}}>
-              {tc('sstart.startShiftLive','Start — Shift is live ✓')}
+            <button onClick={startShift} disabled={busy || (attendants.length===0 && !formReady)}
+              style={{width:'100%',height:46,marginTop:12,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
+              {tc('sstart.startShiftCta','Start shift')}
             </button>
           </div>
         </div>

@@ -393,12 +393,12 @@ so an operator is live the moment he's added (no all-operators gate in the API).
 friction is the **3-step wizard** (Open → Dipstick → Operators, ending in one "Start —
 Shift is live ✓" button), which *feels* like a single upfront setup that isn't live
 until the end.
-NEEDS OWNER CLARIFICATION before building — which is the real blocker:
-- [ ] (a) the **Dipstick step is mandatory before Operators** (can't add operators
-      until opening dips are keyed) — decouple so operators can be added first?
-- [ ] (b) the **single "Start — Shift is live" button** reads as a gate — make each
-      "Add operator" show that operator as LIVE immediately, drop the terminal gate?
-- [ ] (c) an attendant genuinely **can't dispense/POS** until something else — if so,
-      identify it.
-Likely fix = (a)+(b): make Dipstick optional/skippable at start, and surface each
-added operator as "live" so there's no perceived all-or-nothing gate.
+OWNER CLARIFIED (2026-07-02): make the bottom CTA a **"Start shift"** that activates
+as soon as ONE operator + his nozzle readings are entered, so an attendant goes live
+the moment his readings are recorded — no waiting for the rest.
+- [x] BUILT (2026-07-02, on branch → staging): bottom CTA relabelled "Start shift";
+      enabled once one operator is added OR the add-form holds a picked operator with
+      a nozzle. On click, if the form holds an un-added operator it assigns him first
+      (he goes live via the existing `/assign` → `/shifts/active` path), then finishes.
+      **Pending staging test.**
+- [ ] (later, if wanted) make the Dipstick step skippable at start too.
