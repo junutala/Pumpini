@@ -146,6 +146,9 @@ export default function Sidebar({ open, onClose }) {
 
   const isVisible = (item) => {
     if (item.roles && !item.roles.includes(user?.role)) return false;
+    // Operators are locked to their own settlement screen — hide every nav item
+    // (incl. perm:null ones like Bunk View) that isn't explicitly tagged for them.
+    if (user?.role === 'attendant' && !(item.roles || []).includes('attendant')) return false;
     // Owner is now gated by can() too — but can() returns true via the 'ALL'
     // sentinel until a plan is configured, so nothing hides until then.
     if (item.perm  && !can(item.perm)) return false;
