@@ -328,3 +328,45 @@ Decision (owner-approved direction): the fix is **object storage, NOT a second D
 - ⚠️ **Medium/high impact** (changes how documents are written/read across deliveries,
       invoices, receipts, meter photos) → per the change-management rules, ship to
       **staging first, owner physical-tests**, then prod.
+
+## 16. Data-entry out-of-sync detection + Highway reconciliation learnings (2026-07-02)
+Context: chasing "Highway dashboard off by ₹72" opened a deeper audit. What we
+learned (all now understood; owner to advise on the data fix):
+- **Sales were filed by data-ENTRY time, not trade day.** Manager closes stamped
+  `occurred_at = NOW()`, and the dashboard bucketed by `occurred_at::date`. When a
+  manager closes days late / in batches, multiple trade days pile onto one calendar
+  day → totals that don't reconcile. Affects ALL outlets (Kamala 1-day lag, Highway
+  1–3 days). FIXED in code (synthesis now stamps the shift's trade day; per-shift
+  dashboard files by `shifts.date`); historical rows need the gated `occurred_at`
+  backfill (`ops/staging/backfill-occurred-at.sql`).
+- **`shifts.date` is the reliable trade-day label** — trust it over
+  `start_time`/`end_time`/`occurred_at`, which are entry-time and lag by days.
+- **Dips not entered as agreed.** Owner has AUTOMATED (ATG/HPCL) dip readings, so
+  staff skip physical dips. The agreed cadence — enter the HPCL reading DAILY, and a
+  PHYSICAL dip confirmation ONCE A WEEK — is not being followed. Highway has ZERO
+  dips → wet-stock reco can't run. (Adhoc Highway, by contrast, had demo/garbage
+  meter values — separate item, validate later.)
+
+TODO — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
+- [ ] Flag **missing daily dip entry** (no dip for a tank for N days).
+- [ ] Flag **overdue weekly physical-dip confirmation**.
+- [ ] Flag **late/batch closes** (shift closed ≫ its trade day) and **shifts left
+      open** past their day — the mis-dating early-warning.
+- [ ] Surface as a small **"data health"** indicator on the dashboard AND in the
+      owner/global rollup, so out-of-sync entry is obvious at a glance.
+
+LEARNING to keep visible (fold into GO-LIVE LEARNINGS §11 before Vizag): staff skip
+cadence (dips, timely closes) unless the system nags — ship the tripwire, and add
+reconciliation (meter↔POS↔dip, trade-day dating) to the per-role smoke test.
+
+## 17. Orphan / duplicate open shifts — auto-clean or manual delete (2026-07-02)
+At bring-up staff make mistakes and **open multiple shifts** that never close. E.g.
+Highway had TWO open shifts at once: `96f749ce` (dated 28 Jun but opened 01 Jul and
+never closed = orphan) and `0ba36329` (the real current one). Orphan opens skew the
+"live" tiles and block clean reconciliation.
+Decide + build:
+- [ ] Either **auto-close/void stale open shifts** (open > N hours, no activity), OR
+      **let a manager delete/void an open shift** opened by mistake (with audit
+      trail) — or both.
+- [ ] At shift-start, **warn/block a second open shift** for an outlet that runs one
+      shift at a time.
