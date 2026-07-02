@@ -11,6 +11,10 @@ import api from '../../lib/api';
 // Lazy-import browser SDK only on client
 let startAuthentication, startRegistration;
 
+// Post-login landing: owners see the multi-outlet group view; everyone else
+// (manager/attendant) lands on their outlet's bunk cockpit.
+const landingFor = (u) => (u?.role === 'owner' ? '/group-dashboard' : '/dashboard');
+
 export default function LoginPage() {
   const { t, i18n } = useTranslation();
   const { login }   = useAuth();
@@ -83,7 +87,7 @@ export default function LoginPage() {
         } catch {}
       }
 
-      window.location.href = '/dashboard';
+      window.location.href = landingFor(res?.user);
     } catch (err) {
       setError(err.error || 'Invalid mobile number or password');
     } finally {
@@ -101,7 +105,7 @@ export default function LoginPage() {
       const attResp  = await startRegistration({ optionsJSON: options });
       await api.post('/auth/passkey/register-finish', attResp);
       setRegDone(true);
-      setTimeout(() => { window.location.href = '/dashboard'; }, 1200);
+      setTimeout(() => { window.location.href = landingFor(pendingData?.user); }, 1200);
     } catch (err) {
       if (err.name === 'NotAllowedError') {
         setBioError('Fingerprint prompt was cancelled.');
@@ -134,7 +138,7 @@ export default function LoginPage() {
       if (user.must_change_password) {
         window.location.href = '/change-password';
       } else {
-        window.location.href = '/dashboard';
+        window.location.href = landingFor(user);
       }
     } catch (err) {
       if (err.name === 'NotAllowedError') {
