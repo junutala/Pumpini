@@ -3,6 +3,9 @@
 Items the owner asked to keep on the list. Pick these up when he says
 "let's visit the TODO".
 
+Items tagged **🔴 OPERATIONAL · PRIORITY** are the exception — the owner wants
+these addressed on priority (not parked), ahead of the general backlog.
+
 ## 1. Credit ageing report
 Ageing of credit-customer outstanding (e.g. 0–30 / 31–60 / 61–90 / 90+ days
 buckets, by customer, with totals and drill-down to invoices). Discussed
@@ -329,7 +332,7 @@ Decision (owner-approved direction): the fix is **object storage, NOT a second D
       invoices, receipts, meter photos) → per the change-management rules, ship to
       **staging first, owner physical-tests**, then prod.
 
-## 16. Data-entry out-of-sync detection + Highway reconciliation learnings (2026-07-02)
+## 16. Data-entry out-of-sync detection + Highway reconciliation learnings (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
 Context: chasing "Highway dashboard off by ₹72" opened a deeper audit. What we
 learned (all now understood; owner to advise on the data fix):
 - **Sales were filed by data-ENTRY time, not trade day.** Manager closes stamped
@@ -359,7 +362,7 @@ LEARNING to keep visible (fold into GO-LIVE LEARNINGS §11 before Vizag): staff 
 cadence (dips, timely closes) unless the system nags — ship the tripwire, and add
 reconciliation (meter↔POS↔dip, trade-day dating) to the per-role smoke test.
 
-## 17. Orphan / duplicate open shifts — auto-clean or manual delete (2026-07-02)
+## 17. Orphan / duplicate open shifts — auto-clean or manual delete (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
 At bring-up staff make mistakes and **open multiple shifts** that never close. E.g.
 Highway had TWO open shifts at once: `96f749ce` (dated 28 Jun but opened 01 Jul and
 never closed = orphan) and `0ba36329` (the real current one). Orphan opens skew the
