@@ -350,6 +350,11 @@ learned (all now understood; owner to advise on the data fix):
   dips → wet-stock reco can't run. (Adhoc Highway, by contrast, had demo/garbage
   meter values — separate item, validate later.)
 
+OWNER AGREED (2026-07-02) on the cadence: staff enter the **ATG/HPCL dip every day**
+into Pumpini, and a **physical dip once a week**; a large weekly variance is flagged.
+Build note: distinguishing "ATG-entered" from "physical" needs a small schema field
+(e.g. `dipstick_readings.method`/`source`) — schema change, staging-first, owner-gated.
+
 TODO — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
 - [ ] Flag **missing daily dip entry** (no dip for a tank for N days).
 - [ ] Flag **overdue weekly physical-dip confirmation**.
@@ -367,9 +372,33 @@ At bring-up staff make mistakes and **open multiple shifts** that never close. E
 Highway had TWO open shifts at once: `96f749ce` (dated 28 Jun but opened 01 Jul and
 never closed = orphan) and `0ba36329` (the real current one). Orphan opens skew the
 "live" tiles and block clean reconciliation.
-Decide + build:
-- [ ] Either **auto-close/void stale open shifts** (open > N hours, no activity), OR
-      **let a manager delete/void an open shift** opened by mistake (with audit
-      trail) — or both.
-- [ ] At shift-start, **warn/block a second open shift** for an outlet that runs one
-      shift at a time.
+OWNER DECISION (2026-07-02): **manual delete**, guarded — a delete button enabled
+ONLY when the shift has **no operators** AND **another shift the same date has
+operators** (so you can remove an empty stray, never the real working shift). No
+auto-close.
+- [x] BUILT (2026-07-02, on branch → staging): `DELETE /api/shifts/:id` with the
+      guard + refusal on any real activity (sales/settlement/invoices/deliveries/
+      suspense) + safe cleanup of the orphan's opening dips; Delete button on the
+      shift-start "Currently open shifts" list, shown only when eligible. **Pending
+      staging test**, then prod.
+- [ ] (later) warn/block opening a *second* concurrent shift for one-shift outlets.
+
+## 18. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+Owner: "We can't start the shift until ALL attendants are assigned — start-shift
+makes no sense. Let an attendant start operations as soon as HIS nozzle readings
+are entered."
+Finding: the backend ALREADY activates per-attendant — `POST /shifts/:id/assign`
+persists immediately and `/shifts/active` returns that operator's shift right away,
+so an operator is live the moment he's added (no all-operators gate in the API). The
+friction is the **3-step wizard** (Open → Dipstick → Operators, ending in one "Start —
+Shift is live ✓" button), which *feels* like a single upfront setup that isn't live
+until the end.
+NEEDS OWNER CLARIFICATION before building — which is the real blocker:
+- [ ] (a) the **Dipstick step is mandatory before Operators** (can't add operators
+      until opening dips are keyed) — decouple so operators can be added first?
+- [ ] (b) the **single "Start — Shift is live" button** reads as a gate — make each
+      "Add operator" show that operator as LIVE immediately, drop the terminal gate?
+- [ ] (c) an attendant genuinely **can't dispense/POS** until something else — if so,
+      identify it.
+Likely fix = (a)+(b): make Dipstick optional/skippable at start, and surface each
+added operator as "live" so there's no perceived all-or-nothing gate.

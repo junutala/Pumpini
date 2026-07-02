@@ -124,6 +124,55 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
   } catch (err) { next(err); }
 });
 
+// DELETE /api/shifts/:id — remove an ORPHAN shift opened by mistake.
+// Owner-approved guard: only when this shift has NO operators assigned AND another
+// shift on the SAME station+date DOES have operators — so you can delete an empty
+// stray, never the real working shift. Also refuses if any real activity exists
+// (sales, reconciliation, invoices, deliveries, suspense). Cleans up the orphan's
+// opening dips (dipstick_readings doesn't cascade); the rest cascade on delete.
+router.delete('/:id', authenticate, authorize('owner','manager'),
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
+  async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const { id } = req.params;
+      const { rows: sh } = await client.query('SELECT station_id, date FROM shifts WHERE id=$1', [id]);
+      if (!sh.length) { client.release(); return res.status(404).json({ error: 'Shift not found' }); }
+      const { station_id, date } = sh[0];
+
+      // 1) Must have no operators of its own.
+      const { rows: own } = await client.query('SELECT COUNT(*)::int n FROM shift_attendants WHERE shift_id=$1', [id]);
+      if (own[0].n > 0) { client.release(); return res.status(409).json({ error: 'Cannot delete: this shift has operators assigned.' }); }
+
+      // 2) Must carry no real activity (belt-and-braces — an orphan shouldn't have any).
+      const { rows: act } = await client.query(`
+        SELECT
+          (SELECT COUNT(*) FROM dispense_events       WHERE shift_id=$1) +
+          (SELECT COUNT(*) FROM shift_reconciliation  WHERE shift_id=$1) +
+          (SELECT COUNT(*) FROM product_invoices      WHERE shift_id=$1) +
+          (SELECT COUNT(*) FROM fuel_deliveries       WHERE shift_id=$1) +
+          (SELECT COUNT(*) FROM credit_suspense_entries WHERE shift_id=$1) AS n`, [id]);
+      if (Number(act[0].n) > 0) { client.release(); return res.status(409).json({ error: 'Cannot delete: this shift has recorded activity (sales / settlement / invoices / deliveries).' }); }
+
+      // 3) Another shift on the same date must have operators (the real one exists).
+      const { rows: sib } = await client.query(`
+        SELECT COUNT(*)::int n FROM shifts s2
+        JOIN shift_attendants sa ON sa.shift_id = s2.id
+        WHERE s2.station_id=$1 AND s2.date=$2 AND s2.id<>$3`, [station_id, date, id]);
+      if (sib[0].n === 0) { client.release(); return res.status(409).json({ error: 'Cannot delete: no other shift with operators on this date — refusing to remove the only shift.' }); }
+
+      // Safe to remove. Clear the orphan's opening dips (no cascade), then delete
+      // (shift_nozzle_readings / cash_denominations / meter_photos etc. cascade).
+      await client.query('BEGIN');
+      await client.query('DELETE FROM dipstick_readings WHERE shift_id=$1', [id]);
+      await client.query('DELETE FROM shifts WHERE id=$1', [id]);
+      await client.query('COMMIT');
+      req.io?.to(`station:${station_id}`).emit('shift:deleted', { id });
+      res.json({ deleted: true });
+    } catch (err) { await client.query('ROLLBACK').catch(() => {}); next(err); }
+    finally { client.release(); }
+  });
+
 // POST /api/shifts/:id/assign  — add attendant to shift
 router.post('/:id/assign', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {

@@ -114,6 +114,18 @@ export default function ShiftStartPage() {
     setBusy(false);
   };
 
+  // An orphan (opened by mistake) can be deleted only when it has NO operators AND
+  // another shift the same day DOES have operators — never the real working shift.
+  const canDelete = (s) => (s.attendant_count||0) === 0 &&
+    openShifts.some(o => o.id !== s.id && dateKey(o.date) === dateKey(s.date) && (o.attendant_count||0) > 0);
+  const deleteShift = async (s) => {
+    if (!window.confirm(tc('sstart.confirmDeleteShift','Delete this empty shift opened by mistake? This cannot be undone.'))) return;
+    setBusy(true); setErr('');
+    try { await api.delete(`/shifts/${s.id}`); refreshOpen(); }
+    catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errDeleteShift','Could not delete shift')); }
+    setBusy(false);
+  };
+
   // ── Dipstick ──────────────────────────────────────────────────────
   const tankVol = (tank) => {
     const entered = dips[tank.id];
@@ -282,7 +294,15 @@ export default function ShiftStartPage() {
                     <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
                     <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {tc('sstart.nOperators','{n} operators').replace('{n}', s.attendant_count||0)}</div>
                   </div>
-                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{flexShrink:0,padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
+                  <div style={{display:'flex',gap:8,flexShrink:0}}>
+                    {canDelete(s) && (
+                      <button onClick={()=>deleteShift(s)} disabled={busy} title={tc('sstart.deleteEmptyShift','Delete this empty shift (opened by mistake)')}
+                        style={{padding:'8px 10px',background:'#fef2f2',color:'#b91c1c',border:'1.5px solid #fecaca',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
+                        <X size={13}/>{tc('sstart.delete','Delete')}
+                      </button>
+                    )}
+                    <button onClick={()=>resumeShift(s)} disabled={busy} style={{padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
+                  </div>
                 </div>
               ))}
           </div>
