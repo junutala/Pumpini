@@ -64,6 +64,11 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   useEffect(() => on('dispense:new', () => load()), [on, load]);
   useRefreshOnFocus(load);
 
+  // Operators never see the dashboard — bounce them to their settlement screen
+  // (covers the root '/' redirect and any direct URL, not just the login form).
+  useEffect(() => { if (user?.role === 'attendant' && !embedded) router.replace('/settlement'); }, [user, embedded, router]);
+  if (user?.role === 'attendant' && !embedded) return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.redirecting', 'Redirecting…')}</div></Wrapper>;
+
   // Don't flash "No station" while auth is still restoring the session (e.g. just
   // after a biometric login) — wait for it to resolve first.
   if (authLoading && !stationIdProp) return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.loading', 'Loading…')}</div></Wrapper>;
