@@ -41,6 +41,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const [data, setData]       = useState(null);
   const [deposit, setDeposit] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [date, setDate]       = useState(today);   // global date picker — view any trade day
   const { on } = useSocket(stationId, null);
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
@@ -49,13 +50,13 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
     if (!stationId) return;
     try {
       const [d, dp] = await Promise.all([
-        getOwnerDashboard(stationId, today),
+        getOwnerDashboard(stationId, date),
         api.get('/cash-deposits', { params: { station_id: stationId } }).then(r => r?.status || null).catch(() => null),
       ]);
       setData(d); setDeposit(dp || null);
     } catch (e) { console.error('Dashboard load error:', e); }
     finally { setLoading(false); }
-  }, [stationId, today]);
+  }, [stationId, date]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => on('dispense:new', () => load()), [on, load]);
@@ -129,9 +130,16 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
               {shifts.length === 0 && <span style={{ fontSize: 12, background: '#444441', color: '#d3d1c7', padding: '3px 10px', borderRadius: 99 }}>{tc('bunk.noShiftOpen', 'no shift open')}</span>}
             </div>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
-            {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.nNeedYou', '{n} need you').replace('{n}', needCount)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.allClear', 'all clear')}</>}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#b4b2a9' }}>
+              {tc('bunk.viewing', 'Viewing')}
+              <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)}
+                style={{ background: '#2f343c', color: '#f1efe8', border: '1px solid #5f5e5a', borderRadius: 8, padding: '5px 9px', fontSize: 12.5, colorScheme: 'dark' }} />
+            </label>
+            <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, whiteSpace: 'nowrap', background: needCount ? '#633806' : '#173404', color: needCount ? '#fac775' : '#c0dd97' }}>
+              {needCount ? <><Bell size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.nNeedYou', '{n} need you').replace('{n}', needCount)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('bunk.allClear', 'all clear')}</>}
+            </span>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
           <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
