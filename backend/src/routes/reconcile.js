@@ -356,6 +356,192 @@ router.post('/manager', authenticate, authorize('owner', 'manager'),
     finally { client.release(); }
   });
 
+// POST /api/reconcile/self-settle — an OPERATOR settles their OWN line from the
+// Settlement screen: their nozzle closings (OCR or manual) + payments (cash incl.
+// the operator's "cash adj", UPI, card, petty) + itemised credit (per customer).
+// Computes their sale, writes their shift_reconciliation row as FINAL (no manager
+// confirm), synthesises their dispense_events, and auto-generates one credit invoice
+// per customer line. Mirrors POST /manager but is HARD-SCOPED to req.user.id — an
+// operator can only ever settle their own line. The manager close is untouched.
+router.post('/self-settle', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  async (req, res, next) => {
+    const attendant_id = req.user.id;   // forced — never taken from the body
+    const {
+      shift_id, closings, closing_reading,
+      cash = 0, cash_adj = 0, upi_total = 0, card_total = 0, petty_cash = 0,
+      credit_lines = [], test_ltrs = 0, denomination, remarks,
+    } = req.body;
+    if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows: saRows } = await client.query(`
+        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
+               n.fuel_type, s.station_id, s.status, s.date AS trade_date
+        FROM shift_attendants sa
+        JOIN shifts s ON s.id = sa.shift_id
+        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
+        WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
+      if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
+      const sa = saRows[0];
+      if (sa.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This shift is already closed.' }); }
+
+      const { rows: nozRows } = await client.query(`
+        SELECT san.nozzle_id, san.opening_reading, n.fuel_type
+        FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
+        WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
+      let opNozzles = nozRows;
+      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
+      if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles are assigned to you.' }); }
+
+      const closeArr = (Array.isArray(closings) && closings.length)
+        ? closings
+        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+      const closeMap = {};
+      for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
+
+      // Board price per fuel — same source the manager close uses.
+      const priceCache = {};
+      const priceFor = async (fuel) => {
+        if (priceCache[fuel] != null) return priceCache[fuel];
+        const { rows: pr } = await client.query(
+          `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2 ORDER BY effective_from DESC LIMIT 1`,
+          [sa.station_id, fuel]);
+        const p = parseFloat(pr[0]?.price || 0);
+        priceCache[fuel] = p; return p;
+      };
+
+      // Sales = Σ over his nozzles of (closing − opening − test) × price.
+      let salesValue = 0, totalTest = 0;
+      const legs = [];
+      for (const nz of opNozzles) {
+        const c = closeMap[nz.nozzle_id];
+        if (!c || c.closing_reading == null || c.closing_reading === '') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'A closing reading is missing for one of your nozzles.' }); }
+        const opening = parseFloat(nz.opening_reading || 0);
+        const closing = parseFloat(c.closing_reading);
+        const test    = parseFloat(c.test_ltrs || 0);
+        const meterLtrs = closing - opening;
+        if (!(meterLtrs >= 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Closing reading must be ≥ opening reading for every nozzle.' }); }
+        const litres = Math.max(0, meterLtrs - test);
+        const price  = await priceFor(nz.fuel_type);
+        if (!price) { await client.query('ROLLBACK'); return res.status(400).json({ error: `No current price found for ${nz.fuel_type}.` }); }
+        salesValue += litres * price; totalTest += test;
+        legs.push({ nozzle_id: nz.nozzle_id, fuel_type: nz.fuel_type, price, litres, value: +(litres*price).toFixed(2), opening, closing });
+      }
+      salesValue = +salesValue.toFixed(2);
+
+      // Payments. "Cash adj" folds into cash — cash + adj = the accountable cash.
+      const openingCash = parseFloat(sa.opening_cash || 0);
+      const cardVal = parseFloat(card_total || 0);
+      const upiVal  = parseFloat(upi_total || 0);
+      const pettyVal = parseFloat(petty_cash || 0);
+      const creditItems = (Array.isArray(credit_lines) ? credit_lines : [])
+        .map(l => ({ corporate_id: l.corporate_id, amount: +parseFloat(l.amount || 0).toFixed(2) }))
+        .filter(l => l.corporate_id && l.amount > 0);
+      const creditVal = +creditItems.reduce((a, l) => a + l.amount, 0).toFixed(2);
+      const cashActual = +(parseFloat(cash || 0) + parseFloat(cash_adj || 0)).toFixed(2);
+      const cashValue = +(salesValue - cardVal - upiVal - creditVal).toFixed(2);
+      const expectedCash = +(openingCash + cashValue - pettyVal).toFixed(2);
+      const variance = +(cashActual - expectedCash).toFixed(2);
+
+      // Re-synthesise this operator's sales into dispense_events (per nozzle × mode).
+      await client.query(`DELETE FROM dispense_events WHERE shift_id=$1 AND attendant_id=$2 AND source='manager'`, [shift_id, attendant_id]);
+      for (const leg of legs) {
+        const share = salesValue > 0 ? leg.value / salesValue : (1 / legs.length);
+        for (const [mode, total] of [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]]) {
+          const val = +(total * share).toFixed(2);
+          if (val > 0) {
+            await client.query(
+              `INSERT INTO dispense_events
+                 (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
+                  quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',
+                 (((SELECT date FROM shifts WHERE id=$2)::date + TIME '12:00') AT TIME ZONE 'Asia/Kolkata'))`,
+              [sa.station_id, shift_id, attendant_id, leg.nozzle_id, leg.fuel_type, +(val/leg.price).toFixed(3), leg.price, mode]);
+          }
+        }
+      }
+
+      // Persist each nozzle's closing (mirror the manager close).
+      for (const leg of legs) {
+        await client.query(`UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`, [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
+      }
+      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`, [legs[legs.length-1].closing, shift_id, attendant_id]);
+
+      // Petty → station petty-cash fund (idempotent per operator settlement).
+      await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
+      if (pettyVal > 0) {
+        const { rows: who } = await client.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
+        const dt = sa.trade_date ? String(sa.trade_date).slice(0, 10) : '';
+        await client.query(
+          `INSERT INTO petty_cash_entries(station_id, direction, amount, entry_type, description, reference_type, reference_id, created_by)
+           VALUES($1,'in',$2,'topup',$3,'shift_close',$4,$5)`,
+          [sa.station_id, pettyVal, `Petty cash @ self-settle — ${who[0]?.name || 'operator'}_${dt}`, sa.id, attendant_id]);
+      }
+
+      // Itemised credit → one invoice per customer line, auto-numbered off the station
+      // sequence. Idempotent: clear this operator's prior self-settle invoices for the
+      // shift (tagged in line_items) before re-creating, so a re-settle doesn't double up.
+      await client.query(
+        `DELETE FROM gst_invoices WHERE station_id=$1 AND created_by=$2 AND line_items @> $3::jsonb`,
+        [sa.station_id, attendant_id, JSON.stringify([{ self_settle_shift: shift_id }])]).catch(() => {});
+      const invoices = [];
+      for (const item of creditItems) {
+        const { rows: link } = await client.query(`SELECT 1 FROM corporate_station_links WHERE corporate_id=$1 AND station_id=$2`, [item.corporate_id, sa.station_id]);
+        if (!link.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'A selected credit customer is not linked to this outlet.' }); }
+        await client.query(`INSERT INTO station_settings(station_id, invoice_seq) VALUES($1, 1) ON CONFLICT(station_id) DO NOTHING`, [sa.station_id]);
+        const { rows: seqRows } = await client.query(
+          `UPDATE station_settings SET invoice_seq=COALESCE(invoice_seq,1)+1 WHERE station_id=$1 RETURNING invoice_seq, COALESCE(invoice_prefix,'INV') AS prefix`, [sa.station_id]);
+        const invoice_number = `${seqRows[0].prefix}-${seqRows[0].invoice_seq}`;
+        const { rows: inv } = await client.query(
+          `INSERT INTO gst_invoices(station_id, corporate_id, invoice_number, invoice_date, subtotal, total_amount, line_items, created_by, status)
+           VALUES($1,$2,$3,(SELECT date FROM shifts WHERE id=$4),$5,$5,$6,$7,'sent') RETURNING *`,
+          [sa.station_id, item.corporate_id, invoice_number, shift_id, item.amount,
+           JSON.stringify([{ self_settle_shift: shift_id }]), attendant_id]);
+        invoices.push(inv[0]);
+      }
+
+      // Write the operator's reconciliation row as FINAL (manager_confirmed=TRUE, no
+      // separate manager confirm). mode='operator' marks the source; the shift-end
+      // screen and settlement tile read it exactly as a manager-entered line.
+      const { rows: recoRows } = await client.query(
+        `INSERT INTO shift_reconciliation(
+           shift_id, attendant_id, total_sales, cash_expected, cash_actual,
+           upi_total, credit_total, card_total, remarks, manager_confirmed, manager_id,
+           confirmed_at, reconciled_at, mode, operator_ack, test_ltrs, price_per_ltr, petty_cash)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$2,NOW(),NOW(),'operator',TRUE,$10,$11,$12)
+         ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
+           total_sales=$3, cash_expected=$4, cash_actual=$5, upi_total=$6, credit_total=$7,
+           card_total=$8, remarks=$9, manager_confirmed=TRUE, manager_id=$2, confirmed_at=NOW(),
+           reconciled_at=NOW(), mode='operator', operator_ack=TRUE, test_ltrs=$10,
+           price_per_ltr=$11, petty_cash=$12
+         RETURNING *`,
+        [shift_id, attendant_id, salesValue, expectedCash, cashActual, upiVal, creditVal, cardVal,
+         remarks || null, totalTest, legs[0]?.price || 0, pettyVal]);
+
+      if (denomination) {
+        const d = denomination;
+        await client.query(
+          `INSERT INTO cash_denominations(shift_id,attendant_id,note_500,note_200,note_100,note_50,note_20,note_10,note_5,note_2,note_1)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
+             note_500=$3,note_200=$4,note_100=$5,note_50=$6,note_20=$7,note_10=$8,note_5=$9,note_2=$10,note_1=$11,recorded_at=NOW()`,
+          [shift_id, attendant_id, d.note_500||0,d.note_200||0,d.note_100||0,d.note_50||0,d.note_20||0,d.note_10||0,d.note_5||0,d.note_2||0,d.note_1||0]);
+      }
+
+      await client.query('COMMIT');
+
+      // Freeze into the reconciliation ledger (best-effort; parked tables tolerated).
+      try { await recomputeShift(shift_id); } catch (e) { console.error('[settlementLedger]', e.message); }
+
+      res.status(201).json({ ...recoRows[0], variance, amount_due: salesValue, legs, invoices });
+    } catch (e) { await client.query('ROLLBACK'); next(e); }
+    finally { client.release(); }
+  });
+
 // GET /api/reconcile/:shift_id — manager gets list of submissions
 // Returns data but hides totals for unconfirmed entries
 router.get('/:shift_id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
