@@ -247,7 +247,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
                     <td style={{ padding: 8 }}>{fmtR(s.card_total)}</td>
                     <td style={{ padding: 8 }}>{fmtR(s.credit_total)}</td>
                     <td style={{ padding: 8 }}>{fmtR(s.petty_cash)}</td>
-                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total)}<div style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 400 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
+                    <td style={{ padding: 8, fontWeight: 700 }}>{fmtR(s.total)}<div style={{ fontSize: 10.5, color: 'var(--brand,#e07b0c)', fontWeight: 700 }}>{tc('bunk.target', 'target')} {fmtR(s.target)}</div></td>
                     <td style={{ padding: 8, fontWeight: 700, color: Math.abs(s.revVar) <= 50 ? '#27500a' : '#a32d2d' }}>{s.revVar >= 0 ? '+' : ''}{fmtR(s.revVar)}</td>
                   </tr>
                 ))}
