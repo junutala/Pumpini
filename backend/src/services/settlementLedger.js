@@ -116,23 +116,45 @@ async function recomputeOutlet(client, stationId, tradeDate) {
   }
 
   // Per tank across the day: opening dip (earliest), closing dip (latest),
-  // deliveries, and meter-sold — all scoped to the day's shifts.
+  // meter-sold (all scoped to the day's shifts), and DELIVERIES scoped to the
+  // TRADE DAY — deliveries are NOT reliably tagged to a shift, so we match on
+  // dc_date (the challan's trade day), falling back to a 06:00→06:00 IST window
+  // on received_at. Matching deliveries by shift_id silently dropped refills on
+  // delivery days and drove dip_sold negative.
   const { rows: tanks } = await client.query(`
     SELECT t.id AS tank_id, t.fuel_type,
-      (SELECT dr.volume_ltrs FROM dipstick_readings dr
-        WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='opening'
-        ORDER BY dr.recorded_at ASC LIMIT 1) AS opening_ltrs,
+      -- Opening dip = the prior day's CLOSING dip (the handover chain), same as
+      -- reconcile.js does for meters. We deliberately do NOT trust an 'opening'-
+      -- typed reading picked by recorded_at: that is data-entry time and a tank
+      -- with duplicate/mis-tagged openings would hand back the wrong value (this
+      -- drove dip_sold wildly wrong). Fall back to a same-day 'opening' only when
+      -- there is no prior closing (a tank's very first day).
+      COALESCE(
+        (SELECT dr.volume_ltrs FROM dipstick_readings dr
+           JOIN shifts sp ON sp.id = dr.shift_id
+          WHERE dr.tank_id=t.id AND sp.station_id=$1 AND sp.date < $3::date
+            AND dr.reading_type='closing'
+          ORDER BY sp.date DESC, sp.shift_number DESC, dr.recorded_at DESC LIMIT 1),
+        (SELECT dr.volume_ltrs FROM dipstick_readings dr
+          WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='opening'
+          ORDER BY dr.recorded_at ASC LIMIT 1)
+      ) AS opening_ltrs,
       (SELECT dr.volume_ltrs FROM dipstick_readings dr
         WHERE dr.tank_id=t.id AND dr.shift_id = ANY($2::uuid[]) AND dr.reading_type='closing'
         ORDER BY dr.recorded_at DESC LIMIT 1) AS closing_ltrs,
       COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
                 FROM fuel_deliveries fd
-                WHERE fd.tank_id=t.id AND fd.shift_id = ANY($2::uuid[])),0) AS deliveries_ltrs,
+                WHERE fd.tank_id=t.id AND (
+                  fd.dc_date = $3::date
+                  OR (fd.dc_date IS NULL
+                      AND fd.received_at >= (($3::date + TIME '06:00') AT TIME ZONE 'Asia/Kolkata')
+                      AND fd.received_at <  ((($3::date + 1) + TIME '06:00') AT TIME ZONE 'Asia/Kolkata'))
+                )),0) AS deliveries_ltrs,
       COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
                 JOIN nozzles n ON n.id=de.nozzle_id
                 WHERE n.tank_id=t.id AND de.shift_id = ANY($2::uuid[])
                   AND NOT COALESCE(de.is_voided,FALSE)),0) AS meter_ltrs
-    FROM tanks t WHERE t.station_id=$1`, [stationId, ids]);
+    FROM tanks t WHERE t.station_id=$1`, [stationId, ids, tradeDate]);
 
   // Roll tanks up to fuel level (rate is per fuel).
   const byFuel = {};
