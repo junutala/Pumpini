@@ -15,7 +15,7 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | T7 | **Operator self-close** mobile settlement screen | 🔧 |
 | T8 | **"Settlement2" responsibility** + assign in Add-Attendant (superadmin + manager) | 🔧 |
 | T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | 🔧 |
-| T12 | Settlement variance must use **trade-date rate**, not current (fixes "huge variance") | 🔧 |
+| T12 | Settlement "huge variance" — REAL cause: **petty omitted** from accounted total (rate was fine) | ✅ fixed (branch) |
 | T1c | Keep Highway's **1st-close shift** (30 Jun 6AM→1 Jul 6AM); prod cleanup must preserve it | 🔧 |
 | T9 | Consolidated PR for T2–T5 (+T11) → staging test | 🚢 |
 | T10 | Prod go-live: merge → `main`, gated `occurred_at` backfill | 🚢 |
@@ -39,13 +39,16 @@ DECISION (owner): (a) deep-dive per-shift to reconcile the pre-1-Jul figures, OR
 Highway data up to 30 Jun** and start clean from 1 Jul. Recommend (b) — it's demo data.
 - [ ] Owner picks (a) or (b). Then: I give the diagnostic (a) or the guarded delete SQL (b).
 
-## T12 — Settlement revenue variance uses CURRENT rate, must use TRADE-DATE rate  🔧 TO-FIX
-The new settlement's Variance = collections − target, where target = qty × **current**
-`fuel_prices` rate. Owner's rule: target = (closing − opening) × **the rate on that
-date**. Using the latest rate instead of the trade-date rate inflates the variance when
-a price changed → the "huge variance". Fix: in the `settlement_fuel` query, pick the
-price effective on `shifts.date` (fuel_prices where effective_from <= trade day, latest),
-not the newest. (Quantity source is fine: SUM(dispense_events)=meter delta for mgr closes.)
+## T12 — Settlement "huge variance" — REAL CAUSE: petty omitted from accounted total  ✅ FIXED (branch)
+Owner insisted rates never changed since deploy — correct. My trade-date-rate theory was
+WRONG. Decomposition query proved it: per operator, `fuel_value = target (@ current rate)
+= total_sales` **exactly** — so the rate is fine and target is right. The variance was
+short by **exactly `petty_cash`**: the accounted total was `cash+upi+card+credit` and
+LEFT OUT petty. Petty is cash pulled from the drawer for expenses — still money the
+operator is accountable for, so it belongs in the total.
+FIX (`frontend/src/app/dashboard/page.js`): accounted `total = cash+upi+card+credit+petty`;
+`revVar = total − target` (≈0 when clean); per-operator Total cell and tfoot grand-total
+both now add petty. Two-line-ish change, no schema, no query change. Variance ≈ 0.
 
 ## T1-CORRECTION — keep Highway's 1st-close shift (30 Jun 6AM → 1 Jul 6AM)  🔧
 That shift was MATCHING and must be kept; my cleanup `date < 2026-07-01` deleted it
