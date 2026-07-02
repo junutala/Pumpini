@@ -10,11 +10,12 @@ Status: 🟢 done/accepted · 🔧 to-build · ❓ decision-needed · 🚢 ship
 | T2 | Dashboard: two **MTD tiles** — Quantity (fuel breakdown) + Amount, vs **last-month MTD** (YAGO later) | 🔧 |
 | T3 | Dashboard: **settlement tile** — move date picker in with ◀/▶; columns + by-fuel total row | 🔧 |
 | T4 | Settlement: **target revenue** = Σ(qty×rate)/operator vs actual → **revenue variance** | 🔧 |
-| T5 | Shift-start: **staggered operators** — stay on Operators screen; explicit Done→dashboard | 🔧 |
+| T5 | Shift-start: **staggered operators** — stay on Operators screen; explicit Done→dashboard | ✅ built (branch, Batch 1) |
 | T6 | **Operator login** (mobile-based) — new auth surface; dependency for T7/T8 | 🔧 ❓ |
 | T7 | **Operator self-close** mobile settlement screen | 🔧 |
 | T8 | **"Settlement2" responsibility** + assign in Add-Attendant (superadmin + manager) | 🔧 |
-| T9 | Consolidated PR for T2–T5 → staging test | 🚢 |
+| T11 | **Split discharge** — capture per-tank quantity when one delivery fills >1 tank | 🔧 |
+| T9 | Consolidated PR for T2–T5 (+T11) → staging test | 🚢 |
 | T10 | Prod go-live: merge → `main`, gated `occurred_at` backfill | 🚢 |
 
 Already on staging, pending test (NOT re-listed — some superseded by T2–T4):
@@ -83,6 +84,17 @@ wires into **credit-customer invoice creation**. Feeds this attendant's `shift_r
 - Add a dropdown/checkbox to the **Add-Attendant** screen at BOTH **superadmin** and **outlet
   manager** to assign it at creation.
 (Relates to TODO §5 — tighten who can grant responsibilities; managers minting perms = escalation.)
+
+## T11 — Split discharge into multiple tanks (recurring; fixed by SQL each time)
+A tanker sometimes discharges one fuel into **multiple tanks**; today the delivery entry
+captures ONE `tank_id`, so a split is wrong (one tank over, the other shows no delivery)
+→ patched by SQL repeatedly. Fix: on the delivery/discharge screen, when the discharge
+goes into >1 tank, capture the **quantity discharged per tank**, so per-tank stock + the
+stock-reco are right and the **invoice value = Σ per-tank quantities × rate**.
+Model: already supported — `fuel_deliveries.invoice_id` lets ONE invoice back SEVERAL
+delivery rows (migration 002). So a split = N `fuel_deliveries` rows (one per tank, each
+its own `tank_id` + `gross_volume_ltrs`) sharing the DC/invoice. Only the ENTRY UI needs
+to accept multiple tank+quantity lines and total them for the invoice. Build in Batch 1.
 
 ## T9 — Consolidated PR (T2–T5) → staging test → sign-off
 ## T10 — Prod go-live: merge branch → `main`; run gated `occurred_at` backfill (snapshot → apply)

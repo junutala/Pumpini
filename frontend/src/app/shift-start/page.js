@@ -445,9 +445,10 @@ export default function ShiftStartPage() {
                     : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                 </div>
               ))}
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:12,marginBottom:6}}>{tc('sstart.staggerHint','Add each operator as they arrive — each goes live immediately. Stay here to add the next; click Done when you’re finished.')}</div>
             <button onClick={startShift} disabled={busy || (attendants.length===0 && !formReady)}
-              style={{width:'100%',height:46,marginTop:12,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
-              {tc('sstart.startShiftCta','Start shift')}
+              style={{width:'100%',height:46,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
+              {tc('sstart.doneToDashboard','Done — go to dashboard')}
             </button>
           </div>
         </div>
