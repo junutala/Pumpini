@@ -32,7 +32,7 @@ const NAV_GROUPS = [
       { key:'startshift', href:'/shift-start',     icon:PlayCircle,     perm:'shifts.view' },
       { key:'pos',        href:'/pos',             icon:ShoppingCart,   perm:'dispense.entry' },
       { key:'endshift',   href:'/shift-end',       icon:StopCircle,     perm:'shifts.view' },
-      { key:'settlement', href:'/settlement',      icon:Receipt,        perm:null, roles:['attendant','manager','owner'] },
+      { key:'settlement', href:'/settlement',      icon:Receipt,        perm:null, roles:['attendant'] },
     ]
   },
   {
