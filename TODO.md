@@ -350,12 +350,19 @@ learned (all now understood; owner to advise on the data fix):
   dips → wet-stock reco can't run. (Adhoc Highway, by contrast, had demo/garbage
   meter values — separate item, validate later.)
 
-OWNER AGREED (2026-07-02) on the cadence: staff enter the **ATG/HPCL dip every day**
-into Pumpini, and a **physical dip once a week**; a large weekly variance is flagged.
-Build note: distinguishing "ATG-entered" from "physical" needs a small schema field
-(e.g. `dipstick_readings.method`/`source`) — schema change, staging-first, owner-gated.
+OWNER REFINED (2026-07-02): **no cadence enforcement, no schema field.** Staff keep
+entering the ATG/HPCL reading as they please. The real gap was that shift-start only
+accepted a **dip** (we compute litres via calibration), but HPCL shows **litres** —
+so staff couldn't enter what they see. Fix = accept EITHER on shift-start and compute
+the other; **source is inferred from the input**: litres typed = system (ATG/HPCL)
+reading (`dip_cm` left NULL); dip typed = physical check (`dip_cm` set). No
+`method`/`source` column needed — the null-vs-set `dip_cm` distinguishes them.
+- [x] BUILT (2026-07-02, on branch → staging): shift-start dip step now takes a dip
+      OR a litres value per tank (litres field shows the computed value when a dip is
+      entered on a calibrated tank). Backend already tolerant (nullable `dip_cm`;
+      computes litres from dip when a chart exists). **Pending staging test.**
 
-TODO — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
+TODO (later, lower priority) — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
 - [ ] Flag **missing daily dip entry** (no dip for a tank for N days).
 - [ ] Flag **overdue weekly physical-dip confirmation**.
 - [ ] Flag **late/batch closes** (shift closed ≫ its trade day) and **shifts left

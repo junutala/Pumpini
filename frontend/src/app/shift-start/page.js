@@ -127,30 +127,38 @@ export default function ShiftStartPage() {
   };
 
   // ── Dipstick ──────────────────────────────────────────────────────
+  // Volume for a tank — from the DIP (a physical check) if a dip was entered, else
+  // straight from the LITRES field (a reading typed off the ATG/HPCL system).
   const tankVol = (tank) => {
-    const entered = dips[tank.id];
-    if (entered === '' || entered == null) return null;
-    if (tank.diameter_cm && tank.length_cm) return dipToVolume(tank.diameter_cm, tank.length_cm, markToTrueDip(entered));
-    return dipVol[tank.id] !== '' && dipVol[tank.id] != null ? parseFloat(dipVol[tank.id]) : null;
+    const dip = dips[tank.id], litres = dipVol[tank.id];
+    const hasChart = tank.diameter_cm && tank.length_cm;
+    if (dip !== '' && dip != null) {
+      if (hasChart) return dipToVolume(tank.diameter_cm, tank.length_cm, markToTrueDip(dip));
+      return litres !== '' && litres != null ? parseFloat(litres) : null;  // no chart → needs manual litres
+    }
+    return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres entered directly (system)
   };
   const saveDip = async (tank) => {
-    const entered = dips[tank.id];
-    if (entered === '' || entered == null) return;
+    const dip = dips[tank.id], litres = dipVol[tank.id];
+    const hasDip = dip !== '' && dip != null;
+    const hasLitres = litres !== '' && litres != null;
+    if (!hasDip && !hasLitres) return;
     const hasChart = tank.diameter_cm && tank.length_cm;
     const vol = tankVol(tank);
-    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a volume.').replace('{n}', tank.tank_number));
+    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number));
+    // Dip entered → physical reading (store dip_cm). Litres only → system (ATG/HPCL)
+    // reading: dip_cm stays null, which is how we tell the two apart.
+    const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
     setBusy(true); setErr('');
     try {
       await api.post('/dipstick', {
         station_id: stationId, tank_id: tank.id, shift_id: shift.id,
-        reading_type: 'opening',
-        dip_cm: hasChart ? markToTrueDip(entered) : entered,
-        volume_ltrs: vol,
+        reading_type: 'opening', dip_cm, volume_ltrs: vol,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
       setTanks(ts => ts.map(t => t.id === tank.id
-        ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
+        ? { ...t, last_dip_cm: dip_cm, last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
         : t));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); }
@@ -325,7 +333,7 @@ export default function ShiftStartPage() {
       {step===1 && shift && (
         <div className="card" style={{maxWidth:620}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','Enter each tank’s dip (4 marks/cm). Volume is computed from the tank’s calibration. This is the opening stock for today’s reconciliation.')}</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','For each tank enter EITHER the dip (a physical check) OR the litres shown on the ATG/HPCL system — we compute the other. This is the opening stock; the reconciliation shows any variance.')}</div>
           {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
@@ -334,18 +342,19 @@ export default function ShiftStartPage() {
               <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                   <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                  <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
+                  <input style={{...inp,width:110}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
                     value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  {hasChart
-                    ? <div style={{minWidth:120,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
-                    : <input style={{...inp,width:130}} type="number" step="0.01" placeholder={tc('sstart.volumeL','volume L')}
-                        value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
+                  <span style={{fontSize:12,color:'#94a3b8'}}>{tc('sstart.orWord','or')}</span>
+                  <input style={{...inp,width:130,...((dips[tk.id]!=='' && dips[tk.id]!=null && hasChart)?{background:'#f1f5f9',color:'#0369a1',fontWeight:600}:{})}}
+                    type="number" step="0.01" placeholder={tc('sstart.litresSystem','litres (system)')}
+                    readOnly={dips[tk.id]!=='' && dips[tk.id]!=null && hasChart}
+                    value={(dips[tk.id]!=='' && dips[tk.id]!=null && hasChart) ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
+                    onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                   <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
                     style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
                       background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
                     {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
                   </button>
-                  {!hasChart && <span style={{fontSize:11,color:'#b45309'}}>{tc('sstart.noCalibration','No calibration — type volume')}</span>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
