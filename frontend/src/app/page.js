@@ -18,7 +18,7 @@ export default function RootPage() {
   const role = roleFromToken(token);
   redirect(
     role === 'attendant' ? '/settlement'
-    : (role === 'owner' || role === 'cco') ? '/group-dashboard'
-    : '/dashboard'
+    : role === 'owner' ? '/group-dashboard'   // group rollup is owner-only (margins/analysis)
+    : '/dashboard'                            // manager, CCO, rsa… land on the outlet cockpit
   );
 }
