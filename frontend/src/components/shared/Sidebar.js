@@ -20,7 +20,7 @@ const NAV_GROUPS = [
   {
     label: 'Dashboard',
     items: [
-      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner'] },
+      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner','cco'] },
       { key:'dashboard',  href:'/dashboard',       icon:LayoutDashboard,perm:null },
       { key:'live',       href:'/live',            icon:Activity,       perm:'dispense.view' },
       { key:'alerts',     href:'/alerts',          icon:Bell,           perm:'alerts.view' },
@@ -65,7 +65,7 @@ const NAV_GROUPS = [
     items: [
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
-      { key:'credit_reports', href:'/reports/credit', icon:Hourglass,   perm:'reports.view', roles:['owner','manager'] },
+      { key:'credit_reports', href:'/reports/credit', icon:Hourglass,   perm:'reports.view', roles:['owner','manager','cco'] },
       { key:'tally',      href:'/tally',           icon:Calculator,     perm:'tally.export' },
     ]
   },
@@ -128,7 +128,7 @@ const NAV_LABELS = {
 // so every group translates as long as the key exists in the locale files.
 
 export default function Sidebar({ open, onClose }) {
-  const { user, logout, station } = useAuth();
+  const { user, logout, station, switchStation } = useAuth();
   const { can }    = usePermissions();
   const { t }      = useTranslation();
   const pathname   = usePathname();
@@ -189,6 +189,25 @@ export default function Sidebar({ open, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* Outlet switcher — for users who reach more than one outlet (owner, CCO).
+            Repoints the GLOBAL station so back-office screens (petty cash, deposits,
+            corporate, invoices) operate on the chosen outlet, not just stations[0]. */}
+        {Array.isArray(user?.stations) && user.stations.length > 1 && (
+          <div style={{padding:'0.65rem 1rem',borderBottom:'1px solid rgba(255,255,255,.07)'}}>
+            <label style={{fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(255,255,255,.3)',display:'block',marginBottom:5}}>
+              {navLabel('outlet') === 'outlet' ? 'Outlet' : navLabel('outlet')}
+            </label>
+            <select
+              value={(typeof station === 'object' ? station?.id : station) || ''}
+              onChange={e => { const s = user.stations.find(st => st.id === e.target.value); if (s) switchStation(s); }}
+              style={{width:'100%',background:'#1b2733',color:'rgba(255,255,255,.85)',border:'1px solid rgba(255,255,255,.12)',borderRadius:7,padding:'7px 8px',fontSize:12.5,cursor:'pointer'}}>
+              {user.stations.map(st => (
+                <option key={st.id} value={st.id} style={{color:'#111'}}>{st.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Nav groups */}
         <nav style={{flex:1,padding:'0.5rem 0',overflowY:'auto'}}>

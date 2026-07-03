@@ -168,6 +168,38 @@ router.post('/owners', authAdmin, async (req, res, next) => {
   }
 });
 
+// Create a CCO (Central Cash Office) user and attach them to an owner group, so
+// they get back-office access to every outlet in that group (via owner_group_members
+// → my_stations()). Mirrors /owners but role='cco'. Several can share a group.
+router.post('/cco', authAdmin, async (req, res, next) => {
+  try {
+    const { name, phone, email, password, group_id } = req.body;
+    if (!name || !phone || !group_id) return res.status(400).json({ error: 'name, phone and group_id are required.' });
+    const cleanPhone = phone.replace(/\D/g, '');
+    const storedPhone = cleanPhone.startsWith('91') ? `+${cleanPhone}` : `+91${cleanPhone}`;
+    const hash = await bcrypt.hash(password || 'Welcome@123', 12);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
+         VALUES($1,$2,$3,$4,'cco',TRUE) RETURNING *`,
+        [name, storedPhone, email || null, hash]
+      );
+      await client.query(
+        'INSERT INTO owner_group_members(group_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+        [group_id, rows[0].id, 'cco']
+      );
+      await client.query('COMMIT');
+      res.status(201).json(rows[0]);
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Phone number already registered' });
+    next(err);
+  }
+});
+
 router.patch('/owners/:id', authAdmin, async (req, res, next) => {
   try {
     const { name, email, is_active, group_id, password } = req.body;

@@ -219,7 +219,7 @@ router.get('/touchpoints', authenticate, requireStationAccess({ required: true }
 });
 
 // POST /api/tally/map — save ledger mappings + company name (owner/manager)
-router.post('/map', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/map', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, mappings = [], company_name } = req.body;
     for (const m of mappings) {

@@ -30,7 +30,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // POST /api/receipts — record a receipt, reduce outstanding
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager','cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   const {
     corporate_id, station_id, receipt_date, amount,
     payment_type, reference_no, invoice_id, remarks,

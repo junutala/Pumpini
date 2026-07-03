@@ -75,7 +75,7 @@ async function resolvePortalCorporate(req, res) {
 // GET /api/credit-reports/ageing?station_id=
 // One row per credit customer linked to the station. Payments are allocated
 // FIFO against the oldest charges; whatever stays open is bucketed by age.
-router.get('/ageing', authenticate, authorize('owner', 'manager'),
+router.get('/ageing', authenticate, authorize('owner', 'manager', 'cco'),
   requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;

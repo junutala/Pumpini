@@ -94,7 +94,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // GET /api/corporate/all — every corp across the CALLER'S stations (merge UI)
-router.get('/all', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.get('/all', authenticate, authorize('owner','manager','cco'), async (req, res, next) => {
   try {
     const ids = await getAccessibleStationIds(req.user.id);
     if (!ids.length) return res.json([]);
@@ -128,7 +128,7 @@ router.post('/check-duplicate', authenticate, async (req, res, next) => {
 });
 
 // POST /api/corporate — create new
-router.post('/', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager','cco'), async (req, res, next) => {
   try {
     const {
       company_name, contact_person, contact_phone, email,
@@ -203,7 +203,7 @@ router.post('/', authenticate, authorize('owner','manager'), async (req, res, ne
 });
 
 // PATCH /api/corporate/:id — update master record
-router.patch('/:id', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
+router.patch('/:id', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const {
       company_name, contact_person, contact_phone,
@@ -231,7 +231,7 @@ router.patch('/:id', authenticate, authorize('owner','manager'), requireCorporat
 // ── Station links ───────────────────────────────────────────
 
 // POST /api/corporate/:id/links — link to a station
-router.post('/:id/links', authenticate, authorize('owner','manager'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/:id/links', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, credit_limit, payment_terms = 30 } = req.body;
     const { rows } = await pool.query(
@@ -267,7 +267,7 @@ router.get('/:id/links', authenticate, requireCorporateAccess(), async (req, res
 });
 
 // PATCH /api/corporate/:id/links/:station_id — update link
-router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
+router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { credit_limit, payment_terms, is_active } = req.body;
     const { rows } = await pool.query(
@@ -285,7 +285,7 @@ router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager'
 // ── Merge ───────────────────────────────────────────────────
 
 // POST /api/corporate/merge — merge two accounts (superadmin or owner)
-router.post('/merge', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/merge', authenticate, authorize('owner','manager','cco'), async (req, res, next) => {
   try {
     const { master_id, duplicate_id } = req.body;
     if (master_id === duplicate_id) {
@@ -365,7 +365,7 @@ const ACCESSIBLE_CORP_SQL = `
                 WHERE l.corporate_id = ca.id AND l.station_id = ANY($IDS::uuid[])) )`;
 
 // GET /api/corporate/duplicates — pending duplicate flags within MY outlets
-router.get('/duplicates', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.get('/duplicates', authenticate, authorize('owner','manager','cco'), async (req, res, next) => {
   try {
     const ids = await getAccessibleStationIds(req.user.id);
     if (!ids.length) return res.json([]);
@@ -387,7 +387,7 @@ router.get('/duplicates', authenticate, authorize('owner','manager'), async (req
 });
 
 // PATCH /api/corporate/duplicates/:id/dismiss
-router.patch('/duplicates/:id/dismiss', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.patch('/duplicates/:id/dismiss', authenticate, authorize('owner','manager','cco'), async (req, res, next) => {
   try {
     const { rows: flag } = await pool.query(
       'SELECT corp1_id, corp2_id FROM corporate_duplicate_flags WHERE id=$1', [req.params.id]);
@@ -454,7 +454,7 @@ router.get('/:id/drivers', authenticate, requireCorporateAccess(), async (req, r
 });
 
 // POST /api/corporate/:id/drivers
-router.post('/:id/drivers', authenticate, authorize('owner','manager'), requireCorporateAccess(), async (req, res, next) => {
+router.post('/:id/drivers', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const { vehicle_number, driver_name, phone } = req.body;
     const { rows } = await pool.query(
