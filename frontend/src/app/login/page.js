@@ -14,9 +14,9 @@ let startAuthentication, startRegistration;
 // Post-login landing: owners see the multi-outlet group view; everyone else
 // (manager/attendant) lands on their outlet's bunk cockpit.
 const landingFor = (u) => (
-  u?.role === 'owner' || u?.role === 'cco' ? '/group-dashboard'  // owner + CCO see the group
+  u?.role === 'owner' ? '/group-dashboard'    // group rollup is owner-only (margins/analysis)
   : u?.role === 'attendant' ? '/settlement'   // operators land straight on their settlement screen
-  : '/dashboard'
+  : '/dashboard'                              // manager, CCO, rsa… land on the outlet cockpit
 );
 
 export default function LoginPage() {

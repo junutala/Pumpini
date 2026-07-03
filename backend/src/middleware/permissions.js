@@ -40,8 +40,10 @@ const roleDefaults = {
   // CCO — Central Cash Office. Back-office operations across ALL group outlets
   // (access comes from owner_group_members membership; these are the tasks they do).
   // Deliberately NO forecourt work — no shifts / POS / dipstick / deliveries / prices.
+  // NOTE: no 'group.view' — the group rollup carries owner-only margins/analysis,
+  // so CCO is deliberately kept off it (nav + /groups endpoints are owner-gated).
   cco: [
-    'dashboard.view','group.view','reconcile.view',
+    'dashboard.view','reconcile.view',
     'corporate.view','corporate.manage','invoice.generate',
     'reports.view','tally.export','deposits.manage','pettycash.manage','alerts.view',
   ],

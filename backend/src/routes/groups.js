@@ -1,10 +1,13 @@
 // src/routes/groups.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 
+// The group rollup carries owner-only figures (margins, blended margin %,
+// intelligence analysis). It is an OWNER surface — a CCO is a group member for
+// access purposes but must NOT see this, so gate the read endpoints to owners.
 // GET /api/groups/my — groups the logged-in user belongs to
-router.get('/my', authenticate, async (req, res, next) => {
+router.get('/my', authenticate, authorize('owner'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(`
       SELECT og.*,
@@ -93,7 +96,7 @@ async function outletMetrics(sid, date) {
   }
 }
 
-router.get('/:id/dashboard', authenticate, async (req, res, next) => {
+router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, next) => {
   try {
     // Verify user belongs to group
     const { rows: member } = await pool.query(

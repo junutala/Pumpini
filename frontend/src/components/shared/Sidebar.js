@@ -20,7 +20,7 @@ const NAV_GROUPS = [
   {
     label: 'Dashboard',
     items: [
-      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner','cco'] },
+      { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner'] },
       { key:'dashboard',  href:'/dashboard',       icon:LayoutDashboard,perm:null },
       { key:'live',       href:'/live',            icon:Activity,       perm:'dispense.view' },
       { key:'alerts',     href:'/alerts',          icon:Bell,           perm:'alerts.view' },
