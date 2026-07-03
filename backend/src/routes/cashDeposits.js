@@ -95,7 +95,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // POST / — record a bank deposit (owner/manager)
-router.post('/', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, amount, deposit_date, bank_account, reference_no, notes } = req.body;
     const amt = parseFloat(amount);
@@ -121,7 +121,7 @@ router.post('/', authenticate, authorize('owner', 'manager'), requireStationAcce
 });
 
 // PATCH /:id/confirm — owner confirms the deposit reflects in the bank
-router.patch('/:id/confirm', authenticate, authorize('owner'),
+router.patch('/:id/confirm', authenticate, authorize('owner','cco'),
   requireStationVia('SELECT station_id FROM cash_deposits WHERE id=$1', 'id'),
   async (req, res, next) => {
   try {

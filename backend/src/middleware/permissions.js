@@ -37,6 +37,14 @@ const roleDefaults = {
   corporate: [
     'dashboard.view','corporate.view','reports.view','invoice.generate',
   ],
+  // CCO — Central Cash Office. Back-office operations across ALL group outlets
+  // (access comes from owner_group_members membership; these are the tasks they do).
+  // Deliberately NO forecourt work — no shifts / POS / dipstick / deliveries / prices.
+  cco: [
+    'dashboard.view','group.view','reconcile.view',
+    'corporate.view','corporate.manage','invoice.generate',
+    'reports.view','tally.export','deposits.manage','pettycash.manage','alerts.view',
+  ],
 };
 
 // The outlet's plan feature modules, or null if the plan isn't configured with

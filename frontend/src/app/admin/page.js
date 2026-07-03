@@ -426,9 +426,9 @@ export default function AdminPage(){
                         onClick={()=>openModal('addMember',{group_id:g.id,group_name:g.name})}><Plus size={11}/>{tc('adminp.add', 'Add')}</button>
                     </div>
                     {groupMembers[g.id]
-                      ? groupMembers[g.id].length===0
+                      ? groupMembers[g.id].filter(m=>m.role!=='cco').length===0
                         ? <div style={{color:'#aaa',fontSize:11}}>{tc('adminp.noOwnersYet', 'No owners yet')}</div>
-                        : groupMembers[g.id].map(m=>(
+                        : groupMembers[g.id].filter(m=>m.role!=='cco').map(m=>(
                           <div key={m.user_id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0',borderBottom:'1px solid #ece9e4'}}>
                             <span style={{fontWeight:600}}>{m.owner_name}</span>
                             <button style={{fontSize:10,padding:'1px 6px',background:'#fee2e2',border:'none',borderRadius:4,cursor:'pointer',color:'#991b1b'}}
@@ -436,6 +436,28 @@ export default function AdminPage(){
                           </div>
                         ))
                       : <button style={{fontSize:11,color:'#1A5F7A',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupMembers(g.id)}>{tc('adminp.clickToView', 'Click to view')}</button>
+                    }
+                  </div>
+
+                  {/* CCO (Central Cash Office) sub-grid — back-office users with
+                      operational access to every outlet in this group. */}
+                  <div style={{background:'#f5f3ff',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.5rem'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <span style={{fontSize:11,fontWeight:700,color:'#555',textTransform:'uppercase'}}>{tc('adminp.cco', 'Central Cash Office')}</span>
+                      <button style={{...btn('#f5f3ff','#5b21b6'),height:24,padding:'0 8px',fontSize:11}}
+                        onClick={()=>{ if(!groupMembers[g.id]) loadGroupMembers(g.id); openModal('cco',{group_id:g.id,group_name:g.name}); }}><Plus size={11}/>{tc('adminp.add', 'Add')}</button>
+                    </div>
+                    {groupMembers[g.id]
+                      ? groupMembers[g.id].filter(m=>m.role==='cco').length===0
+                        ? <div style={{color:'#aaa',fontSize:11}}>{tc('adminp.noCcoYet', 'No CCO users yet')}</div>
+                        : groupMembers[g.id].filter(m=>m.role==='cco').map(m=>(
+                          <div key={m.user_id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:12,padding:'3px 0',borderBottom:'1px solid #e9e4f7'}}>
+                            <span style={{fontWeight:600}}>{m.owner_name}<span style={{color:'#999',fontWeight:400}}> · {(m.phone||'').replace('+91','')}</span></span>
+                            <button style={{fontSize:10,padding:'1px 6px',background:'#fee2e2',border:'none',borderRadius:4,cursor:'pointer',color:'#991b1b'}}
+                              onClick={()=>adminFetch(`/groups/${g.id}/members/${m.user_id}`,{method:'DELETE'}).then(()=>{loadGroupMembers(g.id);reload();})}>{tc('adminp.remove', 'Remove')}</button>
+                          </div>
+                        ))
+                      : <button style={{fontSize:11,color:'#5b21b6',background:'none',border:'none',cursor:'pointer'}} onClick={()=>loadGroupMembers(g.id)}>{tc('adminp.clickToView', 'Click to view')}</button>
                     }
                   </div>
 
@@ -852,6 +874,23 @@ export default function AdminPage(){
           <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
           <Field label={tc('adminp.password','Password')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.defaultWelcome','Default: Welcome@123')}/></Field>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} onClick={()=>save('/owners')} disabled={loading}>{loading?tc('adminp.creating','Creating...'):tc('adminp.createOwner','Create Owner')}</button>
+        </Modal>
+      )}
+
+      {modal?.type==='cco'&&(
+        <Modal title={tc('adminp.newCcoModal','New CCO — {group}').replace('{group}',modal.data.group_name||'')} onClose={closeModal}>
+          <div style={{fontSize:12,color:'#666',background:'#f5f3ff',borderRadius:8,padding:'8px 10px',marginBottom:12}}>
+            {tc('adminp.ccoHelp','Central Cash Office user: back-office access (reconciliation, credit, cash, deposits, reports) across every outlet in this group. No forecourt (shifts / POS / dipstick).')}
+          </div>
+          <Field label={tc('adminp.fullName','Full Name')} required><input style={inp} value={form.name||''} onChange={e=>f('name',e.target.value)}/></Field>
+          <Field label={tc('adminp.mobile10','Mobile (10 digits)')} required>
+            <div style={{display:'flex',gap:8}}><span style={{background:'#f5f5f5',padding:'9px 12px',borderRadius:8,border:'1.5px solid #ddd',fontSize:14,color:'#666'}}>+91</span>
+            <input style={{...inp,flex:1}} maxLength={10} value={form.phone||''} onChange={e=>f('phone',e.target.value.replace(/\D/g,'').slice(0,10))}/></div>
+          </Field>
+          <Field label={tc('adminp.email','Email')}><input style={inp} type="email" value={form.email||''} onChange={e=>f('email',e.target.value)}/></Field>
+          <Field label={tc('adminp.password','Password')}><PwField value={form.password||''} onChange={v=>f('password',v)} placeholder={tc('adminp.defaultWelcome','Default: Welcome@123')}/></Field>
+          <button style={{...btn(),width:'100%',justifyContent:'center',height:42}} disabled={loading}
+            onClick={async()=>{ const gid=modal.data.group_id; if(await save('/cco')) loadGroupMembers(gid); }}>{loading?tc('adminp.creating','Creating...'):tc('adminp.createCco','Create CCO')}</button>
         </Modal>
       )}
 

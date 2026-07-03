@@ -77,7 +77,7 @@ router.get('/credit-invoices', authenticate, requireStationAccess({ required: tr
 // POST /credit-adjustment — issue a credit note against a petrol credit invoice.
 // Reduces the customer's outstanding; optionally also draws down the station credit
 // suspense (control total) when reduce_suspense is set (mirrors the opening-balance flag).
-router.post('/credit-adjustment', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/credit-adjustment', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   const { station_id, corporate_id, invoice_id, amount, reason, reduce_suspense } = req.body;
   const amt = parseFloat(amount);
   if (!corporate_id || !invoice_id) return res.status(400).json({ error: 'Customer and invoice are required' });
@@ -138,7 +138,7 @@ router.get('/invoice/:id/returnable', authenticate,
   });
 
 // POST / — create a credit note
-router.post('/', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   const { station_id, customer_name, invoice_id, invoice_number, reason, items } = req.body;
   if (!invoice_id)            return res.status(400).json({ error: 'Original invoice is required' });
   if (!items || !items.length) return res.status(400).json({ error: 'No items to return' });

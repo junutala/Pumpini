@@ -586,3 +586,26 @@ DROP INDEX IF EXISTS ux_fuel_deliveries_dedup;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_fuel_deliveries_dedup
   ON public.fuel_deliveries (station_id, dc_number, fuel_type, gross_volume_ltrs, tank_id)
   WHERE (dc_number IS NOT NULL);
+
+-- ──────────────────────────────────────────────────────────────
+-- CCO — Central Cash Office (Jul 2026). A back-office responsibility with
+-- operational access to EVERY outlet in an owner group (reconciliation, credit,
+-- cash, deposits, reports) but NO forecourt work (shifts / POS / dipstick).
+-- Superadmin creates CCO users and attaches them to an owner group. Access flows
+-- through owner_group_members membership (same path as owners), while capability
+-- comes from users.role = 'cco'.
+--
+-- Both role CHECK constraints must admit the new value BEFORE a CCO can be
+-- created, else the INSERT fails (23514). Idempotent (drop-if-exists + re-add).
+-- ⚠️ RUN THESE TWO STEPS on the target DB before creating any CCO user.
+-- ──────────────────────────────────────────────────────────────
+
+-- Step 1 — allow role='cco' on users.
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users ADD CONSTRAINT users_role_check
+  CHECK ((role)::text = ANY (ARRAY['owner','manager','attendant','rsa','corporate','cco']::text[]));
+
+-- Step 2 — allow role='cco' on owner_group_members (membership marker).
+ALTER TABLE public.owner_group_members DROP CONSTRAINT IF EXISTS owner_group_members_role_check;
+ALTER TABLE public.owner_group_members ADD CONSTRAINT owner_group_members_role_check
+  CHECK ((role)::text = ANY (ARRAY['admin','member','cco']::text[]));
