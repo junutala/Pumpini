@@ -6,6 +6,14 @@ const { requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const Anthropic = require('@anthropic-ai/sdk');
+
+// Great-circle distance in metres (haversine) — for the server-side geofence.
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Store a meter reading in its source column (manager vs POS), recompute the
@@ -388,6 +396,21 @@ router.post('/self-settle', authenticate,
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
       const sa = saRows[0];
       if (sa.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This shift is already closed.' }); }
+
+      // Server-side geofence — authoritative. If the outlet has geofencing on, the
+      // operator's device coords (sent with the request) must be within the radius.
+      // Enforced here so a crafted/jailbroken client can't bypass it; respects the
+      // outlet's geo_fence_enabled flag (off → no gate).
+      const { rows: geoRows } = await client.query(
+        `SELECT geo_fence_enabled, latitude, longitude, COALESCE(geo_fence_radius,500) AS radius
+           FROM station_settings WHERE station_id=$1`, [sa.station_id]);
+      const gf = geoRows[0];
+      if (gf && gf.geo_fence_enabled && gf.latitude != null && gf.longitude != null) {
+        const lat = Number(req.body.lat), lng = Number(req.body.lng);
+        const onSite = Number.isFinite(lat) && Number.isFinite(lng) &&
+          haversineM(lat, lng, Number(gf.latitude), Number(gf.longitude)) <= Number(gf.radius);
+        if (!onSite) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You must be at the outlet to settle — location check failed.' }); }
+      }
 
       const { rows: nozRows } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type

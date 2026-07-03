@@ -20,6 +20,15 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
+// Fresh device position (resolves to null if unavailable/denied — the server then
+// blocks the settle when the outlet has geofencing on).
+const getPos = () => new Promise(res => {
+  if (!navigator.geolocation) return res(null);
+  navigator.geolocation.getCurrentPosition(
+    p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+    () => res(null),
+    { enableHighAccuracy: true, timeout: 8000 });
+});
 
 const PAY_FIELDS = [
   ['cash', 'Cash'], ['cash_adj', 'Cash Adj'], ['upi_total', 'UPI'],
@@ -104,12 +113,16 @@ export default function SettlementPage() {
       .map(l => ({ corporate_id: l.corporate_id, amount: parseFloat(l.amount) }));
     setBusy(true);
     try {
+      // Fresh device location at the moment of settling — the server enforces the
+      // geofence (if the outlet has it on) against these coords.
+      const pos = await getPos();
       const res = await api.post('/reconcile/self-settle', {
         shift_id: shift.id,
         closings: noz.map(n => ({ nozzle_id: n.nozzle_id, closing_reading: parseFloat(n.closing), test_ltrs: parseFloat(n.test) || 0 })),
         cash: parseFloat(pay.cash) || 0, cash_adj: parseFloat(pay.cash_adj) || 0,
         upi_total: parseFloat(pay.upi_total) || 0, card_total: parseFloat(pay.card_total) || 0,
         petty_cash: parseFloat(pay.petty_cash) || 0, credit_lines,
+        lat: pos?.lat, lng: pos?.lng,
       });
       setDone({
         res, when: new Date().toISOString(), operator: user.name, outlet, shift,
