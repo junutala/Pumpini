@@ -59,14 +59,17 @@ router.post('/', authenticate, authorize('owner','manager','cco'), requireStatio
        invoice_id||null, remarks||null, req.user.id]
     );
 
-    // If linked to invoice, mark it as paid (or partially paid)
+    // If linked to invoice, mark it paid when fully settled, else 'sent' (issued,
+    // payment still outstanding). NOTE: gst_invoices_status_check only permits
+    // draft/sent/paid — 'partial' is NOT a valid status and throws 23514, so a
+    // part-payment must fall back to 'sent', not 'partial'.
     if (invoice_id) {
       await client.query(
         `UPDATE gst_invoices SET
            amount_received = COALESCE(amount_received,0) + $1,
            status = CASE
              WHEN COALESCE(amount_received,0) + $1 >= total_amount THEN 'paid'
-             ELSE 'partial'
+             ELSE 'sent'
            END
          WHERE id = $2 AND station_id = $3`,
         [amount, invoice_id, station_id]
