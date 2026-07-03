@@ -86,7 +86,7 @@ router.post('/login', rateLimitAuth, async (req, res, next) => {
       tv: user.token_version ?? 0, // session-revocation version
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '8h'
+      expiresIn: process.env.JWT_EXPIRES_IN || '10h'
     });
 
     res.json({ token, user: { ...payload, stations } });
@@ -227,7 +227,7 @@ router.post('/change-password', authenticate, async (req, res, next) => {
     const token = jwt.sign(
       { ...rest, must_change_password: false, tv },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '10h' }
     );
     res.json({ ok: true, token });
   } catch (err) { next(err); }
