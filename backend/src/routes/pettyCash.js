@@ -39,7 +39,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // POST / — manual entry (top-up or expense). owner/manager only.
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager','cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   const { station_id, direction, amount, entry_type, description } = req.body;
   const amt = parseFloat(amount);
   if (!['in', 'out'].includes(direction)) return res.status(400).json({ error: 'direction must be "in" or "out"' });

@@ -16,5 +16,9 @@ export default function RootPage() {
   const token = cookies().get('token')?.value;
   if (!token) redirect('/landing');
   const role = roleFromToken(token);
-  redirect(role === 'attendant' ? '/settlement' : role === 'owner' ? '/group-dashboard' : '/dashboard');
+  redirect(
+    role === 'attendant' ? '/settlement'
+    : role === 'owner' ? '/group-dashboard'   // group rollup is owner-only (margins/analysis)
+    : '/dashboard'                            // manager, CCO, rsa… land on the outlet cockpit
+  );
 }

@@ -5,7 +5,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 
 // POST /api/invoices — save invoice
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, authorize('owner','manager','cco'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const {
       station_id, corporate_id, invoice_number, invoice_date,

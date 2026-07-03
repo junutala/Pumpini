@@ -20,6 +20,15 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
+// Fresh device position (resolves to null if unavailable/denied — the server then
+// blocks the settle when the outlet has geofencing on).
+const getPos = () => new Promise(res => {
+  if (!navigator.geolocation) return res(null);
+  navigator.geolocation.getCurrentPosition(
+    p => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
+    () => res(null),
+    { enableHighAccuracy: true, timeout: 8000 });
+});
 
 const PAY_FIELDS = [
   ['cash', 'Cash'], ['cash_adj', 'Cash Adj'], ['upi_total', 'UPI'],
@@ -42,6 +51,7 @@ export default function SettlementPage() {
   const [pay, setPay]         = useState({ cash: '', cash_adj: '', upi_total: '', card_total: '', petty_cash: '' });
   const [credit, setCredit]   = useState([{ corporate_id: '', amount: '' }]);
   const [geo, setGeo]         = useState('checking');
+  const [geoDist, setGeoDist] = useState(null);   // metres from the outlet (for the off-site message)
   const [busy, setBusy]       = useState(false);
   const [done, setDone]       = useState(null);
   const [scanNz, setScanNz]   = useState('');
@@ -69,7 +79,11 @@ export default function SettlementPage() {
       if (!st?.geo_fence_enabled || !st?.latitude || !st?.longitude) setGeo('disabled');
       else if (!navigator.geolocation) setGeo('error');
       else navigator.geolocation.getCurrentPosition(
-        p => setGeo(getDistance(p.coords.latitude, p.coords.longitude, parseFloat(st.latitude), parseFloat(st.longitude)) <= (st.geo_fence_radius || 500) ? 'ok' : 'outside'),
+        p => {
+          const d = getDistance(p.coords.latitude, p.coords.longitude, parseFloat(st.latitude), parseFloat(st.longitude));
+          setGeoDist(Math.round(d));
+          setGeo(d <= (st.geo_fence_radius || 500) ? 'ok' : 'outside');
+        },
         () => setGeo('error'), { enableHighAccuracy: true, timeout: 8000 });
     } catch { /* leave shift null */ }
     setLoading(false);
@@ -104,12 +118,16 @@ export default function SettlementPage() {
       .map(l => ({ corporate_id: l.corporate_id, amount: parseFloat(l.amount) }));
     setBusy(true);
     try {
+      // Fresh device location at the moment of settling — the server enforces the
+      // geofence (if the outlet has it on) against these coords.
+      const pos = await getPos();
       const res = await api.post('/reconcile/self-settle', {
         shift_id: shift.id,
         closings: noz.map(n => ({ nozzle_id: n.nozzle_id, closing_reading: parseFloat(n.closing), test_ltrs: parseFloat(n.test) || 0 })),
         cash: parseFloat(pay.cash) || 0, cash_adj: parseFloat(pay.cash_adj) || 0,
         upi_total: parseFloat(pay.upi_total) || 0, card_total: parseFloat(pay.card_total) || 0,
         petty_cash: parseFloat(pay.petty_cash) || 0, credit_lines,
+        lat: pos?.lat, lng: pos?.lng,
       });
       setDone({
         res, when: new Date().toISOString(), operator: user.name, outlet, shift,
@@ -129,6 +147,28 @@ export default function SettlementPage() {
   if (!shift) return (
     <AppShell><div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: 'var(--text-3)' }}>
       {tc('settle.noShift', 'You have no open shift assigned. Start your shift first, then settle here at close.')}
+    </div></AppShell>
+  );
+
+  // Fail-closed geofence: the form only renders when we POSITIVELY know you're
+  // on-site (geo 'ok') or the outlet has no fence ('disabled'). Off-site, location
+  // still resolving, or location unavailable/denied all block the whole screen —
+  // not just the Confirm button. (The server also re-checks at settle time.)
+  if (geo === 'checking') return (
+    <AppShell><div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-3)' }}>
+      {tc('settle.locating', 'Getting your location…')}
+    </div></AppShell>
+  );
+  if (geo === 'outside' || geo === 'error') return (
+    <AppShell><div style={{ maxWidth: 460, margin: '2rem auto', textAlign: 'center', padding: '2rem 1.25rem', background: '#fee2e2', borderRadius: 14, color: '#991b1b' }}>
+      <div style={{ fontSize: 40, marginBottom: 8 }}>📍</div>
+      <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 6 }}>{tc('settle.mustBeOnsite', 'You must be at the outlet to settle')}</div>
+      <div style={{ fontSize: 13.5 }}>
+        {geo === 'outside'
+          ? tc('settle.offBy', 'You appear to be {d} m away. Move to {outlet} and reopen this screen.').replace('{d}', geoDist ?? '—').replace('{outlet}', outlet || 'the outlet')
+          : tc('settle.needLocation', 'Turn on location for this app and reopen — settlement is allowed on-site only.')}
+      </div>
+      <button onClick={load} style={{ marginTop: 16, height: 42, padding: '0 20px', borderRadius: 10, border: 'none', background: '#991b1b', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>{tc('settle.recheck', 'Re-check location')}</button>
     </div></AppShell>
   );
 

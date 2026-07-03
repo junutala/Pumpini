@@ -9,7 +9,7 @@ import {
   Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus
+  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown
 } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
@@ -65,7 +65,7 @@ const NAV_GROUPS = [
     items: [
       { key:'dispense',   href:'/dispense',        icon:Fuel,           perm:'reconcile.manage' },
       { key:'reports',    href:'/reports',         icon:BarChart2,      perm:'reports.view' },
-      { key:'credit_reports', href:'/reports/credit', icon:Hourglass,   perm:'reports.view', roles:['owner','manager'] },
+      { key:'credit_reports', href:'/reports/credit', icon:Hourglass,   perm:'reports.view', roles:['owner','manager','cco'] },
       { key:'tally',      href:'/tally',           icon:Calculator,     perm:'tally.export' },
     ]
   },
@@ -128,7 +128,7 @@ const NAV_LABELS = {
 // so every group translates as long as the key exists in the locale files.
 
 export default function Sidebar({ open, onClose }) {
-  const { user, logout, station } = useAuth();
+  const { user, logout, station, switchStation } = useAuth();
   const { can }    = usePermissions();
   const { t }      = useTranslation();
   const pathname   = usePathname();
@@ -189,6 +189,31 @@ export default function Sidebar({ open, onClose }) {
             </div>
           </div>
         </div>
+
+        {/* Outlet switcher — for users who reach more than one outlet (owner, CCO).
+            Repoints the GLOBAL station so back-office screens (petty cash, deposits,
+            corporate, invoices) operate on the chosen outlet, not just stations[0]. */}
+        {Array.isArray(user?.stations) && user.stations.length > 1 && (
+          <div style={{padding:'0.65rem 1rem',borderBottom:'1px solid rgba(255,255,255,.07)'}}>
+            <label style={{fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(255,255,255,.3)',display:'block',marginBottom:5}}>
+              {navLabel('outlet') === 'outlet' ? 'Outlet' : navLabel('outlet')}
+            </label>
+            <div style={{position:'relative'}}>
+              <select
+                value={(typeof station === 'object' ? station?.id : station) || ''}
+                onChange={e => { const s = user.stations.find(st => st.id === e.target.value); if (s) switchStation(s); }}
+                style={{width:'100%',background:'#1b2733',color:'#fff',border:'1px solid rgba(255,255,255,.16)',borderRadius:7,padding:'8px 30px 8px 10px',fontSize:12.5,cursor:'pointer',appearance:'none',WebkitAppearance:'none',MozAppearance:'none',textOverflow:'ellipsis'}}>
+                {user.stations.map(st => (
+                  // Explicit light background so the OPEN native list is readable
+                  // (dark-on-dark otherwise renders the other outlets as faint text).
+                  <option key={st.id} value={st.id} style={{color:'#111',background:'#fff'}}>{st.name}</option>
+                ))}
+              </select>
+              {/* Custom caret — the native one is easy to miss on the dark bar. */}
+              <ChevronDown size={15} color="rgba(255,255,255,.65)" style={{position:'absolute',right:9,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}/>
+            </div>
+          </div>
+        )}
 
         {/* Nav groups */}
         <nav style={{flex:1,padding:'0.5rem 0',overflowY:'auto'}}>

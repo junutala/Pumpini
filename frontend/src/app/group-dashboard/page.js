@@ -23,12 +23,30 @@ const EXC_ICON = { cash: Clock, wetstock: AlertTriangle, overdue: UserX };
 export default function GroupDashboardPage() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { station, switchStation } = useAuth();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const [groups, setGroups]               = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedOutlet, setSelectedOutlet] = useState(null);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const stationId = typeof station === 'object' ? station?.id : station;
+
+  // Drilling into an outlet here repoints the GLOBAL station so the sidebar
+  // switcher and every back-office screen (petty cash, deposits, credit…) follow
+  // what you're looking at — otherwise you could view Highway but post to Kamala.
+  const pickOutlet = (s) => {
+    setSelectedOutlet(s?.id || null);
+    if (s?.id) switchStation({ id: s.id, name: s.name });
+  };
+
+  // Reverse sync: when the sidebar switcher changes the station WHILE you're
+  // already drilled into a single outlet, follow it. (Left on "All bunks" — the
+  // rollup — a sidebar change is harmless, so we don't yank you off the rollup.)
+  useEffect(() => {
+    if (stationId && selectedOutlet && selectedOutlet !== stationId) setSelectedOutlet(stationId);
+  }, [stationId]);
 
   const loadGroup = async (id) => {
     setLoading(true);
@@ -77,7 +95,7 @@ export default function GroupDashboardPage() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
           <button onClick={() => setSelectedOutlet(null)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (!selectedOutlet ? '#23272e' : '#e5e7eb'), background: !selectedOutlet ? '#23272e' : '#fff', color: !selectedOutlet ? '#fff' : 'var(--text-2,#475569)' }}>{tc('gdash.allBunks', 'All bunks')}</button>
           {st.map(s => (
-            <button key={s.id} onClick={() => setSelectedOutlet(s.id)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (selectedOutlet === s.id ? '#23272e' : '#e5e7eb'), background: selectedOutlet === s.id ? '#23272e' : '#fff', color: selectedOutlet === s.id ? '#fff' : 'var(--text-2,#475569)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <button key={s.id} onClick={() => pickOutlet(s)} style={{ padding: '7px 14px', borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: '1.5px solid ' + (selectedOutlet === s.id ? '#23272e' : '#e5e7eb'), background: selectedOutlet === s.id ? '#23272e' : '#fff', color: selectedOutlet === s.id ? '#fff' : 'var(--text-2,#475569)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: health(s) }} /> {s.name}
             </button>
           ))}
@@ -130,7 +148,7 @@ export default function GroupDashboardPage() {
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('gdash.outlets', 'Outlets')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {st.map(s => (
-                <div key={s.id} onClick={() => setSelectedOutlet(s.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 10, flexWrap: 'wrap', cursor: 'pointer' }}>
+                <div key={s.id} onClick={() => pickOutlet(s)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 10, flexWrap: 'wrap', cursor: 'pointer' }}>
                   <span style={{ width: 9, height: 9, borderRadius: '50%', background: health(s), flexShrink: 0 }} />
                   <span style={{ fontSize: 14, fontWeight: 700, minWidth: 90 }}>{s.name}</span>
                   <span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{fmtR(s.sales)} · <span style={{ color: '#3b6d11' }}>{s.gross_margin_pct != null ? s.gross_margin_pct + '%' : '—'}</span></span>

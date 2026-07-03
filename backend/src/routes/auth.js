@@ -70,11 +70,21 @@ router.post('/login', rateLimitAuth, async (req, res, next) => {
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid mobile number or password' });
 
-    // Get stations
+    // Get stations the user can reach — directly (station_users) OR via an owner
+    // group (owner_group_members → station_groups → station_group_members). This
+    // mirrors my_stations(), so owners AND CCO users get every outlet in their
+    // group, not just directly-linked ones.
     const { rows: stations } = await pool.query(
-      `SELECT s.id, s.name FROM stations s
-       JOIN station_users su ON su.station_id = s.id
-       WHERE su.user_id = $1`, [user.id]
+      `SELECT DISTINCT s.id, s.name FROM stations s
+       WHERE s.id IN (
+         SELECT station_id FROM station_users WHERE user_id = $1
+         UNION
+         SELECT sgm.station_id FROM owner_group_members ogm
+           JOIN station_groups sg ON sg.owner_group_id = ogm.group_id
+           JOIN station_group_members sgm ON sgm.station_group_id = sg.id
+          WHERE ogm.user_id = $1
+       )
+       ORDER BY s.name`, [user.id]
     );
 
     const payload = {
@@ -86,7 +96,7 @@ router.post('/login', rateLimitAuth, async (req, res, next) => {
       tv: user.token_version ?? 0, // session-revocation version
     };
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '8h'
+      expiresIn: process.env.JWT_EXPIRES_IN || '10h'
     });
 
     res.json({ token, user: { ...payload, stations } });
@@ -140,9 +150,16 @@ router.get('/me', authenticate, async (req, res, next) => {
     // Return the user's stations too, so the client can restore station context
     // on reload / biometric login (logout clears the localStorage cache).
     const { rows: stations } = await pool.query(
-      `SELECT s.id, s.name FROM stations s
-       JOIN station_users su ON su.station_id = s.id
-       WHERE su.user_id = $1`, [req.user.id]
+      `SELECT DISTINCT s.id, s.name FROM stations s
+       WHERE s.id IN (
+         SELECT station_id FROM station_users WHERE user_id = $1
+         UNION
+         SELECT sgm.station_id FROM owner_group_members ogm
+           JOIN station_groups sg ON sg.owner_group_id = ogm.group_id
+           JOIN station_group_members sgm ON sgm.station_group_id = sg.id
+          WHERE ogm.user_id = $1
+       )
+       ORDER BY s.name`, [req.user.id]
     );
     res.json({ ...rows[0], stations });
   } catch (err) { next(err); }
@@ -227,7 +244,7 @@ router.post('/change-password', authenticate, async (req, res, next) => {
     const token = jwt.sign(
       { ...rest, must_change_password: false, tv },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '10h' }
     );
     res.json({ ok: true, token });
   } catch (err) { next(err); }
