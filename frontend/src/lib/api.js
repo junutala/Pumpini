@@ -108,3 +108,11 @@ export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`
 
 // AI Chat — longer timeout: model latency + possible Railway cold start
 export const sendAiChat = (data) => api.post('/ai-chat', data, { timeout: 60000 });
+
+// VAWE "SO Instructions" — operational tasks pushed from VAWE. Manager acts;
+// owner observes read-only (the write calls 403 for non-managers server-side).
+export const getVaweInteractions     = (stationId)         => api.get('/vawe/interactions', { params: { station_id: stationId } });
+export const commitVaweInteraction   = (id, committedDate) => api.patch(`/vawe/interactions/${id}/commit`, { committed_date: committedDate });
+export const completeVaweInteraction = (id)                => api.patch(`/vawe/interactions/${id}/complete`, {});
+export const uploadVaweArtifact      = (id, payload)       => api.post(`/vawe/interactions/${id}/artifact`, payload);
+export const getVaweArtifact         = (id)                => api.get(`/vawe/interactions/${id}/artifact`);
