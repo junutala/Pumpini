@@ -4,6 +4,10 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/responsibilities');
+// Outbound integration: outlets are created/managed here (superadmin), so the
+// VAWE push must fire from these routes. Fire-and-forget — never blocks/breaks
+// the request.
+const { queueOutletSync } = require('../services/vaweService');
 
 const authAdmin = (req, res, next) => {
   const header = req.headers.authorization;
@@ -305,6 +309,7 @@ router.post('/stations', authAdmin, async (req, res, next) => {
         );
       }
       await client.query('COMMIT');
+      queueOutletSync(sid); // push the new outlet to VAWE
       res.status(201).json(rows[0]);
     } catch(e){ await client.query('ROLLBACK'); throw e; }
     finally{ client.release(); }
@@ -347,6 +352,7 @@ router.patch('/stations/:id', authAdmin, async (req, res, next) => {
       }
     }
     await client.query('COMMIT');
+    queueOutletSync(sid); // outlet name/city/owner may have changed
     res.json(rows[0]);
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
@@ -754,6 +760,7 @@ router.post('/station-users', authAdmin, async (req, res, next) => {
         [station_id, rows[0].id]
       );
       await client.query('COMMIT');
+      queueOutletSync(station_id); // manager/owner attach changes the VAWE payload
       res.status(201).json(rows[0]);
     } catch(e){ await client.query('ROLLBACK'); throw e; }
     finally{ client.release(); }
