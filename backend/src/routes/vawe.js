@@ -14,6 +14,7 @@ const pool    = require('../db/pool');
 const logger  = require('../utils/logger');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, canAccessStation } = require('../middleware/stationAccess');
+const { queueInteractionSignal } = require('../services/vaweService');
 const router  = express.Router();
 
 // Timing-safe hex-signature compare over the EXACT raw request bytes
@@ -107,6 +108,7 @@ async function loadInteraction(req, res, next) {
     if (!(await canAccessStation(req.user.id, rows[0].station_id))) {
       return res.status(403).json({ error: 'You do not have access to this station.' });
     }
+    req.interactionStationId = rows[0].station_id;   // for the reverse signal to VAWE
     next();
   } catch (err) { next(err); }
 }
@@ -151,6 +153,14 @@ router.patch('/interactions/:id/commit', authenticate, authorize('manager'), loa
       [req.params.id, committed]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
+    // Tell VAWE the operative deadline (manager's commit-by date).
+    queueInteractionSignal({
+      source: 'pumpini',
+      signalType: 'UPDATE',
+      externalRef: req.interactionStationId,
+      occurredAt: new Date().toISOString(),
+      data: { interactionId: req.params.id, committedDate: rows[0].committed_date },
+    });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -210,6 +220,14 @@ router.patch('/interactions/:id/complete', authenticate, authorize('manager'), l
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
     logger.info(`VAWE interaction ${req.params.id} marked complete by user ${req.user.id}`);
+    // Tell VAWE the task is fulfilled so it settles the interaction and stops escalating.
+    queueInteractionSignal({
+      source: 'pumpini',
+      signalType: 'FULFILMENT',
+      externalRef: req.interactionStationId,
+      occurredAt: new Date().toISOString(),
+      data: { interactionId: req.params.id },
+    });
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

@@ -24,6 +24,7 @@ const logger = require('../utils/logger');
 const { normalizePhone } = require('./whatsappService');
 
 const VAWE_PATH     = '/integrations/pumpini/outlets';
+const SIGNAL_PATH   = '/integrations/pumpini/webhook';   // reverse signals (interaction updates)
 const MAX_ATTEMPTS  = 5;
 const BASE_DELAY_MS = 500;   // backoff: 0.5s, 1s, 2s, 4s (+ jitter)
 const HTTP_TIMEOUT  = 15000;
@@ -256,6 +257,70 @@ function queueOutletSync(stationId) {
   });
 }
 
+// ── Reverse signal: interaction update (Pumpini → VAWE) ──────────────
+// When the outlet manager acts on an "SO Instructions" item, tell VAWE so it can
+// settle the interaction (FULFILMENT) or record the commit-by date (UPDATE).
+// Signed + retried exactly like the outlet push; VAWE keys on data.interactionId
+// and is idempotent, so retries are safe.
+async function postSignal(signal) {
+  const base = process.env.VAWE_API_URL;
+  if (!base) throw new Error('VAWE_API_URL is not set');
+  const url = `${base.replace(/\/+$/, '')}${SIGNAL_PATH}`;
+
+  const raw = JSON.stringify(signal);            // serialize ONCE, sign that exact string
+  const signature = signBody(raw);
+  const headers = { 'Content-Type': 'application/json', 'X-Pumpini-Signature': signature };
+  const label = `${signal.signalType} ${signal.data?.interactionId || signal.externalRef}`;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res;
+    try {
+      res = await axios.post(url, raw, {
+        headers,
+        timeout: HTTP_TIMEOUT,
+        transformRequest: [(d) => d],
+        validateStatus: () => true,
+      });
+    } catch (netErr) {
+      if (attempt >= MAX_ATTEMPTS) {
+        throw new Error(`VAWE unreachable for signal ${label} after ${attempt} attempts: ${netErr.message}`);
+      }
+      logger.warn(`VAWE network error for signal ${label} (attempt ${attempt}/${MAX_ATTEMPTS}): ${netErr.message}`);
+      await sleep(backoffMs(attempt));
+      continue;
+    }
+
+    const { status, data } = res;
+    if (status >= 200 && status < 300) {
+      logger.info(`VAWE accepted signal ${label} → status=${data?.status || status}, applied=${data?.applied}`);
+      return data;
+    }
+    if (status === 401 || status === 400) {
+      logger.error(`VAWE ${status} for signal ${label}: ${JSON.stringify(data)}`);
+      throw statusError(status, data, label);
+    }
+    if (attempt >= MAX_ATTEMPTS) {
+      logger.error(`VAWE signal ${label} failed after ${attempt} attempts (last status=${status}).`);
+      throw statusError(status, data, label);
+    }
+    logger.warn(`VAWE signal ${label} got status=${status}, retrying (attempt ${attempt}/${MAX_ATTEMPTS}).`);
+    await sleep(backoffMs(attempt));
+  }
+}
+
+// Fire-and-forget from a request handler — a VAWE outage must never fail the
+// manager's action. Detached from the request's RLS identity/connection so it
+// runs on the bypass role after the response is sent.
+function queueInteractionSignal(signal) {
+  pool.als.exit(() => {
+    setImmediate(() => {
+      postSignal(signal).catch((err) => {
+        logger.error(`VAWE signal failed (${signal.signalType} ${signal.data?.interactionId}): ${err.message}`);
+      });
+    });
+  });
+}
+
 module.exports = {
   toBcp47,
   buildOutletPayload,
@@ -264,4 +329,6 @@ module.exports = {
   loadOutletForVawe,
   syncOutlet,
   queueOutletSync,
+  postSignal,
+  queueInteractionSignal,
 };
