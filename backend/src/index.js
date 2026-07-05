@@ -81,7 +81,9 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan('combined', { stream: { write: m => logger.info(m.trim()) } }));
-app.use(express.json({ limit: '10mb' }));
+// Capture the raw body so signature-verified webhooks (VAWE → Pumpini) can
+// HMAC the exact bytes. Additive — req.body still parses as before.
+app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 // Attach socket.io to req for use in route handlers
@@ -106,6 +108,8 @@ app.use('/api/rfid',       rfidRoutes);
 app.use('/api/templates',  templateRoutes);
 app.use('/api/groups',     groupRoutes);
 app.use('/api/superadmin', superadminRoutes);
+// VAWE → Pumpini: receive interaction items (the "SO Instructions" tile)
+app.use('/api/vawe',       require('./routes/vawe'));
 app.use('/api/invoices',   require('./routes/invoices'));
 app.use('/api/deliveries', require('./routes/deliveries'));
 app.use('/api/voice',      voiceRoutes);
