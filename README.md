@@ -136,6 +136,8 @@ npm run start
 | `SMTP_PASS` | SMTP password |
 | `MSG91_AUTH_KEY` | MSG91 API key for SMS/WhatsApp |
 | `FRONTEND_URL` | Frontend origin for CORS |
+| `VAWE_API_URL` | Base URL of the VAWE integration API (outlet push) |
+| `PUMPINI_WEBHOOK_SECRET` | Shared secret; keys the HMAC-SHA256 signature on the VAWE webhook |
 
 ---
 

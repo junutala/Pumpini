@@ -2,6 +2,9 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationId } = require('../middleware/stationAccess');
+// Outbound integration: push the outlet to VAWE on create/update. Fire-and-forget
+// so a VAWE outage can never break an outlet save.
+const { queueOutletSync } = require('../services/vaweService');
 
 router.get('/', authenticate, async (req, res, next) => {
   try {
@@ -26,6 +29,7 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
       [name, address, gst_number, oil_company, city, state]
     );
     await pool.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2)', [rows[0].id, req.user.id]);
+    queueOutletSync(rows[0].id);
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -35,6 +39,8 @@ router.post('/:id/users', authenticate, authorize('owner','manager'), requireSta
     const { user_id } = req.body;
     await pool.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
       [req.params.id, user_id]);
+    // Attaching an owner/manager can change the outlet's VAWE payload.
+    queueOutletSync(req.params.id);
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
@@ -73,6 +79,7 @@ router.post('/:id/settings', authenticate, authorize('owner','manager'), require
        variance_threshold||50,invoice_prefix||'INV',
        latitude||null,longitude||null,geo_fence_radius||500,geo_fence_enabled||false]
     );
+    queueOutletSync(req.params.id);
     res.json(rows[0]);
   } catch(err) { next(err); }
 });
@@ -140,6 +147,7 @@ router.patch('/:id/settings', authenticate, authorize('owner','manager'), requir
          invoice_prefix=COALESCE($5,station_settings.invoice_prefix)`,
       [req.params.id, gstn, pan, owner_whatsapp, invoice_prefix||'INV']
     );
+    queueOutletSync(req.params.id);
     res.json({ ok:true });
   } catch(err) { next(err); }
 });
