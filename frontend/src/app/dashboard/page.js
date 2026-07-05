@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Fuel, Lock, Bell, AlertTriangle, CheckCircle, Landmark, FileText,
   Droplets, ArrowRight, Sparkles, Clock, ChevronRight, Flame } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
+import SoInstructionsTile from '../../components/shared/SoInstructionsTile';
 import { getOwnerDashboard } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -169,6 +170,9 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{isToday ? aiLines.slice(0, 2).join(' ') : tc('bunk.viewingPastDay', 'Viewing a past day — sales & settlement are for the selected date. Live status (stock, deposits, receivables) reflects today only.')}</span>
         </div>
       </div>
+
+      {/* SO Instructions — VAWE operational tasks (manager acts, owner read-only) */}
+      <SoInstructionsTile stationId={stationId} />
 
       {/* Needs you — live 'now' actions; only when viewing today */}
       {isToday && actions.length > 0 && (
