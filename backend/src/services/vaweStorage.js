@@ -9,15 +9,28 @@
 // future SO / oil-company / region stripping keys off (finite outlets per SO).
 //
 //   SUPABASE_URL          – https://<project>.supabase.co
-//   SUPABASE_SERVICE_KEY  – service-role key (server-only; never shipped)
+//   SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE_KEY  – service-role key
+//                           (server-only; never shipped). We accept the common
+//                           aliases so it works with whatever the project set.
 //   VAWE_ARTIFACT_BUCKET  – public bucket name (default 'vawe-artifacts')
 //
 const axios = require('axios');
 
 const DEFAULT_BUCKET = 'vawe-artifacts';
 
+// Accept the common env-var names for the service-role key — different Supabase
+// setups use SUPABASE_SERVICE_KEY vs SUPABASE_SERVICE_ROLE_KEY vs SUPABASE_KEY.
+function serviceKey() {
+  return (
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_KEY ||
+    ''
+  );
+}
+
 function storageConfigured() {
-  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+  return Boolean(process.env.SUPABASE_URL && serviceKey());
 }
 
 // Sanitize a client-supplied filename for use in an object key: keep only safe
@@ -36,7 +49,7 @@ async function uploadArtifact({ stationId, interactionId, bytes, contentType, fi
     throw new Error('Artifact storage not configured (SUPABASE_* env missing)');
   }
   const base = process.env.SUPABASE_URL.replace(/\/+$/, '');
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  const key = serviceKey();
   const bucket = process.env.VAWE_ARTIFACT_BUCKET || DEFAULT_BUCKET;
   const path = `${stationId}/${interactionId}-${Date.now()}-${safeName(filename)}`;
   const res = await axios.post(`${base}/storage/v1/object/${bucket}/${path}`, bytes, {
