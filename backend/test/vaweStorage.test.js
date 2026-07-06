@@ -19,15 +19,22 @@ test('safeName bounds the length', () => {
 test('storageConfigured reflects the SUPABASE_* env', () => {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
+  const roleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   delete process.env.SUPABASE_URL;
   delete process.env.SUPABASE_SERVICE_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   assert.strictEqual(storageConfigured(), false);
   process.env.SUPABASE_URL = 'https://x.supabase.co';
   process.env.SUPABASE_SERVICE_KEY = 'k';
   assert.strictEqual(storageConfigured(), true);
+  // The SUPABASE_SERVICE_ROLE_KEY alias also satisfies it.
+  delete process.env.SUPABASE_SERVICE_KEY;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'k2';
+  assert.strictEqual(storageConfigured(), true);
   // restore
   if (url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = url;
   if (key === undefined) delete process.env.SUPABASE_SERVICE_KEY; else process.env.SUPABASE_SERVICE_KEY = key;
+  if (roleKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY; else process.env.SUPABASE_SERVICE_ROLE_KEY = roleKey;
 });
 
 test('uploadArtifact refuses when storage is not configured', async () => {
