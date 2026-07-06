@@ -18,21 +18,29 @@ import {
 } from '../../lib/api';
 
 const IST = { timeZone: 'Asia/Kolkata' };
-const todayISO = () => new Date().toLocaleDateString('en-CA', IST);
-const dateOnly = (ts) => (ts ? new Date(ts).toLocaleDateString('en-CA', IST) : null);
 const fmt = (ts) => (ts ? new Date(ts).toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short' }) : '—');
-const fmtDay = (iso) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short' }) : '—');
+// Date + time in en-IN / IST (never a raw ISO). Used for the operative deadline.
+const fmtDT = (ts) => (ts ? new Date(ts).toLocaleString('en-IN', { ...IST, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const ms = (ts) => (ts ? new Date(ts).getTime() : null);
+// Pre-fill / min for <input type="datetime-local"> (local 'YYYY-MM-DDTHH:mm').
+const toLocalInput = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 
-// Deadline + flag: committed date is the operative deadline; fall back to the
-// SO's soft target. Overdue → red, revised-past-target → yellow (Mgmt by
-// Exception), committed → blue, otherwise awaiting a date.
+// Deadline + flag: the manager's committed date+time is the operative deadline;
+// fall back to the SO's soft target. Overdue → red, revised-past-target →
+// yellow (Mgmt by Exception), committed → blue, otherwise awaiting a date.
 function flagOf(it) {
-  const today = todayISO();
-  const deadline = it.committed_date || dateOnly(it.desired_by);
-  if (deadline && deadline < today) return { cls: 'badge-danger', label: 'Overdue' };
-  const soft = dateOnly(it.desired_by);
-  if (it.committed_date && soft && it.committed_date > soft) return { cls: 'badge-warning', label: 'Revised' };
-  if (it.committed_date) return { cls: 'badge-info', label: 'Committed' };
+  const now = Date.now();
+  const committed = ms(it.committed_date);
+  const deadline = committed ?? ms(it.desired_by);
+  if (deadline && deadline < now) return { cls: 'badge-danger', label: 'Overdue' };
+  const soft = ms(it.desired_by);
+  if (committed && soft && committed > soft) return { cls: 'badge-warning', label: 'Revised' };
+  if (committed) return { cls: 'badge-info', label: 'Committed' };
   return { cls: 'badge-gray', label: 'Awaiting date' };
 }
 
@@ -84,7 +92,7 @@ export default function SoInstructionsTile({ stationId }) {
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.task_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', marginTop: 2 }}>
-                    Deadline: {it.committed_date ? fmtDay(it.committed_date) : (it.desired_by ? `${fmt(it.desired_by)} (target)` : 'not set')}
+                    Deadline: {it.committed_date ? fmtDT(it.committed_date) : (it.desired_by ? `${fmtDT(it.desired_by)} (target)` : 'not set')}
                     {it.has_artifact && <> · <Paperclip size={11} style={{ verticalAlign: -1 }} /> proof</>}
                   </div>
                 </div>
@@ -114,31 +122,38 @@ export default function SoInstructionsTile({ stationId }) {
 }
 
 function InteractionDrawer({ it, canAct, onClose, onChanged }) {
-  const [committed, setCommitted] = useState(it.committed_date || '');
+  const [committed, setCommitted] = useState(toLocalInput(it.committed_date));
   const [busy, setBusy] = useState('');            // '', 'commit', 'upload', 'complete'
   const [error, setError] = useState('');
-  const [proof, setProof] = useState(null);         // fetched data URI
-  const [hasArtifact, setHasArtifact] = useState(!!it.has_artifact);
+  const [proof, setProof] = useState(null);         // fetched proof URL
+  const hasArtifact = !!it.has_artifact;
   const fileRef = useRef(null);
   const f = flagOf({ ...it, committed_date: committed || null });
 
+  // Manager commits a date AND time; send it as a full ISO timestamp.
   const saveCommit = async (value) => {
     setCommitted(value);
     setBusy('commit'); setError('');
-    try { await commitVaweInteraction(it.id, value || null); onChanged(); }
-    catch (e) { setError(e?.error || 'Could not save the date.'); }
+    try {
+      await commitVaweInteraction(it.id, value ? new Date(value).toISOString() : null);
+      onChanged();
+    } catch (e) { setError(e?.error || 'Could not save the date.'); }
     finally { setBusy(''); }
   };
 
+  // Uploading proof SETTLES the task (hands it back to the SO) → close on success.
   const onFile = async (file) => {
     if (!file) return;
     setBusy('upload'); setError('');
     try {
       const base64 = await fileToBase64(file);
       await uploadVaweArtifact(it.id, { base64, media_type: file.type, filename: file.name });
-      setHasArtifact(true); setProof(null); onChanged();
-    } catch (e) { setError(e?.error || 'Upload failed.'); }
-    finally { setBusy(''); if (fileRef.current) fileRef.current.value = ''; }
+      if (fileRef.current) fileRef.current.value = '';
+      onChanged(); onClose();
+    } catch (e) {
+      setError(e?.error || 'Upload failed.'); setBusy('');
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   const viewProof = async () => {
@@ -173,7 +188,7 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
           <div>
             <span style={label}>SO's target</span>
-            <span style={meta}>{it.desired_by ? fmt(it.desired_by) : 'none'}</span>
+            <span style={meta}>{it.desired_by ? fmtDT(it.desired_by) : 'none'}</span>
           </div>
           <div>
             <span style={label}>Sent on</span>
@@ -186,15 +201,15 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
           <span style={label}><CalendarClock size={13} style={{ verticalAlign: -2 }} /> Commit-by date</span>
           {canAct ? (
             <input
-              type="date"
+              type="datetime-local"
               value={committed}
-              min={todayISO()}
+              min={toLocalInput(new Date())}
               disabled={busy === 'commit'}
               onChange={(e) => saveCommit(e.target.value)}
               style={{ padding: '7px 10px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 13.5 }}
             />
           ) : (
-            <span style={meta}>{committed ? fmtDay(committed) : 'not set by manager yet'}</span>
+            <span style={meta}>{committed ? fmtDT(committed) : 'not set by manager yet'}</span>
           )}
         </div>
 
@@ -204,7 +219,7 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {canAct && (
               <>
-                <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={(e) => onFile(e.target.files?.[0])} />
+                <input ref={fileRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" hidden onChange={(e) => onFile(e.target.files?.[0])} />
                 <button className="btn btn-secondary btn-sm" disabled={busy === 'upload'} onClick={() => fileRef.current?.click()}>
                   <Upload size={14} /> {busy === 'upload' ? 'Uploading…' : (hasArtifact ? 'Replace' : 'Upload')}
                 </button>

@@ -15,6 +15,7 @@ const logger  = require('../utils/logger');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, canAccessStation } = require('../middleware/stationAccess');
 const { queueInteractionSignal } = require('../services/vaweService');
+const { storageConfigured, uploadArtifact } = require('../services/vaweStorage');
 const router  = express.Router();
 
 // Timing-safe hex-signature compare over the EXACT raw request bytes
@@ -113,23 +114,36 @@ async function loadInteraction(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// Accepted proof types + cap. Artifacts are stored inline as a base64 data URI
-// in artifact_url (the house pattern is base64-in-DB — no object store exists).
-const ARTIFACT_OK = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-const ARTIFACT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB decoded
+// Proof can be an image, a video, or a document. Artifacts are uploaded to a
+// public Supabase bucket and artifact_url holds the URL (not base64). Cap kept
+// under the 10 MB request-body limit (base64 inflates ~4/3), so ≤ 8 MB decoded.
+const ARTIFACT_MAX_BYTES = 8 * 1024 * 1024; // 8 MB decoded
+function artifactTypeOk(mt) {
+  if (!mt || typeof mt !== 'string') return false;
+  return (
+    /^(image|video|audio)\//.test(mt) ||
+    mt === 'application/pdf' ||
+    /^application\/(msword|rtf|vnd\.ms-|vnd\.openxmlformats-officedocument\.)/.test(mt) ||
+    mt === 'text/plain' ||
+    mt === 'text/csv'
+  );
+}
 
 // GET /api/vawe/interactions?station_id=…  — OPEN instructions for one outlet.
 // Ordered by the operative deadline (committed date → SO's soft target → age).
 router.get('/interactions', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { rows } = await bypass(
+      // committed_date is returned raw (TIMESTAMPTZ once migrated; DATE before —
+      // both serialize fine and COALESCE coerces either to a comparable type,
+      // so this read is tolerant of the pending column-type change).
       `SELECT id, station_id, task_name, instruction, desired_by, so_executed_at,
-              to_char(committed_date, 'YYYY-MM-DD') AS committed_date,
-              status, (artifact_url IS NOT NULL) AS has_artifact,
+              committed_date,
+              status, (artifact_url IS NOT NULL) AS has_artifact, artifact_url,
               created_at, updated_at
          FROM vawe_interactions
         WHERE station_id = $1 AND status = 'OPEN'
-        ORDER BY COALESCE(committed_date, desired_by::date, so_executed_at::date) ASC,
+        ORDER BY COALESCE(committed_date, desired_by, so_executed_at) ASC,
                  created_at ASC`,
       [req.query.station_id]
     );
@@ -140,61 +154,101 @@ router.get('/interactions', authenticate, requireStationAccess({ required: true 
 // PATCH /api/vawe/interactions/:id/commit  — manager sets/clears the commit-by
 // date (the operative deadline). Body: { committed_date: 'YYYY-MM-DD' | null }.
 router.patch('/interactions/:id/commit', authenticate, authorize('manager'), loadInteraction, async (req, res, next) => {
-  const committed = req.body?.committed_date || null;
-  if (committed && !/^\d{4}-\d{2}-\d{2}$/.test(committed)) {
-    return res.status(400).json({ error: 'committed_date must be YYYY-MM-DD' });
+  // Accept a full date+time (ISO or any Date-parseable string), or null to
+  // clear. Stored as a timestamp — the manager commits a day AND time, which
+  // is the operative deadline VAWE escalates against.
+  const raw = req.body?.committed_date;
+  let committed = null;
+  if (raw) {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) {
+      return res.status(400).json({ error: 'committed_date must be a valid date and time' });
+    }
+    committed = d.toISOString();
   }
   try {
     const { rows } = await bypass(
       `UPDATE vawe_interactions
           SET committed_date = $2, updated_at = now()
         WHERE id = $1 AND status = 'OPEN'
-      RETURNING id, to_char(committed_date, 'YYYY-MM-DD') AS committed_date`,
+      RETURNING id, committed_date`,
       [req.params.id, committed]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
-    // Tell VAWE the operative deadline (manager's commit-by date).
+    // Tell VAWE the operative deadline (manager's commit-by date + time).
     queueInteractionSignal({
       source: 'pumpini',
       signalType: 'UPDATE',
       externalRef: req.interactionStationId,
       occurredAt: new Date().toISOString(),
-      data: { interactionId: req.params.id, committedDate: rows[0].committed_date },
+      data: {
+        interactionId: req.params.id,
+        committedDate: rows[0].committed_date
+          ? new Date(rows[0].committed_date).toISOString()
+          : null,
+      },
     });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
 
-// POST /api/vawe/interactions/:id/artifact  — manager uploads proof.
-// Body: { base64, media_type, filename? }. Stored as a data URI in artifact_url.
+// POST /api/vawe/interactions/:id/artifact  — manager uploads proof (image /
+// video / document). Body: { base64, media_type, filename? }. The file is
+// uploaded to a public Supabase bucket (object key embeds the outlet id) and
+// artifact_url holds the URL. Uploading proof SETTLES the task: status→CLOSED
+// and a FULFILMENT signal carrying the URL is sent to VAWE, handing the
+// interaction back to the SO with the proof attached.
 router.post('/interactions/:id/artifact', authenticate, authorize('manager'), loadInteraction, async (req, res, next) => {
-  const { base64, media_type } = req.body || {};
+  const { base64, media_type, filename } = req.body || {};
   if (!base64 || !media_type) {
     return res.status(400).json({ error: 'base64 and media_type are required' });
   }
-  if (!ARTIFACT_OK.includes(media_type)) {
-    return res.status(400).json({ error: 'Unsupported file type. Use a JPG/PNG/WebP image or a PDF.' });
+  if (!artifactTypeOk(media_type)) {
+    return res.status(400).json({ error: 'Unsupported file type. Use an image, video, PDF or document.' });
   }
-  // Reject oversize before it hits the DB (base64 is ~4/3 of the decoded size).
-  if (Math.floor((base64.length * 3) / 4) > ARTIFACT_MAX_BYTES) {
-    return res.status(413).json({ error: 'File too large (max 5 MB).' });
+  if (!storageConfigured()) {
+    return res.status(503).json({ error: 'Artifact storage is not configured.' });
   }
-  const dataUri = `data:${media_type};base64,${base64}`;
+  const bytes = Buffer.from(base64, 'base64');
+  if (!bytes.length) return res.status(400).json({ error: 'Empty or invalid file.' });
+  if (bytes.length > ARTIFACT_MAX_BYTES) {
+    return res.status(413).json({ error: 'File too large (max 8 MB).' });
+  }
   try {
+    const publicUrl = await uploadArtifact({
+      stationId: req.interactionStationId,   // outlet id → embedded in the key
+      interactionId: req.params.id,
+      bytes,
+      contentType: media_type,
+      filename,
+    });
+    // Store the URL and settle in one write — uploading proof hands the task back.
     const { rows } = await bypass(
       `UPDATE vawe_interactions
-          SET artifact_url = $2, updated_at = now()
+          SET artifact_url = $2, status = 'CLOSED', updated_at = now()
         WHERE id = $1 AND status = 'OPEN'
       RETURNING id`,
-      [req.params.id, dataUri]
+      [req.params.id, publicUrl]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
-    res.json({ ok: true });
-  } catch (err) { next(err); }
+    logger.info(`VAWE interaction ${req.params.id} proof uploaded + settled by user ${req.user.id}`);
+    queueInteractionSignal({
+      source: 'pumpini',
+      signalType: 'FULFILMENT',
+      externalRef: req.interactionStationId,
+      occurredAt: new Date().toISOString(),
+      data: { interactionId: req.params.id, artifactUrl: publicUrl },
+    });
+    res.json({ ok: true, artifact_url: publicUrl });
+  } catch (err) {
+    logger.error(`VAWE artifact upload failed for ${req.params.id}: ${err.message}`);
+    return res.status(502).json({ error: 'Could not store the file. Please try again.' });
+  }
 });
 
-// GET /api/vawe/interactions/:id/artifact  — fetch the stored proof (data URI).
-// Read-only, so any user with station access (manager + owner) may view it.
+// GET /api/vawe/interactions/:id/artifact  — return the proof URL. Read-only,
+// so any user with station access (manager + owner) may view it. artifact_url
+// is now a public Supabase URL (older rows may still hold a base64 data URI).
 router.get('/interactions/:id/artifact', authenticate, loadInteraction, async (req, res, next) => {
   try {
     const { rows } = await bypass(
@@ -215,18 +269,22 @@ router.patch('/interactions/:id/complete', authenticate, authorize('manager'), l
       `UPDATE vawe_interactions
           SET status = 'CLOSED', updated_at = now()
         WHERE id = $1 AND status = 'OPEN'
-      RETURNING id`,
+      RETURNING id, artifact_url`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
     logger.info(`VAWE interaction ${req.params.id} marked complete by user ${req.user.id}`);
-    // Tell VAWE the task is fulfilled so it settles the interaction and stops escalating.
+    // Tell VAWE the task is fulfilled so it settles the interaction and stops
+    // escalating. Carry the proof URL if the manager already uploaded one.
     queueInteractionSignal({
       source: 'pumpini',
       signalType: 'FULFILMENT',
       externalRef: req.interactionStationId,
       occurredAt: new Date().toISOString(),
-      data: { interactionId: req.params.id },
+      data: {
+        interactionId: req.params.id,
+        ...(rows[0].artifact_url ? { artifactUrl: rows[0].artifact_url } : {}),
+      },
     });
     res.json({ ok: true });
   } catch (err) { next(err); }
