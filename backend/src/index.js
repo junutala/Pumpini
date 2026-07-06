@@ -83,7 +83,9 @@ app.use(cors({
 app.use(morgan('combined', { stream: { write: m => logger.info(m.trim()) } }));
 // Capture the raw body so signature-verified webhooks (VAWE → Pumpini) can
 // HMAC the exact bytes. Additive — req.body still parses as before.
-app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
+// 13mb: VAWE proof artifacts are POSTed as base64 (≤ 8 MB decoded → ~11 MB
+// base64 + JSON overhead); everything else is far smaller.
+app.use(express.json({ limit: '13mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 // Attach socket.io to req for use in route handlers
