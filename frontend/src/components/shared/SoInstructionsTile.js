@@ -53,7 +53,12 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
 
 export default function SoInstructionsTile({ stationId }) {
   const { user } = useAuth();
-  const canAct = user?.role === 'manager';   // owner/CCO observe read-only
+  // The manager can always act. The owner acts only on interactions VAWE has
+  // unlocked (owner_can_act) — i.e. escalation reached the owner cycle. Everyone
+  // else (CCO) stays read-only. So "can act" is per-interaction, not per-user.
+  const isManager = user?.role === 'manager';
+  const isOwner = user?.role === 'owner';
+  const canActFor = (it) => isManager || (isOwner && !!it?.owner_can_act);
   const [items, setItems] = useState([]);
   const [openId, setOpenId] = useState(null);
 
@@ -69,6 +74,7 @@ export default function SoInstructionsTile({ stationId }) {
 
   if (!items.length) return null;
   const active = items.find((i) => i.id === openId) || null;
+  const anyActable = items.some(canActFor);
 
   return (
     <>
@@ -101,7 +107,7 @@ export default function SoInstructionsTile({ stationId }) {
             );
           })}
         </div>
-        {!canAct && (
+        {!anyActable && (
           <div style={{ fontSize: 11.5, color: 'var(--text-3,#7a7773)', marginTop: 10 }}>
             Read-only — the outlet manager acts on these.
           </div>
@@ -112,7 +118,7 @@ export default function SoInstructionsTile({ stationId }) {
         <InteractionDrawer
           key={active.id}
           it={active}
-          canAct={canAct}
+          canAct={canActFor(active)}
           onClose={() => setOpenId(null)}
           onChanged={load}
         />

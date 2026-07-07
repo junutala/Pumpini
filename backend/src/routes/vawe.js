@@ -12,7 +12,7 @@ const express = require('express');
 const crypto  = require('crypto');
 const pool    = require('../db/pool');
 const logger  = require('../utils/logger');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, canAccessStation } = require('../middleware/stationAccess');
 const { queueInteractionSignal } = require('../services/vaweService');
 const { storageConfigured, uploadArtifact } = require('../services/vaweStorage');
@@ -100,18 +100,49 @@ const bypass = (text, params) => pool.als.exit(() => pool.query(text, params));
 // Guard for :id routes: resolve the interaction's station on the bypass role
 // (an identity read would be RLS-filtered to nothing and silently skip the
 // check), then verify the caller can access that station under their identity.
+// Also resolves owner_can_act (Part B — owner-when-unlocked) column-tolerantly:
+// if the column isn't migrated yet the SELECT would 42703, so we fall back to a
+// query without it (owner_can_act defaults to false) rather than 500 the tile.
 async function loadInteraction(req, res, next) {
   try {
-    const { rows } = await bypass(
-      'SELECT station_id FROM vawe_interactions WHERE id = $1', [req.params.id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Interaction not found' });
-    if (!(await canAccessStation(req.user.id, rows[0].station_id))) {
+    let row;
+    try {
+      const { rows } = await bypass(
+        `SELECT station_id, COALESCE(owner_can_act, false) AS owner_can_act
+           FROM vawe_interactions WHERE id = $1`,
+        [req.params.id]
+      );
+      row = rows[0];
+    } catch (err) {
+      if (err.code !== '42703') throw err;   // only tolerate "column does not exist"
+      const { rows } = await bypass(
+        'SELECT station_id, false AS owner_can_act FROM vawe_interactions WHERE id = $1',
+        [req.params.id]
+      );
+      row = rows[0];
+    }
+    if (!row) return res.status(404).json({ error: 'Interaction not found' });
+    if (!(await canAccessStation(req.user.id, row.station_id))) {
       return res.status(403).json({ error: 'You do not have access to this station.' });
     }
-    req.interactionStationId = rows[0].station_id;   // for the reverse signal to VAWE
+    req.interactionStationId = row.station_id;        // for the reverse signal to VAWE
+    req.interactionOwnerCanAct = row.owner_can_act === true;
     next();
   } catch (err) { next(err); }
+}
+
+// Write guard for the tile actions (commit / artifact / complete). The manager
+// can always act; the owner can act ONLY once VAWE has unlocked him — i.e. the
+// escalation chain reached the owner cycle and posted /owner-unlock, setting
+// owner_can_act=true on this interaction. Everyone else stays read-only. Must
+// run AFTER loadInteraction (it reads req.interactionOwnerCanAct).
+function requireCanAct(req, res, next) {
+  const role = req.user?.role;
+  if (role === 'manager') return next();
+  if (role === 'owner' && req.interactionOwnerCanAct) return next();
+  return res.status(403).json({
+    error: 'Only the outlet manager can act on this task until VAWE escalates it to the owner.',
+  });
 }
 
 // Proof can be an image, a video, or a document. Artifacts are uploaded to a
@@ -132,28 +163,75 @@ function artifactTypeOk(mt) {
 // GET /api/vawe/interactions?station_id=…  — OPEN instructions for one outlet.
 // Ordered by the operative deadline (committed date → SO's soft target → age).
 router.get('/interactions', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
-  try {
-    const { rows } = await bypass(
-      // committed_date is returned raw (TIMESTAMPTZ once migrated; DATE before —
-      // both serialize fine and COALESCE coerces either to a comparable type,
-      // so this read is tolerant of the pending column-type change).
-      `SELECT id, station_id, task_name, instruction, desired_by, so_executed_at,
+  // committed_date is returned raw (TIMESTAMPTZ once migrated; DATE before —
+  // both serialize fine and COALESCE coerces either to a comparable type, so
+  // this read is tolerant of the pending column-type change). owner_can_act
+  // (Part B) is likewise column-tolerant: if it isn't migrated yet the SELECT
+  // 42703s, so we fall back to defaulting it to false rather than 500 the tile.
+  const base = `id, station_id, task_name, instruction, desired_by, so_executed_at,
               committed_date,
               status, (artifact_url IS NOT NULL) AS has_artifact, artifact_url,
-              created_at, updated_at
-         FROM vawe_interactions
+              created_at, updated_at`;
+  const tail = `FROM vawe_interactions
         WHERE station_id = $1 AND status = 'OPEN'
         ORDER BY COALESCE(committed_date, desired_by, so_executed_at) ASC,
-                 created_at ASC`,
-      [req.query.station_id]
-    );
+                 created_at ASC`;
+  try {
+    let rows;
+    try {
+      ({ rows } = await bypass(
+        `SELECT ${base}, COALESCE(owner_can_act, false) AS owner_can_act ${tail}`,
+        [req.query.station_id]
+      ));
+    } catch (err) {
+      if (err.code !== '42703') throw err;
+      ({ rows } = await bypass(
+        `SELECT ${base}, false AS owner_can_act ${tail}`,
+        [req.query.station_id]
+      ));
+    }
     res.json({ interactions: rows });
   } catch (err) { next(err); }
 });
 
+// POST /api/vawe/interactions/:id/owner-unlock  — signature-verified (VAWE →
+// Pumpini, same HMAC as the inbound webhook). VAWE calls this when the
+// escalation chain raises to the owner: it lets the owner act on this
+// interaction (commit a date/time, upload proof) himself. Idempotent — a repeat
+// call is a no-op. Column-tolerant: if owner_can_act isn't migrated yet we
+// return 200 (unlocked:false) so VAWE's fire-and-forget call doesn't error-spam;
+// the owner simply can't be unlocked until the Part B SQL is run.
+router.post('/interactions/:id/owner-unlock', async (req, res, next) => {
+  const code = checkSignature(req);
+  if (code === 503) return res.status(503).json({ error: 'VAWE integration not configured' });
+  if (code !== 200) return res.status(401).json({ error: 'Invalid signature' });
+
+  const { interactionId } = req.body || {};
+  if (!interactionId || interactionId !== req.params.id) {
+    return res.status(400).json({ error: 'interactionId must be present and match the URL' });
+  }
+  try {
+    const { rows } = await bypass(
+      `UPDATE vawe_interactions
+          SET owner_can_act = true, updated_at = now()
+        WHERE id = $1 AND status = 'OPEN'
+      RETURNING id`,
+      [interactionId]
+    );
+    logger.info(`VAWE owner-unlock for interaction ${interactionId} (matched ${rows.length})`);
+    res.json({ ok: true, unlocked: rows.length > 0 });
+  } catch (err) {
+    if (err.code === '42703') {
+      logger.warn(`VAWE owner-unlock ${interactionId}: owner_can_act column not present yet — run the Part B SQL`);
+      return res.status(200).json({ ok: true, unlocked: false, reason: 'owner_can_act column pending migration' });
+    }
+    next(err);
+  }
+});
+
 // PATCH /api/vawe/interactions/:id/commit  — manager sets/clears the commit-by
 // date (the operative deadline). Body: { committed_date: 'YYYY-MM-DD' | null }.
-router.patch('/interactions/:id/commit', authenticate, authorize('manager'), loadInteraction, async (req, res, next) => {
+router.patch('/interactions/:id/commit', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
   // Accept a full date+time (ISO or any Date-parseable string), or null to
   // clear. Stored as a timestamp — the manager commits a day AND time, which
   // is the operative deadline VAWE escalates against.
@@ -198,7 +276,7 @@ router.patch('/interactions/:id/commit', authenticate, authorize('manager'), loa
 // artifact_url holds the URL. Uploading proof SETTLES the task: status→CLOSED
 // and a FULFILMENT signal carrying the URL is sent to VAWE, handing the
 // interaction back to the SO with the proof attached.
-router.post('/interactions/:id/artifact', authenticate, authorize('manager'), loadInteraction, async (req, res, next) => {
+router.post('/interactions/:id/artifact', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
   const { base64, media_type, filename } = req.body || {};
   if (!base64 || !media_type) {
     return res.status(400).json({ error: 'base64 and media_type are required' });
@@ -263,7 +341,7 @@ router.get('/interactions/:id/artifact', authenticate, loadInteraction, async (r
 
 // PATCH /api/vawe/interactions/:id/complete  — manager marks the task done.
 // Flips status→CLOSED, which removes the tile from both dashboards.
-router.patch('/interactions/:id/complete', authenticate, authorize('manager'), loadInteraction, async (req, res, next) => {
+router.patch('/interactions/:id/complete', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
   try {
     const { rows } = await bypass(
       `UPDATE vawe_interactions
@@ -291,3 +369,5 @@ router.patch('/interactions/:id/complete', authenticate, authorize('manager'), l
 });
 
 module.exports = router;
+// Exposed for unit tests (pure req/res/next guard — no DB).
+module.exports.requireCanAct = requireCanAct;

@@ -36,6 +36,11 @@ ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS artifact_url   TEXT;
 -- Proof is stored inline as a base64 data URI — ensure the column is unbounded
 -- even if an ad-hoc table created it as VARCHAR(n).
 ALTER TABLE vawe_interactions ALTER COLUMN artifact_url TYPE TEXT;
+-- Part B (owner-when-unlocked): VAWE flips this to true (via the signed
+-- POST /interactions/:id/owner-unlock) when the escalation chain raises to the
+-- owner, letting the owner commit a date/time and upload proof himself. The
+-- app reads/writes it column-tolerantly, so this migration can lag the deploy.
+ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS owner_can_act BOOLEAN NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_station ON vawe_interactions(station_id);
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_status  ON vawe_interactions(status);
