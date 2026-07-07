@@ -82,8 +82,10 @@ function buildOutletPayload(o) {
     throw err;
   }
 
-  // Built in the documented key order; latitude/longitude are optional.
+  // Built in the documented key order; oilCompany + latitude/longitude are optional.
   const payload = { pumpiniOutletId, name, city };
+  const oilCompany = o.oil_company == null ? '' : String(o.oil_company).trim();
+  if (oilCompany) payload.oilCompany = oilCompany; // optional — half of the SO gate
   const lat = toNumber(o.latitude);
   const lng = toNumber(o.longitude);
   if (lat !== null) payload.latitude = lat;
@@ -196,7 +198,7 @@ async function postToVawe(payload) {
 // webhooks/scripts — so it works from the request tail and the backfill alike.
 async function loadOutletForVawe(stationId) {
   const { rows } = await pool.query(
-    `SELECT s.id, s.name, s.city,
+    `SELECT s.id, s.name, s.city, s.oil_company,
             ss.latitude, ss.longitude,
             mgr.name     AS manager_name,
             mgr.phone    AS manager_phone,
