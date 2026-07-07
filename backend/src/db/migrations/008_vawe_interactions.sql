@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS vawe_interactions (
   instruction    TEXT NOT NULL,
   desired_by     TIMESTAMPTZ,               -- SO's soft target (nullable)
   so_executed_at TIMESTAMPTZ NOT NULL,      -- when the SO pressed Execute
-  committed_date DATE,                      -- manager's commit-by (operative deadline)
+  committed_date TIMESTAMPTZ,               -- manager's commit-by date AND time (operative deadline)
   status         VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','CLOSED')),
   artifact_url   TEXT,                       -- proof of completion (base64 data URI)
   created_at     TIMESTAMPTZ DEFAULT now(),
@@ -31,11 +31,33 @@ CREATE TABLE IF NOT EXISTS vawe_interactions (
 );
 
 -- Converge older ad-hoc tables that predate these columns.
-ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS committed_date DATE;
+ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS committed_date TIMESTAMPTZ;
+-- The manager commits a date AND time, so committed_date must carry the time.
+-- Older environments created it as DATE (time silently truncated on write) —
+-- widen it to TIMESTAMPTZ in place. Guarded on the current type so re-running is
+-- a no-op; existing DATE values become midnight IST, which is what they meant.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_name = 'vawe_interactions'
+       AND column_name = 'committed_date'
+       AND data_type = 'date'
+  ) THEN
+    ALTER TABLE vawe_interactions
+      ALTER COLUMN committed_date TYPE TIMESTAMPTZ
+      USING committed_date::timestamptz;
+  END IF;
+END $$;
 ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS artifact_url   TEXT;
 -- Proof is stored inline as a base64 data URI — ensure the column is unbounded
 -- even if an ad-hoc table created it as VARCHAR(n).
 ALTER TABLE vawe_interactions ALTER COLUMN artifact_url TYPE TEXT;
+-- Part B (owner-when-unlocked): VAWE flips this to true (via the signed
+-- POST /interactions/:id/owner-unlock) when the escalation chain raises to the
+-- owner, letting the owner commit a date/time and upload proof himself. The
+-- app reads/writes it column-tolerantly, so this migration can lag the deploy.
+ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS owner_can_act BOOLEAN NOT NULL DEFAULT false;
 
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_station ON vawe_interactions(station_id);
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_status  ON vawe_interactions(status);
