@@ -163,9 +163,9 @@ function artifactTypeOk(mt) {
 // GET /api/vawe/interactions?station_id=…  — OPEN instructions for one outlet.
 // Ordered by the operative deadline (committed date → SO's soft target → age).
 router.get('/interactions', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
-  // committed_date is returned raw (TIMESTAMPTZ once migrated; DATE before —
-  // both serialize fine and COALESCE coerces either to a comparable type, so
-  // this read is tolerant of the pending column-type change). owner_can_act
+  // committed_date is returned raw (TIMESTAMPTZ — carries the manager's date AND
+  // time; on any environment still on the older DATE column it serializes just
+  // as well and COALESCE still coerces it to a comparable type). owner_can_act
   // (Part B) is likewise column-tolerant: if it isn't migrated yet the SELECT
   // 42703s, so we fall back to defaulting it to false rather than 500 the tile.
   const base = `id, station_id, task_name, instruction, desired_by, so_executed_at,
