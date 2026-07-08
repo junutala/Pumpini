@@ -127,7 +127,7 @@ export default function StockRecoPage() {
       <div className="card" style={{ marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{tc('streco.selectedShift', 'Selected Shift')}</div>
-          <button className="btn btn-primary" onClick={finalize} disabled={busy || !tanks.some(t => t.has_closing)}>
+          <button className="btn btn-primary" onClick={finalize} disabled={busy || !tanks.some(t => t.has_closing && t.has_baseline !== false)}>
             {busy ? tc('streco.saving', 'Saving…') : tc('streco.finalizeAlert', 'Finalize & Alert')}
           </button>
         </div>
@@ -143,20 +143,22 @@ export default function StockRecoPage() {
             <tbody>
               {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{tc('streco.emptyTanks', 'Select a shift to see its tank reconciliation.')}</td></tr>}
               {tanks.map(t => {
-                const loss = t.has_closing && t.variance_ltrs < 0;
+                const noBaseline = t.has_baseline === false;   // no opening dip + nothing to carry forward
+                const loss = t.has_closing && !noBaseline && t.variance_ltrs < 0;
                 return (
                   <tr key={t.tank_id} style={t.beyond_tolerance ? { background: '#fef2f2' } : undefined}>
                     <td style={{ fontWeight: 600 }}>T{t.tank_number} <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 12 }}>{t.fuel_type}</span></td>
-                    <td className="num" style={{ textAlign: 'right' }}>{L(t.opening_ltrs)}</td>
+                    <td className="num" style={{ textAlign: 'right' }}>{noBaseline ? '—' : L(t.opening_ltrs)}</td>
                     <td className="num" style={{ textAlign: 'right', color: '#16a34a' }}>{L(t.deliveries_ltrs)}</td>
                     <td className="num" style={{ textAlign: 'right' }}>{L(t.sales_ltrs)}</td>
-                    <td className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{L(t.book_closing)}</td>
+                    <td className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{noBaseline ? '—' : L(t.book_closing)}</td>
                     <td className="num" style={{ textAlign: 'right' }}>{t.has_closing ? L(t.actual_closing) : '—'}</td>
-                    <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: !t.has_closing ? 'var(--text-3)' : loss ? '#dc2626' : '#16a34a' }}>
-                      {t.has_closing ? `${t.variance_ltrs > 0 ? '+' : ''}${L(t.variance_ltrs)} (${t.variance_pct}%)` : '—'}
+                    <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: (!t.has_closing || noBaseline) ? 'var(--text-3)' : loss ? '#dc2626' : '#16a34a' }}>
+                      {(t.has_closing && !noBaseline) ? `${t.variance_ltrs > 0 ? '+' : ''}${L(t.variance_ltrs)} (${t.variance_pct}%)` : '—'}
                     </td>
                     <td style={{ textAlign: 'center', fontSize: 12 }}>
                       {!t.has_closing ? <span style={{ color: 'var(--text-3)' }}>{tc('streco.awaitingDip', 'Awaiting dip')}</span>
+                        : noBaseline ? <span style={{ color: '#d97706', fontWeight: 600 }}>{tc('streco.noBaseline', 'No opening baseline')}</span>
                         : t.beyond_tolerance ? <span style={{ color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={13} />{loss ? tc('streco.loss', 'Loss') : tc('streco.gain', 'Gain')}</span>
                           : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}><CheckCircle size={13} />{tc('streco.ok', 'OK')}</span>}
                     </td>
@@ -166,7 +168,7 @@ export default function StockRecoPage() {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.awaitingDipNote', '“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).')}</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.awaitingDipNote', '“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).')} {tc('streco.noBaselineNote', '“No opening baseline” = no opening dip and no prior closing dip to carry forward — record an opening dip so the tank can be reconciled (it is never counted as a loss).')}</div>
       </div>
 
       {/* Cumulative drift — slow leaks that hide under per-shift tolerance */}

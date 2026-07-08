@@ -37,10 +37,19 @@ async function computeShiftReco(shift_id) {
         (SELECT dr.volume_ltrs FROM dipstick_readings dr
            WHERE dr.shift_id=$1 AND dr.tank_id=t.id AND dr.reading_type='opening'
            ORDER BY dr.recorded_at DESC LIMIT 1),
+        -- Carry-forward: the prior shift's closing dip IS this shift's opening stock.
+        -- Anchor to "before THIS shift's own closing" (not start_time) so a 6 AM
+        -- closing entered at/after the next shift's start is still picked up. No
+        -- baseline found → NULL, never 0 — a fabricated 0 turned the entire closing
+        -- dip into a phantom full-tank variance (the false red flag).
         (SELECT dr.volume_ltrs FROM dipstick_readings dr
-           WHERE dr.tank_id=t.id AND dr.recorded_at < $2
-           ORDER BY dr.recorded_at DESC LIMIT 1),
-        0) AS opening_ltrs,
+           WHERE dr.tank_id=t.id
+             AND dr.recorded_at < COALESCE(
+               (SELECT MAX(c.recorded_at) FROM dipstick_readings c
+                  WHERE c.shift_id=$1 AND c.tank_id=t.id AND c.reading_type='closing'),
+               $3)
+           ORDER BY dr.recorded_at DESC LIMIT 1)
+      ) AS opening_ltrs,
       (SELECT dr.volume_ltrs FROM dipstick_readings dr
          WHERE dr.shift_id=$1 AND dr.tank_id=t.id AND dr.reading_type='closing'
          ORDER BY dr.recorded_at DESC LIMIT 1) AS actual_closing,
@@ -54,21 +63,27 @@ async function computeShiftReco(shift_id) {
     [shift_id, start_time, end_time, station_id]);
 
   const tanks = rows.map(r => {
-    const opening    = parseFloat(r.opening_ltrs || 0);
+    // No opening dip for the shift AND no prior dip to carry forward → no baseline.
+    const hasBaseline = r.opening_ltrs != null;
+    const opening    = hasBaseline ? parseFloat(r.opening_ltrs) : null;
     const deliveries = parseFloat(r.deliveries_ltrs || 0);
     const sales      = parseFloat(r.sales_ltrs || 0);
-    const book       = +(opening + deliveries - sales).toFixed(2);
+    const book       = hasBaseline ? +(opening + deliveries - sales).toFixed(2) : null;
     const hasClosing = r.actual_closing != null;
     const actual     = hasClosing ? parseFloat(r.actual_closing) : null;
-    const variance   = hasClosing ? +(actual - book).toFixed(2) : null;
-    const base       = opening + deliveries;
+    // A variance needs BOTH an opening baseline and a closing dip. Without the
+    // baseline we cannot reconcile — report null, never a phantom full-tank loss.
+    const reconcilable = hasBaseline && hasClosing;
+    const variance   = reconcilable ? +(actual - book).toFixed(2) : null;
+    const base       = hasBaseline ? opening + deliveries : 0;
     const tolerance  = +Math.max(floor, base * tolPctForFuel(settings, r.fuel_type) / 100).toFixed(2);
-    const variancePct = (hasClosing && base > 0) ? +(Math.abs(variance) / base * 100).toFixed(3) : 0;
-    const beyond     = hasClosing ? Math.abs(variance) > tolerance : false;
+    const variancePct = (reconcilable && base > 0) ? +(Math.abs(variance) / base * 100).toFixed(3) : 0;
+    const beyond     = reconcilable ? Math.abs(variance) > tolerance : false;
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
-      book_closing: book, actual_closing: actual, has_closing: hasClosing,
+      book_closing: book, actual_closing: actual,
+      has_closing: hasClosing, has_baseline: hasBaseline,
       variance_ltrs: variance, variance_pct: variancePct,
       tolerance_ltrs: tolerance, beyond_tolerance: beyond,
     };
@@ -82,7 +97,9 @@ async function finalizeShiftReco(shift_id, userId, io) {
   if (!station_id) return { stored: 0, breaches: 0 };
   let stored = 0; const breaches = [];
   for (const t of tanks) {
-    if (!t.has_closing) continue;  // can't finalize a tank without its closing dip
+    // Can't finalize without BOTH a closing dip and an opening baseline — storing a
+    // baseline-less reco would persist a phantom full-tank variance and false alert.
+    if (!t.has_closing || !t.has_baseline) continue;
     await pool.query(`
       INSERT INTO tank_reconciliation
         (station_id, shift_id, tank_id, opening_ltrs, deliveries_ltrs, sales_ltrs,
