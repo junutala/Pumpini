@@ -2,7 +2,7 @@
 // Manager bunk cockpit. Reused by the owner's Operational dashboard per outlet
 // (pass stationId + embedded). Blind-drop: today's money is the REVEALED portion
 // (the feed masks open-shift sales for non-owners); a chip flags sealed live shifts.
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { Fuel, Lock, Bell, AlertTriangle, CheckCircle, Landmark, FileText,
   Droplets, ArrowRight, Sparkles, Clock, ChevronRight, Flame } from 'lucide-react';
@@ -18,6 +18,8 @@ const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFracti
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtTime = t => t ? new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
 const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
+// DD MMM YYYY (house rule) for the MTD coverage-window label.
+const fmtFull = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
 // Per-shift tile palette: 1 morning=warm, 2 day=blue, 3 night=indigo (cycles for >3).
 const SHIFT_THEME = { 1: { bg: '#fff7ed', fg: '#9a3412', bar: '#ea580c' }, 2: { bg: '#eff6ff', fg: '#1e40af', bar: '#2563eb' }, 3: { bg: '#eef2ff', fg: '#3730a3', bar: '#4f46e5' } };
 const fmtDip = ts => { try { return new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }); } catch { return ''; } };
@@ -40,29 +42,52 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   const Wrapper = embedded ? Fragment : AppShell;
 
-  const [data, setData]       = useState(null);
+  const [data, setData]       = useState(null);     // live cockpit — always TODAY
+  const [viewData, setViewData] = useState(null);   // settlement + MTD — follows the picked trade day
   const [deposit, setDeposit] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [date, setDate]       = useState(today);   // global date picker — view any trade day
+  const [date, setDate]       = useState(today);   // settlement/MTD day picker (decoupled from live cockpit)
+  const userPickedDate = useRef(false);            // stop auto-defaulting once the user drives the picker
+  const initedDate     = useRef(false);
   const { on } = useSocket(stationId, null);
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
-  const load = useCallback(async () => {
+  // Live cockpit (hero, Needs-you, receivables, fuel health, briefing) is ALWAYS
+  // today — decoupled from the settlement/MTD day picker below, so browsing a past
+  // settlement day never blanks the live nudges.
+  const loadLive = useCallback(async () => {
     if (!stationId) return;
     try {
       const [d, dp] = await Promise.all([
-        getOwnerDashboard(stationId, date),
+        getOwnerDashboard(stationId, today),
         api.get('/cash-deposits', { params: { station_id: stationId } }).then(r => r?.status || null).catch(() => null),
       ]);
       setData(d); setDeposit(dp || null);
-    } catch (e) { console.error('Dashboard load error:', e); }
+      // First load only: default the picker to the last settled trade day so the
+      // settlement tile + MTD show real data instead of an empty running "today"
+      // (settlement lags the live day). Never override a user-driven picker.
+      if (!initedDate.current && !userPickedDate.current) {
+        initedDate.current = true;
+        if (d?.last_trade_date && d.last_trade_date < today) setDate(d.last_trade_date);
+      }
+    } catch (e) { console.error('Dashboard live load error:', e); }
     finally { setLoading(false); }
-  }, [stationId, date]);
+  }, [stationId, today]);
 
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => on('dispense:new', () => load()), [on, load]);
-  useRefreshOnFocus(load);
+  useEffect(() => { loadLive(); }, [loadLive]);
+  useEffect(() => on('dispense:new', () => loadLive()), [on, loadLive]);
+  useRefreshOnFocus(loadLive);
+
+  // Settlement + MTD follow the picked trade day. When it's today, mirror the live
+  // fetch (no duplicate request); otherwise fetch that specific day's data.
+  useEffect(() => {
+    if (!stationId) return;
+    if (date === today) { if (data) setViewData(data); return; }
+    let cancelled = false;
+    getOwnerDashboard(stationId, date).then(v => { if (!cancelled) setViewData(v); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [stationId, date, today, data]);
 
   // Operators never see the dashboard — bounce them to their settlement screen
   // (covers the root '/' redirect and any direct URL, not just the login form).
@@ -76,17 +101,23 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   if (loading)    return <Wrapper><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-3)' }}>{tc('bunk.loading', 'Loading…')}</div></Wrapper>;
 
   const d = data || {};
+  // Settlement + MTD read from the picked-day fetch; live cockpit reads from `d`.
+  const dv = viewData || data || {};
   const sales = d.sales || [];
   const salesByShift = d.sales_by_shift;   // per-shift tiles; undefined on older backend
-  const isToday = date === today;          // live-state tiles show only for today
-  // MTD tiles (T2): month-to-viewed-date vs last month's same window.
-  const mtd = d.mtd || { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
+  const viewIsToday = date === today;      // is the settlement/MTD picker on today?
+  // MTD tiles (T2): month-to-picked-date vs last month's same window. The window
+  // runs from the 1st of the picked month to the picked (last settled) day — shown
+  // explicitly so "MTD" is never mistaken for "up to today".
+  const mtdFrom = date.slice(0, 8) + '01';
+  const mtdRangeLabel = tc('bunk.mtdRange', 'From {from} to {to}').replace('{from}', fmtFull(mtdFrom)).replace('{to}', fmtFull(date));
+  const mtd = dv.mtd || { current: { amount: 0, by_fuel: {} }, last_month: { amount: 0, by_fuel: {} } };
   const mtdFuels   = Object.entries(mtd.current.by_fuel || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const mtdQtyCur  = Object.values(mtd.current.by_fuel || {}).reduce((s, v) => s + v, 0);
   const mtdQtyLast = Object.values(mtd.last_month.by_fuel || {}).reduce((s, v) => s + v, 0);
   const pctDelta   = (cur, last) => (last > 0 ? ((cur - last) / last) * 100 : null);
   const deltaChip  = (cur, last) => { const dd = pctDelta(cur, last); return dd == null ? null : <span style={{ color: dd >= 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>{dd >= 0 ? '▲' : '▼'} {Math.abs(dd).toFixed(0)}%</span>; };
-  const settlementFuel = d.settlement_fuel || [];   // per-operator fuel qty + target revenue (T3/T4)
+  const settlementFuel = dv.settlement_fuel || [];   // per-operator fuel qty + target revenue (T3/T4)
   const totalSales = sales.reduce((s, r) => s + parseFloat(r.total_amount || 0), 0);
   const totalLtrs  = sales.reduce((s, r) => s + parseFloat(r.total_ltrs || 0), 0);
   // Litres split by fuel type (sales rows are grouped by fuel_type + payment_mode).
@@ -98,10 +129,10 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const shifts = d.shifts || [];
   const openShifts = shifts.filter(s => s.status === 'open');
   const closedShifts = shifts.filter(s => s.status === 'closed');
-  const margin = d.margin;
+  const margin = dv.margin;   // owner-only day margin, shown in the MTD amount tile — follows the picked day
   const cover = d.cover || [];
   const recv = d.receivables || { to_invoice: 0, outstanding: 0, overdue_90: 0 };
-  const settlements = d.settlements || [];   // all operators settled today
+  const settlements = dv.settlements || [];   // operators settled on the picked day
   const setTot = settlements.reduce((t, s) => ({
     cash: t.cash + Number(s.cash_actual || 0), upi: t.upi + Number(s.upi_total || 0),
     card: t.card + Number(s.card_total || 0), credit: t.credit + Number(s.credit_total || 0),
@@ -120,7 +151,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   });
   const totQtyByFuel = {};
   settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
-  const stepDate = (n) => { const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
+  const stepDate = (n) => { userPickedDate.current = true; const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
   const wet = d.wetstock_mtd;
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
@@ -166,12 +197,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '0.5px solid #5f5e5a' }}>
           <Sparkles size={15} color="#afa9ec" style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{isToday ? aiLines.slice(0, 2).join(' ') : tc('bunk.viewingPastDay', 'Viewing a past day — sales & settlement are for the selected date. Live status (stock, deposits, receivables) reflects today only.')}</span>
+          <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{aiLines.slice(0, 2).join(' ')}</span>
         </div>
       </div>
 
       {/* Needs you — live 'now' actions; only when viewing today */}
-      {isToday && actions.length > 0 && (
+      {actions.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{tc('bunk.needsYou', 'Needs you')}</div>
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 10 }}>
@@ -194,7 +225,8 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           same window. Follows the viewed date. */}
       <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 10, marginBottom: 14 }}>
         <div style={{ ...card, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdQuantity', 'MTD quantity')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>{tc('bunk.mtdQuantity', 'MTD quantity')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>{mtdRangeLabel}</div>
           <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtL(mtdQtyCur)} L</div>
           <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: mtdFuels.length ? 8 : 0 }}>{tc('bunk.lastMonth', 'last month')} {fmtL(mtdQtyLast)} L {deltaChip(mtdQtyCur, mtdQtyLast)}</div>
           {mtdFuels.map(([ft, v]) => (
@@ -205,7 +237,8 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           ))}
         </div>
         <div style={{ ...card, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{tc('bunk.mtdAmount', 'MTD amount')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 2 }}>{tc('bunk.mtdAmount', 'MTD amount')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 6 }}>{mtdRangeLabel}</div>
           <div style={{ fontSize: 24, fontWeight: 800 }}>{fmtR(mtd.current.amount)}</div>
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.lastMonth', 'last month')} {fmtR(mtd.last_month.amount)} {deltaChip(mtd.current.amount, mtd.last_month.amount)}</div>
           {isOwnerView && margin?.amount != null && <div style={{ fontSize: 12.5, color: '#3b6d11', marginTop: 8, fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}: {fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</div>}
@@ -215,10 +248,12 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
       {/* Shift settlement (T3/T4) — date-navigable; per-operator fuel qty + target-vs-actual revenue variance */}
       <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.shiftSettlement', 'Shift settlement')}</span>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.shiftSettlement', 'Shift settlement')}
+            {!viewIsToday && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', marginLeft: 8 }}>{tc('bunk.lastSettledDay', 'last settled day')}</span>}
+          </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button onClick={() => stepDate(-1)} title={tc('bunk.prevDay', 'Previous day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: 'pointer', fontSize: 12 }}>◀</button>
-            <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)} style={{ padding: '5px 9px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 12.5 }} />
+            <input type="date" value={date} max={today} onChange={e => { userPickedDate.current = true; setDate(e.target.value); }} style={{ padding: '5px 9px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 12.5 }} />
             <button onClick={() => stepDate(1)} disabled={date >= today} title={tc('bunk.nextDay', 'Next day')} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: '#fff', cursor: date >= today ? 'default' : 'pointer', opacity: date >= today ? .4 : 1, fontSize: 12 }}>▶</button>
           </div>
         </div>
