@@ -123,7 +123,8 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
                     WHERE sh.station_id=$1 AND r.manager_confirmed=TRUE
                     ORDER BY r.reconciled_at DESC LIMIT 1`, [station_id]),
         pool.query(`SELECT COALESCE(SUM(variance_ltrs),0) AS var_ltrs, BOOL_OR(beyond_tolerance) AS beyond
-                    FROM tank_reconciliation WHERE station_id=$1 AND created_at >= $2`, [station_id, monthStart])
+                    FROM tank_reconciliation
+                    WHERE station_id=$1 AND created_at >= $2 AND COALESCE(opening_ltrs,0) > 0`, [station_id, monthStart])
           .catch(() => ({ rows: [{ var_ltrs: 0, beyond: false }] })),
       ]);
 
@@ -283,9 +284,48 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       last_trade_date = rows[0]?.d || null;
     } catch (e) { /* additive — keep the core dashboard alive */ }
 
+    // ── Last wet-stock reconciliation: the most recent RECONCILED day's per-tank
+    //    math (opening + deliveries − sales = book · dip · variance), so the tile
+    //    shows a real, dated, fully-shown calculation instead of a bare month sum.
+    //    Baseline-less rows (opening 0 — the old phantom-variance bug) are excluded.
+    //    Best-effort.
+    let wetstock_last = null;
+    try {
+      const { rows } = await pool.query(`
+        SELECT tr.tank_id, t.tank_number, t.fuel_type,
+               tr.opening_ltrs, tr.deliveries_ltrs, tr.sales_ltrs, tr.book_closing,
+               tr.actual_closing, tr.variance_ltrs, tr.variance_pct,
+               tr.tolerance_ltrs, tr.beyond_tolerance,
+               sh.date::text AS shift_date, sh.shift_number, tr.created_at
+        FROM tank_reconciliation tr
+        JOIN tanks t ON t.id = tr.tank_id
+        LEFT JOIN shifts sh ON sh.id = tr.shift_id
+        WHERE tr.station_id = $1 AND COALESCE(tr.opening_ltrs,0) > 0
+          AND tr.shift_id = (
+            SELECT shift_id FROM tank_reconciliation
+            WHERE station_id = $1 AND COALESCE(opening_ltrs,0) > 0
+            ORDER BY created_at DESC LIMIT 1)
+        ORDER BY t.tank_number`, [station_id]);
+      if (rows.length) {
+        wetstock_last = {
+          date: rows[0].shift_date, shift_number: rows[0].shift_number, at: rows[0].created_at,
+          beyond_tolerance: rows.some(r => r.beyond_tolerance),
+          tanks: rows.map(r => ({
+            tank_number: r.tank_number, fuel_type: r.fuel_type,
+            opening: Number(r.opening_ltrs || 0), deliveries: Number(r.deliveries_ltrs || 0),
+            sales: Number(r.sales_ltrs || 0), book: Number(r.book_closing || 0),
+            dip: Number(r.actual_closing || 0), variance: Number(r.variance_ltrs || 0),
+            variance_pct: Number(r.variance_pct || 0), tolerance: Number(r.tolerance_ltrs || 0),
+            beyond: !!r.beyond_tolerance,
+          })),
+        };
+      }
+    } catch (e) { /* additive */ }
+
     res.json({
       date,
       last_trade_date,
+      wetstock_last,
       sales: sales.rows,
       sales_by_shift,
       mtd,
