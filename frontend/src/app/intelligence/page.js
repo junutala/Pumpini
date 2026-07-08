@@ -12,6 +12,7 @@ import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+const fmtFull = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
 const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
 const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '12px 14px' };
 
@@ -27,7 +28,9 @@ export default function IntelligencePage() {
 
   const loadGroup = async (id) => {
     setLoading(true);
-    try { setData(await api.get(`/groups/${id}/dashboard`)); }
+    // as_of=settled → scorecard/simulator use each outlet's last settled trade day
+    // instead of the empty running "today" (blank margins on a fresh day).
+    try { setData(await api.get(`/groups/${id}/dashboard?as_of=settled`)); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -93,7 +96,7 @@ export default function IntelligencePage() {
       {data && !loading && st.length > 0 && (<>
         <div style={{ background: '#23272e', borderRadius: 14, padding: '16px 18px', color: '#f1efe8', marginBottom: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Brain size={19} color="#afa9ec" /><span style={{ fontSize: 17, fontWeight: 700 }}>{tc('intel.bunkIntelligence', '{n}-bunk intelligence').replace('{n}', st.length)}</span></div>
-          <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{tc('intel.compareSimulateDecide', 'Compare, simulate, decide')}</div>
+          <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{tc('intel.compareSimulateDecide', 'Compare, simulate, decide')}{data.as_of_date ? ` · ${tc('intel.asOf', 'as of {d}').replace('{d}', fmtFull(data.as_of_date))}${data.as_of_uniform === false ? ` · ${tc('intel.latestPerBunk', 'latest settled day per bunk')}` : ''}` : ''}</div>
         </div>
 
         {/* Managers' balanced scorecard */}
