@@ -267,8 +267,25 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       });
     } catch (e) { /* additive */ }
 
+    // ── Last settled trade day: most recent shifts.date (≤ viewed date) carrying a
+    //    manager-confirmed settlement. The cockpit defaults its settlement + MTD
+    //    window here so they show real data instead of an empty running "today"
+    //    (settlement lags the live day). Best-effort — never break the dashboard;
+    //    the client falls back to today when this is null.
+    let last_trade_date = null;
+    try {
+      const { rows } = await pool.query(`
+        SELECT MAX(sh.date)::text AS d
+        FROM shift_reconciliation r
+        JOIN shifts sh ON sh.id = r.shift_id
+        WHERE sh.station_id = $1 AND r.manager_confirmed = TRUE AND sh.date <= $2`,
+        [station_id, date]);
+      last_trade_date = rows[0]?.d || null;
+    } catch (e) { /* additive — keep the core dashboard alive */ }
+
     res.json({
       date,
+      last_trade_date,
       sales: sales.rows,
       sales_by_shift,
       mtd,
