@@ -1601,6 +1601,8 @@
   "intel": {
     "pageTitle": "Intelligence",
     "pageSubtitle": "Decisions, not numbers",
+    "asOf": "as of {d}",
+    "latestPerBunk": "latest settled day per bunk",
     "operations": "Operations",
     "noOwnerGroup": "No owner group yet.",
     "loading": "Loading…",
