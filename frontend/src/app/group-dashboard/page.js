@@ -15,6 +15,9 @@ import DashboardPage from '../dashboard/page';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+// Coverage-date labels (house rule: en-IN · Asia/Kolkata).
+const fmtFull = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
+const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
 const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
 const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '12px 14px' };
 const health = o => (o.wetstock_beyond || o.overdue_90 > 0) ? '#dc2626' : (o.cash_undeposited > 5000 ? '#d97706' : '#16a34a');
@@ -50,7 +53,9 @@ export default function GroupDashboardPage() {
 
   const loadGroup = async (id) => {
     setLoading(true);
-    try { setData(await api.get(`/groups/${id}/dashboard`)); }
+    // as_of=settled → each outlet's sales/margin/litres reflect its last settled
+    // trade day, not the empty running "today" (Intelligence keeps today's default).
+    try { setData(await api.get(`/groups/${id}/dashboard?as_of=settled`)); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -112,7 +117,7 @@ export default function GroupDashboardPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Building2 size={19} color="#fac775" /><span style={{ fontSize: 17, fontWeight: 700 }}>{tc('gdash.bunksLive', '{n} bunks · live').replace('{n}', st.length)}</span></div>
-                <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{tc('gdash.sumOfOutlets', 'Sum of your outlets')} · {new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}</div>
+                <div style={{ fontSize: 12.5, color: '#b4b2a9', marginTop: 3 }}>{tc('gdash.sumOfOutlets', 'Sum of your outlets')} · {data.as_of_date ? fmtFull(data.as_of_date) : new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}{data.as_of_uniform === false ? ` · ${tc('gdash.latestPerBunk', 'latest settled day per bunk')}` : ''}</div>
               </div>
               <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, background: exc.length ? '#633806' : '#173404', color: exc.length ? '#fac775' : '#c0dd97' }}>{exc.length ? <><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.needYou', '{n} need you').replace('{n}', exc.length)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.allClear', 'all clear')}</>}</span>
             </div>
@@ -120,12 +125,12 @@ export default function GroupDashboardPage() {
 
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
             <div style={mini}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.salesToday', 'Sales today')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.sales', 'Sales')}</div>
               <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(tt.total_sales)}</div>
               {tt.vs_yesterday_pct != null && <div style={{ fontSize: 12, color: tt.vs_yesterday_pct >= 0 ? '#3b6d11' : '#b91c1c' }}>{tt.vs_yesterday_pct >= 0 ? <TrendingUp size={12} style={{ verticalAlign: -2 }} /> : <TrendingDown size={12} style={{ verticalAlign: -2 }} />} {tt.vs_yesterday_pct >= 0 ? '+' : ''}{tt.vs_yesterday_pct}{tc('gdash.vsYest', '% vs yest.')}</div>}
             </div>
             <div style={{ ...mini, background: '#eaf3de' }}>
-              <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('gdash.marginToday', 'Margin today')}</div>
+              <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('gdash.margin', 'Margin')}</div>
               <div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{fmtR(tt.total_margin)}</div>
               {tt.group_margin_pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tt.group_margin_pct}{tc('gdash.blended', '% blended')}</div>}
             </div>
@@ -152,6 +157,7 @@ export default function GroupDashboardPage() {
                   <span style={{ width: 9, height: 9, borderRadius: '50%', background: health(s), flexShrink: 0 }} />
                   <span style={{ fontSize: 14, fontWeight: 700, minWidth: 90 }}>{s.name}</span>
                   <span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{fmtR(s.sales)} · <span style={{ color: '#3b6d11' }}>{s.gross_margin_pct != null ? s.gross_margin_pct + '%' : '—'}</span></span>
+                  {s.metric_date && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDay(s.metric_date)}</span>}
                   {s.wetstock_beyond && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{tc('gdash.stockLoss', 'stock loss')}</span>}
                   {s.overdue_90 > 0 && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{fmtR(s.overdue_90)} {tc('gdash.overdue', 'overdue')}</span>}
                   <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.cash', 'cash')} {fmtR(s.cash_undeposited)}</span>
