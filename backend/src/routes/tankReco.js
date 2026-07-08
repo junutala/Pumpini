@@ -31,35 +31,54 @@ async function computeShiftReco(shift_id) {
   const settings = setRows[0] || {};
   const floor = parseFloat(settings.stock_tol_floor_ltrs ?? 20);
 
+  // The reconciliation compares this shift's closing dip against its opening dip.
+  // So deliveries and sales must be counted for the window BETWEEN those two dip
+  // READINGS — not the shift's app start/end times, which are irregular and leave
+  // gaps (a tanker that arrives before the shift is opened in the app falls in the
+  // gap and gets dropped → the tank gains stock no reconciliation accounts for →
+  // phantom full-tank "gain"). Windowing on the dip timestamps is contiguous
+  // (each shift's opening = the prior shift's closing), so every delivery lands in
+  // exactly one reconciliation.
   const { rows } = await pool.query(`
     SELECT t.id AS tank_id, t.tank_number, t.fuel_type,
-      COALESCE(
-        (SELECT dr.volume_ltrs FROM dipstick_readings dr
-           WHERE dr.shift_id=$1 AND dr.tank_id=t.id AND dr.reading_type='opening'
-           ORDER BY dr.recorded_at DESC LIMIT 1),
-        -- Carry-forward: the prior shift's closing dip IS this shift's opening stock.
-        -- Anchor to "before THIS shift's own closing" (not start_time) so a 6 AM
-        -- closing entered at/after the next shift's start is still picked up. No
-        -- baseline found → NULL, never 0 — a fabricated 0 turned the entire closing
-        -- dip into a phantom full-tank variance (the false red flag).
-        (SELECT dr.volume_ltrs FROM dipstick_readings dr
-           WHERE dr.tank_id=t.id
-             AND dr.recorded_at < COALESCE(
-               (SELECT MAX(c.recorded_at) FROM dipstick_readings c
-                  WHERE c.shift_id=$1 AND c.tank_id=t.id AND c.reading_type='closing'),
-               $3)
-           ORDER BY dr.recorded_at DESC LIMIT 1)
-      ) AS opening_ltrs,
-      (SELECT dr.volume_ltrs FROM dipstick_readings dr
-         WHERE dr.shift_id=$1 AND dr.tank_id=t.id AND dr.reading_type='closing'
-         ORDER BY dr.recorded_at DESC LIMIT 1) AS actual_closing,
-      COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs)) FROM fuel_deliveries fd
-         WHERE fd.tank_id=t.id AND fd.received_at BETWEEN $2 AND $3),0) AS deliveries_ltrs,
-      COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
-         JOIN nozzles n ON n.id=de.nozzle_id
-         WHERE de.shift_id=$1 AND n.tank_id=t.id
-           AND NOT COALESCE(de.is_voided,FALSE)),0) AS sales_ltrs
-    FROM tanks t WHERE t.station_id=$4 ORDER BY t.tank_number`,
+      op.volume_ltrs AS opening_ltrs,
+      cl.volume_ltrs AS actual_closing,
+      COALESCE((
+        SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
+        FROM fuel_deliveries fd
+        WHERE fd.tank_id = t.id
+          AND fd.received_at >  COALESCE(op.recorded_at, $2)
+          AND fd.received_at <= COALESCE(cl.recorded_at, $3)
+      ), 0) AS deliveries_ltrs,
+      COALESCE((
+        SELECT SUM(de.quantity_ltrs) FROM dispense_events de
+        JOIN nozzles n ON n.id = de.nozzle_id
+        WHERE de.shift_id = $1 AND n.tank_id = t.id
+          AND NOT COALESCE(de.is_voided, FALSE)
+      ), 0) AS sales_ltrs
+    FROM tanks t
+    LEFT JOIN LATERAL (
+      -- this shift's closing dip
+      SELECT dr.volume_ltrs, dr.recorded_at
+      FROM dipstick_readings dr
+      WHERE dr.shift_id = $1 AND dr.tank_id = t.id AND dr.reading_type = 'closing'
+      ORDER BY dr.recorded_at DESC LIMIT 1
+    ) cl ON TRUE
+    LEFT JOIN LATERAL (
+      -- opening baseline: this shift's own opening dip, else the prior shift's
+      -- closing dip carried forward (the reading just before this closing). NULL if
+      -- neither exists — never a fabricated 0.
+      SELECT dr.volume_ltrs, dr.recorded_at
+      FROM dipstick_readings dr
+      WHERE dr.tank_id = t.id
+        AND ( (dr.shift_id = $1 AND dr.reading_type = 'opening')
+              OR dr.recorded_at < COALESCE(cl.recorded_at, $3) )
+      ORDER BY (CASE WHEN dr.shift_id = $1 AND dr.reading_type = 'opening' THEN 0 ELSE 1 END),
+               dr.recorded_at DESC
+      LIMIT 1
+    ) op ON TRUE
+    WHERE t.station_id = $4
+    ORDER BY t.tank_number`,
     [shift_id, start_time, end_time, station_id]);
 
   const tanks = rows.map(r => {
@@ -238,3 +257,4 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 module.exports = router;
 module.exports.finalizeShiftReco = finalizeShiftReco;
 module.exports.computeLiveTankStatus = computeLiveTankStatus;
+module.exports.computeShiftReco = computeShiftReco;

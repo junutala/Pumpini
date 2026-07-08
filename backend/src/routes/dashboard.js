@@ -3,6 +3,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
+const { computeShiftReco } = require('./tankReco');   // live per-tank reconciliation for the wet-stock tile
 
 // GET /api/dashboard/owner?station_id=&date=
 router.get('/owner', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -173,7 +174,6 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       const inr = n => '₹' + Math.round(n).toLocaleString('en-IN');
       const low = cover.filter(c => c.days != null && c.days < 2).sort((a, b) => a.days - b.days)[0];
       if (low) ai_briefing.push(`${low.fuel_type} (tank ${low.tank_number}) ~${low.days} days of cover — plan a refill.`);
-      if (wetstock_mtd.beyond_tolerance) ai_briefing.push('Wet-stock variance is beyond tolerance this month — worth a surprise dip.');
       if (receivables.overdue_90 > 0) ai_briefing.push(`${inr(receivables.overdue_90)} of credit is 90+ days overdue.`);
       if (credit_suspense > 0) ai_briefing.push(`${inr(credit_suspense)} credit is waiting to be invoiced.`);
     } catch (e) { /* cockpit metrics are additive — keep the core dashboard alive */ }
@@ -284,40 +284,34 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       last_trade_date = rows[0]?.d || null;
     } catch (e) { /* additive — keep the core dashboard alive */ }
 
-    // ── Last wet-stock reconciliation: the most recent RECONCILED day's per-tank
-    //    math (opening + deliveries − sales = book · dip · variance), so the tile
-    //    shows a real, dated, fully-shown calculation instead of a bare month sum.
-    //    Baseline-less rows (opening 0 — the old phantom-variance bug) are excluded.
-    //    Best-effort.
+    // ── Wet-stock tile: the LAST closed shift's per-tank reconciliation, computed
+    //    LIVE (opening + deliveries − sales = book · dip · variance). Live — not the
+    //    stored rows — so it reflects the current delivery-window logic instead of
+    //    stale rows finalized before the fix. This replaces the old month-sum
+    //    "variance beyond tolerance" consolidation, which mixed unrecorded-delivery
+    //    gains with real losses into one meaningless number. Best-effort.
     let wetstock_last = null;
     try {
-      const { rows } = await pool.query(`
-        SELECT tr.tank_id, t.tank_number, t.fuel_type,
-               tr.opening_ltrs, tr.deliveries_ltrs, tr.sales_ltrs, tr.book_closing,
-               tr.actual_closing, tr.variance_ltrs, tr.variance_pct,
-               tr.tolerance_ltrs, tr.beyond_tolerance,
-               sh.date::text AS shift_date, sh.shift_number, tr.created_at
-        FROM tank_reconciliation tr
-        JOIN tanks t ON t.id = tr.tank_id
-        LEFT JOIN shifts sh ON sh.id = tr.shift_id
-        WHERE tr.station_id = $1 AND COALESCE(tr.opening_ltrs,0) > 0
-          AND tr.shift_id = (
-            SELECT shift_id FROM tank_reconciliation
-            WHERE station_id = $1 AND COALESCE(opening_ltrs,0) > 0
-            ORDER BY created_at DESC LIMIT 1)
-        ORDER BY t.tank_number`, [station_id]);
-      if (rows.length) {
-        wetstock_last = {
-          date: rows[0].shift_date, shift_number: rows[0].shift_number, at: rows[0].created_at,
-          beyond_tolerance: rows.some(r => r.beyond_tolerance),
-          tanks: rows.map(r => ({
-            tank_number: r.tank_number, fuel_type: r.fuel_type,
-            opening: Number(r.opening_ltrs || 0), deliveries: Number(r.deliveries_ltrs || 0),
-            sales: Number(r.sales_ltrs || 0), book: Number(r.book_closing || 0),
-            dip: Number(r.actual_closing || 0), variance: Number(r.variance_ltrs || 0),
-            variance_pct: Number(r.variance_pct || 0), tolerance: Number(r.tolerance_ltrs || 0),
-            beyond: !!r.beyond_tolerance,
-          })),
+      const { rows: lastShift } = await pool.query(`
+        SELECT s.id, s.date::text AS date, s.shift_number
+        FROM shifts s
+        WHERE s.station_id = $1 AND EXISTS (
+          SELECT 1 FROM dipstick_readings dr
+          WHERE dr.shift_id = s.id AND dr.reading_type = 'closing')
+        ORDER BY s.date DESC, s.shift_number DESC LIMIT 1`, [station_id]);
+      if (lastShift.length) {
+        const reco = await computeShiftReco(lastShift[0].id);
+        const tanks = (reco.tanks || [])
+          .filter(t => t.has_closing && t.has_baseline)
+          .map(t => ({
+            tank_number: t.tank_number, fuel_type: t.fuel_type,
+            opening: t.opening_ltrs, deliveries: t.deliveries_ltrs, sales: t.sales_ltrs,
+            book: t.book_closing, dip: t.actual_closing, variance: t.variance_ltrs,
+            variance_pct: t.variance_pct, tolerance: t.tolerance_ltrs, beyond: t.beyond_tolerance,
+          }));
+        if (tanks.length) wetstock_last = {
+          date: lastShift[0].date, shift_number: lastShift[0].shift_number,
+          beyond_tolerance: tanks.some(t => t.beyond), tanks,
         };
       }
     } catch (e) { /* additive */ }
