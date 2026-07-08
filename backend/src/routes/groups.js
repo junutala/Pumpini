@@ -126,8 +126,33 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
       [req.params.id, today]
     );
 
+    // When as_of=settled, each outlet's day-metrics (sales/margin/litres/vs-yest)
+    // are computed for ITS OWN last manager-confirmed settlement trade day (≤ today)
+    // instead of the empty running "today" — the group-view analog of the bunk
+    // cockpit's last-settled-day default. Intelligence keeps the default (today) so
+    // its cross-outlet scorecard stays same-period. Best-effort: falls back to today.
+    const asOfSettled = req.query.as_of === 'settled';
+    const dateByStation = {};
+    if (asOfSettled) {
+      try {
+        const { rows: lt } = await pool.query(`
+          SELECT sh.station_id::text AS sid, MAX(sh.date)::text AS d
+          FROM shift_reconciliation r
+          JOIN shifts sh ON sh.id = r.shift_id
+          JOIN station_group_members sgm ON sgm.station_id = sh.station_id
+          JOIN station_groups stg ON stg.id = sgm.station_group_id
+          WHERE stg.owner_group_id = $1 AND r.manager_confirmed = TRUE AND sh.date <= $2
+          GROUP BY sh.station_id`, [req.params.id, today]);
+        lt.forEach(x => { if (x.d) dateByStation[x.sid] = x.d; });
+      } catch (e) { /* best-effort — fall back to today */ }
+    }
+    const dateFor = id => (asOfSettled ? (dateByStation[String(id)] || today) : today);
+
     // Enrich each outlet with cockpit metrics for the rollup + scorecard + simulator.
-    const stations = await Promise.all(rows.map(async r => ({ ...r, ...(await outletMetrics(r.id, today)) })));
+    const stations = await Promise.all(rows.map(async r => {
+      const md = dateFor(r.id);
+      return { ...r, metric_date: md, ...(await outletMetrics(r.id, md)) };
+    }));
 
     const inr = x => '₹' + Math.round(x).toLocaleString('en-IN');
     const sum = k => stations.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0);
@@ -154,7 +179,13 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
       if (o.overdue_90 > 0)          exceptions.push({ outlet: o.name, type: 'overdue', text: `${o.name} — ${inr(o.overdue_90)} credit overdue 90+ days` });
     });
 
-    res.json({ stations, totals, exceptions, date: today });
+    // As-of summary for the UI label: a single date when every outlet shares one,
+    // else the latest (outlets can settle on different days).
+    const metricDates = [...new Set(stations.map(s => s.metric_date))];
+    const as_of_uniform = metricDates.length <= 1;
+    const as_of_date = metricDates.length ? metricDates.slice().sort().slice(-1)[0] : today;
+
+    res.json({ stations, totals, exceptions, date: today, as_of_date, as_of_uniform, as_of_settled: asOfSettled });
   } catch (err) { next(err); }
 });
 
