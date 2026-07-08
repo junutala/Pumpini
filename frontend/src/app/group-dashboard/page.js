@@ -78,7 +78,7 @@ export default function GroupDashboardPage() {
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('gdash.bunksAtGlance', 'Your bunks at a glance · drill into any one')}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> {tc('gdash.intelligence', 'Intelligence')}</button>
+          <button className="btn btn-primary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> {tc('gdash.intelligence', 'Intelligence')}</button>
           {selectedGroup && <button className="btn btn-secondary btn-sm" onClick={() => loadGroup(selectedGroup.id)}><RefreshCw size={14} /></button>}
         </div>
       </div>
