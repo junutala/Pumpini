@@ -153,8 +153,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   const totQtyByFuel = {};
   settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
   const stepDate = (n) => { userPickedDate.current = true; const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
-  const wet = d.wetstock_mtd;
-  const wetLast = d.wetstock_last;   // last reconciled day's per-tank math (dated)
+  const wetLast = d.wetstock_last;   // last closed shift's live per-tank reconciliation (dated)
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
 
@@ -171,7 +170,6 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   if (cashAwaiting > 0) actions.push({ k: 'cash', Icon: Landmark, bg: '#fee2e2', fg: '#991b1b', label: tc('bunk.cashToDeposit', 'Cash to deposit'), value: fmtR(cashAwaiting), sub: depositAge > 0 ? tc('bunk.oldestDaysBankingDue', 'oldest {n} day{s} · banking due').replace('{n}', depositAge).replace('{s}', depositAge > 1 ? 's' : '') : tc('bunk.bankingDue', 'banking due'), subColor: 'var(--danger,#dc2626)', cta: tc('bunk.recordDeposit', 'Record deposit'), href: '/deposits' });
   if (creditToInvoice > 0) actions.push({ k: 'credit', Icon: FileText, bg: '#ede9fe', fg: '#5b21b6', label: tc('bunk.creditToInvoice', 'Credit to invoice'), value: fmtR(creditToInvoice), sub: tc('bunk.bookedAtShiftClose', 'booked at shift close'), subColor: 'var(--text-3)', cta: tc('bunk.raiseInvoices', 'Raise invoices'), href: '/invoices' });
   if (lowTank) actions.push({ k: 'tank', Icon: Droplets, bg: '#fef3c7', fg: '#92400e', label: tc('bunk.fuelRunningLow', '{fuel} running low').replace('{fuel}', cap(lowTank.fuel_type)), value: `${lowTank.fill_pct ?? '—'}% · ~${lowTank.days}d`, sub: tc('bunk.tankReorderWindow', 'tank {n} · reorder window').replace('{n}', lowTank.tank_number), subColor: 'var(--warning,#d97706)', cta: tc('bunk.planOrder', 'Plan order'), href: '/deliveries' });
-  if (wet?.beyond_tolerance) actions.push({ k: 'wet', Icon: AlertTriangle, bg: '#fee2e2', fg: '#991b1b', label: tc('bunk.wetStockVariance', 'Wet-stock variance'), value: `${fmtL(wet.variance_ltrs)} L`, sub: tc('bunk.beyondToleranceMonth', 'beyond tolerance this month'), subColor: 'var(--danger,#dc2626)', cta: tc('bunk.reconcile', 'Reconcile'), href: '/stock-reco' });
 
   const needCount = actions.length + unread.length;
   const aiLines = brief.length ? brief : [tc('bunk.aiNothingFlagged', 'Nothing flagged — running clean.')];
@@ -342,7 +340,6 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
             <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.fuelHealth', 'Fuel health')}</span>
             <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{tc('bunk.daysOfCoverHint', 'Days of cover (7-day avg sale) · stock as of last dip')}</div>
           </div>
-          {wet && <span style={{ fontSize: 12, padding: '4px 10px', borderRadius: 99, background: wet.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wet.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wet.beyond_tolerance ? <AlertTriangle size={12} style={{ verticalAlign: -2 }} /> : <CheckCircle size={12} style={{ verticalAlign: -2 }} />} {tc('bunk.stockVarianceMtd', 'Stock variance MTD {n} L').replace('{n}', fmtL(wet.variance_ltrs))}{wet.beyond_tolerance ? tc('bunk.overTolerance', ' · over tolerance') : tc('bunk.withinTolerance', ' · within tolerance')}</span>}
         </div>
         {cover.length === 0 ? <div style={{ color: 'var(--text-3)', fontSize: 13 }}>{tc('bunk.noTanksConfigured', 'No tanks configured.')}</div> : (
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(125px,1fr))', gap: 12 }}>
