@@ -45,7 +45,7 @@ async function outletMetrics(sid, date) {
       pool.query(`SELECT COALESCE((SELECT SUM(total_amount) FROM gst_invoices WHERE station_id=$1),0) AS invoiced,
                          COALESCE((SELECT SUM(amount) FROM corporate_receipts WHERE station_id=$1),0) AS received,
                          COALESCE((SELECT SUM(total_amount) FROM gst_invoices WHERE station_id=$1 AND invoice_date<=$2::date-90),0) AS invoiced_old`, [sid, date]),
-      pool.query(`SELECT COALESCE(SUM(variance_ltrs),0) AS v, BOOL_OR(beyond_tolerance) AS b FROM tank_reconciliation WHERE station_id=$1 AND created_at>=$2`, [sid, monthStart]).catch(() => ({ rows: [{ v: 0, b: false }] })),
+      pool.query(`SELECT COALESCE(SUM(variance_ltrs),0) AS v, BOOL_OR(beyond_tolerance) AS b FROM tank_reconciliation WHERE station_id=$1 AND created_at>=$2 AND COALESCE(opening_ltrs,0) > 0`, [sid, monthStart]).catch(() => ({ rows: [{ v: 0, b: false }] })),
       pool.query(`SELECT AVG(GREATEST(0, EXTRACT(EPOCH FROM (cr.receipt_date::timestamp - gi.invoice_date::timestamp))/86400))::numeric AS lag
                   FROM corporate_receipts cr JOIN gst_invoices gi ON gi.id=cr.invoice_id WHERE cr.station_id=$1 AND cr.invoice_id IS NOT NULL`, [sid]),
       pool.query(`SELECT

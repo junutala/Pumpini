@@ -153,6 +153,7 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
   settlementFuel.forEach(f => { totQtyByFuel[f.fuel_type] = (totQtyByFuel[f.fuel_type] || 0) + Number(f.litres || 0); });
   const stepDate = (n) => { userPickedDate.current = true; const dt = new Date(date + 'T00:00:00'); dt.setDate(dt.getDate() + n); const s2 = dt.toLocaleDateString('en-CA'); if (s2 <= today) setDate(s2); };
   const wet = d.wetstock_mtd;
+  const wetLast = d.wetstock_last;   // last reconciled day's per-tank math (dated)
   const brief = d.ai_briefing || [];
   const unread = (d.alerts || []).filter(a => !a.acknowledged_at);
 
@@ -367,6 +368,38 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           </div>
         )}
       </div>
+
+      {/* Wet-stock reconciliation — the last reconciled day, with the full math
+          spelled out so the variance is transparent (not a mystery month total). */}
+      {wetLast && (
+        <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3, flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{tc('bunk.wetStockReco', 'Wet-stock reconciliation')}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: wetLast.beyond_tolerance ? '#fee2e2' : '#eaf3de', color: wetLast.beyond_tolerance ? '#991b1b' : '#27500a' }}>{wetLast.beyond_tolerance ? <><AlertTriangle size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.overTolerance2', 'over tolerance')}</> : <><CheckCircle size={12} style={{ verticalAlign: -2 }} /> {tc('bunk.withinTolerance2', 'within tolerance')}</>}</span>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand,#e07b0c)', marginBottom: 12 }}>{fmtFull(wetLast.date)}{wetLast.shift_number != null ? <span style={{ fontWeight: 400, color: 'var(--text-3)' }}> · {tc('bunk.shiftN', 'Shift {n}').replace('{n}', wetLast.shift_number)}</span> : ''}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {wetLast.tanks.map((t, i) => (
+              <div key={i} style={{ background: t.beyond ? '#fef2f2' : 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '10px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: fuelColor(t.fuel_type) }} />{tc('bunk.tankN', 'Tank {n}').replace('{n}', t.tank_number)} <span style={{ fontWeight: 400, color: 'var(--text-3)' }}>{cap(t.fuel_type)}</span></span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: t.beyond ? '#dc2626' : (t.variance < 0 ? '#b45309' : '#16a34a') }}>{t.variance > 0 ? '+' : ''}{fmtL(t.variance)} {unitFor(t.fuel_type)} <span style={{ fontSize: 11, fontWeight: 700 }}>({t.variance_pct}%)</span></span>
+                </div>
+                {/* The full equation, spelled out */}
+                <div style={{ fontSize: 12, color: 'var(--text-2,#475569)', display: 'flex', flexWrap: 'wrap', gap: '2px 5px', alignItems: 'baseline' }}>
+                  <span style={{ fontWeight: 700 }}>{fmtL(t.opening)}</span><span style={{ color: 'var(--text-3)' }}>{tc('bunk.recoOpening', 'opening')}</span>
+                  <span style={{ color: '#16a34a' }}>+ {fmtL(t.deliveries)}</span><span style={{ color: 'var(--text-3)' }}>{tc('bunk.recoDeliv', 'deliv')}</span>
+                  <span>− {fmtL(t.sales)}</span><span style={{ color: 'var(--text-3)' }}>{tc('bunk.recoSales', 'sales')}</span>
+                  <span style={{ fontWeight: 700 }}>= {fmtL(t.book)}</span><span style={{ color: 'var(--text-3)' }}>{tc('bunk.recoBook', 'book')}</span>
+                  <span style={{ color: 'var(--text-3)' }}>·</span>
+                  <span style={{ fontWeight: 700 }}>{tc('bunk.recoDip', 'dip')} {fmtL(t.dip)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>{tc('bunk.recoFormulaNote', 'Variance = dip − book, where book = opening + deliveries − sales.')}</div>
+        </div>
+      )}
 
       {/* AI briefing */}
       <div style={{ background: '#ede9fe', borderRadius: 14, padding: '14px 16px', marginBottom: embedded ? 0 : 14 }}>
