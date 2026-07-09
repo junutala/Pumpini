@@ -96,7 +96,7 @@ export default function SoInstructionsTile({ stationId }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 10, cursor: 'pointer' }}
               >
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.task_name}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.instruction || it.task_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', marginTop: 2 }}>
                     Deadline: {it.committed_date ? fmtDT(it.committed_date) : (it.desired_by ? `${fmtDT(it.desired_by)} (target)` : 'not set')}
                     {it.has_artifact && <> · <Paperclip size={11} style={{ verticalAlign: -1 }} /> proof</>}
