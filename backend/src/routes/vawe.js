@@ -160,8 +160,10 @@ function artifactTypeOk(mt) {
   );
 }
 
-// GET /api/vawe/interactions?station_id=…  — OPEN instructions for one outlet.
-// Ordered by the operative deadline (committed date → SO's soft target → age).
+// GET /api/vawe/interactions?station_id=…  — OPEN instructions PLUS recently
+// CLOSED ones (last 90 days) so the manager keeps a record/proof of what he
+// completed. Ordered OPEN-first, then by the operative deadline (committed
+// date → SO's soft target → age).
 router.get('/interactions', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   // committed_date is returned raw (TIMESTAMPTZ — carries the manager's date AND
   // time; on any environment still on the older DATE column it serializes just
@@ -173,8 +175,11 @@ router.get('/interactions', authenticate, requireStationAccess({ required: true 
               status, (artifact_url IS NOT NULL) AS has_artifact, artifact_url,
               created_at, updated_at`;
   const tail = `FROM vawe_interactions
-        WHERE station_id = $1 AND status = 'OPEN'
-        ORDER BY COALESCE(committed_date, desired_by, so_executed_at) ASC,
+        WHERE station_id = $1
+          AND (status = 'OPEN'
+               OR (status = 'CLOSED' AND updated_at > now() - interval '90 days'))
+        ORDER BY (status = 'OPEN') DESC,
+                 COALESCE(committed_date, desired_by, so_executed_at) ASC,
                  created_at ASC`;
   try {
     let rows;

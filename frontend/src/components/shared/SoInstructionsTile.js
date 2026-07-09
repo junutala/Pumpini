@@ -2,15 +2,16 @@
 
 // SO Instructions — the VAWE → Pumpini operational-task tile.
 //
-// A Sales Officer pushes tasks from VAWE; each outlet gets one OPEN interaction.
-// This tile surfaces them on the manager's operations dashboard (and, because
-// the owner's group dashboard embeds the same DashboardPage per outlet, on the
-// owner's view too — read-only). The manager sets a commit-by date, uploads
-// proof, and marks the task complete; completing it flips status→CLOSED, which
-// removes the tile. It renders nothing when there are no open instructions.
+// A Sales Officer pushes tasks from VAWE; each outlet gets an interaction. This
+// tile surfaces them on the manager's dashboard (and read-only on the owner's
+// group view). The manager sets a commit-by date, uploads proof, and marks the
+// task complete. Two tabs: Pending (actionable) and Completed (kept as the
+// manager's record/proof — the API returns recently-closed items too). All
+// manager-facing strings go through tc() with Telugu in te.json.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ClipboardList, CalendarClock, Upload, CheckCircle2, X, Paperclip, AlertTriangle } from 'lucide-react';
+import { ClipboardList, CalendarClock, Upload, CheckCircle2, X, Paperclip, AlertTriangle, ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import {
   getVaweInteractions, commitVaweInteraction, completeVaweInteraction,
@@ -30,18 +31,18 @@ const toLocalInput = (ts) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-// Deadline + flag: the manager's committed date+time is the operative deadline;
-// fall back to the SO's soft target. Overdue → red, revised-past-target →
-// yellow (Mgmt by Exception), committed → blue, otherwise awaiting a date.
+// Flag/badge for a row. Returns an i18n key + English fallback so the label is
+// translated at render (module scope has no hook). CLOSED → Done.
 function flagOf(it) {
+  if (it.status === 'CLOSED') return { cls: 'badge-success', key: 'vawe.flagDone', en: 'Done' };
   const now = Date.now();
   const committed = ms(it.committed_date);
   const deadline = committed ?? ms(it.desired_by);
-  if (deadline && deadline < now) return { cls: 'badge-danger', label: 'Overdue' };
+  if (deadline && deadline < now) return { cls: 'badge-danger', key: 'vawe.flagOverdue', en: 'Overdue' };
   const soft = ms(it.desired_by);
-  if (committed && soft && committed > soft) return { cls: 'badge-warning', label: 'Revised' };
-  if (committed) return { cls: 'badge-info', label: 'Committed' };
-  return { cls: 'badge-gray', label: 'Awaiting date' };
+  if (committed && soft && committed > soft) return { cls: 'badge-warning', key: 'vawe.flagRevised', en: 'Revised' };
+  if (committed) return { cls: 'badge-info', key: 'vawe.flagCommitted', en: 'Committed' };
+  return { cls: 'badge-gray', key: 'vawe.flagAwaiting', en: 'Awaiting date' };
 }
 
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -53,14 +54,16 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
 
 export default function SoInstructionsTile({ stationId }) {
   const { user } = useAuth();
-  // The manager can always act. The owner acts only on interactions VAWE has
-  // unlocked (owner_can_act) — i.e. escalation reached the owner cycle. Everyone
-  // else (CCO) stays read-only. So "can act" is per-interaction, not per-user.
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const isManager = user?.role === 'manager';
   const isOwner = user?.role === 'owner';
-  const canActFor = (it) => isManager || (isOwner && !!it?.owner_can_act);
+  // "Can act" needs an OPEN task AND the right role (manager always; owner only
+  // once VAWE unlocked it via escalation). Completed tasks are read-only.
+  const canActFor = (it) => it?.status === 'OPEN' && (isManager || (isOwner && !!it?.owner_can_act));
   const [items, setItems] = useState([]);
   const [openId, setOpenId] = useState(null);
+  const [tab, setTab] = useState('pending');
 
   const load = useCallback(async () => {
     if (!stationId) return;
@@ -73,8 +76,21 @@ export default function SoInstructionsTile({ stationId }) {
   useEffect(() => { load(); }, [load]);
 
   if (!items.length) return null;
+  const pending = items.filter((i) => i.status !== 'CLOSED');
+  const completed = items.filter((i) => i.status === 'CLOSED');
+  const shown = tab === 'completed' ? completed : pending;
   const active = items.find((i) => i.id === openId) || null;
-  const anyActable = items.some(canActFor);
+  const anyActable = pending.some(canActFor);
+
+  const tabBtn = (id, labelText, count, activeCls) => (
+    <button
+      onClick={() => setTab(id)}
+      className={`badge ${tab === id ? activeCls : 'badge-gray'}`}
+      style={{ cursor: 'pointer', border: 'none', font: 'inherit' }}
+    >
+      {labelText} ({count})
+    </button>
+  );
 
   return (
     <>
@@ -83,12 +99,26 @@ export default function SoInstructionsTile({ stationId }) {
           <span style={{ width: 30, height: 30, borderRadius: 8, background: '#fff1e7', color: '#e8701e', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ClipboardList size={17} />
           </span>
-          <span style={{ fontSize: 14, fontWeight: 800 }}>SO Instructions</span>
-          <span className="badge badge-warning" style={{ marginLeft: 'auto' }}>{items.length} open</span>
+          <span style={{ fontSize: 14, fontWeight: 800 }}>{tc('vawe.title', 'SO Instructions')}</span>
         </div>
+
+        {/* Pending / Completed tabs. */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {tabBtn('pending', tc('vawe.tabPending', 'Pending'), pending.length, 'badge-warning')}
+          {tabBtn('completed', tc('vawe.tabCompleted', 'Completed'), completed.length, 'badge-success')}
+        </div>
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {items.map((it) => {
+          {shown.length === 0 && (
+            <div style={{ fontSize: 12.5, color: 'var(--text-3,#7a7773)', padding: '4px 2px' }}>
+              {tab === 'completed'
+                ? tc('vawe.noneCompleted', 'No completed tasks yet.')
+                : tc('vawe.nonePending', 'Nothing pending — all done!')}
+            </div>
+          )}
+          {shown.map((it) => {
             const f = flagOf(it);
+            const actable = canActFor(it);
             return (
               <div
                 key={it.id}
@@ -98,18 +128,32 @@ export default function SoInstructionsTile({ stationId }) {
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.instruction || it.task_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', marginTop: 2 }}>
-                    Deadline: {it.committed_date ? fmtDT(it.committed_date) : (it.desired_by ? `${fmtDT(it.desired_by)} (target)` : 'not set')}
-                    {it.has_artifact && <> · <Paperclip size={11} style={{ verticalAlign: -1 }} /> proof</>}
+                    {it.status === 'CLOSED'
+                      ? `${tc('vawe.completedOn', 'Completed')} ${fmt(it.updated_at)}`
+                      : `${tc('vawe.deadline', 'Deadline')}: ${it.committed_date ? fmtDT(it.committed_date) : (it.desired_by ? `${fmtDT(it.desired_by)} (${tc('vawe.target', 'target')})` : tc('vawe.notSet', 'not set'))}`}
+                    {it.has_artifact && <> · <Paperclip size={11} style={{ verticalAlign: -1 }} /> {tc('vawe.proof', 'proof')}</>}
                   </div>
                 </div>
-                <span className={`badge ${f.cls}`}>{f.label}</span>
+                <span className={`badge ${f.cls}`}>{tc(f.key, f.en)}</span>
+                {actable ? (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ flexShrink: 0 }}
+                    onClick={(e) => { e.stopPropagation(); setOpenId(it.id); }}
+                  >
+                    {tc('vawe.open', 'Open')} ›
+                  </button>
+                ) : (
+                  <ChevronRight size={18} style={{ color: 'var(--text-3,#7a7773)', flexShrink: 0 }} />
+                )}
               </div>
             );
           })}
         </div>
-        {!anyActable && (
+
+        {tab === 'pending' && pending.length > 0 && !anyActable && (
           <div style={{ fontSize: 11.5, color: 'var(--text-3,#7a7773)', marginTop: 10 }}>
-            Read-only — the outlet manager acts on these.
+            {tc('vawe.readonlyList', 'Read-only — the outlet manager acts on these.')}
           </div>
         )}
       </div>
@@ -128,6 +172,8 @@ export default function SoInstructionsTile({ stationId }) {
 }
 
 function InteractionDrawer({ it, canAct, onClose, onChanged }) {
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const [committed, setCommitted] = useState(toLocalInput(it.committed_date));
   // The last SAVED commit-by value, so the Save button knows when there are
   // unsaved edits (dirty) and can confirm "Saved ✓" once persisted.
@@ -135,29 +181,24 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   const [busy, setBusy] = useState('');            // '', 'commit', 'upload', 'complete'
   const [error, setError] = useState('');
   const [proof, setProof] = useState(null);         // fetched proof URL
-  // Proof present if the server already has one, or we just uploaded — so the
-  // "Mark complete" gate opens immediately, without waiting for a refetch.
   const [justUploaded, setJustUploaded] = useState(false);
   const hasArtifact = !!it.has_artifact || justUploaded;
   const commitDirty = committed !== savedCommitted;
+  const isClosed = it.status === 'CLOSED';
   const fileRef = useRef(null);
   const f = flagOf({ ...it, committed_date: committed || null });
 
-  // Manager edits the date locally, then presses Save — an explicit
-  // confirmation (auto-save gave no feedback). Sends a full ISO timestamp.
   const saveCommit = async () => {
     setBusy('commit'); setError('');
     try {
       await commitVaweInteraction(it.id, committed ? new Date(committed).toISOString() : null);
       setSavedCommitted(committed);
       onChanged();
-    } catch (e) { setError(e?.error || 'Could not save the date.'); }
+    } catch (e) { setError(e?.error || tc('vawe.errSaveDate', 'Could not save the date.')); }
     finally { setBusy(''); }
   };
 
-  // Uploading proof ENABLES "Mark complete" (the explicit settle). It no longer
-  // auto-closes the drawer, so the manager sees the proof land and the button
-  // turn on, then completes deliberately.
+  // Uploading proof ENABLES "Mark complete"; it no longer auto-closes the drawer.
   const onFile = async (file) => {
     if (!file) return;
     setBusy('upload'); setError('');
@@ -168,20 +209,20 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
       setJustUploaded(true);
       onChanged();
     } catch (e) {
-      setError(e?.error || 'Upload failed.');
+      setError(e?.error || tc('vawe.errUpload', 'Upload failed.'));
       if (fileRef.current) fileRef.current.value = '';
     } finally { setBusy(''); }
   };
 
   const viewProof = async () => {
     try { const r = await getVaweArtifact(it.id); setProof(r?.data_url || null); }
-    catch (e) { setError(e?.error || 'Could not load the proof.'); }
+    catch (e) { setError(e?.error || tc('vawe.errLoadProof', 'Could not load the proof.')); }
   };
 
   const markComplete = async () => {
     setBusy('complete'); setError('');
     try { await completeVaweInteraction(it.id); onChanged(); onClose(); }
-    catch (e) { setError(e?.error || 'Could not mark complete.'); setBusy(''); }
+    catch (e) { setError(e?.error || tc('vawe.errComplete', 'Could not mark complete.')); setBusy(''); }
   };
 
   const label = { fontSize: 12, fontWeight: 600, color: 'var(--text-2,#475569)', marginBottom: 4, display: 'block' };
@@ -194,8 +235,8 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         style={{ width: 'min(420px, 92vw)', height: '100%', background: 'var(--surface,#fff)', boxShadow: '-8px 0 24px rgba(0,0,0,0.12)', padding: '18px 20px', overflowY: 'auto' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>SO Instruction</span>
-          <span className={`badge ${f.cls}`}>{f.label}</span>
+          <span style={{ fontSize: 15, fontWeight: 800, flex: 1 }}>{tc('vawe.soInstruction', 'SO Instruction')}</span>
+          <span className={`badge ${f.cls}`}>{tc(f.key, f.en)}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3,#7a7773)' }}><X size={18} /></button>
         </div>
 
@@ -204,18 +245,18 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
 
         <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
           <div>
-            <span style={label}>SO's target</span>
-            <span style={meta}>{it.desired_by ? fmtDT(it.desired_by) : 'none'}</span>
+            <span style={label}>{tc('vawe.soTarget', "SO's target")}</span>
+            <span style={meta}>{it.desired_by ? fmtDT(it.desired_by) : tc('vawe.none', 'none')}</span>
           </div>
           <div>
-            <span style={label}>Sent on</span>
+            <span style={label}>{tc('vawe.sentOn', 'Sent on')}</span>
             <span style={meta}>{fmt(it.so_executed_at)}</span>
           </div>
         </div>
 
         {/* Commit-by date — the operative deadline. */}
         <div style={{ marginBottom: 18 }}>
-          <span style={label}><CalendarClock size={13} style={{ verticalAlign: -2 }} /> Commit-by date</span>
+          <span style={label}><CalendarClock size={13} style={{ verticalAlign: -2 }} /> {tc('vawe.commitBy', 'Commit-by date')}</span>
           {canAct ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
@@ -231,35 +272,35 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
                 disabled={busy === 'commit' || !committed || !commitDirty}
                 onClick={saveCommit}
               >
-                {busy === 'commit' ? 'Saving…' : (commitDirty ? 'Save date' : 'Saved ✓')}
+                {busy === 'commit' ? tc('vawe.saving', 'Saving…') : (commitDirty ? tc('vawe.saveDate', 'Save date') : tc('vawe.saved', 'Saved ✓'))}
               </button>
             </div>
           ) : (
-            <span style={meta}>{committed ? fmtDT(committed) : 'not set by manager yet'}</span>
+            <span style={meta}>{committed ? fmtDT(committed) : tc('vawe.notSetByManager', 'not set by manager yet')}</span>
           )}
         </div>
 
         {/* Proof of completion. */}
         <div style={{ marginBottom: 18 }}>
-          <span style={label}><Paperclip size={13} style={{ verticalAlign: -2 }} /> Proof</span>
+          <span style={label}><Paperclip size={13} style={{ verticalAlign: -2 }} /> {tc('vawe.proofLabel', 'Proof')}</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {canAct && (
               <>
                 <input ref={fileRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" hidden onChange={(e) => onFile(e.target.files?.[0])} />
                 <button className="btn btn-secondary btn-sm" disabled={busy === 'upload'} onClick={() => fileRef.current?.click()}>
-                  <Upload size={14} /> {busy === 'upload' ? 'Uploading…' : (hasArtifact ? 'Replace' : 'Upload')}
+                  <Upload size={14} /> {busy === 'upload' ? tc('vawe.uploading', 'Uploading…') : (hasArtifact ? tc('vawe.replace', 'Replace') : tc('vawe.upload', 'Upload'))}
                 </button>
               </>
             )}
             {hasArtifact
-              ? <button className="btn btn-secondary btn-sm" onClick={viewProof}>View proof</button>
-              : !canAct && <span style={{ ...meta, color: 'var(--text-3,#7a7773)' }}>none uploaded</span>}
+              ? <button className="btn btn-secondary btn-sm" onClick={viewProof}>{tc('vawe.viewProof', 'View proof')}</button>
+              : !canAct && <span style={{ ...meta, color: 'var(--text-3,#7a7773)' }}>{tc('vawe.noneUploaded', 'none uploaded')}</span>}
           </div>
           {proof && (
             <div style={{ marginTop: 10 }}>
               {proof.startsWith('data:image')
                 ? <img src={proof} alt="proof" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)' }} />
-                : <a href={proof} download="so-proof.pdf" className="btn btn-secondary btn-sm">Download PDF</a>}
+                : <a href={proof} download="so-proof.pdf" className="btn btn-secondary btn-sm">{tc('vawe.downloadPdf', 'Download PDF')}</a>}
             </div>
           )}
         </div>
@@ -273,17 +314,21 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         {canAct ? (
           <>
             <button className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={busy === 'complete' || !hasArtifact} onClick={markComplete}>
-              <CheckCircle2 size={16} /> {busy === 'complete' ? 'Completing…' : 'Mark complete'}
+              <CheckCircle2 size={16} /> {busy === 'complete' ? tc('vawe.completing', 'Completing…') : tc('vawe.markComplete', 'Mark complete')}
             </button>
             {!hasArtifact && (
               <div style={{ fontSize: 11.5, color: 'var(--text-3,#7a7773)', textAlign: 'center', marginTop: 8 }}>
-                Upload proof to enable “Mark complete”.
+                {tc('vawe.uploadToEnable', 'Upload proof to enable “Mark complete”.')}
               </div>
             )}
           </>
+        ) : isClosed ? (
+          <div style={{ fontSize: 13, color: '#16a34a', textAlign: 'center', fontWeight: 600 }}>
+            <CheckCircle2 size={15} style={{ verticalAlign: -3 }} /> {tc('vawe.completed', 'Completed')}{hasArtifact ? ` — ${tc('vawe.proofOnFile', 'proof on file')}` : ''}
+          </div>
         ) : (
           <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', textAlign: 'center' }}>
-            Read-only — the outlet manager completes this task.
+            {tc('vawe.readonlyComplete', 'Read-only — the outlet manager completes this task.')}
           </div>
         )}
       </div>
