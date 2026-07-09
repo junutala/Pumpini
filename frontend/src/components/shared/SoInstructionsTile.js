@@ -129,25 +129,35 @@ export default function SoInstructionsTile({ stationId }) {
 
 function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   const [committed, setCommitted] = useState(toLocalInput(it.committed_date));
+  // The last SAVED commit-by value, so the Save button knows when there are
+  // unsaved edits (dirty) and can confirm "Saved ✓" once persisted.
+  const [savedCommitted, setSavedCommitted] = useState(toLocalInput(it.committed_date));
   const [busy, setBusy] = useState('');            // '', 'commit', 'upload', 'complete'
   const [error, setError] = useState('');
   const [proof, setProof] = useState(null);         // fetched proof URL
-  const hasArtifact = !!it.has_artifact;
+  // Proof present if the server already has one, or we just uploaded — so the
+  // "Mark complete" gate opens immediately, without waiting for a refetch.
+  const [justUploaded, setJustUploaded] = useState(false);
+  const hasArtifact = !!it.has_artifact || justUploaded;
+  const commitDirty = committed !== savedCommitted;
   const fileRef = useRef(null);
   const f = flagOf({ ...it, committed_date: committed || null });
 
-  // Manager commits a date AND time; send it as a full ISO timestamp.
-  const saveCommit = async (value) => {
-    setCommitted(value);
+  // Manager edits the date locally, then presses Save — an explicit
+  // confirmation (auto-save gave no feedback). Sends a full ISO timestamp.
+  const saveCommit = async () => {
     setBusy('commit'); setError('');
     try {
-      await commitVaweInteraction(it.id, value ? new Date(value).toISOString() : null);
+      await commitVaweInteraction(it.id, committed ? new Date(committed).toISOString() : null);
+      setSavedCommitted(committed);
       onChanged();
     } catch (e) { setError(e?.error || 'Could not save the date.'); }
     finally { setBusy(''); }
   };
 
-  // Uploading proof SETTLES the task (hands it back to the SO) → close on success.
+  // Uploading proof ENABLES "Mark complete" (the explicit settle). It no longer
+  // auto-closes the drawer, so the manager sees the proof land and the button
+  // turn on, then completes deliberately.
   const onFile = async (file) => {
     if (!file) return;
     setBusy('upload'); setError('');
@@ -155,11 +165,12 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
       const base64 = await fileToBase64(file);
       await uploadVaweArtifact(it.id, { base64, media_type: file.type, filename: file.name });
       if (fileRef.current) fileRef.current.value = '';
-      onChanged(); onClose();
+      setJustUploaded(true);
+      onChanged();
     } catch (e) {
-      setError(e?.error || 'Upload failed.'); setBusy('');
+      setError(e?.error || 'Upload failed.');
       if (fileRef.current) fileRef.current.value = '';
-    }
+    } finally { setBusy(''); }
   };
 
   const viewProof = async () => {
@@ -206,14 +217,23 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         <div style={{ marginBottom: 18 }}>
           <span style={label}><CalendarClock size={13} style={{ verticalAlign: -2 }} /> Commit-by date</span>
           {canAct ? (
-            <input
-              type="datetime-local"
-              value={committed}
-              min={toLocalInput(new Date())}
-              disabled={busy === 'commit'}
-              onChange={(e) => saveCommit(e.target.value)}
-              style={{ padding: '7px 10px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 13.5 }}
-            />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="datetime-local"
+                value={committed}
+                min={toLocalInput(new Date())}
+                disabled={busy === 'commit'}
+                onChange={(e) => setCommitted(e.target.value)}
+                style={{ padding: '7px 10px', border: '1px solid var(--border,#e5e7eb)', borderRadius: 8, fontSize: 13.5 }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={busy === 'commit' || !committed || !commitDirty}
+                onClick={saveCommit}
+              >
+                {busy === 'commit' ? 'Saving…' : (commitDirty ? 'Save date' : 'Saved ✓')}
+              </button>
+            </div>
           ) : (
             <span style={meta}>{committed ? fmtDT(committed) : 'not set by manager yet'}</span>
           )}
@@ -251,9 +271,16 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         )}
 
         {canAct ? (
-          <button className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={busy === 'complete'} onClick={markComplete}>
-            <CheckCircle2 size={16} /> {busy === 'complete' ? 'Completing…' : 'Mark complete'}
-          </button>
+          <>
+            <button className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={busy === 'complete' || !hasArtifact} onClick={markComplete}>
+              <CheckCircle2 size={16} /> {busy === 'complete' ? 'Completing…' : 'Mark complete'}
+            </button>
+            {!hasArtifact && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-3,#7a7773)', textAlign: 'center', marginTop: 8 }}>
+                Upload proof to enable “Mark complete”.
+              </div>
+            )}
+          </>
         ) : (
           <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', textAlign: 'center' }}>
             Read-only — the outlet manager completes this task.

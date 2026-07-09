@@ -273,9 +273,9 @@ router.patch('/interactions/:id/commit', authenticate, loadInteraction, requireC
 // POST /api/vawe/interactions/:id/artifact  — manager uploads proof (image /
 // video / document). Body: { base64, media_type, filename? }. The file is
 // uploaded to a public Supabase bucket (object key embeds the outlet id) and
-// artifact_url holds the URL. Uploading proof SETTLES the task: status→CLOSED
-// and a FULFILMENT signal carrying the URL is sent to VAWE, handing the
-// interaction back to the SO with the proof attached.
+// artifact_url holds the URL. Uploading proof does NOT settle the task — it
+// ENABLES "Mark complete"; the manager then completes it deliberately (see
+// /complete), which is the single point that sends the FULFILMENT signal.
 router.post('/interactions/:id/artifact', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
   const { base64, media_type, filename } = req.body || {};
   if (!base64 || !media_type) {
@@ -300,23 +300,18 @@ router.post('/interactions/:id/artifact', authenticate, loadInteraction, require
       contentType: media_type,
       filename,
     });
-    // Store the URL and settle in one write — uploading proof hands the task back.
+    // Store the URL but keep the task OPEN — uploading proof ENABLES "Mark
+    // complete"; the manager settles the task deliberately (see /complete),
+    // which is where the FULFILMENT signal is sent.
     const { rows } = await bypass(
       `UPDATE vawe_interactions
-          SET artifact_url = $2, status = 'CLOSED', updated_at = now()
+          SET artifact_url = $2, updated_at = now()
         WHERE id = $1 AND status = 'OPEN'
       RETURNING id`,
       [req.params.id, publicUrl]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
-    logger.info(`VAWE interaction ${req.params.id} proof uploaded + settled by user ${req.user.id}`);
-    queueInteractionSignal({
-      source: 'pumpini',
-      signalType: 'FULFILMENT',
-      externalRef: req.interactionStationId,
-      occurredAt: new Date().toISOString(),
-      data: { interactionId: req.params.id, artifactUrl: publicUrl },
-    });
+    logger.info(`VAWE interaction ${req.params.id} proof uploaded by user ${req.user.id}`);
     res.json({ ok: true, artifact_url: publicUrl });
   } catch (err) {
     logger.error(`VAWE artifact upload failed for ${req.params.id}: ${err.message}`);
@@ -343,14 +338,26 @@ router.get('/interactions/:id/artifact', authenticate, loadInteraction, async (r
 // Flips status→CLOSED, which removes the tile from both dashboards.
 router.patch('/interactions/:id/complete', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
   try {
+    // Proof-gated: only close once proof has been uploaded. Enforced server-side
+    // (not just the disabled button) — close only when artifact_url is present.
     const { rows } = await bypass(
       `UPDATE vawe_interactions
           SET status = 'CLOSED', updated_at = now()
-        WHERE id = $1 AND status = 'OPEN'
+        WHERE id = $1 AND status = 'OPEN' AND artifact_url IS NOT NULL
       RETURNING id, artifact_url`,
       [req.params.id]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
+    if (!rows.length) {
+      // Distinguish "no proof yet" from "not found / already closed".
+      const { rows: cur } = await bypass(
+        `SELECT status, artifact_url FROM vawe_interactions WHERE id = $1`,
+        [req.params.id]
+      );
+      if (cur.length && cur[0].status === 'OPEN' && !cur[0].artifact_url) {
+        return res.status(409).json({ error: 'Upload proof before marking the task complete.' });
+      }
+      return res.status(404).json({ error: 'Interaction not found or already closed' });
+    }
     logger.info(`VAWE interaction ${req.params.id} marked complete by user ${req.user.id}`);
     // Tell VAWE the task is fulfilled so it settles the interaction and stops
     // escalating. Carry the proof URL if the manager already uploaded one.
