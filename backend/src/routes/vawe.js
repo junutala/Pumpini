@@ -14,7 +14,7 @@ const pool    = require('../db/pool');
 const logger  = require('../utils/logger');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, canAccessStation } = require('../middleware/stationAccess');
-const { queueInteractionSignal } = require('../services/vaweService');
+const { queueInteractionSignal, queueOutletSync } = require('../services/vaweService');
 const { storageConfigured, uploadArtifact } = require('../services/vaweStorage');
 const router  = express.Router();
 
@@ -78,6 +78,25 @@ router.post('/interactions', async (req, res, next) => {
     }
     next(err);
   }
+});
+
+// POST /api/vawe/outlets-resync  — signature-verified (VAWE → Pumpini, same HMAC
+// as the inbound webhook). VAWE asks Pumpini to re-push every outlet (coords,
+// contacts, brand) so a stale VAWE copy — e.g. coordinates set in Pumpini after
+// the last sync — is refreshed, without a manual station re-save. Each outlet is
+// queued through the SAME fire-and-forget path a settings-save uses
+// (queueOutletSync), so this reuses the proven, idempotent sync. Runs the id
+// read on the bypass role (cross-tenant platform action, like the webhook).
+router.post('/outlets-resync', async (req, res, next) => {
+  const code = checkSignature(req);
+  if (code === 503) return res.status(503).json({ error: 'VAWE integration not configured' });
+  if (code !== 200) return res.status(401).json({ error: 'Invalid signature' });
+  try {
+    const { rows } = await pool.als.exit(() => pool.query('SELECT id FROM stations'));
+    for (const r of rows) queueOutletSync(r.id);
+    logger.info(`VAWE outlets-resync queued ${rows.length} outlets`);
+    res.json({ queued: rows.length });
+  } catch (err) { next(err); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
