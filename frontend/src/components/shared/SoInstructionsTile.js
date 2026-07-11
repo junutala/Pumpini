@@ -32,9 +32,15 @@ const toLocalInput = (ts) => {
 };
 
 // Flag/badge for a row. Returns an i18n key + English fallback so the label is
-// translated at render (module scope has no hook). CLOSED → Done.
+// translated at render (module scope has no hook). CLOSED → Done, UNLESS it was
+// closed without proof — which only happens when VAWE (the SO) withdrew the
+// task, since completing here is always proof-gated. That reads as "Withdrawn".
 function flagOf(it) {
-  if (it.status === 'CLOSED') return { cls: 'badge-success', key: 'vawe.flagDone', en: 'Done' };
+  if (it.status === 'CLOSED') {
+    return it.has_artifact
+      ? { cls: 'badge-success', key: 'vawe.flagDone', en: 'Done' }
+      : { cls: 'badge-gray', key: 'vawe.flagWithdrawn', en: 'Withdrawn' };
+  }
   const now = Date.now();
   const committed = ms(it.committed_date);
   const deadline = committed ?? ms(it.desired_by);
@@ -129,7 +135,9 @@ export default function SoInstructionsTile({ stationId }) {
                   <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.instruction || it.task_name}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', marginTop: 2 }}>
                     {it.status === 'CLOSED'
-                      ? `${tc('vawe.completedOn', 'Completed')} ${fmt(it.updated_at)}`
+                      ? (it.has_artifact
+                          ? `${tc('vawe.completedOn', 'Completed')} ${fmt(it.updated_at)}`
+                          : `${tc('vawe.withdrawnOn', 'Withdrawn by the sales officer')} · ${fmt(it.updated_at)}`)
                       : `${tc('vawe.deadline', 'Deadline')}: ${it.committed_date ? fmtDT(it.committed_date) : (it.desired_by ? `${fmtDT(it.desired_by)} (${tc('vawe.target', 'target')})` : tc('vawe.notSet', 'not set'))}`}
                     {it.has_artifact && <> · <Paperclip size={11} style={{ verticalAlign: -1 }} /> {tc('vawe.proof', 'proof')}</>}
                   </div>
@@ -325,9 +333,15 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
             )}
           </>
         ) : isClosed ? (
-          <div style={{ fontSize: 13, color: '#16a34a', textAlign: 'center', fontWeight: 600 }}>
-            <CheckCircle2 size={15} style={{ verticalAlign: -3 }} /> {tc('vawe.completed', 'Completed')}{hasArtifact ? ` — ${tc('vawe.proofOnFile', 'proof on file')}` : ''}
-          </div>
+          hasArtifact ? (
+            <div style={{ fontSize: 13, color: '#16a34a', textAlign: 'center', fontWeight: 600 }}>
+              <CheckCircle2 size={15} style={{ verticalAlign: -3 }} /> {tc('vawe.completed', 'Completed')} — {tc('vawe.proofOnFile', 'proof on file')}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: 'var(--text-3,#7a7773)', textAlign: 'center', fontWeight: 600 }}>
+              {tc('vawe.withdrawn', 'Withdrawn by the sales officer — no action needed.')}
+            </div>
+          )
         ) : (
           <div style={{ fontSize: 12, color: 'var(--text-3,#7a7773)', textAlign: 'center' }}>
             {tc('vawe.readonlyComplete', 'Read-only — the outlet manager completes this task.')}
