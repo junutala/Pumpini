@@ -181,8 +181,7 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   const [busy, setBusy] = useState('');            // '', 'commit', 'upload', 'complete'
   const [error, setError] = useState('');
   const [proof, setProof] = useState(null);         // fetched proof URL
-  const [justUploaded, setJustUploaded] = useState(false);
-  const hasArtifact = !!it.has_artifact || justUploaded;
+  const hasArtifact = !!it.has_artifact;
   const commitDirty = committed !== savedCommitted;
   const isClosed = it.status === 'CLOSED';
   const fileRef = useRef(null);
@@ -198,7 +197,9 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
     finally { setBusy(''); }
   };
 
-  // Uploading proof ENABLES "Mark complete"; it no longer auto-closes the drawer.
+  // Proof IS completion: the server settles the task on upload (stamps the
+  // commit date, closes it, tells VAWE to stop calling). So a successful upload
+  // refreshes the list and closes the drawer — the task moves to Completed.
   const onFile = async (file) => {
     if (!file) return;
     setBusy('upload'); setError('');
@@ -206,12 +207,13 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
       const base64 = await fileToBase64(file);
       await uploadVaweArtifact(it.id, { base64, media_type: file.type, filename: file.name });
       if (fileRef.current) fileRef.current.value = '';
-      setJustUploaded(true);
       onChanged();
+      onClose();
     } catch (e) {
       setError(e?.error || tc('vawe.errUpload', 'Upload failed.'));
       if (fileRef.current) fileRef.current.value = '';
-    } finally { setBusy(''); }
+      setBusy('');
+    }
   };
 
   const viewProof = async () => {

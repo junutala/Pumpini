@@ -305,19 +305,40 @@ router.post('/interactions/:id/artifact', authenticate, loadInteraction, require
       contentType: media_type,
       filename,
     });
-    // Store the URL but keep the task OPEN — uploading proof ENABLES "Mark
-    // complete"; the manager settles the task deliberately (see /complete),
-    // which is where the FULFILMENT signal is sent.
+    // Proof IS completion. Uploading the artifact settles the task: stamp the
+    // commit date to now if the manager never set one, flip status→CLOSED, and
+    // send FULFILMENT to VAWE so it stops escalating. (Previously upload merely
+    // ENABLED a separate "Mark complete" click; a manager who uploaded proof but
+    // didn't click complete left the task OPEN and VAWE kept calling the owner.)
+    const nowIso = new Date().toISOString();
     const { rows } = await bypass(
       `UPDATE vawe_interactions
-          SET artifact_url = $2, updated_at = now()
+          SET artifact_url = $2,
+              committed_date = COALESCE(committed_date, $3),
+              status = 'CLOSED',
+              updated_at = now()
         WHERE id = $1 AND status = 'OPEN'
-      RETURNING id`,
-      [req.params.id, publicUrl]
+      RETURNING id, artifact_url, committed_date`,
+      [req.params.id, publicUrl, nowIso]
     );
     if (!rows.length) return res.status(404).json({ error: 'Interaction not found or already closed' });
-    logger.info(`VAWE interaction ${req.params.id} proof uploaded by user ${req.user.id}`);
-    res.json({ ok: true, artifact_url: publicUrl });
+    logger.info(`VAWE interaction ${req.params.id} proof uploaded + auto-completed by user ${req.user.id}`);
+    // Tell VAWE the task is fulfilled so it settles the interaction and stops
+    // escalating, carrying the proof URL and the (now-stamped) commit date.
+    queueInteractionSignal({
+      source: 'pumpini',
+      signalType: 'FULFILMENT',
+      externalRef: req.interactionStationId,
+      occurredAt: nowIso,
+      data: {
+        interactionId: req.params.id,
+        artifactUrl: rows[0].artifact_url,
+        committedDate: rows[0].committed_date
+          ? new Date(rows[0].committed_date).toISOString()
+          : nowIso,
+      },
+    });
+    res.json({ ok: true, artifact_url: publicUrl, completed: true });
   } catch (err) {
     logger.error(`VAWE artifact upload failed for ${req.params.id}: ${err.message}`);
     return res.status(502).json({ error: 'Could not store the file. Please try again.' });
