@@ -821,20 +821,20 @@ export default function LandingPage() {
 
             {/* SEO H1 (keyword line) → H2 (benefit line) → brand hook (demoted
                 from <h1> to <div> so the page keeps exactly one <h1>). */}
-            <h1 className="lp-fade1" style={{fontSize:'clamp(1.15rem,1.9vw,1.5rem)',fontWeight:800,lineHeight:1.25,
-              color:'#FFA45C',marginBottom:'0.7rem',letterSpacing:'-.01em'}}>
+            <h1 className="lp-fade1" style={{fontSize:'clamp(1.9rem,3.6vw,2.9rem)',fontWeight:900,lineHeight:1.12,
+              color:'#fff',marginBottom:'0.7rem',letterSpacing:'-.02em'}}>
               {SEO_H1}
             </h1>
-            <h2 className="lp-fade1" style={{fontSize:'clamp(1.02rem,1.5vw,1.2rem)',fontWeight:600,lineHeight:1.4,
-              color:'rgba(255,255,255,.82)',maxWidth:560,marginBottom:'1.5rem'}}>
+            <h2 className="lp-fade1" style={{fontSize:'clamp(1.15rem,1.9vw,1.5rem)',fontWeight:600,lineHeight:1.42,
+              color:'rgba(255,255,255,.85)',maxWidth:580,marginBottom:'1.6rem'}}>
               {SEO_H2}
             </h2>
 
-            <div className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
+            <div className="lp-fade1" style={{fontSize:'clamp(1.4rem,2.3vw,1.8rem)',fontWeight:900,lineHeight:1.1,
               color:'#fff',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
               {c.hero}
             </div>
-            <div className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
+            <div className="lp-fade2" style={{fontSize:'clamp(1.4rem,2.3vw,1.8rem)',fontWeight:900,lineHeight:1.1,
               background:'linear-gradient(90deg,#FFB347,#FF6B00)',
               WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
               marginBottom:'1.4rem',letterSpacing:'-.03em'}}>
