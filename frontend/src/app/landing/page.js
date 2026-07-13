@@ -41,7 +41,7 @@ const COPY = {
     pricing_sub:   '15-day free trial · No credit card · Cancel anytime',
     nav_leak:'Pumpini AI', nav_features:'Features', nav_pricing:'Pricing', nav_contact:'Contact', login:'Login', home:'Home',
     hero_badge:'Your other businesses get your time. Your petrol bunk gets Pumpini.',
-    cta_leak:'Meet your AI manager →',
+    cta_leak:'Meet your AI manager →', cta_contact:'Contact us',
     cards_t:'Three things your friends\' bunks don\'t have.',
     cards_sub:'Lead with these at the next dealers\' meet.',
     c1_t:'Ask. It answers.', c1_chip:'AI assistant',
@@ -100,7 +100,7 @@ const COPY = {
     cmp_feature:'Feature', cmp_others:'Others',
     cmp_legend:'✅ included · ⚠️ only with some vendors / basic version · ❌ not available',
     cmp_rows:['Billing & GST invoices','Shift & cash reconciliation','Tank stock & nozzle readings','Credit / corporate customers','Cloud + mobile app','Instant in-app alerts','Voice POS in Indian languages','Full app in 6 Indian languages','GPS geo-fencing security','Blind-drop cash control','AI assistant — ask your data','Real-time live dashboard'],
-    pr_pop:'MOST POPULAR', pr_cta:'Start Free Trial',
+    pr_pop:'MOST POPULAR', pr_limited:'Limited period offer', pr_cta:'Start Free Trial',
     pr_foot:'Your bunk pumps lakhs through the counter daily — protect it for less than one litre of petrol a day.',
     pr_more:'Need more stations? Get in touch →',
     plan_starter:{tag:'Control every drop & rupee — one bunk', perday:'₹20 a day', note:'two cups of chai',
@@ -142,7 +142,7 @@ const COPY = {
     pricing_sub:   '15 दिन मुफ्त · कोई क्रेडिट कार्ड नहीं',
     nav_leak:'Pumpini AI', nav_features:'फ़ीचर्स', nav_pricing:'कीमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
     hero_badge:'बाकी कारोबार को आपका समय। पेट्रोल पंप को Pumpini।',
-    cta_leak:'अपने AI मैनेजर से मिलिए →',
+    cta_leak:'अपने AI मैनेजर से मिलिए →', cta_contact:'संपर्क करें',
     cards_t:'तीन चीज़ें जो आपके दोस्तों के पंप पर नहीं हैं।',
     cards_sub:'अगली डीलर्स मीटिंग में शुरुआत इन्हीं से कीजिए।',
     c1_t:'पूछिए। जवाब हाज़िर।', c1_chip:'AI असिस्टेंट',
@@ -201,7 +201,7 @@ const COPY = {
     cmp_feature:'फ़ीचर', cmp_others:'दूसरे',
     cmp_legend:'✅ शामिल · ⚠️ कुछ ही वेंडर / बेसिक वर्ज़न में · ❌ उपलब्ध नहीं',
     cmp_rows:['बिलिंग और GST इनवॉइस','शिफ्ट और कैश मिलान','टैंक स्टॉक और नोज़ल रीडिंग','क्रेडिट / कॉर्पोरेट ग्राहक','क्लाउड + मोबाइल ऐप','तुरंत इन-ऐप अलर्ट','भारतीय भाषाओं में वॉयस POS','6 भारतीय भाषाओं में पूरा ऐप','GPS जियो-फेंसिंग सुरक्षा','ब्लाइंड-ड्रॉप कैश कंट्रोल','AI असिस्टेंट — अपने डेटा से पूछें','रियल-टाइम लाइव डैशबोर्ड'],
-    pr_pop:'सबसे लोकप्रिय', pr_cta:'फ्री ट्रायल शुरू करें',
+    pr_pop:'सबसे लोकप्रिय', pr_limited:'सीमित अवधि ऑफर', pr_cta:'फ्री ट्रायल शुरू करें',
     pr_foot:'आपके पंप के काउंटर से रोज़ लाखों गुज़रते हैं — उसकी हिफ़ाज़त कीजिए, दिन के एक लीटर पेट्रोल से भी कम में।',
     pr_more:'और पंप चाहिए? संपर्क करें →',
     plan_starter:{tag:'हर बूंद और रुपये पर कंट्रोल — एक पंप', perday:'₹20 रोज़', note:'दो कप चाय',
@@ -243,7 +243,7 @@ const COPY = {
     pricing_sub:   '15 நாள் இலவசம் · கிரெடிட் கார்டு தேவையில்லை',
     nav_leak:'Pumpini AI', nav_features:'அம்சங்கள்', nav_pricing:'விலை', nav_contact:'தொடர்பு', login:'உள்நுழைய', home:'முகப்பு',
     hero_badge:'மற்ற பிசினஸ்களுக்கு உங்கள் நேரம். பெட்ரோல் பங்கிற்கு Pumpini.',
-    cta_leak:'உங்கள் AI மேலாளரை சந்தியுங்கள் →',
+    cta_leak:'உங்கள் AI மேலாளரை சந்தியுங்கள் →', cta_contact:'தொடர்பு கொள்ளுங்கள்',
     cards_t:'உங்கள் நண்பர்களின் பங்குகளில் இல்லாத மூன்று விஷயங்கள்.',
     cards_sub:'அடுத்த டீலர்ஸ் மீட்டிங்கில் இவற்றிலிருந்து தொடங்குங்கள்.',
     c1_t:'கேளுங்கள். பதில் தயார்.', c1_chip:'AI உதவியாளர்',
@@ -302,7 +302,7 @@ const COPY = {
     cmp_feature:'அம்சம்', cmp_others:'மற்றவை',
     cmp_legend:'✅ உண்டு · ⚠️ சில விற்பனையாளர்களில் மட்டும் · ❌ இல்லை',
     cmp_rows:['பில்லிங் & GST இன்வாய்ஸ்','ஷிப்ட் & பண சரிபார்ப்பு','டேங்க் ஸ்டாக் & நாஸில் ரீடிங்','கடன் / கார்ப்பரேட் வாடிக்கையாளர்கள்','கிளவுட் + மொபைல் ஆப்','உடனடி இன்-ஆப் எச்சரிக்கைகள்','இந்திய மொழிகளில் குரல் POS','6 இந்திய மொழிகளில் முழு ஆப்','GPS ஜியோ-ஃபென்சிங் பாதுகாப்பு','பிளைண்ட்-டிராப் பணக் கட்டுப்பாடு','AI உதவியாளர் — உங்கள் தரவிடம் கேளுங்கள்','நிகழ்நேர நேரடி டாஷ்போர்டு'],
-    pr_pop:'மிகவும் பிரபலம்', pr_cta:'இலவச சோதனை தொடங்கு',
+    pr_pop:'மிகவும் பிரபலம்', pr_limited:'வரையறுக்கப்பட்ட கால சலுகை', pr_cta:'இலவச சோதனை தொடங்கு',
     pr_foot:'உங்கள் பங்க் கவுண்டர் வழியாக தினமும் லட்சங்கள் செல்கின்றன — நாளொன்றுக்கு ஒரு லிட்டர் பெட்ரோலுக்கும் குறைவான செலவில் அதைப் பாதுகாக்கவும்.',
     pr_more:'மேலும் பங்க்கள் வேண்டுமா? தொடர்பு கொள்ளுங்கள் →',
     plan_starter:{tag:'ஒவ்வொரு துளி & ரூபாய் கட்டுப்பாடு — ஒரு பங்க்', perday:'நாளுக்கு ₹20', note:'இரண்டு கப் டீ',
@@ -344,7 +344,7 @@ const COPY = {
     pricing_sub:   '15 రోజులు ఉచితం · క్రెడిట్ కార్డు అవసరం లేదు',
     nav_leak:'Pumpini AI', nav_features:'ఫీచర్లు', nav_pricing:'ధర', nav_contact:'సంప్రదించండి', login:'లాగిన్', home:'హోమ్',
     hero_badge:'మిగతా వ్యాపారాలకు మీ సమయం. పెట్రోల్ బంక్‌కు Pumpini.',
-    cta_leak:'మీ AI మేనేజర్‌ను కలవండి →',
+    cta_leak:'మీ AI మేనేజర్‌ను కలవండి →', cta_contact:'సంప్రదించండి',
     cards_t:'మీ స్నేహితుల బంకుల్లో లేని మూడు విషయాలు.',
     cards_sub:'వచ్చే డీలర్స్ మీటింగ్‌లో వీటితోనే మొదలుపెట్టండి.',
     c1_t:'అడగండి. జవాబు సిద్ధం.', c1_chip:'AI అసిస్టెంట్',
@@ -403,7 +403,7 @@ const COPY = {
     cmp_feature:'ఫీచర్', cmp_others:'ఇతరులు',
     cmp_legend:'✅ ఉంది · ⚠️ కొందరి వద్ద మాత్రమే / బేసిక్ వెర్షన్ · ❌ లేదు',
     cmp_rows:['బిల్లింగ్ & GST ఇన్వాయిస్‌లు','షిఫ్ట్ & క్యాష్ సరిచూపు','ట్యాంక్ స్టాక్ & నాజిల్ రీడింగ్‌లు','క్రెడిట్ / కార్పొరేట్ కస్టమర్లు','క్లౌడ్ + మొబైల్ యాప్','తక్షణ ఇన్-యాప్ అలర్ట్‌లు','భారతీయ భాషల్లో వాయిస్ POS','6 భారతీయ భాషల్లో పూర్తి యాప్','GPS జియో-ఫెన్సింగ్ భద్రత','బ్లైండ్-డ్రాప్ క్యాష్ కంట్రోల్','AI అసిస్టెంట్ — మీ డేటాను అడగండి','రియల్-టైమ్ లైవ్ డాష్‌బోర్డ్'],
-    pr_pop:'అత్యంత ప్రజాదరణ', pr_cta:'ఉచిత ట్రయల్ ప్రారంభించండి',
+    pr_pop:'అత్యంత ప్రజాదరణ', pr_limited:'పరిమిత కాల ఆఫర్', pr_cta:'ఉచిత ట్రయల్ ప్రారంభించండి',
     pr_foot:'మీ బంక్ కౌంటర్ గుండా రోజూ లక్షలు వెళ్తాయి — రోజుకు ఒక లీటరు పెట్రోల్ కంటే తక్కువ ఖర్చుతో దాన్ని కాపాడుకోండి.',
     pr_more:'మరిన్ని బంకులు కావాలా? సంప్రదించండి →',
     plan_starter:{tag:'ప్రతి చుక్క & రూపాయి నియంత్రణ — ఒక బంక్', perday:'రోజుకు ₹20', note:'రెండు కప్పుల చాయ్',
@@ -445,7 +445,7 @@ const COPY = {
     pricing_sub:   '15 ದಿನ ಉಚಿತ · ಕ್ರೆಡಿಟ್ ಕಾರ್ಡ್ ಅಗತ್ಯವಿಲ್ಲ',
     nav_leak:'Pumpini AI', nav_features:'ವೈಶಿಷ್ಟ್ಯಗಳು', nav_pricing:'ಬೆಲೆ', nav_contact:'ಸಂಪರ್ಕ', login:'ಲಾಗಿನ್', home:'ಮುಖಪುಟ',
     hero_badge:'ಉಳಿದ ಬಿಸಿನೆಸ್‌ಗಳಿಗೆ ನಿಮ್ಮ ಸಮಯ. ಪೆಟ್ರೋಲ್ ಬಂಕ್‌ಗೆ Pumpini.',
-    cta_leak:'ನಿಮ್ಮ AI ಮ್ಯಾನೇಜರ್ ಭೇಟಿಯಾಗಿ →',
+    cta_leak:'ನಿಮ್ಮ AI ಮ್ಯಾನೇಜರ್ ಭೇಟಿಯಾಗಿ →', cta_contact:'ಸಂಪರ್ಕಿಸಿ',
     cards_t:'ನಿಮ್ಮ ಸ್ನೇಹಿತರ ಬಂಕ್‌ಗಳಲ್ಲಿ ಇಲ್ಲದ ಮೂರು ವಿಷಯಗಳು.',
     cards_sub:'ಮುಂದಿನ ಡೀಲರ್ಸ್ ಮೀಟಿಂಗ್‌ನಲ್ಲಿ ಇವುಗಳಿಂದಲೇ ಶುರು ಮಾಡಿ.',
     c1_t:'ಕೇಳಿ. ಉತ್ತರ ಸಿದ್ಧ.', c1_chip:'AI ಸಹಾಯಕ',
@@ -504,7 +504,7 @@ const COPY = {
     cmp_feature:'ವೈಶಿಷ್ಟ್ಯ', cmp_others:'ಇತರರು',
     cmp_legend:'✅ ಇದೆ · ⚠️ ಕೆಲವರಲ್ಲಿ ಮಾತ್ರ / ಬೇಸಿಕ್ ಆವೃತ್ತಿ · ❌ ಇಲ್ಲ',
     cmp_rows:['ಬಿಲ್ಲಿಂಗ್ & GST ಇನ್‌ವಾಯ್ಸ್','ಶಿಫ್ಟ್ & ನಗದು ಹೊಂದಾಣಿಕೆ','ಟ್ಯಾಂಕ್ ಸ್ಟಾಕ್ & ನಾಜಲ್ ರೀಡಿಂಗ್','ಕ್ರೆಡಿಟ್ / ಕಾರ್ಪೊರೇಟ್ ಗ್ರಾಹಕರು','ಕ್ಲೌಡ್ + ಮೊಬೈಲ್ ಆ್ಯಪ್','ತಕ್ಷಣದ ಇನ್-ಆ್ಯಪ್ ಎಚ್ಚರಿಕೆಗಳು','ಭಾರತೀಯ ಭಾಷೆಗಳಲ್ಲಿ ಧ್ವನಿ POS','6 ಭಾರತೀಯ ಭಾಷೆಗಳಲ್ಲಿ ಪೂರ್ಣ ಆ್ಯಪ್','GPS ಜಿಯೋ-ಫೆನ್ಸಿಂಗ್ ಭದ್ರತೆ','ಬ್ಲೈಂಡ್-ಡ್ರಾಪ್ ನಗದು ನಿಯಂತ್ರಣ','AI ಸಹಾಯಕ — ನಿಮ್ಮ ಡೇಟಾ ಕೇಳಿ','ರಿಯಲ್-ಟೈಮ್ ಲೈವ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್'],
-    pr_pop:'ಅತಿ ಜನಪ್ರಿಯ', pr_cta:'ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ',
+    pr_pop:'ಅತಿ ಜನಪ್ರಿಯ', pr_limited:'ಸೀಮಿತ ಅವಧಿ ಆಫರ್', pr_cta:'ಉಚಿತ ಟ್ರಯಲ್ ಪ್ರಾರಂಭಿಸಿ',
     pr_foot:'ನಿಮ್ಮ ಬಂಕ್ ಕೌಂಟರ್ ಮೂಲಕ ಪ್ರತಿದಿನ ಲಕ್ಷಗಳು ಹಾದುಹೋಗುತ್ತವೆ — ದಿನಕ್ಕೆ ಒಂದು ಲೀಟರ್ ಪೆಟ್ರೋಲ್‌ಗಿಂತ ಕಡಿಮೆ ವೆಚ್ಚದಲ್ಲಿ ಅದನ್ನು ರಕ್ಷಿಸಿ.',
     pr_more:'ಹೆಚ್ಚು ಬಂಕ್ ಬೇಕೇ? ಸಂಪರ್ಕಿಸಿ →',
     plan_starter:{tag:'ಪ್ರತಿ ಹನಿ & ರೂಪಾಯಿ ನಿಯಂತ್ರಣ — ಒಂದು ಬಂಕ್', perday:'ದಿನಕ್ಕೆ ₹20', note:'ಎರಡು ಕಪ್ ಚಹಾ',
@@ -546,7 +546,7 @@ const COPY = {
     pricing_sub:   '15 दिवस मोफत · क्रेडिट कार्ड नाही',
     nav_leak:'Pumpini AI', nav_features:'वैशिष्ट्ये', nav_pricing:'किंमत', nav_contact:'संपर्क', login:'लॉगिन', home:'होम',
     hero_badge:'इतर व्यवसायांना तुमचा वेळ. पेट्रोल पंपाला Pumpini.',
-    cta_leak:'तुमच्या AI मॅनेजरला भेटा →',
+    cta_leak:'तुमच्या AI मॅनेजरला भेटा →', cta_contact:'संपर्क करा',
     cards_t:'तुमच्या मित्रांच्या पंपांवर नसलेल्या तीन गोष्टी.',
     cards_sub:'पुढच्या डीलर्स मीटिंगमध्ये याच गोष्टींनी सुरुवात करा.',
     c1_t:'विचारा. उत्तर तयार.', c1_chip:'AI असिस्टंट',
@@ -605,7 +605,7 @@ const COPY = {
     cmp_feature:'वैशिष्ट्य', cmp_others:'इतर',
     cmp_legend:'✅ समाविष्ट · ⚠️ काही विक्रेत्यांकडेच / बेसिक आवृत्ती · ❌ उपलब्ध नाही',
     cmp_rows:['बिलिंग आणि GST इनव्हॉइस','शिफ्ट आणि कॅश ताळमेळ','टाकी स्टॉक आणि नोझल रीडिंग','क्रेडिट / कॉर्पोरेट ग्राहक','क्लाउड + मोबाइल अॅप','तत्काळ इन-अॅप सूचना','भारतीय भाषांमध्ये व्हॉइस POS','6 भारतीय भाषांमध्ये संपूर्ण अॅप','GPS जिओ-फेन्सिंग सुरक्षा','ब्लाइंड-ड्रॉप कॅश कंट्रोल','AI असिस्टंट — तुमच्या डेटाला विचारा','रिअल-टाइम लाइव्ह डॅशबोर्ड'],
-    pr_pop:'सर्वाधिक लोकप्रिय', pr_cta:'मोफत चाचणी सुरू करा',
+    pr_pop:'सर्वाधिक लोकप्रिय', pr_limited:'मर्यादित काळासाठी ऑफर', pr_cta:'मोफत चाचणी सुरू करा',
     pr_foot:'तुमच्या पंपाच्या काउंटरमधून रोज लाखो जातात — दिवसाला एक लिटर पेट्रोलपेक्षा कमी खर्चात त्याचे रक्षण करा.',
     pr_more:'आणखी पंप हवेत? संपर्क करा →',
     plan_starter:{tag:'प्रत्येक थेंब आणि रुपयावर नियंत्रण — एक पंप', perday:'दिवसाला ₹20', note:'दोन कप चहा',
@@ -646,10 +646,10 @@ const COMPARE = [
 const CMP_MARK = { yes:'✅', partial:'⚠️', no:'❌' };
 
 // Structural plan data — all display text comes from COPY[lang].plan_* keys.
+// Single limited-period plan: the full single-bunk feature set (Starter + Pro,
+// merged in the pricing render) at one flat price.
 const PLANS = [
-  { key:'plan_starter', name:'STARTER',    price: 599,  color:'#1FA856', popular:false },
-  { key:'plan_pro',     name:'PRO',        price: 999,  color:'#FF6B00', popular:true  },
-  { key:'plan_ent',     name:'ENTERPRISE', price: 1999, color:'#0E5A8A', popular:false },
+  { key:'plan_pro', name:'ALL-IN-ONE', price: 1299, color:'#FF6B00', popular:true, limited:true },
 ];
 
 
@@ -839,6 +839,10 @@ export default function LandingPage() {
                 borderRadius:12,textDecoration:'none',fontWeight:700,fontSize:16,
                 border:'1px solid rgba(255,255,255,.25)'}}>
                 {c.nav_pricing}
+              </a>
+              <a href="#contact" style={{padding:'15px 28px',background:'#FF6B00',color:'#fff',borderRadius:12,
+                textDecoration:'none',fontWeight:800,fontSize:16,boxShadow:'0 6px 26px rgba(255,107,0,.45)'}}>
+                {c.cta_contact}
               </a>
             </div>
 
@@ -1264,34 +1268,36 @@ export default function LandingPage() {
             </h2>
             <p style={{fontSize:15,color:'#5b6570'}}>{c.pricing_sub}</p>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'1.5rem'}}>
-            {PLANS.map(plan => { const pc = c[plan.key]; return (
-              <div key={plan.name} className="lp-card" style={{background:'#fff',borderRadius:20,padding:'2rem',
-                border: plan.popular ? `2.5px solid #FF6B00` : '1px solid #e8e6df',
-                position:'relative',boxShadow: plan.popular ? '0 10px 44px rgba(255,107,0,.18)' : '0 2px 10px rgba(7,21,14,.04)'}}>
-                {plan.popular && (
+          <div style={{display:'flex',justifyContent:'center'}}>
+            {PLANS.map(plan => {
+              const pc = c[plan.key];
+              // Single tile carries the complete single-bunk feature set:
+              // Starter features + Pro extras (Pro's leading "Everything in
+              // Starter" pointer dropped since there is no separate Starter tile).
+              const feats = [...c.plan_starter.feats, ...c.plan_pro.feats.slice(1)];
+              return (
+              <div key={plan.name} className="lp-card" style={{background:'#fff',borderRadius:20,padding:'2.2rem',
+                width:'100%',maxWidth:440,
+                border:`2.5px solid #FF6B00`,
+                position:'relative',boxShadow:'0 10px 44px rgba(255,107,0,.18)'}}>
+                {plan.limited && (
                   <div style={{position:'absolute',top:-13,left:'50%',transform:'translateX(-50%)',
                     background:'#FF6B00',color:'#fff',padding:'4px 16px',borderRadius:99,
                     fontSize:12,fontWeight:700,whiteSpace:'nowrap'}}>
-                    {c.pr_pop}
+                    {c.pr_limited}
                   </div>
                 )}
                 <div style={{fontWeight:900,fontSize:18,color:plan.color,marginBottom:'0.25rem'}}>
                   {plan.name}
                 </div>
-                <div style={{fontSize:12.5,color:'#8a93a0',marginBottom:'0.6rem'}}>{pc.tag}</div>
-                <div style={{display:'flex',alignItems:'baseline',gap:4}}>
-                  <span style={{fontSize:34,fontWeight:900,color:'#0C2418'}}>₹{plan.price.toLocaleString('en-IN')}</span>
+                <div style={{fontSize:12.5,color:'#8a93a0',marginBottom:'0.8rem'}}>{pc.tag}</div>
+                <div style={{display:'flex',alignItems:'baseline',gap:4,marginBottom:'1.2rem'}}>
+                  <span style={{fontSize:38,fontWeight:900,color:'#0C2418'}}>₹{plan.price.toLocaleString('en-IN')}</span>
                   <span style={{fontSize:14,color:'#888'}}>{c.permo}</span>
-                </div>
-                {/* per-day framing — speaks the owner's arithmetic */}
-                <div style={{display:'inline-block',margin:'8px 0 1.2rem',background:'#F0FAF3',color:'#14532d',
-                  border:'1px solid #BBE7C9',padding:'4px 12px',borderRadius:99,fontSize:12.5,fontWeight:800}}>
-                  {pc.perday} · {pc.note}
                 </div>
                 <ul style={{listStyle:'none',padding:0,margin:'0 0 1.5rem',
                   display:'flex',flexDirection:'column',gap:8}}>
-                  {pc.feats.map(f => (
+                  {feats.map(f => (
                     <li key={f} style={{display:'flex',alignItems:'flex-start',gap:8,fontSize:13.5}}>
                       <span style={{color:'#1FA856',flexShrink:0,marginTop:1,fontWeight:900}}>✓</span>
                       <span>{f}</span>
@@ -1299,7 +1305,7 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <Link href="/login" style={{display:'block',textAlign:'center',padding:'13px',
-                  background: plan.popular ? '#FF6B00' : '#0C2418',color:'#fff',borderRadius:10,
+                  background:'#FF6B00',color:'#fff',borderRadius:10,
                   textDecoration:'none',fontWeight:800,fontSize:14.5}}>
                   {c.pr_cta}
                 </Link>

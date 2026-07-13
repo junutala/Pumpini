@@ -69,14 +69,12 @@ const structuredData = {
         'your own bunk data and flags patterns in stock loss, cash shortage, evaporation and credit risk.',
       inLanguage: ['en', 'hi', 'ta', 'te', 'kn', 'mr'],
       publisher: { '@id': 'https://pumpini.in/#org' },
-      offers: [
-        { '@type': 'Offer', name: 'Starter', price: '599', priceCurrency: 'INR',
-          description: '₹599/month per station — billing, tank & cash reconciliation, live dashboard. 15-day free trial.' },
-        { '@type': 'Offer', name: 'Pro', price: '999', priceCurrency: 'INR',
-          description: '₹999/month per station — adds credit customers, lubes & products, Tally export, AI assistant. 15-day free trial.' },
-        { '@type': 'Offer', name: 'Enterprise', price: '1999', priceCurrency: 'INR',
-          description: '₹1999/month — up to 5 stations with group dashboard and corporate fleet portal. 15-day free trial.' },
-      ],
+      offers: {
+        '@type': 'Offer', name: 'All-in-One', price: '1299', priceCurrency: 'INR',
+        description: '₹1,299/month per station (limited-period offer) — the full single-bunk suite: ' +
+          'billing & GST invoices, tank & cash reconciliation, credit customers, lubes & products, ' +
+          'Tally export, AI assistant and live dashboard. 15-day free trial.',
+      },
       featureList: 'Voice POS in 6 Indian languages, Blind-drop cash control, Wet & dry stock reconciliation, GST billing, Credit & corporate portal, GPS geo-fencing, Real-time dashboard, AI assistant & pattern alerts',
     },
   ],
