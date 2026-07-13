@@ -8,6 +8,11 @@ import Link from 'next/link';
 import { Zap, Mic, Send } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
 
+// SEO hero headings — kept in English (these are the searchable phrases) across
+// every language toggle. The localized brand hook + body copy sit below them.
+const SEO_H1 = 'Pumpini: Voice-Activated Petrol Pump Management Software';
+const SEO_H2 = 'AI Assistant helps you run your filling station efficiently — fuel station software in your own language.';
+
 const LANGS = [
   { code:'en', label:'English',    flag:'🇬🇧' },
   { code:'hi', label:'हिन्दी',     flag:'🇮🇳' },
@@ -21,7 +26,7 @@ const COPY = {
   en: {
     hero:    'Control every drop.',
     hero2:   'Track every rupee.',
-    sub:     'Your counter moves lakhs every day. Pumpini is the owner\'s ledger that never sleeps — every nozzle, every shift, every rupee accounted for, in your language.',
+    sub:     'Your petrol bunk moves lakhs every day. Pumpini is the owner\'s ledger that never sleeps — every nozzle, every shift, every rupee accounted for, in your language.',
     usp1_t:  '🎙 Voice POS Entry',
     usp1_d:  'Attendants speak transactions in Telugu, Tamil, Hindi or any Indian language. "50 litres petrol cash" — done. No typing needed.',
     usp2_t:  '🌐 6 Indian Languages',
@@ -814,16 +819,27 @@ export default function LandingPage() {
               ⛽ {c.hero_badge}
             </div>
 
-            <h1 className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
+            {/* SEO H1 (keyword line) → H2 (benefit line) → brand hook (demoted
+                from <h1> to <div> so the page keeps exactly one <h1>). */}
+            <h1 className="lp-fade1" style={{fontSize:'clamp(1.15rem,1.9vw,1.5rem)',fontWeight:800,lineHeight:1.25,
+              color:'#FFA45C',marginBottom:'0.7rem',letterSpacing:'-.01em'}}>
+              {SEO_H1}
+            </h1>
+            <h2 className="lp-fade1" style={{fontSize:'clamp(1.02rem,1.5vw,1.2rem)',fontWeight:600,lineHeight:1.4,
+              color:'rgba(255,255,255,.82)',maxWidth:560,marginBottom:'1.5rem'}}>
+              {SEO_H2}
+            </h2>
+
+            <div className="lp-fade1" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
               color:'#fff',marginBottom:'0.4rem',letterSpacing:'-.03em'}}>
               {c.hero}
-            </h1>
-            <h1 className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
+            </div>
+            <div className="lp-fade2" style={{fontSize:'clamp(2.5rem,5.2vw,4.2rem)',fontWeight:900,lineHeight:1.07,
               background:'linear-gradient(90deg,#FFB347,#FF6B00)',
               WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
               marginBottom:'1.4rem',letterSpacing:'-.03em'}}>
               {c.hero2}
-            </h1>
+            </div>
 
             <p className="lp-fade2" style={{fontSize:'clamp(1.02rem,1.6vw,1.18rem)',color:'rgba(255,255,255,.75)',
               maxWidth:540,lineHeight:1.65,marginBottom:'2.1rem'}}>
