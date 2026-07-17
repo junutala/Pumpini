@@ -38,19 +38,27 @@ router.post('/login', async (req, res, next) => {
 // day with sales on/before yesterday (T-1), so the tile is never a lonely ₹0.
 // ?date=YYYY-MM-DD overrides (validated, bound param).
 async function resolveDaySale(reqDateRaw) {
-  const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(reqDateRaw || '') ? reqDateRaw : null;
-  const { rows: dd } = await pool.query(
-    reqDate
-      ? 'SELECT $1::date::text AS d'
-      : 'SELECT COALESCE((SELECT MAX(occurred_at::date) FROM dispense_events WHERE occurred_at::date <= CURRENT_DATE - 1 AND NOT COALESCE(is_voided,FALSE)), CURRENT_DATE - 1)::text AS d',
-    reqDate ? [reqDate] : []
-  );
-  const day_date = dd.rows[0].d;
-  const { rows } = await pool.query(
-    'SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)',
-    [day_date]
-  );
-  return { day_date, day_sales: rows[0].total };
+  // Resolve the day AND its sales in a single query. Passing the day back as a
+  // separate bound param and comparing `occurred_at::date = $1` throws
+  // "operator does not exist: date = text" (a text param vs a date). Here the
+  // picked day stays a DATE the whole time (explicit ::date cast on the input),
+  // so the comparison is date = date and always works.
+  const { rows } = await pool.query(`
+    WITH picked AS (
+      SELECT CASE
+               WHEN $1 ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN $1::date
+               ELSE COALESCE(
+                 (SELECT MAX(occurred_at::date) FROM dispense_events
+                  WHERE occurred_at::date <= CURRENT_DATE - 1 AND NOT COALESCE(is_voided,FALSE)),
+                 CURRENT_DATE - 1)
+             END AS d
+    )
+    SELECT (SELECT d FROM picked)::text AS day_date,
+           COALESCE((SELECT SUM(amount) FROM dispense_events
+                     WHERE occurred_at::date = (SELECT d FROM picked)
+                       AND NOT COALESCE(is_voided,FALSE)), 0) AS day_sales
+  `, [reqDateRaw || null]);
+  return { day_date: rows[0].day_date, day_sales: rows[0].day_sales };
 }
 
 // GET /api/superadmin/platform-stats  — counts + MTD + the Day Sale figure. The
