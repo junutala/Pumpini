@@ -134,6 +134,10 @@ export default function Sidebar({ open, onClose }) {
   const { t }      = useTranslation();
   const pathname   = usePathname();
 
+  // Group View has its own prominent outlet picker (the pill row on the page), so
+  // the sidebar's outlet switcher is redundant there — hide it on that route.
+  const onGroup = pathname === '/group-dashboard' || pathname.startsWith('/group-dashboard/');
+
   const navLabel = (key) => {
     const translated = t(`nav.${key}`);
     return translated === `nav.${key}` ? (NAV_LABELS[key] || key) : translated;
@@ -182,12 +186,12 @@ export default function Sidebar({ open, onClose }) {
               <div style={{fontWeight:900,fontSize:18,lineHeight:1,letterSpacing:'-.02em'}}>
                 <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
               </div>
-              {/* On Group View the header is the rollup of every bunk, so pinning the
-                  last-drilled outlet name here is misleading — show "All bunks" instead.
-                  The global station (used for back-office posting) is left untouched. */}
+              {/* On Group View the header is the owner's rollup of every bunk, so
+                  pinning the last-drilled outlet name here is misleading — show
+                  "Owner View" instead. The global station (used for back-office
+                  posting) is left untouched. */}
               {(() => {
-                const onGroup = pathname === '/group-dashboard' || pathname.startsWith('/group-dashboard/');
-                const label = onGroup ? 'All bunks' : (station ? (typeof station==='object'?station.name:station) : null);
+                const label = onGroup ? 'Owner View' : (station ? (typeof station==='object'?station.name:station) : null);
                 return label ? (
                   <div style={{fontSize:10,color:'rgba(255,255,255,.35)',marginTop:2,lineHeight:1,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                     {label}
@@ -201,7 +205,7 @@ export default function Sidebar({ open, onClose }) {
         {/* Outlet switcher — for users who reach more than one outlet (owner, CCO).
             Repoints the GLOBAL station so back-office screens (petty cash, deposits,
             corporate, invoices) operate on the chosen outlet, not just stations[0]. */}
-        {Array.isArray(user?.stations) && user.stations.length > 1 && (
+        {!onGroup && Array.isArray(user?.stations) && user.stations.length > 1 && (
           <div style={{padding:'0.65rem 1rem',borderBottom:'1px solid rgba(255,255,255,.07)'}}>
             <label style={{fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'rgba(255,255,255,.3)',display:'block',marginBottom:5}}>
               {navLabel('outlet') === 'outlet' ? 'Outlet' : navLabel('outlet')}
