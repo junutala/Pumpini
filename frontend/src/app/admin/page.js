@@ -251,7 +251,8 @@ export default function AdminPage(){
       adminFetch('/alert-definitions'),
       adminFetch('/modules'),
     ]);
-    setStats(s); setGroups(Array.isArray(g)?g:[]); setOwners(Array.isArray(o)?o:[]);
+    if (s && typeof s.total_stations !== 'undefined') setStats(s);  // ignore an error/partial response
+    setGroups(Array.isArray(g)?g:[]); setOwners(Array.isArray(o)?o:[]);
     setStations(Array.isArray(st)?st:[]); setPlans(Array.isArray(pl)?pl:[]);
     setAlertDefs(Array.isArray(ad)?ad:[]);
     const mods = Array.isArray(md)?md:[]; setModules(mods);
@@ -271,7 +272,16 @@ export default function AdminPage(){
   // Seed the Day Sale picker with the effective day the backend chose (latest day
   // with sales), then let the admin pick any day — refetch just the stats.
   useEffect(()=>{ if(stats?.day_date) setDayDate(prev=>prev||stats.day_date); },[stats?.day_date]);
-  const onDayDate = async(d)=>{ setDayDate(d); if(d){ const s=await adminFetch(`/platform-stats?date=${d}`); if(s&&!s.error) setStats(s); } };
+  const onDayDate = async(d)=>{
+    setDayDate(d);
+    if(!d) return;
+    try {
+      const s = await adminFetch(`/platform-stats?date=${d}`);
+      // Only accept a well-formed response — a transient 5xx (e.g. mid-deploy)
+      // must never wipe the counts. Merge the fresh day figures over what we have.
+      if(s && typeof s.day_sales !== 'undefined') setStats(prev => ({ ...(prev||{}), ...s }));
+    } catch { /* keep the last good stats */ }
+  };
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
