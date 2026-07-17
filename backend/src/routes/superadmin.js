@@ -34,48 +34,56 @@ router.post('/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/superadmin/platform-stats  (unchanged, known-good — never coupled to
-// the Day Sale date picker, so a picker/day-query issue can never blank these).
+// Resolve the Day Sale day + its platform-wide sales. Default = the most recent
+// day with sales on/before yesterday (T-1), so the tile is never a lonely ₹0.
+// ?date=YYYY-MM-DD overrides (validated, bound param).
+async function resolveDaySale(reqDateRaw) {
+  const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(reqDateRaw || '') ? reqDateRaw : null;
+  const { rows: dd } = await pool.query(
+    reqDate
+      ? 'SELECT $1::date::text AS d'
+      : 'SELECT COALESCE((SELECT MAX(occurred_at::date) FROM dispense_events WHERE occurred_at::date <= CURRENT_DATE - 1 AND NOT COALESCE(is_voided,FALSE)), CURRENT_DATE - 1)::text AS d',
+    reqDate ? [reqDate] : []
+  );
+  const day_date = dd.rows[0].d;
+  const { rows } = await pool.query(
+    'SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)',
+    [day_date]
+  );
+  return { day_date, day_sales: rows[0].total };
+}
+
+// GET /api/superadmin/platform-stats  — counts + MTD + the Day Sale figure. The
+// day query is isolated in its own try/catch, so a day/picker issue can NEVER
+// blank the counts. Accepts ?date to drive the Day Sale tile.
 router.get('/platform-stats', authAdmin, async (req, res, next) => {
   try {
-    const [groups, stations, users, owners, todaySales, mtdSales] = await Promise.all([
+    const [groups, stations, users, owners, mtdSales] = await Promise.all([
       pool.query('SELECT COUNT(*)::int AS count FROM owner_groups WHERE is_active=TRUE'),
       pool.query('SELECT COUNT(*)::int AS count FROM stations'),
       pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
       pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
-      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE AND NOT COALESCE(is_voided,FALSE)'),
       pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE) AND NOT COALESCE(is_voided,FALSE)"),
     ]);
+    let day = { day_date: null, day_sales: 0 };
+    try { day = await resolveDaySale(req.query.date); } catch (e) { /* keep counts even if the day query fails */ }
     res.json({
       total_groups:   groups.rows[0].count,
       total_stations: stations.rows[0].count,
       total_users:    users.rows[0].count,
       total_owners:   owners.rows[0].count,
-      today_sales:    todaySales.rows[0].total,
+      day_date:       day.day_date,
+      day_sales:      day.day_sales,
+      today_sales:    day.day_sales, // alias for older clients
       mtd_sales:      mtdSales.rows[0].total,
     });
   } catch (err) { next(err); }
 });
 
-// GET /api/superadmin/day-sales?date=YYYY-MM-DD — one day's platform-wide sales,
-// isolated from platform-stats. Defaults to the latest day that actually has
-// sales, so the Day Sale tile is never a lonely ₹0.
+// GET /api/superadmin/day-sales?date=YYYY-MM-DD — the Day Sale figure alone.
 router.get('/day-sales', authAdmin, async (req, res, next) => {
-  try {
-    const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
-    const { rows: dd } = await pool.query(
-      reqDate
-        ? 'SELECT $1::date::text AS d'
-        : 'SELECT COALESCE((SELECT MAX(occurred_at::date) FROM dispense_events WHERE NOT COALESCE(is_voided,FALSE)), CURRENT_DATE)::text AS d',
-      reqDate ? [reqDate] : []
-    );
-    const dayDate = dd.rows[0].d;
-    const { rows } = await pool.query(
-      'SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)',
-      [dayDate]
-    );
-    res.json({ day_date: dayDate, day_sales: rows[0].total });
-  } catch (err) { next(err); }
+  try { res.json(await resolveDaySale(req.query.date)); }
+  catch (err) { next(err); }
 });
 
 // ── Owner Groups ──────────────────────────────────────────
