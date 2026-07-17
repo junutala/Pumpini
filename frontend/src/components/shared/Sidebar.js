@@ -6,8 +6,8 @@ import { useAuth } from '../../lib/auth';
 import { usePermissions } from '../../hooks/usePermissions';
 import {
   LayoutDashboard, RefreshCw, Fuel, Building2, Users, Calendar,
-  Gauge, Bell, BarChart2, Settings, LogOut, Zap, ShoppingCart,
-  Globe, FileText, Activity, Layers, Truck, CreditCard, Receipt,
+  Gauge, BarChart2, Settings, LogOut, Zap, ShoppingCart,
+  Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown
 } from 'lucide-react';
@@ -22,8 +22,9 @@ const NAV_GROUPS = [
     items: [
       { key:'group',      href:'/group-dashboard', icon:Globe,          perm:'group.view',   roles:['owner'] },
       { key:'dashboard',  href:'/dashboard',       icon:LayoutDashboard,perm:null },
-      { key:'live',       href:'/live',            icon:Activity,       perm:'dispense.view' },
-      { key:'alerts',     href:'/alerts',          icon:Bell,           perm:'alerts.view' },
+      // Live Events & Alerts removed from the sidebar for now — not earning their
+      // place yet. The /live and /alerts routes still exist; only the nav entries
+      // are hidden while we decide their utility.
     ]
   },
   {
@@ -181,11 +182,18 @@ export default function Sidebar({ open, onClose }) {
               <div style={{fontWeight:900,fontSize:18,lineHeight:1,letterSpacing:'-.02em'}}>
                 <span style={{color:'#FF6B00'}}>pump</span><span style={{color:'#4DC3E8'}}>ini</span>
               </div>
-              {station && (
-                <div style={{fontSize:10,color:'rgba(255,255,255,.35)',marginTop:2,lineHeight:1,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {typeof station==='object'?station.name:station}
-                </div>
-              )}
+              {/* On Group View the header is the rollup of every bunk, so pinning the
+                  last-drilled outlet name here is misleading — show "All bunks" instead.
+                  The global station (used for back-office posting) is left untouched. */}
+              {(() => {
+                const onGroup = pathname === '/group-dashboard' || pathname.startsWith('/group-dashboard/');
+                const label = onGroup ? 'All bunks' : (station ? (typeof station==='object'?station.name:station) : null);
+                return label ? (
+                  <div style={{fontSize:10,color:'rgba(255,255,255,.35)',marginTop:2,lineHeight:1,maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {label}
+                  </div>
+                ) : null;
+              })()}
             </div>
           </div>
         </div>
