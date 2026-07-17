@@ -37,12 +37,23 @@ router.post('/login', async (req, res, next) => {
 // GET /api/superadmin/platform-stats
 router.get('/platform-stats', authAdmin, async (req, res, next) => {
   try {
-    const [groups, stations, users, owners, todaySales, mtdSales] = await Promise.all([
+    // Day Sale defaults to the latest day that actually has sales, so the tile
+    // isn't a lonely ₹0 before the current day's shifts settle. An explicit
+    // ?date=YYYY-MM-DD overrides it (validated, then passed as a bound param).
+    const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
+    const { rows: dd } = await pool.query(
+      reqDate
+        ? 'SELECT $1::date::text AS d'
+        : 'SELECT COALESCE((SELECT MAX(occurred_at::date) FROM dispense_events WHERE NOT COALESCE(is_voided,FALSE)), CURRENT_DATE)::text AS d',
+      reqDate ? [reqDate] : []
+    );
+    const dayDate = dd.rows[0].d;
+    const [groups, stations, users, owners, daySales, mtdSales] = await Promise.all([
       pool.query('SELECT COUNT(*)::int AS count FROM owner_groups WHERE is_active=TRUE'),
       pool.query('SELECT COUNT(*)::int AS count FROM stations'),
       pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
       pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
-      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE AND NOT COALESCE(is_voided,FALSE)'),
+      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)', [dayDate]),
       pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE) AND NOT COALESCE(is_voided,FALSE)"),
     ]);
     res.json({
@@ -50,7 +61,9 @@ router.get('/platform-stats', authAdmin, async (req, res, next) => {
       total_stations: stations.rows[0].count,
       total_users:    users.rows[0].count,
       total_owners:   owners.rows[0].count,
-      today_sales:    todaySales.rows[0].total,
+      day_date:       dayDate,
+      day_sales:      daySales.rows[0].total,
+      today_sales:    daySales.rows[0].total, // back-compat alias
       mtd_sales:      mtdSales.rows[0].total,
     });
   } catch (err) { next(err); }

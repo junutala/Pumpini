@@ -157,6 +157,7 @@ export default function AdminPage(){
   const [admin,setAdmin]         = useState(null);
   const [tab,setTab]             = useState('dashboard');
   const [stats,setStats]         = useState(null);
+  const [dayDate,setDayDate]     = useState('');   // Day Sale tile date picker
   const [groups,setGroups]       = useState([]);
   const [owners,setOwners]       = useState([]);
   const [stations,setStations]   = useState([]);
@@ -267,6 +268,11 @@ export default function AdminPage(){
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
 
+  // Seed the Day Sale picker with the effective day the backend chose (latest day
+  // with sales), then let the admin pick any day — refetch just the stats.
+  useEffect(()=>{ if(stats?.day_date) setDayDate(prev=>prev||stats.day_date); },[stats?.day_date]);
+  const onDayDate = async(d)=>{ setDayDate(d); if(d){ const s=await adminFetch(`/platform-stats?date=${d}`); if(s&&!s.error) setStats(s); } };
+
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   const LEAD_CLOSED = ['converted','lost'];
@@ -367,12 +373,15 @@ export default function AdminPage(){
                 [tc('adminp.statOwners','Owners'),        stats?.total_owners||0,   '#9333ea'],
                 [tc('adminp.statPetrolBunks','Petrol Bunks'),  stats?.total_stations||0, '#1A5F7A'],
                 [tc('adminp.statActiveUsers','Active Users'),  stats?.total_users||0,    '#16a34a'],
-                [tc('adminp.statTodaysSales',"Today's Sales"), fmtAmt(stats?.today_sales||0),'#dc2626'],
+                [tc('adminp.statDaySale','Day Sale'), fmtAmt(stats?.day_sales ?? stats?.today_sales ?? 0),'#dc2626',
+                  <input key="dp" type="date" value={dayDate} max={todayIST()} onChange={e=>onDayDate(e.target.value)}
+                    style={{marginTop:10,fontSize:12,padding:'5px 8px',border:'1px solid #e5e3de',borderRadius:6,color:'#333',fontFamily:'inherit',width:'100%',boxSizing:'border-box',cursor:'pointer'}}/>],
                 [tc('adminp.statMtdSales','MTD Sales'),     fmtAmt(stats?.mtd_sales||0),  '#0891b2'],
-              ].map(([l,v,c])=>(
+              ].map(([l,v,c,extra])=>(
                 <div key={l} style={{background:'#fff',borderRadius:12,padding:'1.25rem',border:'1px solid #e5e3de',borderTop:`3px solid ${c}`}}>
                   <div style={{fontSize:11,color:'#888',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>{l}</div>
                   <div style={{fontSize:'1.75rem',fontWeight:800,color:c}}>{v}</div>
+                  {extra||null}
                 </div>
               ))}
             </div>
