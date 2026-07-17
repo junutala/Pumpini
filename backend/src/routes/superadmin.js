@@ -34,12 +34,34 @@ router.post('/login', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// GET /api/superadmin/platform-stats
+// GET /api/superadmin/platform-stats  (unchanged, known-good — never coupled to
+// the Day Sale date picker, so a picker/day-query issue can never blank these).
 router.get('/platform-stats', authAdmin, async (req, res, next) => {
   try {
-    // Day Sale defaults to the latest day that actually has sales, so the tile
-    // isn't a lonely ₹0 before the current day's shifts settle. An explicit
-    // ?date=YYYY-MM-DD overrides it (validated, then passed as a bound param).
+    const [groups, stations, users, owners, todaySales, mtdSales] = await Promise.all([
+      pool.query('SELECT COUNT(*)::int AS count FROM owner_groups WHERE is_active=TRUE'),
+      pool.query('SELECT COUNT(*)::int AS count FROM stations'),
+      pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
+      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
+      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=CURRENT_DATE AND NOT COALESCE(is_voided,FALSE)'),
+      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE) AND NOT COALESCE(is_voided,FALSE)"),
+    ]);
+    res.json({
+      total_groups:   groups.rows[0].count,
+      total_stations: stations.rows[0].count,
+      total_users:    users.rows[0].count,
+      total_owners:   owners.rows[0].count,
+      today_sales:    todaySales.rows[0].total,
+      mtd_sales:      mtdSales.rows[0].total,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/superadmin/day-sales?date=YYYY-MM-DD — one day's platform-wide sales,
+// isolated from platform-stats. Defaults to the latest day that actually has
+// sales, so the Day Sale tile is never a lonely ₹0.
+router.get('/day-sales', authAdmin, async (req, res, next) => {
+  try {
     const reqDate = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : null;
     const { rows: dd } = await pool.query(
       reqDate
@@ -48,24 +70,11 @@ router.get('/platform-stats', authAdmin, async (req, res, next) => {
       reqDate ? [reqDate] : []
     );
     const dayDate = dd.rows[0].d;
-    const [groups, stations, users, owners, daySales, mtdSales] = await Promise.all([
-      pool.query('SELECT COUNT(*)::int AS count FROM owner_groups WHERE is_active=TRUE'),
-      pool.query('SELECT COUNT(*)::int AS count FROM stations'),
-      pool.query('SELECT COUNT(*)::int AS count FROM users WHERE is_active=TRUE'),
-      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='owner' AND is_active=TRUE"),
-      pool.query('SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)', [dayDate]),
-      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE DATE_TRUNC('month',occurred_at)=DATE_TRUNC('month',CURRENT_DATE) AND NOT COALESCE(is_voided,FALSE)"),
-    ]);
-    res.json({
-      total_groups:   groups.rows[0].count,
-      total_stations: stations.rows[0].count,
-      total_users:    users.rows[0].count,
-      total_owners:   owners.rows[0].count,
-      day_date:       dayDate,
-      day_sales:      daySales.rows[0].total,
-      today_sales:    daySales.rows[0].total, // back-compat alias
-      mtd_sales:      mtdSales.rows[0].total,
-    });
+    const { rows } = await pool.query(
+      'SELECT COALESCE(SUM(amount),0) AS total FROM dispense_events WHERE occurred_at::date=$1 AND NOT COALESCE(is_voided,FALSE)',
+      [dayDate]
+    );
+    res.json({ day_date: dayDate, day_sales: rows[0].total });
   } catch (err) { next(err); }
 });
 
