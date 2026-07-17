@@ -113,7 +113,9 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
             <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--text-3)' }}>{tc('gprod.m_' + measure, M.label)}{measure === 'qty' ? ' (L)' : ''}</div>
             <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: '-.03em', lineHeight: 1.05 }}>{M.compact(gTotal)}</div>
             <div style={{ fontSize: 12.5, color: 'var(--text-2,#475569)', marginTop: 2 }}>
-              {measure === 'mgn' ? `${M.fmt(gTotal)} · ${mp.toFixed(2)}% ${tc('gprod.blended', 'blended')}` : `${M.fmt(gTotal)} · ${outlets.length} ${tc('gprod.outlets', 'outlets')}`}
+              {measure === 'mgn'
+                ? `${M.fmt(gTotal)} · ${mp.toFixed(2)}% ${tc('gprod.blended', 'blended')}`
+                : (outlets.length > 1 ? `${M.fmt(gTotal)} · ${outlets.length} ${tc('gprod.outlets', 'outlets')}` : M.fmt(gTotal))}
             </div>
           </div>
         </div>
@@ -174,29 +176,33 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
           </div>
         </div>
 
-        {/* by outlet stacked by product */}
-        <SecLabel>{tc('gprod.byOutlet', 'By outlet')} <span style={{ fontWeight: 600, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0 }}>{tc('gprod.stacked', 'stacked by product')}</span></SecLabel>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {outlets.map(o => {
-            const ot = outletTotal(o, period);
-            const scale = ot > 0 ? ot / maxOutlet : 0;
-            return (
-              <div key={o.name}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: o.health }} />{o.short}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 800 }}>{M.compact(ot)} <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)' }}>{gTotal > 0 ? (ot / gTotal * 100).toFixed(0) : 0}%</span></span>
-                </div>
-                <div style={{ height: 18, borderRadius: 6, background: 'var(--surface-2,#eee)', display: 'flex', gap: 2, overflow: 'hidden' }}>
-                  {Object.keys(o[period]).sort((a, b) => meta(a).order - meta(b).order).map(k => {
-                    const v = val(o[period][k], measure);
-                    const w = ot > 0 ? (v / ot) * scale * 100 : 0;
-                    return <div key={k} title={`${o.short} · ${meta(k).label}: ${M.fmt(v)}`} style={{ width: `${w.toFixed(2)}%`, background: meta(k).color, transition: 'width .7s cubic-bezier(.22,1,.36,1)' }} />;
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* by outlet stacked by product — only meaningful across multiple outlets */}
+        {outlets.length > 1 && (
+          <>
+            <SecLabel>{tc('gprod.byOutlet', 'By outlet')} <span style={{ fontWeight: 600, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0 }}>{tc('gprod.stacked', 'stacked by product')}</span></SecLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {outlets.map(o => {
+                const ot = outletTotal(o, period);
+                const scale = ot > 0 ? ot / maxOutlet : 0;
+                return (
+                  <div key={o.name}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 7 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: o.health }} />{o.short}</span>
+                      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{M.compact(ot)} <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)' }}>{gTotal > 0 ? (ot / gTotal * 100).toFixed(0) : 0}%</span></span>
+                    </div>
+                    <div style={{ height: 18, borderRadius: 6, background: 'var(--surface-2,#eee)', display: 'flex', gap: 2, overflow: 'hidden' }}>
+                      {Object.keys(o[period]).sort((a, b) => meta(a).order - meta(b).order).map(k => {
+                        const v = val(o[period][k], measure);
+                        const w = ot > 0 ? (v / ot) * scale * 100 : 0;
+                        return <div key={k} title={`${o.short} · ${meta(k).label}: ${M.fmt(v)}`} style={{ width: `${w.toFixed(2)}%`, background: meta(k).color, transition: 'width .7s cubic-bezier(.22,1,.36,1)' }} />;
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -219,7 +225,7 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
 
       {/* measure toggle */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-        <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-2,#475569)' }}>{tc('gprod.heading', 'Sales by outlet & product')}</div>
+        <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-2,#475569)' }}>{outlets.length > 1 ? tc('gprod.heading', 'Sales by outlet & product') : tc('gprod.headingOne', 'Sales by product')}</div>
         <div className="gpt-toggle" style={{ display: 'inline-flex', background: 'var(--surface-2,#f8fafc)', border: '1px solid var(--border,#e5e7eb)', borderRadius: 10, padding: 3, gap: 2 }}>
           {Object.keys(MEASURES).map(m => (
             <button key={m} onClick={() => setMeasure(m)} aria-pressed={measure === m} style={{
@@ -235,8 +241,8 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
         <Tile period="mtd" eyebrow={tc('gprod.mtd', 'Month to date · through close')} name={tc('gprod.thisMonth', 'This month')} stamp={asOfDate ? `${tc('gprod.through', 'Through')} ${new Date(asOfDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}` : ''} accent="#2a78d6" />
       </div>
 
-      {/* margin variance */}
-      {varianceProducts.length > 0 && (
+      {/* margin variance — needs at least two outlets to compare */}
+      {outlets.length > 1 && varianceProducts.length > 0 && (
         <div style={{ background: surface, border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 16, padding: '18px 18px 16px', position: 'relative', overflow: 'hidden', marginBottom: 14 }}>
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg,#008300,#2a78d6)' }} />
           <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '-.01em' }}>{tc('gprod.varTitle', 'Why margins differ — same product, different outlet')}</div>

@@ -108,8 +108,17 @@ export default function GroupDashboardPage() {
         </div>
       )}
 
-      {/* Single outlet → its manager cockpit (unmasked) */}
-      {data && !loading && selectedOutlet && <DashboardPage key={selectedOutlet} stationId={selectedOutlet} embedded />}
+      {/* Single outlet → the same product tiles as the rollup, scoped to that bunk,
+          so Group View stays one consistent language. The full manager cockpit
+          lives in Bunk View (pick the outlet from the sidebar). Falls back to the
+          embedded cockpit only if the per-product payload is missing. */}
+      {data && !loading && selectedOutlet && (() => {
+        const s = st.find(x => x.id === selectedOutlet);
+        const hasFuel = s?.by_fuel && (s.by_fuel.day?.length || s.by_fuel.mtd?.length);
+        return hasFuel
+          ? <GroupProductTiles key={selectedOutlet} stations={[s]} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} />
+          : <DashboardPage key={selectedOutlet} stationId={selectedOutlet} embedded />;
+      })()}
 
       {/* Global rollup */}
       {data && !loading && !selectedOutlet && (
