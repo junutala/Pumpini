@@ -12,6 +12,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import DashboardPage from '../dashboard/page';
+import GroupProductTiles from './GroupProductTiles';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -123,19 +124,26 @@ export default function GroupDashboardPage() {
             </div>
           </div>
 
-          <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
-            <div style={mini}>
-              <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.sales', 'Sales')}</div>
-              <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(tt.total_sales)}</div>
-              {tt.vs_yesterday_pct != null && <div style={{ fontSize: 12, color: tt.vs_yesterday_pct >= 0 ? '#3b6d11' : '#b91c1c' }}>{tt.vs_yesterday_pct >= 0 ? <TrendingUp size={12} style={{ verticalAlign: -2 }} /> : <TrendingDown size={12} style={{ verticalAlign: -2 }} />} {tt.vs_yesterday_pct >= 0 ? '+' : ''}{tt.vs_yesterday_pct}{tc('gdash.vsYest', '% vs yest.')}</div>}
+          {/* Sales by outlet & product — Day / Month-to-date tiles + margin variance.
+              Falls back to the plain totals row if the backend hasn't shipped the
+              per-product payload yet (e.g. mid-deploy). */}
+          {st.some(s => s.by_fuel && (s.by_fuel.day?.length || s.by_fuel.mtd?.length)) ? (
+            <GroupProductTiles stations={st} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} />
+          ) : (
+            <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
+              <div style={mini}>
+                <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.sales', 'Sales')}</div>
+                <div style={{ fontSize: 21, fontWeight: 800 }}>{fmtR(tt.total_sales)}</div>
+                {tt.vs_yesterday_pct != null && <div style={{ fontSize: 12, color: tt.vs_yesterday_pct >= 0 ? '#3b6d11' : '#b91c1c' }}>{tt.vs_yesterday_pct >= 0 ? <TrendingUp size={12} style={{ verticalAlign: -2 }} /> : <TrendingDown size={12} style={{ verticalAlign: -2 }} />} {tt.vs_yesterday_pct >= 0 ? '+' : ''}{tt.vs_yesterday_pct}{tc('gdash.vsYest', '% vs yest.')}</div>}
+              </div>
+              <div style={{ ...mini, background: '#eaf3de' }}>
+                <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('gdash.margin', 'Margin')}</div>
+                <div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{fmtR(tt.total_margin)}</div>
+                {tt.group_margin_pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tt.group_margin_pct}{tc('gdash.blended', '% blended')}</div>}
+              </div>
+              <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.litres', 'Litres')}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(tt.total_litres)} L</div></div>
             </div>
-            <div style={{ ...mini, background: '#eaf3de' }}>
-              <div style={{ fontSize: 12, color: '#3b6d11' }}>{tc('gdash.margin', 'Margin')}</div>
-              <div style={{ fontSize: 21, fontWeight: 800, color: '#27500a' }}>{fmtR(tt.total_margin)}</div>
-              {tt.group_margin_pct != null && <div style={{ fontSize: 12, color: '#3b6d11' }}>{tt.group_margin_pct}{tc('gdash.blended', '% blended')}</div>}
-            </div>
-            <div style={mini}><div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.litres', 'Litres')}</div><div style={{ fontSize: 21, fontWeight: 800 }}>{fmtL(tt.total_litres)} L</div></div>
-          </div>
+          )}
 
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10, marginBottom: 14 }}>
             <div style={{ ...card, padding: '12px 14px' }}>

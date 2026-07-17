@@ -34,7 +34,7 @@ router.get('/my', authenticate, authorize('owner'), async (req, res, next) => {
 async function outletMetrics(sid, date) {
   const monthStart = date.slice(0, 8) + '01';
   try {
-    const [sf, yd, pr, by, rv, wt, lg, ud, ml] = await Promise.all([
+    const [sf, yd, pr, by, rv, wt, lg, ud, ml, mf] = await Promise.all([
       pool.query(`SELECT de.fuel_type, de.payment_mode, COALESCE(SUM(de.quantity_ltrs),0) AS ltrs, COALESCE(SUM(de.amount),0) AS amt
                   FROM dispense_events de WHERE de.station_id=$1 AND de.occurred_at::date=$2 AND NOT COALESCE(de.is_voided,FALSE)
                   GROUP BY 1,2`, [sid, date]),
@@ -56,19 +56,35 @@ async function outletMetrics(sid, date) {
                   + COALESCE((SELECT SUM(amount) FROM corporate_receipts WHERE station_id=$1 AND payment_type='cash'),0)
                   - COALESCE((SELECT SUM(amount) FROM cash_deposits WHERE station_id=$1),0) AS undeposited`, [sid]),
       pool.query(`SELECT COALESCE(SUM(quantity_ltrs),0) AS l FROM dispense_events WHERE station_id=$1 AND occurred_at>=$2 AND NOT COALESCE(is_voided,FALSE)`, [sid, monthStart]),
+      // Month-to-date sales per product (1st of the trade month → the settled day),
+      // for the by-outlet-&-product tiles. Same voided/date rules as the day slice.
+      pool.query(`SELECT fuel_type, COALESCE(SUM(quantity_ltrs),0) AS ltrs, COALESCE(SUM(amount),0) AS amt
+                  FROM dispense_events WHERE station_id=$1 AND occurred_at::date BETWEEN $2 AND $3 AND NOT COALESCE(is_voided,FALSE)
+                  GROUP BY 1`, [sid, monthStart, date]),
     ]);
 
     const sell = {}; pr.rows.forEach(r => { sell[r.fuel_type] = parseFloat(r.price); });
     const buy  = {}; by.rows.forEach(r => { buy[r.fuel_type] = parseFloat(r.rate_per_ltr); });
     let sales = 0, ltrs = 0, creditAmt = 0, marginAmt = 0;
-    const ltrsByFuel = {};
+    const ltrsByFuel = {}, amtByFuel = {};
     sf.rows.forEach(r => {
       const a = parseFloat(r.amt), l = parseFloat(r.ltrs);
       sales += a; ltrs += l;
       if (r.payment_mode === 'credit') creditAmt += a;
       ltrsByFuel[r.fuel_type] = (ltrsByFuel[r.fuel_type] || 0) + l;
+      amtByFuel[r.fuel_type]  = (amtByFuel[r.fuel_type]  || 0) + a;
     });
     Object.keys(ltrsByFuel).forEach(ft => { if (sell[ft] != null && buy[ft] != null) marginAmt += ltrsByFuel[ft] * (sell[ft] - buy[ft]); });
+
+    // Per-product breakdown for the group tiles. Prices (sell/buy) are the latest
+    // on file; a null buy ⇒ margin can't be computed for that product (the UI
+    // surfaces this so the owner enters the delivery rate).
+    const fuelSet = new Set([...Object.keys(ltrsByFuel), ...mf.rows.map(r => r.fuel_type)]);
+    const by_fuel = {
+      day: Object.keys(ltrsByFuel).map(ft => ({ fuel_type: ft, litres: +ltrsByFuel[ft].toFixed(1), amount: +(amtByFuel[ft] || 0).toFixed(2) })),
+      mtd: mf.rows.map(r => ({ fuel_type: r.fuel_type, litres: +parseFloat(r.ltrs).toFixed(1), amount: +parseFloat(r.amt).toFixed(2) })),
+      price: [...fuelSet].map(ft => ({ fuel_type: ft, sell: sell[ft] ?? null, buy: buy[ft] ?? null })),
+    };
 
     const r0 = rv.rows[0];
     const invoiced = parseFloat(r0.invoiced), received = parseFloat(r0.received), invoicedOld = parseFloat(r0.invoiced_old);
@@ -90,9 +106,10 @@ async function outletMetrics(sid, date) {
       wetstock_loss_ltrs: +wv.toFixed(2), wetstock_loss_pct: mtdL > 0 ? +(Math.abs(wv) / mtdL * 100).toFixed(2) : 0, wetstock_beyond: !!wt.rows[0].b,
       collection_lag_days: lag, cash_undeposited: +undeposited.toFixed(2),
       vs_yesterday_pct: yest > 0 ? +((sales - yest) / yest * 100).toFixed(1) : null,
+      by_fuel,
     };
   } catch (e) {
-    return { sales: 0, litres: 0, yest_sales: 0, margin: 0, gross_margin_pct: null, margin_frac: null, credit_pct: 0, outstanding: 0, overdue_90: 0, overdue_pct: 0, wetstock_loss_ltrs: 0, wetstock_loss_pct: 0, wetstock_beyond: false, collection_lag_days: null, cash_undeposited: 0, vs_yesterday_pct: null };
+    return { sales: 0, litres: 0, yest_sales: 0, margin: 0, gross_margin_pct: null, margin_frac: null, credit_pct: 0, outstanding: 0, overdue_90: 0, overdue_pct: 0, wetstock_loss_ltrs: 0, wetstock_loss_pct: 0, wetstock_beyond: false, collection_lag_days: null, cash_undeposited: 0, vs_yesterday_pct: null, by_fuel: { day: [], mtd: [], price: [] } };
   }
 }
 
