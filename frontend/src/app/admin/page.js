@@ -157,8 +157,8 @@ export default function AdminPage(){
   const [admin,setAdmin]         = useState(null);
   const [tab,setTab]             = useState('dashboard');
   const [stats,setStats]         = useState(null);
-  const [daySale,setDaySale]     = useState(null); // Day Sale tile — isolated from stats
   const [dayDate,setDayDate]     = useState('');   // Day Sale tile date picker
+  const [dayBusy,setDayBusy]     = useState(false); // Day Sale fetch in flight
   const [groups,setGroups]       = useState([]);
   const [owners,setOwners]       = useState([]);
   const [stations,setStations]   = useState([]);
@@ -243,7 +243,7 @@ export default function AdminPage(){
   },[]);
 
   const reload = async()=>{
-    const [s,g,o,st,pl,ad,md,ds] = await Promise.all([
+    const [s,g,o,st,pl,ad,md] = await Promise.all([
       adminFetch('/platform-stats'),
       adminFetch('/groups'),
       adminFetch('/owners'),
@@ -251,10 +251,8 @@ export default function AdminPage(){
       adminFetch('/plans'),
       adminFetch('/alert-definitions'),
       adminFetch('/modules'),
-      adminFetch('/day-sales'),
     ]);
     if (s && typeof s.total_stations !== 'undefined') setStats(s);  // ignore an error/partial response
-    if (ds && typeof ds.day_sales !== 'undefined') setDaySale(ds);
     setGroups(Array.isArray(g)?g:[]); setOwners(Array.isArray(o)?o:[]);
     setStations(Array.isArray(st)?st:[]); setPlans(Array.isArray(pl)?pl:[]);
     setAlertDefs(Array.isArray(ad)?ad:[]);
@@ -272,14 +270,18 @@ export default function AdminPage(){
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
 
-  // Seed the Day Sale picker with the effective day the backend chose (latest day
-  // with sales), then let the admin pick any day — refetch just the stats.
-  useEffect(()=>{ if(daySale?.day_date) setDayDate(prev=>prev||daySale.day_date); },[daySale?.day_date]);
+  // Seed the Day Sale picker with the effective day the backend chose (T-1), then
+  // let the admin pick any day — refetch the whole stats for that day. The backend
+  // computes the day in an isolated try/catch, so the response always carries the
+  // counts too; a guarded full replace can never blank a tile.
+  useEffect(()=>{ if(stats?.day_date) setDayDate(prev=>prev||stats.day_date); },[stats?.day_date]);
   const onDayDate = async(d)=>{
     setDayDate(d);
     if(!d) return;
-    const ds = await adminFetch(`/day-sales?date=${d}`);   // isolated — only touches the Day Sale tile
-    if(ds && typeof ds.day_sales !== 'undefined') setDaySale(ds);
+    setDayBusy(true);
+    const s = await adminFetch(`/platform-stats?date=${encodeURIComponent(d)}`);
+    if(s && typeof s.total_stations !== 'undefined') setStats(s);
+    setDayBusy(false);
   };
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
@@ -382,7 +384,7 @@ export default function AdminPage(){
                 [tc('adminp.statOwners','Owners'),        stats?.total_owners||0,   '#9333ea'],
                 [tc('adminp.statPetrolBunks','Petrol Bunks'),  stats?.total_stations||0, '#1A5F7A'],
                 [tc('adminp.statActiveUsers','Active Users'),  stats?.total_users||0,    '#16a34a'],
-                [tc('adminp.statDaySale','Day Sale'), fmtAmt(daySale?.day_sales ?? 0),'#dc2626',
+                [tc('adminp.statDaySale','Day Sale'), dayBusy ? '…' : fmtAmt(stats?.day_sales ?? 0),'#dc2626',
                   <input key="dp" type="date" value={dayDate} max={todayIST()} onChange={e=>onDayDate(e.target.value)}
                     style={{marginTop:10,fontSize:12,padding:'5px 8px',border:'1px solid #e5e3de',borderRadius:6,color:'#333',fontFamily:'inherit',width:'100%',boxSizing:'border-box',cursor:'pointer'}}/>],
                 [tc('adminp.statMtdSales','MTD Sales'),     fmtAmt(stats?.mtd_sales||0),  '#0891b2'],
