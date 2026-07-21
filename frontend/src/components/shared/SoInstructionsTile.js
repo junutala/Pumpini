@@ -10,7 +10,7 @@
 // manager-facing strings go through tc() with Telugu in te.json.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ClipboardList, CalendarClock, Upload, CheckCircle2, X, Paperclip, AlertTriangle, ChevronRight } from 'lucide-react';
+import { ClipboardList, CalendarClock, Upload, Camera, CheckCircle2, X, Paperclip, AlertTriangle, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import {
@@ -193,6 +193,7 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   const commitDirty = committed !== savedCommitted;
   const isClosed = it.status === 'CLOSED';
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
   const f = flagOf({ ...it, committed_date: committed || null });
 
   const saveCommit = async () => {
@@ -208,12 +209,16 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   // Proof IS completion: the server settles the task on upload (stamps the
   // commit date, closes it, tells VAWE to stop calling). So a successful upload
   // refreshes the list and closes the drawer — the task moves to Completed.
-  const onFile = async (file) => {
+  // captureMethod tells VAWE how the proof was produced: 'LIVE_CAPTURE' (the
+  // camera button — geo/time stamping becomes meaningful) vs 'FILE_UPLOAD' (a
+  // file from storage, e.g. a certificate). Advisory only; VAWE reads every
+  // artifact regardless. Defaults to upload for the plain picker.
+  const onFile = async (file, captureMethod = 'FILE_UPLOAD') => {
     if (!file) return;
     setBusy('upload'); setError('');
     try {
       const base64 = await fileToBase64(file);
-      await uploadVaweArtifact(it.id, { base64, media_type: file.type, filename: file.name });
+      await uploadVaweArtifact(it.id, { base64, media_type: file.type, filename: file.name, captureMethod });
       if (fileRef.current) fileRef.current.value = '';
       onChanged();
       onClose();
@@ -296,7 +301,16 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {canAct && (
               <>
-                <input ref={fileRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" hidden onChange={(e) => onFile(e.target.files?.[0])} />
+                {/* Live capture: opens the device camera on mobile (capture attr).
+                    Tagged LIVE_CAPTURE so VAWE shows the 📷 chip and geo-stamping
+                    (Phase 3) becomes meaningful. */}
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => onFile(e.target.files?.[0], 'LIVE_CAPTURE')} />
+                <button className="btn btn-secondary btn-sm" disabled={busy === 'upload'} onClick={() => cameraRef.current?.click()}>
+                  <Camera size={14} /> {tc('vawe.takePhoto', 'Take photo')}
+                </button>
+                {/* File upload: certificates, PDFs, documents that live in storage.
+                    Tagged FILE_UPLOAD. */}
+                <input ref={fileRef} type="file" accept="image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv" hidden onChange={(e) => onFile(e.target.files?.[0], 'FILE_UPLOAD')} />
                 <button className="btn btn-secondary btn-sm" disabled={busy === 'upload'} onClick={() => fileRef.current?.click()}>
                   <Upload size={14} /> {busy === 'upload' ? tc('vawe.uploading', 'Uploading…') : (hasArtifact ? tc('vawe.replace', 'Replace') : tc('vawe.upload', 'Upload'))}
                 </button>
