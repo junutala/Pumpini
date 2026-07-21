@@ -301,10 +301,14 @@ router.patch('/interactions/:id/commit', authenticate, loadInteraction, requireC
 // ENABLES "Mark complete"; the manager then completes it deliberately (see
 // /complete), which is the single point that sends the FULFILMENT signal.
 router.post('/interactions/:id/artifact', authenticate, loadInteraction, requireCanAct, async (req, res, next) => {
-  const { base64, media_type, filename } = req.body || {};
+  const { base64, media_type, filename, captureMethod } = req.body || {};
   if (!base64 || !media_type) {
     return res.status(400).json({ error: 'base64 and media_type are required' });
   }
+  // How the manager produced the proof — forwarded to VAWE (which owns the
+  // artifact record). Not persisted in Pumpini; anything unrecognised is dropped.
+  const cm = captureMethod === 'LIVE_CAPTURE' || captureMethod === 'FILE_UPLOAD'
+    ? captureMethod : undefined;
   if (!artifactTypeOk(media_type)) {
     return res.status(400).json({ error: 'Unsupported file type. Use an image, video, PDF or document.' });
   }
@@ -355,6 +359,7 @@ router.post('/interactions/:id/artifact', authenticate, loadInteraction, require
         committedDate: rows[0].committed_date
           ? new Date(rows[0].committed_date).toISOString()
           : nowIso,
+        ...(cm ? { captureMethod: cm } : {}),
       },
     });
     res.json({ ok: true, artifact_url: publicUrl, completed: true });
