@@ -64,6 +64,12 @@ shift's closing dip and flag any mismatch (a dip "handover tripwire"), instead o
 re-keying it. Keep manual capture for now.
 
 ## 5. User-management access model — relook with ample time (deferred 2026-06-22)
+> **→ Approach doc written 2026-07-21: `docs/access-model-cleanup.md`** — full
+> current-state map (Role vs Responsibility vs Plan vs Membership vs Superadmin),
+> the membership-only money-leak + template privilege-escalation gaps, a clean target
+> model, and where VAWE Lite (`Manager_vawe`/`Owner_vawe`) slots in. Staging-first
+> plan for a clean pass. Start there.
+
 For now the platform admin (/admin) creates ALL users (owners, managers,
 attendants) and assigns responsibilities. Owners come back to admin for extra
 managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
