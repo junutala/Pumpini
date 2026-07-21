@@ -3,7 +3,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
-         CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox } from 'lucide-react';
+         CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox, Megaphone } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
 
 if (typeof window === 'undefined') {
@@ -171,6 +171,8 @@ export default function AdminPage(){
   const [stationUsers,setStationUsers] = useState([]);
   const [stTemplates,setStTemplates]   = useState([]);   // responsibilities for selected bunk
   const [leads,setLeads]               = useState([]);
+  const [promo,setPromo]               = useState({enabled:false,image_url:'',headline:'',body:'',cta_label:'',cta_url:''});
+  const [promoSaved,setPromoSaved]     = useState(false);
   const [leadSort,setLeadSort]         = useState({ field:'created_at', dir:'desc' });
   const [hideClosed,setHideClosed]     = useState(false);
   const [modal,setModal]   = useState(null);
@@ -263,11 +265,14 @@ export default function AdminPage(){
     });
     setPlanFeat(pf);
     loadLeads();
+    loadPromo();
   };
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
+  const loadPromo = async()=>{ const r=await adminFetch('/lite-promo'); if(r&&!r.error) setPromo({enabled:!!r.enabled,image_url:r.image_url||'',headline:r.headline||'',body:r.body||'',cta_label:r.cta_label||'',cta_url:r.cta_url||''}); };
+  const savePromo = async()=>{ const r=await adminFetch('/lite-promo',{method:'PUT',body:JSON.stringify(promo)}); if(r&&!r.error){ setPromoSaved(true); setTimeout(()=>setPromoSaved(false),2000); showToast(tc('adminp.promoSaved','Lite promo saved.')); } };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   const LEAD_CLOSED = ['converted','lost'];
   const sortLeads = (field)=> setLeadSort(s=>({ field, dir: s.field===field && s.dir==='asc' ? 'desc' : 'asc' }));
@@ -314,6 +319,7 @@ export default function AdminPage(){
     {id:'alertdefs',label:tc('adminp.tabAiChat','AI Chat'),           icon:<Shield size={14}/>},
     {id:'stationusers',label:tc('adminp.tabUsersRoles','Users & Roles'),  icon:<UserPlus size={14}/>},
     {id:'leads',    label:tc('adminp.tabLeads','Leads'),             icon:<Inbox size={14}/>},
+    {id:'litepromo',label:tc('adminp.tabLitePromo','Lite Promo'),    icon:<Megaphone size={14}/>},
   ];
 
   const formCities = getCities(form.state||'');
@@ -837,6 +843,43 @@ export default function AdminPage(){
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── Pumpini Lite promo rail ── */}
+        {tab==='litepromo'&&(
+          <div style={{maxWidth:640}}>
+            <h1 style={{fontSize:'1.4rem',fontWeight:800,marginBottom:'0.5rem'}}>{tc('adminp.litePromoTitle','Pumpini Lite — promo rail')}</h1>
+            <p style={{color:'#666',fontSize:13,marginBottom:'1.5rem',lineHeight:1.5}}>{tc('adminp.litePromoHelp','Shown under the SO Instructions tile for outlets. Off (or blank) → outlets see nothing. Turn it on to run a message or offer — no deploy needed.')}</p>
+            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',padding:'1.25rem',display:'flex',flexDirection:'column',gap:14}}>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontWeight:600,fontSize:14}}>
+                <button type="button" onClick={()=>setPromo(p=>({...p,enabled:!p.enabled}))} style={{background:'none',border:'none',cursor:'pointer',padding:0,color:promo.enabled?'#16a34a':'#999',display:'flex'}}>
+                  {promo.enabled?<ToggleRight size={30}/>:<ToggleLeft size={30}/>}
+                </button>
+                {promo.enabled?tc('adminp.promoOn','Visible to outlets'):tc('adminp.promoOff','Hidden')}
+              </label>
+              {[
+                ['image_url', tc('adminp.promoImageUrl','Image URL'),       'https://…'],
+                ['headline',  tc('adminp.promoHeadline','Headline'),        tc('adminp.promoHeadlinePh','e.g. Pumpini Lite is free for your outlet')],
+                ['cta_label', tc('adminp.promoCtaLabel','Button label (optional)'), tc('adminp.promoCtaLabelPh','e.g. See what you get')],
+                ['cta_url',   tc('adminp.promoCtaUrl','Button link (optional)'),    'https://…'],
+              ].map(([k,label,ph])=>(
+                <div key={k}>
+                  <div style={{fontSize:12,fontWeight:600,color:'#555',marginBottom:4}}>{label}</div>
+                  <input value={promo[k]||''} onChange={e=>setPromo(p=>({...p,[k]:e.target.value}))} placeholder={ph}
+                    style={{width:'100%',padding:'9px 12px',border:'1px solid #d1cfca',borderRadius:8,fontSize:14}}/>
+                </div>
+              ))}
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:'#555',marginBottom:4}}>{tc('adminp.promoBody','Message')}</div>
+                <textarea value={promo.body||''} onChange={e=>setPromo(p=>({...p,body:e.target.value}))} rows={3} placeholder={tc('adminp.promoBodyPh','A short line or two…')}
+                  style={{width:'100%',padding:'9px 12px',border:'1px solid #d1cfca',borderRadius:8,fontSize:14,fontFamily:'inherit',resize:'vertical'}}/>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <button style={btn()} onClick={savePromo}>{tc('adminp.promoSave','Save')}</button>
+                {promoSaved&&<span style={{color:'#16a34a',fontSize:13,fontWeight:600}}>{tc('adminp.promoSavedInline','Saved ✓')}</span>}
+              </div>
             </div>
           </div>
         )}

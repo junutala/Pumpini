@@ -425,6 +425,30 @@ router.patch('/interactions/:id/complete', authenticate, loadInteraction, requir
   } catch (err) { next(err); }
 });
 
+// GET /api/vawe/lite-promo — the "Pumpini Lite" promo shown under the SO tile.
+// Global single row (id=1), managed from superadmin. TABLE-TOLERANT: if
+// lite_promos isn't migrated yet, or anything else fails, return no promo so the
+// tile silently shows nothing rather than 500-ing a manager-facing screen.
+// Non-sensitive global content → any authenticated user may read it.
+router.get('/lite-promo', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT enabled, image_url, headline, body, cta_label, cta_url
+         FROM lite_promos WHERE id = 1`
+    );
+    const p = rows[0];
+    const hasContent = p && p.enabled && (p.image_url || p.headline || p.body);
+    return res.json({
+      promo: hasContent
+        ? { imageUrl: p.image_url, headline: p.headline, body: p.body,
+            ctaLabel: p.cta_label, ctaUrl: p.cta_url }
+        : null,
+    });
+  } catch {
+    return res.json({ promo: null });
+  }
+});
+
 module.exports = router;
 // Exposed for unit tests (pure req/res/next guard — no DB).
 module.exports.requireCanAct = requireCanAct;

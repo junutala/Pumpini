@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import {
   getVaweInteractions, commitVaweInteraction, completeVaweInteraction,
-  uploadVaweArtifact, getVaweArtifact,
+  uploadVaweArtifact, getVaweArtifact, getLitePromo,
 } from '../../lib/api';
 
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -58,6 +58,28 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
   r.readAsDataURL(file);
 });
 
+// Pumpini Lite promo rail — a soft, opt-in marketing card under the SO tile.
+// Renders nothing unless superadmin enabled + filled it. Every field is optional.
+// The CTA is a plain link opened in a new tab. No roles, no station data.
+function PromoRail({ promo }) {
+  if (!promo) return null;
+  const { imageUrl, headline, body, ctaLabel, ctaUrl } = promo;
+  return (
+    <div style={{ background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14, padding: '14px 16px', marginBottom: 14 }}>
+      {imageUrl && (
+        <img src={imageUrl} alt="" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, marginBottom: (headline || body) ? 10 : 0 }} />
+      )}
+      {headline && <div style={{ fontSize: 14, fontWeight: 800, marginBottom: body ? 4 : 0 }}>{headline}</div>}
+      {body && <div style={{ fontSize: 12.5, color: 'var(--text-2,#555)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{body}</div>}
+      {ctaUrl && ctaLabel && (
+        <a href={ctaUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ marginTop: 10, display: 'inline-flex' }}>
+          {ctaLabel}
+        </a>
+      )}
+    </div>
+  );
+}
+
 export default function SoInstructionsTile({ stationId }) {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -70,6 +92,9 @@ export default function SoInstructionsTile({ stationId }) {
   const [items, setItems] = useState([]);
   const [openId, setOpenId] = useState(null);
   const [tab, setTab] = useState('pending');
+  // Pumpini Lite promo rail — global content set from superadmin. Null (invisible)
+  // until enabled + filled. Best-effort: a failed fetch just leaves it hidden.
+  const [promo, setPromo] = useState(null);
 
   const load = useCallback(async () => {
     if (!stationId) return;
@@ -80,6 +105,9 @@ export default function SoInstructionsTile({ stationId }) {
   }, [stationId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    getLitePromo().then((r) => setPromo(r?.promo || null)).catch(() => {});
+  }, []);
 
   if (!items.length) return null;
   const pending = items.filter((i) => i.status !== 'CLOSED');
@@ -165,6 +193,8 @@ export default function SoInstructionsTile({ stationId }) {
           </div>
         )}
       </div>
+
+      <PromoRail promo={promo} />
 
       {active && (
         <InteractionDrawer
