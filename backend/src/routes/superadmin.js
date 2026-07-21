@@ -1033,4 +1033,40 @@ router.delete('/leads/:id', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Pumpini Lite promo rail (shown under the SO tile) ────────────────
+// A single global row (id=1). Invisible on the tile until `enabled` + content.
+// Managed here by superadmin; read (table-tolerantly) by GET /api/vawe/lite-promo.
+
+// GET /api/superadmin/lite-promo
+router.get('/lite-promo', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT enabled, image_url, headline, body, cta_label, cta_url, updated_at
+         FROM lite_promos WHERE id = 1`
+    );
+    res.json(rows[0] || {
+      enabled: false, image_url: null, headline: null,
+      body: null, cta_label: null, cta_url: null,
+    });
+  } catch (err) { next(err); }
+});
+
+// PUT /api/superadmin/lite-promo — upsert the single row.
+router.put('/lite-promo', authAdmin, async (req, res, next) => {
+  try {
+    const { enabled, image_url, headline, body, cta_label, cta_url } = req.body || {};
+    const { rows } = await pool.query(
+      `INSERT INTO lite_promos (id, enabled, image_url, headline, body, cta_label, cta_url, updated_at)
+            VALUES (1, $1, $2, $3, $4, $5, $6, now())
+       ON CONFLICT (id) DO UPDATE SET
+            enabled = $1, image_url = $2, headline = $3, body = $4,
+            cta_label = $5, cta_url = $6, updated_at = now()
+       RETURNING enabled, image_url, headline, body, cta_label, cta_url, updated_at`,
+      [!!enabled, image_url || null, headline || null, body || null,
+       cta_label || null, cta_url || null]
+    );
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
 module.exports = { router, authAdmin };

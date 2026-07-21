@@ -116,3 +116,4 @@ export const commitVaweInteraction   = (id, committedDate) => api.patch(`/vawe/i
 export const completeVaweInteraction = (id)                => api.patch(`/vawe/interactions/${id}/complete`, {});
 export const uploadVaweArtifact      = (id, payload)       => api.post(`/vawe/interactions/${id}/artifact`, payload);
 export const getVaweArtifact         = (id)                => api.get(`/vawe/interactions/${id}/artifact`);
+export const getLitePromo            = ()                  => api.get('/vawe/lite-promo');
