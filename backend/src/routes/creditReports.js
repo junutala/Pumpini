@@ -9,6 +9,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess, requireCorporateAccess, getAccessibleStationIds, canAccessCorporate } = require('../middleware/stationAccess');
 
 const AGE_BUCKETS = [30, 60, 90]; // 0-30 / 31-60 / 61-90 / 90+
@@ -75,8 +76,7 @@ async function resolvePortalCorporate(req, res) {
 // GET /api/credit-reports/ageing?station_id=
 // One row per credit customer linked to the station. Payments are allocated
 // FIFO against the oldest charges; whatever stays open is bucketed by age.
-router.get('/ageing', authenticate, authorize('owner', 'manager', 'cco'),
-  requireStationAccess({ required: true }), async (req, res, next) => {
+router.get('/ageing', authenticate, requireStationAccess({ required: true }), requirePerm('reports.view'), async (req, res, next) => {
   try {
     const { station_id } = req.query;
 

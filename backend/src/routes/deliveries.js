@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -75,7 +76,7 @@ router.get('/book-stock/:station_id', authenticate, requireStationAccess(), asyn
 });
 
 // POST /api/deliveries
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('deliveries.view'), async (req, res, next) => {
   try {
     const {
       station_id, tank_id, shift_id,
@@ -243,7 +244,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // PATCH /api/deliveries/:id/verify
-router.patch('/:id/verify', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'), async (req, res, next) => {
+router.patch('/:id/verify', authenticate, requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'), requirePerm('deliveries.view'), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `UPDATE fuel_deliveries SET verified_by=$1, verified_at=NOW()
@@ -387,7 +388,7 @@ function withReconciliation(parsed) {
   return parsed;
 }
 
-router.post('/parse-invoice', authenticate, authorize('owner', 'manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/parse-invoice', authenticate, requireStationAccess({ required: true }), requirePerm('deliveries.view'), async (req, res, next) => {
   try {
     const { file_base64, media_type } = req.body;
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });

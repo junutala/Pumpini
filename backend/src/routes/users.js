@@ -3,6 +3,15 @@ const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
 const { getAccessibleStationIds, canAccessStation, requireStationAccess } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
+const { createUser, linkUserToStation } = require('../services/userService');
+
+// Gating note (access-model cleanup): the user *list* + attendant lifecycle
+// (deactivate / end-date / force-logout) stay role-gated to owner+manager. GET /users
+// is the Start-Shift operator picker's data source — a hot path; and none of these
+// routes GRANT permissions or roles, so they are not the privilege-escalation surface.
+// That surface (assigning responsibilities) is locked to superadmin in templates.js.
+// Adding a shift attendant is the one route flipped to responsibility (`attendant.add`).
 
 // A user is manageable only if they share one of the requester's stations —
 // directly (station_users) or as a credit customer linked to one. Without this,
@@ -83,37 +92,60 @@ router.post('/:id/force-logout', authenticate, authorize('owner','manager'), asy
   } catch (err) { next(err); }
 });
 
-// POST /api/users/attendant — manager adds a shift attendant. Minimal by design:
-// role is forced to 'attendant', they're scoped to this station, and a dummy
-// password is set (attendants don't log in / use POS yet). They become available
-// for shift assignment.
-router.post('/attendant', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+// POST /api/users — owner creates a staff user (any valid role) for a station.
+// Single-writer path: the insert goes through userService.createUser, exactly like
+// the attendant + superadmin creators, so rules can't drift. Runs on the BYPASS
+// role (als.run(undefined,…)) for the same chicken-and-egg reason as /attendant:
+// a brand-new user isn't linked to any of the owner's stations until the next
+// statement, so the owner's RLS identity can't satisfy the insert policy.
+router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
+  try {
+    const { station_id } = req.body;
+    if (station_id && !(await canAccessStation(req.user.id, station_id))) {
+      return res.status(403).json({ error: 'You do not have access to this station.' });
+    }
+    const run = () => pool.als.run(undefined, async () => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const user = await createUser(req.body, client);
+        if (station_id) await linkUserToStation(station_id, user.id, client);
+        await client.query('COMMIT');
+        return user;
+      } catch (e) {
+        try { await client.query('ROLLBACK'); } catch { /* connection may be dead */ }
+        throw e;
+      } finally { client.release(); }
+    });
+    let created;
+    try { created = await run(); }
+    catch (e) { if (pool.isRetryableConnError(e)) created = await run(); else throw e; }
+    res.status(201).json(created);
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+// POST /api/users/attendant — manager adds a shift attendant. Role is forced to
+// 'attendant', scoped to this station, dummy password (they don't log in / use POS
+// yet). Same single-writer service as POST /users, composed in the BYPASS-role
+// transaction (a manager's RLS identity can't insert a not-yet-linked user).
+router.post('/attendant', authenticate, requireStationAccess({ required: true }), requirePerm('attendant.add'), async (req, res, next) => {
   try {
     const { name, phone, language = 'en', station_id } = req.body;
-    if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required.' });
-    const clean = String(phone).replace(/\D/g, '');
-    if (clean.length < 10) return res.status(400).json({ error: 'Enter a valid phone number.' });
-    const storedPhone = clean.startsWith('91') ? `+${clean}` : `+91${clean}`;
-    const hash = await bcrypt.hash('Welcome@123', 12);   // dummy — attendants don't log in yet
 
-    // Creating a user row is a privileged op already authorized above (owner/
-    // manager + station access; role forced to 'attendant'). Run it on the BYPASS
-    // role — exactly like the superadmin console — by stepping outside the request's
-    // RLS identity (als.run(undefined,…)). A manager's identity can't satisfy an
-    // insert policy on a brand-new user that isn't linked to any of his stations
-    // yet (the station_users link is written a statement later — chicken-and-egg).
     const insertAttendant = () => pool.als.run(undefined, async () => {
       const client = await pool.connect();   // no ALS store → raw bypass owner client
       try {
         await client.query('BEGIN');
-        const { rows } = await client.query(
-          `INSERT INTO users(name,phone,password_hash,role,language,must_change_password)
-           VALUES($1,$2,$3,'attendant',$4,TRUE) RETURNING id,name,phone,role,language`,
-          [name, storedPhone, hash, language]
+        const user = await createUser(
+          { name, phone, password: 'Welcome@123', role: 'attendant', language, mustChangePassword: true },
+          client
         );
-        await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [station_id, rows[0].id]);
+        await linkUserToStation(station_id, user.id, client);
         await client.query('COMMIT');
-        return rows[0];
+        return user;
       } catch (e) {
         try { await client.query('ROLLBACK'); } catch { /* connection may be dead */ }
         throw e;
@@ -130,6 +162,7 @@ router.post('/attendant', authenticate, authorize('owner','manager'), requireSta
     }
     res.status(201).json(created);
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     if (e.code === '23505') return res.status(409).json({ error: 'This phone number is already registered.' });
     next(e);
   }

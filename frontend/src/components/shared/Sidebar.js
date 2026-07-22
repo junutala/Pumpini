@@ -91,7 +91,7 @@ const NAV_GROUPS = [
     items: [
       { key:'addattendant',   href:'/add-attendant', icon:UserPlus, perm:'attendant.add' },
       { key:'users',          href:'/users',     icon:Users,       perm:'users.manage',     roles:['owner'] },
-      { key:'responsibilities',href:'/templates',icon:ShieldAlert, perm:'users.manage',     roles:['owner'] },
+      // Responsibility management moved to the platform-admin (/admin) console only.
     ]
   },
   {

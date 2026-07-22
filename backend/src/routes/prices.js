@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
 
 router.get('/:station_id/current', authenticate, requireStationAccess(), async (req, res, next) => {
@@ -14,7 +15,7 @@ router.get('/:station_id/current', authenticate, requireStationAccess(), async (
   } catch (err) { next(err); }
 });
 
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('prices.manage'), async (req, res, next) => {
   try {
     const { station_id, fuel_type, price, effective_from } = req.body;
     const { rows } = await pool.query(

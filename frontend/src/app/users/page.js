@@ -33,21 +33,13 @@ export default function UsersPage() {
   useEffect(() => { if (stationId) load(); }, [stationId, roleFilter]);
   useRefreshOnFocus(load);
 
-  const handleAdd = async (e) => {
-    e.preventDefault(); setLoading(true);
-    try {
-      await api.post('/auth/register', form);
-      if (stationId) await api.post(`/stations/${stationId}/users`, { user_id: '__last__' }); // will use proper id via response
-      setShowAdd(false); load();
-    } catch (err) { alert(err.error || tc('usersp.failedAddUser', 'Failed to add user')); }
-    finally { setLoading(false); }
-  };
-
+  // Single-writer create: POST /users creates the user AND links the station in one
+  // guarded call (owner-only, role validated server-side). Replaces the old
+  // /auth/register (public hole) + separate station-link two-step.
   const handleRegister = async (e) => {
     e.preventDefault(); setLoading(true);
     try {
-      const newUser = await api.post('/auth/register', form);
-      if (stationId) await api.post(`/stations/${stationId}/users`, { user_id: newUser.id });
+      await api.post('/users', { ...form, station_id: stationId });
       setShowAdd(false); load();
     } catch (err) { alert(err.error || err.errors?.[0]?.msg || tc('usersp.failed', 'Failed')); }
     finally { setLoading(false); }
@@ -202,9 +194,10 @@ export default function UsersPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '0.75rem' }}>
                 <div>
                   <label className="label">{tc('usersp.role', 'Role')}</label>
-                  <select className="input" value={editUser.role} onChange={e => setEditUser(p => ({ ...p, role: e.target.value }))}>
-                    {['owner','manager','attendant','rsa','corporate'].map(r => <option key={r} value={r}>{t(`roles.${r}`)}</option>)}
-                  </select>
+                  {/* Role is set at creation and NOT editable here — PATCH /users/:id
+                      does not change role (avoids a silent no-op that looked editable). */}
+                  <input className="input" value={t(`roles.${editUser.role}`)} disabled
+                    style={{ opacity: 0.6, cursor: 'not-allowed' }} />
                 </div>
                 <div>
                   <label className="label">{tc('usersp.language', 'Language')}</label>
