@@ -175,17 +175,18 @@ router.post('/provision-lite', async (req, res, next) => {
           if (existing.length) {
             userId = existing[0].id;
           } else {
-            // Login credential = the person's mobile number, BOTH fields. Pumpini
-            // login is already by mobile number; here we set the password to that
-            // same 10-digit number the SO entered at outlet creation. So the SO
-            // simply tells the manager/owner "log in with your mobile number as the
-            // password too." No enrollment friction, nothing to remember. Not forced
-            // to change (mustChangePassword=false) so it keeps working; the future
+            // Initial credential = the person's mobile number as BOTH fields. Pumpini
+            // login is already by mobile number; here the password is that same
+            // 10-digit number the SO entered at creation — so the SO just says "log in
+            // with your mobile number as the password." But it is a SHARED-KNOWLEDGE
+            // temp (everyone knows a phone number), so mustChangePassword=TRUE forces
+            // each person to set their OWN private password on first login before they
+            // can use the tile — otherwise anyone could log in as anyone. The future
             // device-passkey enrollment supersedes this. (Owner decision 2026-07-22.)
             const created = await createUser({
               name: person.name, phone: person.phone, email: person.email || null,
               password: person.phone,
-              role, language: person.language || 'te', mustChangePassword: false,
+              role, language: person.language || 'te', mustChangePassword: true,
             }, client);
             userId = created.id;
           }
