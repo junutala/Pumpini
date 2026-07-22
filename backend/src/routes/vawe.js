@@ -17,6 +17,7 @@ const { requireStationAccess, canAccessStation } = require('../middleware/statio
 const { queueInteractionSignal, queueOutletSync } = require('../services/vaweService');
 const { storageConfigured, uploadArtifact } = require('../services/vaweStorage');
 const { createUser, linkUserToStation } = require('../services/userService');
+const { createStation } = require('../services/stationService');
 const { normalizePhone } = require('../utils/phone');
 const router  = express.Router();
 
@@ -102,25 +103,31 @@ router.post('/outlets-resync', async (req, res, next) => {
 });
 
 // POST /api/vawe/provision-lite  — signature-verified (VAWE → Pumpini, same HMAC
-// as the inbound webhook). VAWE registered a DIRECT outlet and wants its staff to
-// submit proof through the free "Pumpini Lite" SO-tile surface. This:
-//   1) flips the outlet to entitlement='lite' — the free ceiling: on a lite outlet
-//      Effective = Responsibility ∩ ['vawe.proof'], so the paid app is unreachable
-//      no matter what responsibility is assigned;
-//   2) ensures the manager (and, if given, the owner) exist as users, are linked to
+// as the inbound webhook). VAWE registered a DIRECT (non-Pumpini) outlet and wants
+// its staff to submit proof through the free "Pumpini Lite" SO-tile surface. This:
+//   1) ensures the outlet EXISTS in Pumpini. A DIRECT outlet has no Pumpini station
+//      yet, so its VAWE ref is "direct:<uuid>"; VAWE sends the bare <uuid> here and
+//      we create the station with that exact id (deterministic → idempotent, and
+//      the later SO-Instructions interaction push targets the same id). A synced
+//      (already-Pumpini) outlet's id already exists → we just flip its tier;
+//   2) flips it to entitlement='lite' — the free ceiling: on a lite outlet
+//      Effective = Responsibility ∩ ['vawe.proof'], so the paid app is unreachable;
+//   3) ensures the manager (and, if given, the owner) exist as users, are linked to
 //      the outlet, and carry the "Lite — SO Tile" responsibility (module vawe.proof)
 //      so requirePerm('vawe.proof') passes and they land on /lite.
-// Body: { pumpiniOutletId, manager:{name,phone,email?,language?}, owner?:{…same} }.
-// Idempotent: dedups users on normalized phone; re-assigns the responsibility on
-// conflict; safe to re-run. Runs as ONE transaction on the bypass role (no user
-// session — als.exit() steps out of any RLS identity), exactly like the webhook,
-// which is what cross-tenant platform provisioning requires.
+// Body: { pumpiniOutletId, name?, city?, oilCompany?, manager:{name,phone,email?,
+//         language?}, owner?:{…same} }. name is REQUIRED when the station must be
+// created (a new DIRECT outlet); ignored when the outlet already exists.
+// Idempotent: create-if-missing on a deterministic id; dedups users on normalized
+// phone; re-assigns the responsibility on conflict; safe to re-run. Runs as ONE
+// transaction on the bypass role (no user session — als.exit() steps out of any RLS
+// identity), exactly like the webhook, which cross-tenant provisioning requires.
 router.post('/provision-lite', async (req, res, next) => {
   const code = checkSignature(req);
   if (code === 503) return res.status(503).json({ error: 'VAWE integration not configured' });
   if (code !== 200) return res.status(401).json({ error: 'Invalid signature' });
 
-  const { pumpiniOutletId, manager, owner } = req.body || {};
+  const { pumpiniOutletId, name, city, oilCompany, manager, owner } = req.body || {};
   if (!pumpiniOutletId) return res.status(400).json({ error: 'pumpiniOutletId is required' });
   if (!manager || !manager.name || !manager.phone) {
     return res.status(400).json({ error: 'manager { name, phone } is required' });
@@ -132,12 +139,20 @@ router.post('/provision-lite', async (req, res, next) => {
       try {
         await client.query('BEGIN');
 
-        // 1) The outlet must exist; flip it to the free tier.
-        const { rows: st } = await client.query(
-          `UPDATE stations SET entitlement='lite' WHERE id=$1 RETURNING id`,
-          [pumpiniOutletId]
-        );
-        if (!st.length) { await client.query('ROLLBACK'); return { notFound: true }; }
+        // 1) Ensure the outlet exists, then flip it to the free tier. A DIRECT
+        //    outlet won't exist yet → create it with the caller-supplied id (so
+        //    the id is stable across re-provisions and matches the interaction
+        //    push). Creating requires a name; an existing outlet ignores it.
+        const { rows: found } = await client.query('SELECT id FROM stations WHERE id=$1', [pumpiniOutletId]);
+        if (!found.length) {
+          if (!name || !String(name).trim()) { await client.query('ROLLBACK'); return { needName: true }; }
+          await createStation(
+            { id: pumpiniOutletId, name, city: city || null, oil_company: oilCompany || null, entitlement: 'lite' },
+            client
+          );
+        } else {
+          await client.query(`UPDATE stations SET entitlement='lite' WHERE id=$1`, [pumpiniOutletId]);
+        }
 
         // 2) The global "Lite — SO Tile" responsibility (module vawe.proof). Seeded
         //    once per environment; if it's missing the caller must seed it first.
@@ -180,7 +195,7 @@ router.post('/provision-lite', async (req, res, next) => {
         }
 
         await client.query('COMMIT');
-        return { provisioned };
+        return { provisioned, stationId: pumpiniOutletId };
       } catch (e) {
         try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
         throw e;
@@ -189,7 +204,7 @@ router.post('/provision-lite', async (req, res, next) => {
       }
     });
 
-    if (result.notFound)   return res.status(400).json({ error: 'Unknown outlet' });
+    if (result.needName)   return res.status(400).json({ error: 'name is required to create a new outlet' });
     if (result.noTemplate) return res.status(503).json({ error: '"Lite — SO Tile" responsibility not seeded yet' });
 
     // The outlet's entitlement changed → drop every cached perm for it so the lite
@@ -199,7 +214,9 @@ router.post('/provision-lite', async (req, res, next) => {
       `VAWE provision-lite: outlet ${pumpiniOutletId} → lite; provisioned ` +
       `${result.provisioned.map(p => p.role).join(', ') || 'none'}`
     );
-    res.json({ ok: true, entitlement: 'lite', provisioned: result.provisioned });
+    // Return the resolved Pumpini station id so VAWE can confirm the deterministic
+    // mapping (it equals the id VAWE sent).
+    res.json({ ok: true, entitlement: 'lite', pumpiniOutletId: result.stationId, provisioned: result.provisioned });
   } catch (err) {
     // createUser throws { status, message } for bad input (invalid phone, dup, …).
     if (err.status) return res.status(err.status).json({ error: err.message });
