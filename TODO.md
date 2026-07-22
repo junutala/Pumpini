@@ -423,3 +423,22 @@ the moment his readings are recorded — no waiting for the rest.
       (he goes live via the existing `/assign` → `/shifts/active` path), then finishes.
       **Pending staging test.**
 - [ ] (later, if wanted) make the Dipstick step skippable at start too.
+
+## 18. Pumpini Lite — SO voice-recording playback in the SO-Instruction drawer (2026-07-22) — 🔴 next up
+
+**Agreed design ("SO voice replay per role"): the manager should hear the SO's task in
+the SO's OWN voice; an escalated owner hears the owner message.** Today the Lite
+SO-Instruction drawer (`SoInstructionsTile` → `InteractionDrawer`) shows the text,
+commit-by date, Proof (photo/upload) and Mark-complete — but there is **no audio
+player**. Missing feature, confirmed on staging 2026-07-22 (Vawe 5 manager on `/lite`).
+
+To wire tomorrow (cross-repo — verify the exact flow first, don't assume):
+- **VAWE side:** the interaction/recording has the SO's voice (the same WAV VAWE plays
+  on the escalation call). Confirm whether the interaction push to Pumpini
+  (`/api/vawe/interactions`) already carries an audio URL; if not, add it (per-role:
+  manager = task recording, escalated owner = owner message).
+- **Pumpini side:** store/carry the audio URL on `vawe_interactions`, expose it on the
+  GET, and render an **audio player** in the drawer (role-aware). Public/ signed URL
+  the manager can play without extra auth (like the artifact URL pattern).
+- Everything else in the Lite loop (provision → land on /lite → tile → commit → proof →
+  complete → FULFILMENT) is validated on staging as of 2026-07-22.
