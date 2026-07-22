@@ -191,3 +191,81 @@ VAWE. The production access-model PR ships the **framework**; VAWE consumes it l
   `plans` / `station_subscriptions` tables.
 - Frontend landing/redirect pattern: `frontend/src/app/dashboard/page.js` (attendant check).
 - Superadmin UI (de-conflate Role vs Responsibility): `frontend/src/app/admin/page.js`.
+
+---
+
+## 10. Build spec — finalized against real outlets (2026-07-22)
+
+Validated live against **Kamala** (one manager does all ops, no attendants),
+**Highway+Adhoc** (one manager, two standalone outlets), and **Vizag** (attendants do
+settlement on mobile; a multi-outlet accountant verifies + records receipts/deposits at HO).
+
+### 10.1 Functions (catalog changes)
+- **Promote `settlement.enter` to a first-class module** — the rich settlement workflow
+  (closing cash / card / UPI / overflow → pick credit customers + amounts → submit →
+  printable report for the cash cover). Today it is special-cased (geofence + own-line);
+  make it an assignable, `requirePerm`-gated module, keeping geofence/own-line as extra
+  runtime checks. It **covers credit-customer capture** — attendants need nothing else.
+- **Consolidate the duplicate** `dashboard.group` + `group.view` → keep **`group.view`**
+  (Group Dashboard); migrate any template on `dashboard.group`.
+- **Catalog-driven matrix:** the responsibility editor renders from `permission_modules`.
+  A new function **auto-appears** in the matrix — the only manual step is gating its own
+  screen/endpoints on its code. Never hand-maintain the matrix.
+
+### 10.2 Role-affinity guardrails (locked; enforced in editor **and** backend)
+| Function / capability | Assignable only to |
+|---|---|
+| `dispense.entry` / `dispense.view` (per-sale POS) | **attendant** |
+| financials / margin (role-level, not a module) | **owner** |
+| `group.view` (Group Dashboard) | **owner** |
+| `users.manage` | **owner** / platform-admin |
+| create / edit / assign responsibilities & functions | **platform-admin** (v1; owners deferred) |
+Attendant also: **own-outlet + own-shift scope, no margins.** Everything else (`shifts.manage`,
+`settlement.enter`, deliveries, deposits, invoice, reconcile, stock, dipstick, attendance,
+corporate, reports, alerts, prices, lubes, settings, tally, ai_chat, attendant.add,
+dashboard.view) is **freely composable**.
+
+### 10.3 Canonical responsibilities (starter set; fully editable by platform-admin)
+- **Owner — Full:** all operational + `group.view` + margins + `users.manage`. Scope = group.
+- **Owner — Oversight:** `group.view` + `cash.integrity` + `ai_chat.use` (+ margins via role). [= today's `Owner_lite`]
+- **Manager — Operations:** `shifts.manage, settlement.enter, deliveries.view, deposits.manage, invoice.generate, reconcile.manage, reconcile.view, stock.reconcile, dipstick.entry, dipstick.view, attendance.manage, attendance.view, corporate.view, corporate.manage, reports.view, reports.export, alerts.view, prices.manage, lubes.manage, settings.manage, attendant.add, ai_chat.use, dashboard.view` — **no POS, no margins/group/users.**
+- **Attendant — Settlement:** `settlement.enter` (own-scope). [Vizag]
+- **Attendant — Settlement + POS:** `settlement.enter, dispense.entry, dispense.view`. [POS outlets]
+- **Accountant:** `deposits.manage, corporate.manage, corporate.view, reconcile.view, reports.view, reports.export, tally.export, alerts.view, dashboard.view`. [Vizag; multi-outlet]
+- **Cashier / RSA:** `dispense.entry, dispense.view, corporate.view, dashboard.view`.
+- **Viewer:** `dashboard.view, reports.view`.
+- _(Track B / staging only)_ **SO-tile-only:** `vawe.proof` (new module).
+
+### 10.4 Current → target mapping + backfill (behaviour-preserving)
+- `Manager_lite` (9 outlets) → **Manager — Operations** — **adds `shifts.manage` + `settlement.enter`** (preserves today's role-granted shift capability) and **drops `dispense.entry`** (POS now attendant-only; confirmed no manager does per-sale POS).
+- `Owner_lite` (5) → **Owner — Oversight** (behaviour-preserving; upgrade specific owners to Owner — Full on request).
+- `Station Manager`/`Manager_New` → **Manager — Operations**; `Station Owner` → **Owner — Full**; `Accountant` → **Accountant**; `Cashier / RSA`/`POS operator` → **Cashier / RSA**; `Senior Attendant` → **Attendant — Settlement (+POS)**; `Viewer` → **Viewer**.
+- **🔴 Backfill the 36 users with NO responsibility** with the canonical responsibility equal
+  to their role's current effective default (owner→Owner — Full [today = ALL]; manager→
+  Manager — Operations; attendant→Attendant — Settlement; accountant→Accountant; cco→CCO;
+  rsa→Cashier/RSA). **Done BEFORE flipping any gate** → access is identical the instant
+  responsibility becomes the sole gate. This is the safety-critical step.
+
+### 10.5 Entitlement
+- Add `stations.entitlement` (`lite|pumpini`, default `pumpini`). Set all 9 current outlets =
+  `pumpini`. Retire multi-tier `plans` / `station_subscriptions` gating.
+  `Effective = Responsibility ∩ Entitlement` (`lite` caps to the SO tile — Track B).
+
+### 10.6 Execution order (Track A: staging → then PROD; NO VAWE code)
+1. `config/roles.js` role registry (role → category `operational|restricted` → default
+   responsibility) + the guardrail map (§10.2). Retire fat `roleDefaults`.
+2. Promote `settlement.enter`; consolidate `group.view` (gated SQL, owner-run on staging).
+3. Seed canonical responsibility templates (one source of truth); **backfill every user** (§10.4).
+4. Add binary `stations.entitlement`; migrate; retire plan gating.
+5. Flip function routes `authorize(role) → requirePerm(module)`; **close the membership-only
+   money leaks** (`dashboard/owner`, `margin`, `cash-integrity`); enforce role-affinity
+   guardrails; **lock responsibility CRUD to platform-admin** (fixes the escalation gap).
+6. Frontend: render sidebar + **landing from effective modules**; responsibility-driven
+   redirect; de-conflate Role vs Responsibility in `/admin`.
+7. **Smoke-test as each real persona** — Kamala mgr, Adhoc mgr (both outlets), Vizag
+   attendant, Vizag accountant, owner — incl. hitting a money endpoint as an attendant →
+   expect **403**. Validate on staging → **this framework PR only → production.**
+
+### 10.7 Still to verify before the PROD PR
+- Prod `station_users` shape (staging has no `role` column; the prod snapshot showed one).
+- Any manager currently relying on `dispense.entry` (POS) who would lose it (expected none).
