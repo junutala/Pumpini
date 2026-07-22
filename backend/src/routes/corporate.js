@@ -2,10 +2,18 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const {
   requireStationAccess, requireCorporateAccess,
   getAccessibleStationIds, canAccessStation, canAccessCorporate,
 } = require('../middleware/stationAccess');
+
+// Gating note: responsibility (requirePerm) is per-(user,station), so it can only
+// gate a route that resolves a station. The station-scoped writes below (link /
+// update-link) are responsibility-gated on `corporate.manage`. The account-level
+// routes (create master, edit master, merge, duplicates, drivers, cross-station
+// list) have no single station context, so they stay role-gated to the roles that
+// hold corporate.manage (owner / manager / cco) — same effective access.
 
 // ── Duplicate check helper ──────────────────────────────────
 // stationIds scopes the search to the caller's own outlets: the same real-world
@@ -231,7 +239,7 @@ router.patch('/:id', authenticate, authorize('owner','manager','cco'), requireCo
 // ── Station links ───────────────────────────────────────────
 
 // POST /api/corporate/:id/links — link to a station
-router.post('/:id/links', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/:id/links', authenticate, requireCorporateAccess(), requireStationAccess({ required: true }), requirePerm('corporate.manage'), async (req, res, next) => {
   try {
     const { station_id, credit_limit, payment_terms = 30 } = req.body;
     const { rows } = await pool.query(
@@ -267,7 +275,7 @@ router.get('/:id/links', authenticate, requireCorporateAccess(), async (req, res
 });
 
 // PATCH /api/corporate/:id/links/:station_id — update link
-router.patch('/:id/links/:station_id', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), requireStationAccess({ required: true }), async (req, res, next) => {
+router.patch('/:id/links/:station_id', authenticate, requireCorporateAccess(), requireStationAccess({ required: true }), requirePerm('corporate.manage'), async (req, res, next) => {
   try {
     const { credit_limit, payment_terms, is_active } = req.body;
     const { rows } = await pool.query(

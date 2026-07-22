@@ -46,28 +46,23 @@ const roleDefaults = {
     'dashboard.view','reconcile.view',
     'corporate.view','corporate.manage','invoice.generate',
     'reports.view','tally.export','deposits.manage','pettycash.manage','alerts.view',
+    'lubes.manage',   // credit-note / product-return settlement (was role-granted; kept)
   ],
 };
 
 // The outlet's plan feature modules, or null if the plan isn't configured with
 // recognised module codes (→ fail open).
 async function getPlanModules(stationId, catalog) {
+  // Binary outlet entitlement REPLACES multi-tier plans (docs/access-model-cleanup.md).
+  //   'pumpini' (paid) → uncapped (null). 'lite' (free) → capped to the minimal free
+  //   surface (Track B / VAWE expands this). Column-tolerant: a missing column reads
+  //   as pumpini (uncapped), never a 500.
   if (!stationId) return null;
   try {
-    const { rows: sub } = await pool.query(
-      `SELECT plan FROM station_subscriptions
-         WHERE station_id=$1 AND COALESCE(status,'active')='active'
-           AND (end_date IS NULL OR end_date >= CURRENT_DATE)
-         ORDER BY start_date DESC NULLS LAST LIMIT 1`, [stationId]);
-    if (!sub.length || !sub[0].plan) return null;
-    const { rows: pl } = await pool.query(
-      'SELECT features FROM plans WHERE LOWER(name)=LOWER($1) LIMIT 1', [sub[0].plan]);
-    if (!pl.length || pl[0].features == null) return null;
-    let features = pl[0].features;
-    if (typeof features === 'string') { try { features = JSON.parse(features); } catch { return null; } }
-    if (!Array.isArray(features)) return null;
-    const mods = features.filter(f => catalog.includes(f)); // ignore free-text features
-    return mods.length ? mods : null;
+    const { rows } = await pool.query('SELECT entitlement FROM stations WHERE id=$1', [stationId]);
+    const ent = (rows[0] && rows[0].entitlement) || 'pumpini';
+    if (ent === 'lite') return ['dashboard.view'];
+    return null;
   } catch { return null; }
 }
 
@@ -127,7 +122,9 @@ function clearStationPermCache(stationId) {
 
 const requirePerm = (module) => async (req, res, next) => {
   try {
-    const stationId = req.query.station_id || req.body.station_id || req.params.station_id;
+    // req.stationId is set by requireStationAccess / requireStationVia (which resolve
+    // the station from a resource id), so requirePerm must run AFTER the station guard.
+    const stationId = req.query.station_id || req.body.station_id || req.params.station_id || req.stationId;
     if (!stationId) return next();
     const perms = await getUserPermissions(req.user.id, stationId);
     if (!perms.includes('ALL') && !perms.includes(module)) {

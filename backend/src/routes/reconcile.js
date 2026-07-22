@@ -1,8 +1,9 @@
 // src/routes/reconcile.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -167,8 +168,9 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
 //   cash_value   = sales_value − card − UPI − credit(already logged)
 //   expected_cash= opening_cash + cash_value
 //   variance     = counted_cash − expected_cash   (shortage<0 alerts; overage>0 silent)
-router.post('/manager', authenticate, authorize('owner', 'manager'),
+router.post('/manager', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
     const {
       shift_id, attendant_id, closing_reading, closings, price_per_ltr,
@@ -602,7 +604,7 @@ router.get('/:shift_id', authenticate, requireStationVia('SELECT station_id FROM
 });
 
 // PATCH /api/reconcile/:id/confirm — manager confirms receipt, NOW reveals totals
-router.patch('/:id/confirm', authenticate, authorize('owner','manager'), requireStationVia('SELECT s.station_id FROM shift_reconciliation r JOIN shifts s ON s.id=r.shift_id WHERE r.id=$1', 'id'), async (req, res, next) => {
+router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_id FROM shift_reconciliation r JOIN shifts s ON s.id=r.shift_id WHERE r.id=$1', 'id'), requirePerm('reconcile.manage'), async (req, res, next) => {
   try {
     const { dispute_type, dispute_notes } = req.body;
 
@@ -657,8 +659,9 @@ router.patch('/:id/confirm', authenticate, authorize('owner','manager'), require
 // POST /api/reconcile/operator-cash — record one operator's collections.
 // Creates the shift_reconciliation row the shift close requires. No meter math
 // here (that's shift-level); per-operator variance is not computed in this mode.
-router.post('/operator-cash', authenticate, authorize('owner','manager'),
+router.post('/operator-cash', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
   try {
     const { shift_id, attendant_id, cash_total = 0, card_total = 0, upi_total = 0 } = req.body;
@@ -689,8 +692,9 @@ router.post('/operator-cash', authenticate, authorize('owner','manager'),
 // POST /api/reconcile/shift-meters — save per-nozzle closing meters, derive wet
 // sales (opening = the prior shift's closing for that nozzle), synthesize the wet
 // sales into dispense_events (fuel-wise) for dashboards, and return the recon.
-router.post('/shift-meters', authenticate, authorize('owner','manager'),
+router.post('/shift-meters', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
   const { shift_id, readings = [], fuel_credit = 0 } = req.body;
   if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
@@ -793,8 +797,11 @@ router.post('/shift-meters', authenticate, authorize('owner','manager'),
 // POST /api/reconcile/pos-meter — attendant captures a nozzle's totalizer from
 // the POS. OCR via Claude, store the image, and record it as the OPENING (if none
 // yet for this shift+nozzle) or the CLOSING, flagging a handover mismatch on open.
-router.post('/pos-meter', authenticate, authorize('owner','manager','attendant'),
+// Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
+// gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
+router.post('/pos-meter', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('settlement.enter'),
   async (req, res, next) => {
   const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
   if (!shift_id || !nozzle_id || !image_base64) return res.status(400).json({ error: 'shift_id, nozzle_id and image are required' });
@@ -860,8 +867,9 @@ router.post('/pos-meter', authenticate, authorize('owner','manager','attendant')
 // at shift start, and flag any that don't match the prior shift's closing for
 // that nozzle (the two-party handover check: this operator's opening should
 // equal the previous operator's closing).
-router.post('/shift-opening-meters', authenticate, authorize('owner','manager'),
+router.post('/shift-opening-meters', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
   const { shift_id, readings = [] } = req.body;
   if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
@@ -906,8 +914,9 @@ router.post('/shift-opening-meters', authenticate, authorize('owner','manager'),
 // POST /api/reconcile/ocr-meter — read a fuel-pump totalizer photo via Claude
 // vision, store the image for audit, return the extracted digits. The manager
 // confirms the number on screen; legible=false means "verify before trusting".
-router.post('/ocr-meter', authenticate, authorize('owner','manager'),
+router.post('/ocr-meter', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
   try {
     const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
@@ -971,8 +980,9 @@ Respond with ONLY a JSON object, nothing else:
 }
 Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
 
-router.post('/parse-slip', authenticate, authorize('owner', 'manager'),
+router.post('/parse-slip', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
   async (req, res, next) => {
   try {
     const { shift_id, image_base64, media_type = 'image/jpeg' } = req.body;

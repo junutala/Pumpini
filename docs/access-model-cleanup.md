@@ -278,12 +278,38 @@ dashboard.view) is **freely composable**.
 - `backend/src/config/roles.js` — role registry + `MODULE_ROLE_AFFINITY` guardrails.
 - `backend/src/routes/dashboard.js` — **money-leak closed:** `/margin` + `/cash-integrity` now `authorize('owner')` (were membership-only). `/dashboard/owner` left shared (managers use it — NOT a leak).
 
-**REMAINING (the enforcement flip — the large, coupled slice; do next, test each):**
-1. `permissions.js` — swap the retired plan ceiling for `stations.entitlement`; add the `moduleAllowedForRole` guardrail check into the (superadmin) assign path; default-deny fallback.
-2. Flip the ~70 `authorize(role)` function routes → `requirePerm(module)` (per-file module map in §10.2/§10.3). Behaviour-preserving given the backfill.
-3. **Lock responsibility CRUD to `/admin` only** — remove the tenant `templates.js` create/edit/assign routes AND the tenant pages (`app/templates`, `app/users/templates`); keep the superadmin editor.
-4. Frontend: `/auth/me` (or a per-station `/auth/permissions`) returns effective modules; Sidebar filters on them (already `perm:`-tagged); responsibility-driven landing.
-5. Group-scoped users (owner/cco reach stations via `owner_group_members`, not `station_users`) — resolve their responsibility across the group.
+**DONE (enforcement flip — code, `node --check` clean; staging deploy):**
+1. `permissions.js` — plan ceiling replaced by `stations.entitlement` (`lite`→`['dashboard.view']`,
+   `pumpini`→uncapped; column-tolerant). `requirePerm` reads `req.stationId` (set by the station
+   guards in `stationAccess.js`) so it works on `requireStationVia`/`requireStationId` routes too.
+2. **Function routes flipped `authorize(role) → requirePerm(module)`** where a station context
+   exists (so responsibility, which is per-(user,station), can resolve). Placed AFTER the station
+   guard. Files: shifts, deliveries, cashDeposits, pettyCash, invoices, prices, tally,
+   creditReports, tankReco, reconcile, rfid, receipts, productReturns, stations (settings/nozzles/
+   tanks), corporate (`/links`), users (`/attendant`). Module map per §10.2/§10.3.
+   - `reconcile /pos-meter` → `settlement.enter` (attendant flow), the rest → `reconcile.manage`.
+   - `productReturns /` → `lubes.manage` (added to CCO fallback to preserve), `/credit-adjustment`
+     → `corporate.manage`. `receipts` → `corporate.manage`.
+   - **Kept role-gated ON PURPOSE** (no single station context → responsibility can't resolve, OR a
+     §5 guardrail): `stations POST /` + owner-only settings (stock-tolerance / blind-drop-mode /
+     deposit-alert / tank DELETE); `groups` (owner — group.view affinity); `dispense /:id/void`
+     (owner); `corporate` account-level routes (all, create, edit, merge, duplicates, drivers);
+     `users` list + attendant-lifecycle (GET /users is the Start-Shift operator-picker hot path;
+     these grant no permissions, so not the escalation surface); `whatsapp /send` (no station).
+3. **Responsibility CRUD locked to `/admin` only** — tenant `templates.js` create/edit/delete/assign
+   REMOVED (reads kept for display); tenant pages `app/templates` + `app/users/templates` deleted;
+   Sidebar `responsibilities` link removed. Superadmin editor unchanged and now enforces the
+   `moduleAllowedForRole` affinity guardrail at ASSIGN time (422 on violation).
+4. Frontend already module-driven: `usePermissions` fetches effective modules via
+   `/templates/user-permissions` (kept) and the Sidebar filters on `can(perm)`. Landing keeps the
+   role→`/settlement` redirect for attendants (covers all real personas; a fully perms-driven
+   redirect is deferred — it would bounce a manager to settlement on a transient perms-fetch error).
+
+**STILL OPEN (follow-ups, not blocking the staging test):**
+- Group-scoped users (owner/cco reach stations via `owner_group_members`) resolve their
+  responsibility via the role/CCO fallback (no per-station assignment row) — verify on staging.
+- Fully responsibility-driven landing (dashboard.view absent → allowed home) once the perms-fetch
+  failure mode is made non-bouncing.
 
 **⚠️ Reproduce on PROD (gated SQL, owner-run) — the exact staging data steps:**
 `ALTER TABLE stations ADD COLUMN IF NOT EXISTS entitlement text NOT NULL DEFAULT 'pumpini';`

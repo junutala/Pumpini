@@ -2,6 +2,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationId } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
 // Outbound integration: push the outlet to VAWE on create/update. Fire-and-forget
 // so a VAWE outage can never break an outlet save.
 const { queueOutletSync } = require('../services/vaweService');
@@ -59,7 +60,7 @@ router.get('/:id/nozzles', authenticate, requireStationId('id'), async (req, res
 module.exports = router;
 
 // POST /api/stations/:id/settings
-router.post('/:id/settings', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { gstn, pan, tan, address, city, state, pincode, owner_whatsapp, owner_email,
             variance_threshold, invoice_prefix,
@@ -85,7 +86,7 @@ router.post('/:id/settings', authenticate, authorize('owner','manager'), require
 });
 
 // POST /api/stations/:id/nozzles
-router.post('/:id/nozzles', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { nozzle_number, fuel_type, tank_id } = req.body;
     const { rows } = await pool.query(
@@ -97,7 +98,7 @@ router.post('/:id/nozzles', authenticate, authorize('owner','manager'), requireS
 });
 
 // PATCH /api/stations/:id/nozzles/:nozzle_id
-router.patch('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.patch('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { nozzle_number, fuel_type, tank_id, is_active } = req.body;
     const { rows } = await pool.query(
@@ -114,7 +115,7 @@ router.patch('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager
 });
 
 // DELETE /api/stations/:id/nozzles/:nozzle_id
-router.delete('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.delete('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     await pool.query('DELETE FROM nozzles WHERE id=$1 AND station_id=$2',
       [req.params.nozzle_id, req.params.id]);
@@ -123,7 +124,7 @@ router.delete('/:id/nozzles/:nozzle_id', authenticate, authorize('owner','manage
 });
 
 // PATCH /api/stations/:id/settings
-router.patch('/:id/settings', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.patch('/:id/settings', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { name, address, state, city, pincode, oil_company, gstn, pan,
             owner_whatsapp, invoice_prefix } = req.body;
@@ -240,7 +241,7 @@ router.get('/:id/tanks', authenticate, requireStationId('id'), async (req, res, 
 });
 
 // POST /api/stations/:id/tanks
-router.post('/:id/tanks', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.post('/:id/tanks', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
     const calibration_chart_id = req.body.calibration_chart_id || null;
@@ -254,7 +255,7 @@ router.post('/:id/tanks', authenticate, authorize('owner','manager'), requireSta
 });
 
 // PATCH /api/stations/:id/tanks/:tank_id
-router.patch('/:id/tanks/:tank_id', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
+router.patch('/:id/tanks/:tank_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
     // Only touch calibration when the field is actually sent; null then means "clear to manual".
