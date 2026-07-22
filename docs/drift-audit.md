@@ -36,7 +36,38 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
 - `/reconcile/operator-cash|shift-meters|shift-opening-meters` (no UI — dead `mgr_cash` flow). TODO.
 - `handleAdd('__last__')` stale fn in `/users`. **REMOVED (slice 1).**
 
+## Final status (2026-07-22)
+
+**DONE + on staging:**
+- A1 register hole, A6 edit-role no-op, A7 attendant default — slice 1.
+- A2 geofence data-loss (partial COALESCE upsert).
+- A3 plan toggle now drives `stations.entitlement`.
+- A5 credit-limit one-column (dropped vestigial `corporate_accounts.credit_limit` write).
+- Create user/attendant: ONE writer (`userService.createUser`) for **every** path —
+  tenant `POST /users` + `/users/attendant` AND the superadmin creators
+  (`/owners`, `/cco`, `/station-users`, bulk `/attendants`). Phone normalizer unified.
+- Dead code removed: `/auth/register`, tenant `POST /stations`, the three dead
+  `mgr_cash` reconcile endpoints (operator-cash, shift-meters, shift-opening-meters),
+  the `handleAdd('__last__')` stub, and a `DELETE /station-users` double-response.
+
+**DELIBERATELY NOT refactored (reasoned):**
+- **Password-reset (multi-path) & deactivate (multi-path):** verified to be *identical
+  trivial one-liners* (`bcrypt.hash(pw,12)` / `is_active=`) with NO divergent logic — so
+  no drift-bug exists. They live inside working multi-field PATCH handlers used by the 3
+  LIVE outlets; routing them through a shared helper is pure DRY that adds regression risk
+  for zero fix. Left as-is by design (the one-writer rule is applied where logic genuinely
+  diverged — CREATE).
+- **Edit-station core (2 writers):** both are now COALESCE-safe partial upserts (A2 style)
+  writing the same columns — no divergence/data-loss. Full unification is optional cleanup.
+
+**DEFERRED (needs its own careful change, NOT rushed):**
+- **A4 settlement — two meter tables of record → one.** A schema/data-model migration on
+  money-critical settlement; scoped as its own PR with a data migration, not a form merge.
+- **`/dispense` broken manager-settle path:** a 403 dead UI path (not data-corrupting);
+  removal needs whole-page rework — low value.
+
 ## Slice log
-- **Slice 1 (this PR):** single user-writer (`userService`), removed `/auth/register` hole,
-  shared `utils/phone`, attendant default = settlement, Edit-User role read-only,
-  `/users` Add → one `POST /users` call. + this doc + the CLAUDE.md rule.
+- **Slice 1 (PR #172, merged):** single user-writer, removed `/auth/register`, shared
+  `utils/phone`, attendant default = settlement, Edit-User role read-only, `/users` Add → one call.
+- **Slices 2-6 (this PR):** A2 geofence, admin creators → one writer, A3 entitlement, A5
+  credit-limit, dead-code removal.
