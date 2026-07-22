@@ -61,7 +61,7 @@ export default function LitePage() {
 
       <main style={{ maxWidth:680, margin:'0 auto', padding:'1.25rem 1rem' }}>
         {stationId
-          ? <SoInstructionsTile stationId={stationId} />
+          ? <SoInstructionsTile stationId={stationId} standalone />
           : <div style={{ textAlign:'center', color:'var(--text-3,#94a3b8)', padding:'3rem 1rem' }}>No outlet linked to your account yet.</div>}
       </main>
     </div>
