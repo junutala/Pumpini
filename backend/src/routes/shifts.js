@@ -3,6 +3,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 
 // GET /api/shifts
@@ -103,7 +104,7 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
 });
 
 // POST /api/shifts  — open a new shift
-router.post('/', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('shifts.manage'), async (req, res, next) => {
   try {
     const { station_id, shift_number, date } = req.body;
     const { rows: existing } = await pool.query(
@@ -130,8 +131,8 @@ router.post('/', authenticate, authorize('owner','manager'), requireStationAcces
 // stray, never the real working shift. Also refuses if any real activity exists
 // (sales, reconciliation, invoices, deliveries, suspense). Cleans up the orphan's
 // opening dips (dipstick_readings doesn't cascade); the rest cascade on delete.
-router.delete('/:id', authenticate, authorize('owner','manager'),
-  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
+router.delete('/:id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
+  requirePerm('shifts.manage'),
   async (req, res, next) => {
     const client = await pool.connect();
     try {
@@ -174,7 +175,7 @@ router.delete('/:id', authenticate, authorize('owner','manager'),
   });
 
 // POST /api/shifts/:id/assign  — add attendant to shift
-router.post('/:id/assign', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
+router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), requirePerm('shifts.manage'), async (req, res, next) => {
   try {
     const {
       attendant_id, rfid_tag_id, nozzle_id,
@@ -312,13 +313,13 @@ router.get('/:id/nozzle-openings', authenticate,
 });
 
 // Keep old route for backwards compatibility
-router.post('/:id/assign-rfid', authenticate, authorize('owner','manager'), async (req, res, next) => {
+router.post('/:id/assign-rfid', authenticate, async (req, res, next) => {
   req.url = `/${req.params.id}/assign`;
   next('route');
 });
 
 // PATCH /api/shifts/:id/close
-router.patch('/:id/close', authenticate, authorize('owner','manager'), requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
+router.patch('/:id/close', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), requirePerm('shifts.manage'), async (req, res, next) => {
   try {
     // Count attendants who have NOT yet submitted reconciliation for this shift
     const { rows: pending } = await pool.query(
@@ -402,7 +403,7 @@ router.get('/definitions/:station_id', authenticate, requireStationAccess(), asy
 });
 
 // POST /api/shifts/definitions — save shift definitions
-router.post('/definitions', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/definitions', authenticate, requireStationAccess({ required: true }), requirePerm('shifts.manage'), async (req, res, next) => {
   try {
     const { station_id, shifts } = req.body;
     for (const s of shifts) {

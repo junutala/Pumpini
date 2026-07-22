@@ -4,6 +4,17 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/responsibilities');
+// Role-affinity guardrails (docs/access-model-cleanup.md §10.2): even the admin
+// console cannot assign a role-locked module to the wrong role (e.g. POS to a
+// manager, Group Dashboard to a non-owner). Enforced at ASSIGN time, where the
+// target user's role is known.
+const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles');
+// Single user-writer (one insert path for every creator — tenant + admin).
+const { createUser, linkUserToStation } = require('../services/userService');
+// Retired multi-tier plans map to the binary access ceiling: only 'lite' caps to
+// the SO tile; everything else is uncapped 'pumpini'. Keeps the admin Plan toggle
+// as the thing that actually drives `stations.entitlement` (the real gate).
+const planToEntitlement = (plan) => (String(plan || '').toLowerCase().includes('lite') ? 'lite' : 'pumpini');
 
 const authAdmin = (req, res, next) => {
   const header = req.headers.authorization;
@@ -176,34 +187,28 @@ router.get('/owners', authAdmin, async (req, res, next) => {
 });
 
 router.post('/owners', authAdmin, async (req, res, next) => {
+  const { name, phone, email, password, group_id } = req.body;
+  const client = await pool.connect();
   try {
-    const { name, phone, email, password, group_id } = req.body;
-    // Format phone: accept 10 digits, store as +91XXXXXXXXXX
-    const cleanPhone = phone.replace(/\D/g,'');
-    const storedPhone = cleanPhone.startsWith('91') ? `+${cleanPhone}` : `+91${cleanPhone}`;
-    const hash = await bcrypt.hash(password || 'Welcome@123', 12);
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const { rows } = await client.query(
-        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
-         VALUES($1,$2,$3,$4,'owner',TRUE) RETURNING *`,
-        [name, storedPhone, email||null, hash]
+    await client.query('BEGIN');
+    const user = await createUser(
+      { name, phone, email, password: password || 'Welcome@123', role: 'owner', mustChangePassword: true },
+      client
+    );
+    if (group_id) {
+      await client.query(
+        'INSERT INTO owner_group_members(group_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+        [group_id, user.id, 'admin']
       );
-      if (group_id) {
-        await client.query(
-          'INSERT INTO owner_group_members(group_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
-          [group_id, rows[0].id, 'admin']
-        );
-      }
-      await client.query('COMMIT');
-      res.status(201).json(rows[0]);
-    } catch(e){ await client.query('ROLLBACK'); throw e; }
-    finally{ client.release(); }
-  } catch (err) {
-    if (err.code==='23505') return res.status(409).json({ error:'Phone number already registered' });
-    next(err);
-  }
+    }
+    await client.query('COMMIT');
+    res.status(201).json(user);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* dead conn */ }
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    if (e.code === '23505') return res.status(409).json({ error: 'Phone number already registered' });
+    next(e);
+  } finally { client.release(); }
 });
 
 // Create a CCO (Central Cash Office) user and attach them to an owner group, so
@@ -212,27 +217,26 @@ router.post('/owners', authAdmin, async (req, res, next) => {
 router.post('/cco', authAdmin, async (req, res, next) => {
   try {
     const { name, phone, email, password, group_id } = req.body;
-    if (!name || !phone || !group_id) return res.status(400).json({ error: 'name, phone and group_id are required.' });
-    const cleanPhone = phone.replace(/\D/g, '');
-    const storedPhone = cleanPhone.startsWith('91') ? `+${cleanPhone}` : `+91${cleanPhone}`;
-    const hash = await bcrypt.hash(password || 'Welcome@123', 12);
+    if (!group_id) return res.status(400).json({ error: 'group_id is required.' });
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const { rows } = await client.query(
-        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
-         VALUES($1,$2,$3,$4,'cco',TRUE) RETURNING *`,
-        [name, storedPhone, email || null, hash]
+      const user = await createUser(
+        { name, phone, email, password: password || 'Welcome@123', role: 'cco', mustChangePassword: true },
+        client
       );
       await client.query(
         'INSERT INTO owner_group_members(group_id,user_id,role) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
-        [group_id, rows[0].id, 'cco']
+        [group_id, user.id, 'cco']
       );
       await client.query('COMMIT');
-      res.status(201).json(rows[0]);
-    } catch (e) { await client.query('ROLLBACK'); throw e; }
-    finally { client.release(); }
+      res.status(201).json(user);
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch { /* dead conn */ }
+      throw e;
+    } finally { client.release(); }
   } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
     if (err.code === '23505') return res.status(409).json({ error: 'Phone number already registered' });
     next(err);
   }
@@ -526,6 +530,9 @@ router.post('/station-subscriptions', authAdmin, async (req, res, next) => {
        VALUES($1,$2,$3,$4,$5) RETURNING *`,
       [station_id, plan, status, start_date || new Date().toISOString().slice(0,10), end_date||null]
     );
+    // A3: the plan toggle now DRIVES the real access ceiling. permissions.js gates on
+    // stations.entitlement (not station_subscriptions.plan), so keep them in lockstep.
+    await pool.query('UPDATE stations SET entitlement=$1 WHERE id=$2', [planToEntitlement(plan), station_id]);
     try { require('../middleware/permissions').clearStationPermCache(station_id); } catch {}
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
@@ -553,7 +560,11 @@ router.patch('/station-subscriptions/:id', authAdmin, async (req, res, next) => 
         [rows[0].station_id, rows[0].plan, nextStart.toISOString().slice(0,10)]
       );
     }
-    if (rows[0]) { try { require('../middleware/permissions').clearStationPermCache(rows[0].station_id); } catch {} }
+    if (rows[0]) {
+      // Keep the entitlement ceiling in lockstep with the (possibly changed) plan.
+      await pool.query('UPDATE stations SET entitlement=$1 WHERE id=$2', [planToEntitlement(rows[0].plan), rows[0].station_id]);
+      try { require('../middleware/permissions').clearStationPermCache(rows[0].station_id); } catch {}
+    }
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
@@ -667,6 +678,23 @@ router.post('/templates/assign', authAdmin, async (req, res, next) => {
     const { user_id, template_id, station_id } = req.body;
     if (!user_id || !station_id) return res.status(400).json({ error: 'user_id and station_id are required' });
     if (template_id) {
+      // Role-affinity guardrail: a role-locked module can never be assigned to a
+      // user whose role isn't allowed to hold it — even from the admin console.
+      const { rows: urows } = await pool.query('SELECT role FROM users WHERE id=$1', [user_id]);
+      const role = urows[0]?.role;
+      if (role) {
+        const { rows: mrows } = await pool.query(
+          'SELECT module_code FROM template_permissions WHERE template_id=$1', [template_id]);
+        const blocked = mrows
+          .map(r => r.module_code)
+          .filter(code => MODULE_ROLE_AFFINITY[code] && !moduleAllowedForRole(code, role));
+        if (blocked.length) {
+          return res.status(422).json({
+            error: `This responsibility includes ${blocked.join(', ')}, which cannot be held by a ${role}. ` +
+                   `Allowed roles: ${blocked.map(c => `${c} → ${MODULE_ROLE_AFFINITY[c].join('/')}`).join('; ')}.`,
+          });
+        }
+      }
       await pool.query(
         `INSERT INTO user_role_assignments(user_id,template_id,station_id)
          VALUES($1,$2,$3)
@@ -771,34 +799,25 @@ router.get('/station-users/:station_id', authAdmin, async (req, res, next) => {
 });
 
 router.post('/station-users', authAdmin, async (req, res, next) => {
+  const { station_id, name, phone, email, role = 'attendant', password } = req.body;
+  const client = await pool.connect();
   try {
-    const { station_id, name, phone, email, role='attendant', password } = req.body;
-    const bcrypt = require('bcryptjs');
-    const cleanPhone = phone.replace(/\D/g,'');
-    const storedPhone = cleanPhone.startsWith('91') ? `+${cleanPhone}` : `+91${cleanPhone}`;
-    const hash = await bcrypt.hash(password || 'Welcome@123', 12);
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      // must_change_password=TRUE: admin sets a starter password; the user is
-      // forced to set their own on first login (same as after Reset PW).
-      const { rows } = await client.query(
-        `INSERT INTO users(name,phone,email,password_hash,role,must_change_password)
-         VALUES($1,$2,$3,$4,$5,TRUE) RETURNING *`,
-        [name, storedPhone, email||null, hash, role]
-      );
-      await client.query(
-        'INSERT INTO station_users(station_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
-        [station_id, rows[0].id]
-      );
-      await client.query('COMMIT');
-      res.status(201).json(rows[0]);
-    } catch(e){ await client.query('ROLLBACK'); throw e; }
-    finally{ client.release(); }
-  } catch (err) {
-    if (err.code==='23505') return res.status(409).json({ error:'Phone number already registered' });
-    next(err);
-  }
+    await client.query('BEGIN');
+    // must_change_password=TRUE: admin sets a starter password; the user is
+    // forced to set their own on first login (same as after Reset PW).
+    const user = await createUser(
+      { name, phone, email, password: password || 'Welcome@123', role, mustChangePassword: true },
+      client
+    );
+    await linkUserToStation(station_id, user.id, client);
+    await client.query('COMMIT');
+    res.status(201).json(user);
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* dead conn */ }
+    if (e.status) return res.status(e.status).json({ error: e.message });
+    if (e.code === '23505') return res.status(409).json({ error: 'Phone number already registered' });
+    next(e);
+  } finally { client.release(); }
 });
 
 router.patch('/station-users/:id', authAdmin, async (req, res, next) => {
@@ -873,10 +892,13 @@ router.post('/credit-customers', authAdmin, async (req, res, next) => {
         if (ex.length) corpId = ex[0].id;
       }
       if (!corpId) {
-        // credit_limit defaults to 0 — the manager raises it later, like GSTN.
+        // A5: the per-outlet credit limit lives on corporate_station_links (what the
+        // reads use); the vestigial corporate_accounts.credit_limit (read nowhere) is
+        // no longer written, so tenant + admin agree on ONE column. Manager raises the
+        // link limit later, like GSTN.
         const { rows: c } = await client.query(
-          `INSERT INTO corporate_accounts(company_name, contact_phone, credit_limit)
-           VALUES($1,$2,0) RETURNING id`, [name, phone]);
+          `INSERT INTO corporate_accounts(company_name, contact_phone)
+           VALUES($1,$2) RETURNING id`, [name, phone]);
         corpId = c[0].id;
       }
       // Link to the outlet (idempotent without relying on a constraint name).
@@ -981,15 +1003,13 @@ router.post('/attendants', authAdmin, async (req, res, next) => {
         uid = ex[0].id;
         await client.query(`UPDATE users SET is_active=TRUE, end_date=NULL WHERE id=$1`, [uid]);
       } else {
-        const hash = await bcrypt.hash('Welcome@123', 12);   // dummy — attendants don't log in yet
-        const { rows: u } = await client.query(
-          `INSERT INTO users(name,phone,password_hash,role,must_change_password)
-           VALUES($1,$2,$3,'attendant',TRUE) RETURNING id`, [name, phone, hash]);
-        uid = u[0].id;
+        const u = await createUser(
+          { name, phone, password: 'Welcome@123', role: 'attendant', mustChangePassword: true },
+          client
+        );
+        uid = u.id;
       }
-      const { rows: lk } = await client.query(
-        `SELECT 1 FROM station_users WHERE station_id=$1 AND user_id=$2 LIMIT 1`, [station_id, uid]);
-      if (!lk.length) await client.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2)', [station_id, uid]);
+      await linkUserToStation(station_id, uid, client);
       created.push({ id: uid, name, phone });
     }
     await client.query('COMMIT');

@@ -7,6 +7,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
 
@@ -221,8 +222,7 @@ router.get('/shift/:shift_id', authenticate,
   });
 
 // POST /api/tank-reco/shift/:shift_id — compute + store + alert
-router.post('/shift/:shift_id', authenticate, authorize('owner', 'manager'),
-  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+router.post('/shift/:shift_id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), requirePerm('stock.reconcile'),
   async (req, res, next) => {
     try { res.json(await finalizeShiftReco(req.params.shift_id, req.user.id, req.io)); } catch (e) { next(e); }
   });
