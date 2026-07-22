@@ -266,6 +266,55 @@ dashboard.view) is **freely composable**.
    attendant, Vizag accountant, owner — incl. hitting a money endpoint as an attendant →
    expect **403**. Validate on staging → **this framework PR only → production.**
 
+### 10.8 Implementation status (2026-07-22)
+
+**DONE + verified on staging (data layer):**
+- `stations.entitlement` (`lite|pumpini`, all 9 outlets = `pumpini`).
+- `settlement.enter` promoted to a first-class module; `dashboard.group` consolidated → `group.view`.
+- **10 canonical GLOBAL responsibilities** seeded (`role_templates.station_id = NULL`, `is_system`).
+- **Backfill complete:** every station membership now resolves to a canonical responsibility (0 unassigned; the live `Manager_lite`/`Owner_lite`/ad-hoc templates re-mapped).
+
+**DONE (code, `node --check` clean):**
+- `backend/src/config/roles.js` — role registry + `MODULE_ROLE_AFFINITY` guardrails.
+- `backend/src/routes/dashboard.js` — **money-leak closed:** `/margin` + `/cash-integrity` now `authorize('owner')` (were membership-only). `/dashboard/owner` left shared (managers use it — NOT a leak).
+
+**DONE (enforcement flip — code, `node --check` clean; staging deploy):**
+1. `permissions.js` — plan ceiling replaced by `stations.entitlement` (`lite`→`['dashboard.view']`,
+   `pumpini`→uncapped; column-tolerant). `requirePerm` reads `req.stationId` (set by the station
+   guards in `stationAccess.js`) so it works on `requireStationVia`/`requireStationId` routes too.
+2. **Function routes flipped `authorize(role) → requirePerm(module)`** where a station context
+   exists (so responsibility, which is per-(user,station), can resolve). Placed AFTER the station
+   guard. Files: shifts, deliveries, cashDeposits, pettyCash, invoices, prices, tally,
+   creditReports, tankReco, reconcile, rfid, receipts, productReturns, stations (settings/nozzles/
+   tanks), corporate (`/links`), users (`/attendant`). Module map per §10.2/§10.3.
+   - `reconcile /pos-meter` → `settlement.enter` (attendant flow), the rest → `reconcile.manage`.
+   - `productReturns /` → `lubes.manage` (added to CCO fallback to preserve), `/credit-adjustment`
+     → `corporate.manage`. `receipts` → `corporate.manage`.
+   - **Kept role-gated ON PURPOSE** (no single station context → responsibility can't resolve, OR a
+     §5 guardrail): `stations POST /` + owner-only settings (stock-tolerance / blind-drop-mode /
+     deposit-alert / tank DELETE); `groups` (owner — group.view affinity); `dispense /:id/void`
+     (owner); `corporate` account-level routes (all, create, edit, merge, duplicates, drivers);
+     `users` list + attendant-lifecycle (GET /users is the Start-Shift operator-picker hot path;
+     these grant no permissions, so not the escalation surface); `whatsapp /send` (no station).
+3. **Responsibility CRUD locked to `/admin` only** — tenant `templates.js` create/edit/delete/assign
+   REMOVED (reads kept for display); tenant pages `app/templates` + `app/users/templates` deleted;
+   Sidebar `responsibilities` link removed. Superadmin editor unchanged and now enforces the
+   `moduleAllowedForRole` affinity guardrail at ASSIGN time (422 on violation).
+4. Frontend already module-driven: `usePermissions` fetches effective modules via
+   `/templates/user-permissions` (kept) and the Sidebar filters on `can(perm)`. Landing keeps the
+   role→`/settlement` redirect for attendants (covers all real personas; a fully perms-driven
+   redirect is deferred — it would bounce a manager to settlement on a transient perms-fetch error).
+
+**STILL OPEN (follow-ups, not blocking the staging test):**
+- Group-scoped users (owner/cco reach stations via `owner_group_members`) resolve their
+  responsibility via the role/CCO fallback (no per-station assignment row) — verify on staging.
+- Fully responsibility-driven landing (dashboard.view absent → allowed home) once the perms-fetch
+  failure mode is made non-bouncing.
+
+**⚠️ Reproduce on PROD (gated SQL, owner-run) — the exact staging data steps:**
+`ALTER TABLE stations ADD COLUMN IF NOT EXISTS entitlement text NOT NULL DEFAULT 'pumpini';`
+→ add `settlement.enter` module → consolidate `dashboard.group`→`group.view` → seed the 10 canonical global templates → backfill assignments. (Full statements in this session's history; re-derive against prod counts first.)
+
 ### 10.7 Still to verify before the PROD PR
 - Prod `station_users` shape (staging has no `role` column; the prod snapshot showed one).
 - Any manager currently relying on `dispense.entry` (POS) who would lose it (expected none).

@@ -7,6 +7,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { sendAlert } = require('../services/alertService');
 
@@ -95,7 +96,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // POST / — record a bank deposit (owner/manager)
-router.post('/', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('deposits.manage'), async (req, res, next) => {
   try {
     const { station_id, amount, deposit_date, bank_account, reference_no, notes } = req.body;
     const amt = parseFloat(amount);
@@ -121,8 +122,7 @@ router.post('/', authenticate, authorize('owner', 'manager', 'cco'), requireStat
 });
 
 // PATCH /:id/confirm — owner confirms the deposit reflects in the bank
-router.patch('/:id/confirm', authenticate, authorize('owner','cco'),
-  requireStationVia('SELECT station_id FROM cash_deposits WHERE id=$1', 'id'),
+router.patch('/:id/confirm', authenticate, requireStationVia('SELECT station_id FROM cash_deposits WHERE id=$1', 'id'), requirePerm('deposits.manage'),
   async (req, res, next) => {
   try {
     const { rows } = await pool.query(

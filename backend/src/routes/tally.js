@@ -6,6 +6,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
+const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
 
 // Every financial touchpoint, in plain English. `group` drives the UI sections;
@@ -219,7 +220,7 @@ router.get('/touchpoints', authenticate, requireStationAccess({ required: true }
 });
 
 // POST /api/tally/map — save ledger mappings + company name (owner/manager)
-router.post('/map', authenticate, authorize('owner', 'manager', 'cco'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/map', authenticate, requireStationAccess({ required: true }), requirePerm('tally.export'), async (req, res, next) => {
   try {
     const { station_id, mappings = [], company_name } = req.body;
     for (const m of mappings) {

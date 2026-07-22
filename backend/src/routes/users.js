@@ -3,6 +3,14 @@ const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
 const { getAccessibleStationIds, canAccessStation, requireStationAccess } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
+
+// Gating note (access-model cleanup): the user *list* + attendant lifecycle
+// (deactivate / end-date / force-logout) stay role-gated to owner+manager. GET /users
+// is the Start-Shift operator picker's data source — a hot path; and none of these
+// routes GRANT permissions or roles, so they are not the privilege-escalation surface.
+// That surface (assigning responsibilities) is locked to superadmin in templates.js.
+// Adding a shift attendant is the one route flipped to responsibility (`attendant.add`).
 
 // A user is manageable only if they share one of the requester's stations —
 // directly (station_users) or as a credit customer linked to one. Without this,
@@ -87,7 +95,7 @@ router.post('/:id/force-logout', authenticate, authorize('owner','manager'), asy
 // role is forced to 'attendant', they're scoped to this station, and a dummy
 // password is set (attendants don't log in / use POS yet). They become available
 // for shift assignment.
-router.post('/attendant', authenticate, authorize('owner','manager'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/attendant', authenticate, requireStationAccess({ required: true }), requirePerm('attendant.add'), async (req, res, next) => {
   try {
     const { name, phone, language = 'en', station_id } = req.body;
     if (!name || !phone) return res.status(400).json({ error: 'Name and phone are required.' });

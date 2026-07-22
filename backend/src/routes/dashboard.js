@@ -1,7 +1,7 @@
 // src/routes/dashboard.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
 const { computeShiftReco } = require('./tankReco');   // live per-tank reconciliation for the wet-stock tile
 
@@ -533,7 +533,7 @@ router.get('/my-consolidated', authenticate, async (req, res, next) => {
 // Per-operator cash honesty signal. A clean operator's drawer is over or exact,
 // never under — so repeated UNDERCASH (even when made good on the spot) marks a
 // suspect for the owner. Counts confirmed reconciliations only.
-router.get('/cash-integrity', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+router.get('/cash-integrity', authenticate, authorize('owner'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id } = req.query;
     const days = Math.min(365, Math.max(1, parseInt(req.query.days || 90)));
@@ -582,7 +582,7 @@ router.get('/cash-integrity', authenticate, requireStationAccess({ required: tru
 // that reached the tank) of the last 45 days of deliveries per fuel, falling
 // back to the most recent costed delivery ever. Selling side is the day's
 // dispense events. Managers/attendants never see purchase rates.
-router.get('/margin', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     if (req.user.role !== 'owner') {
       return res.status(403).json({ error: 'Margin view is for owners only.' });

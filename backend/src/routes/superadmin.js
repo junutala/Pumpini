@@ -4,6 +4,11 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/responsibilities');
+// Role-affinity guardrails (docs/access-model-cleanup.md §10.2): even the admin
+// console cannot assign a role-locked module to the wrong role (e.g. POS to a
+// manager, Group Dashboard to a non-owner). Enforced at ASSIGN time, where the
+// target user's role is known.
+const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles');
 // Outbound integration: outlets are created/managed here (superadmin), so the
 // VAWE push must fire from these routes. Fire-and-forget — never blocks/breaks
 // the request.
@@ -635,6 +640,23 @@ router.post('/templates/assign', authAdmin, async (req, res, next) => {
     const { user_id, template_id, station_id } = req.body;
     if (!user_id || !station_id) return res.status(400).json({ error: 'user_id and station_id are required' });
     if (template_id) {
+      // Role-affinity guardrail: a role-locked module can never be assigned to a
+      // user whose role isn't allowed to hold it — even from the admin console.
+      const { rows: urows } = await pool.query('SELECT role FROM users WHERE id=$1', [user_id]);
+      const role = urows[0]?.role;
+      if (role) {
+        const { rows: mrows } = await pool.query(
+          'SELECT module_code FROM template_permissions WHERE template_id=$1', [template_id]);
+        const blocked = mrows
+          .map(r => r.module_code)
+          .filter(code => MODULE_ROLE_AFFINITY[code] && !moduleAllowedForRole(code, role));
+        if (blocked.length) {
+          return res.status(422).json({
+            error: `This responsibility includes ${blocked.join(', ')}, which cannot be held by a ${role}. ` +
+                   `Allowed roles: ${blocked.map(c => `${c} → ${MODULE_ROLE_AFFINITY[c].join('/')}`).join('; ')}.`,
+          });
+        }
+      }
       await pool.query(
         `INSERT INTO user_role_assignments(user_id,template_id,station_id)
          VALUES($1,$2,$3)

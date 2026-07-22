@@ -1,8 +1,9 @@
 // src/routes/receipts.js — Corporate payment receipts
 const router = require('express').Router();
 const pool   = require('../db/pool');
-const { authenticate, authorize } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireCorporateAccess } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
 
 // GET /api/receipts?station_id=&corporate_id=&limit=
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -30,7 +31,7 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 });
 
 // POST /api/receipts — record a receipt, reduce outstanding
-router.post('/', authenticate, authorize('owner','manager','cco'), requireStationAccess({ required: true }), async (req, res, next) => {
+router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('corporate.manage'), async (req, res, next) => {
   const {
     corporate_id, station_id, receipt_date, amount,
     payment_type, reference_no, invoice_id, remarks,

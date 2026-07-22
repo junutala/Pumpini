@@ -64,6 +64,7 @@ function requireStationAccess(opts = {}) {
           ? res.status(400).json({ error: 'station_id is required' })
           : next();
       }
+      req.stationId = stationId; // expose for requirePerm (runs after this guard)
       return (await canAccessStation(req.user.id, stationId)) ? next() : deny(res);
     } catch (err) { next(err); }
   };
@@ -75,6 +76,7 @@ function requireStationId(paramName = 'id') {
     try {
       const stationId = req.params[paramName];
       if (!stationId) return next();
+      req.stationId = stationId; // expose for requirePerm
       return (await canAccessStation(req.user.id, stationId)) ? next() : deny(res);
     } catch (err) { next(err); }
   };
@@ -91,6 +93,7 @@ function requireStationVia(sql, key) {
       const { rows } = await pool.query(sql, [id]);
       const stationId = rows[0]?.station_id;
       if (!stationId) return next();
+      req.stationId = stationId; // expose for requirePerm (station derived from resource id)
       return (await canAccessStation(req.user.id, stationId)) ? next() : deny(res);
     } catch (err) { next(err); }
   };
