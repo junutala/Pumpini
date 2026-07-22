@@ -64,7 +64,10 @@ async function getPlanModules(stationId, catalog) {
   try {
     const { rows } = await pool.query('SELECT entitlement FROM stations WHERE id=$1', [stationId]);
     const ent = (rows[0] && rows[0].entitlement) || 'pumpini';
-    if (ent === 'lite') return ['dashboard.view'];
+    // Lite (free) caps everything to the SO tile — the "Free is FREE" ceiling. Even
+    // a full responsibility mis-assigned in /admin can't reach the paid app on a lite
+    // outlet (Effective = Responsibility ∩ ['vawe.proof']). Track B / Pumpini Lite.
+    if (ent === 'lite') return ['vawe.proof'];
     return null;
   } catch { return null; }
 }

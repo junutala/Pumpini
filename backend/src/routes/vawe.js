@@ -16,6 +16,8 @@ const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, canAccessStation } = require('../middleware/stationAccess');
 const { queueInteractionSignal, queueOutletSync } = require('../services/vaweService');
 const { storageConfigured, uploadArtifact } = require('../services/vaweStorage');
+const { createUser, linkUserToStation } = require('../services/userService');
+const { normalizePhone } = require('../utils/phone');
 const router  = express.Router();
 
 // Timing-safe hex-signature compare over the EXACT raw request bytes
@@ -97,6 +99,112 @@ router.post('/outlets-resync', async (req, res, next) => {
     logger.info(`VAWE outlets-resync queued ${rows.length} outlets`);
     res.json({ queued: rows.length });
   } catch (err) { next(err); }
+});
+
+// POST /api/vawe/provision-lite  — signature-verified (VAWE → Pumpini, same HMAC
+// as the inbound webhook). VAWE registered a DIRECT outlet and wants its staff to
+// submit proof through the free "Pumpini Lite" SO-tile surface. This:
+//   1) flips the outlet to entitlement='lite' — the free ceiling: on a lite outlet
+//      Effective = Responsibility ∩ ['vawe.proof'], so the paid app is unreachable
+//      no matter what responsibility is assigned;
+//   2) ensures the manager (and, if given, the owner) exist as users, are linked to
+//      the outlet, and carry the "Lite — SO Tile" responsibility (module vawe.proof)
+//      so requirePerm('vawe.proof') passes and they land on /lite.
+// Body: { pumpiniOutletId, manager:{name,phone,email?,language?}, owner?:{…same} }.
+// Idempotent: dedups users on normalized phone; re-assigns the responsibility on
+// conflict; safe to re-run. Runs as ONE transaction on the bypass role (no user
+// session — als.exit() steps out of any RLS identity), exactly like the webhook,
+// which is what cross-tenant platform provisioning requires.
+router.post('/provision-lite', async (req, res, next) => {
+  const code = checkSignature(req);
+  if (code === 503) return res.status(503).json({ error: 'VAWE integration not configured' });
+  if (code !== 200) return res.status(401).json({ error: 'Invalid signature' });
+
+  const { pumpiniOutletId, manager, owner } = req.body || {};
+  if (!pumpiniOutletId) return res.status(400).json({ error: 'pumpiniOutletId is required' });
+  if (!manager || !manager.name || !manager.phone) {
+    return res.status(400).json({ error: 'manager { name, phone } is required' });
+  }
+
+  try {
+    const result = await pool.als.exit(async () => {
+      const client = await pool.connect();   // no ALS store here → real bypass client
+      try {
+        await client.query('BEGIN');
+
+        // 1) The outlet must exist; flip it to the free tier.
+        const { rows: st } = await client.query(
+          `UPDATE stations SET entitlement='lite' WHERE id=$1 RETURNING id`,
+          [pumpiniOutletId]
+        );
+        if (!st.length) { await client.query('ROLLBACK'); return { notFound: true }; }
+
+        // 2) The global "Lite — SO Tile" responsibility (module vawe.proof). Seeded
+        //    once per environment; if it's missing the caller must seed it first.
+        const { rows: tmpl } = await client.query(
+          `SELECT id FROM role_templates WHERE station_id IS NULL AND name='Lite — SO Tile' LIMIT 1`
+        );
+        if (!tmpl.length) { await client.query('ROLLBACK'); return { noTemplate: true }; }
+        const templateId = tmpl[0].id;
+
+        // 3) Ensure each staff user exists (dedup on phone — the one-writer rule),
+        //    is linked to the outlet, and carries the tile responsibility.
+        const provisioned = [];
+        for (const [role, person] of [['manager', manager], ['owner', owner]]) {
+          if (!person || !person.name || !person.phone) continue;
+          const phone = normalizePhone(person.phone);
+          const { rows: existing } = await client.query(
+            'SELECT id FROM users WHERE phone=$1 LIMIT 1', [phone]
+          );
+          let userId;
+          if (existing.length) {
+            userId = existing[0].id;
+          } else {
+            // Random passcode: the SO enrolls the device (WhatsApp link / QR), so the
+            // manager never types this; mustChangePassword forces a reset on any login.
+            const created = await createUser({
+              name: person.name, phone: person.phone, email: person.email || null,
+              password: crypto.randomBytes(9).toString('base64url'),
+              role, language: person.language || 'te', mustChangePassword: true,
+            }, client);
+            userId = created.id;
+          }
+          await linkUserToStation(pumpiniOutletId, userId, client);
+          await client.query(
+            `INSERT INTO user_role_assignments(user_id,template_id,station_id)
+             VALUES($1,$2,$3)
+             ON CONFLICT(user_id,station_id) DO UPDATE SET template_id=$2, assigned_at=NOW()`,
+            [userId, templateId, pumpiniOutletId]
+          );
+          provisioned.push({ role, userId, phone });
+        }
+
+        await client.query('COMMIT');
+        return { provisioned };
+      } catch (e) {
+        try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
+        throw e;
+      } finally {
+        client.release();
+      }
+    });
+
+    if (result.notFound)   return res.status(400).json({ error: 'Unknown outlet' });
+    if (result.noTemplate) return res.status(503).json({ error: '"Lite — SO Tile" responsibility not seeded yet' });
+
+    // The outlet's entitlement changed → drop every cached perm for it so the lite
+    // ceiling takes effect on the next request (no 5-min cache wait).
+    try { require('../middleware/permissions').clearStationPermCache(pumpiniOutletId); } catch { /* best-effort */ }
+    logger.info(
+      `VAWE provision-lite: outlet ${pumpiniOutletId} → lite; provisioned ` +
+      `${result.provisioned.map(p => p.role).join(', ') || 'none'}`
+    );
+    res.json({ ok: true, entitlement: 'lite', provisioned: result.provisioned });
+  } catch (err) {
+    // createUser throws { status, message } for bad input (invalid phone, dup, …).
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

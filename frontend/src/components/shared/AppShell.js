@@ -1,17 +1,29 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Menu, Bell } from 'lucide-react';
 import Sidebar from './Sidebar';
 import FloatingChat from './FloatingChat';
 import { useAuth } from '../../lib/auth';
+import { usePermissions } from '../../hooks/usePermissions';
 import { useTranslation } from 'react-i18next';
 
 export default function AppShell({ children }) {
   const { user, loading } = useAuth();
+  const { can, loading: permLoading } = usePermissions();
   const router = useRouter();
+  const pathname = usePathname();
   const { i18n } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Pumpini Lite: a user whose effective access is the SO tile only (a `lite`
+  // outlet — Effective ∩ ['vawe.proof']) never loads the paid app. Bounce them to
+  // the clean single-tile /lite page. "Free is FREE" — no empty dashboard.
+  useEffect(() => {
+    if (!permLoading && can('vawe.proof') && !can('dashboard.view') && pathname !== '/lite') {
+      router.replace('/lite');
+    }
+  }, [permLoading, can, pathname, router]);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
