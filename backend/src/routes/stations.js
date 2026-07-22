@@ -22,18 +22,9 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
-  try {
-    const { name, address, gst_number, oil_company, city, state } = req.body;
-    const { rows } = await pool.query(
-      `INSERT INTO stations(name,address,gst_number,oil_company,city,state) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [name, address, gst_number, oil_company, city, state]
-    );
-    await pool.query('INSERT INTO station_users(station_id,user_id) VALUES($1,$2)', [rows[0].id, req.user.id]);
-    queueOutletSync(rows[0].id);
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
-});
+// POST /api/stations — REMOVED. Was an orphan (no UI) that created a station
+// without seeding template/owner/group. Station creation is superadmin-only
+// (POST /api/superadmin/stations). See docs/drift-audit.md.
 
 router.post('/:id/users', authenticate, authorize('owner','manager'), requireStationId('id'), async (req, res, next) => {
   try {

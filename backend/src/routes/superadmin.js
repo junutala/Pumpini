@@ -861,10 +861,13 @@ router.post('/credit-customers', authAdmin, async (req, res, next) => {
         if (ex.length) corpId = ex[0].id;
       }
       if (!corpId) {
-        // credit_limit defaults to 0 — the manager raises it later, like GSTN.
+        // A5: the per-outlet credit limit lives on corporate_station_links (what the
+        // reads use); the vestigial corporate_accounts.credit_limit (read nowhere) is
+        // no longer written, so tenant + admin agree on ONE column. Manager raises the
+        // link limit later, like GSTN.
         const { rows: c } = await client.query(
-          `INSERT INTO corporate_accounts(company_name, contact_phone, credit_limit)
-           VALUES($1,$2,0) RETURNING id`, [name, phone]);
+          `INSERT INTO corporate_accounts(company_name, contact_phone)
+           VALUES($1,$2) RETURNING id`, [name, phone]);
         corpId = c[0].id;
       }
       // Link to the outlet (idempotent without relying on a constraint name).
