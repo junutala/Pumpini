@@ -1,4 +1,5 @@
 'use client';
+import { useRef, useEffect, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
@@ -127,11 +128,25 @@ const NAV_LABELS = {
 // Group header key is derived as nav.grp_<label> (e.g. Shift -> nav.grp_shift),
 // so every group translates as long as the key exists in the locale files.
 
+// Preserve the nav's scroll across client navigations. The shell (and this
+// sidebar) remounts per page, which resets the <nav> scrollTop to 0 — jarring
+// when you click an item low in the list and it snaps back to the top. Stash the
+// position in a module var (survives the remount within the SPA session) and
+// restore it before paint (layout effect) so there's no scroll flash.
+let sidebarScrollTop = 0;
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 export default function Sidebar({ open, onClose }) {
   const { user, logout, station, switchStation } = useAuth();
   const { can }    = usePermissions();
   const { t }      = useTranslation();
   const pathname   = usePathname();
+  const navRef     = useRef(null);
+
+  useIsoLayoutEffect(() => {
+    const el = navRef.current;
+    if (el) el.scrollTop = sidebarScrollTop;
+  }, []);
 
   const navLabel = (key) => {
     const translated = t(`nav.${key}`);
@@ -216,7 +231,9 @@ export default function Sidebar({ open, onClose }) {
         )}
 
         {/* Nav groups */}
-        <nav style={{flex:1,padding:'0.5rem 0',overflowY:'auto'}}>
+        <nav ref={navRef}
+             onScroll={e => { sidebarScrollTop = e.currentTarget.scrollTop; }}
+             style={{flex:1,padding:'0.5rem 0',overflowY:'auto'}}>
           {NAV_GROUPS.map(group => {
             const visible = group.items.filter(isVisible);
             if (!visible.length) return null;
