@@ -318,3 +318,34 @@ dashboard.view) is **freely composable**.
 ### 10.7 Still to verify before the PROD PR
 - Prod `station_users` shape (staging has no `role` column; the prod snapshot showed one).
 - Any manager currently relying on `dispense.entry` (POS) who would lose it (expected none).
+
+---
+
+## 11. Track B — VAWE Lite (Pumpini Lite) — build log (2026-07-22, STAGING)
+
+**Design contract (locked):** a Lite outlet's staff keep a NORMAL `manager`/`owner`
+role; the "Lite-ness" is entirely (a) the outlet `entitlement = lite` ceiling and
+(b) a single **"Lite — SO Tile"** responsibility (`vawe.proof` module). No `$_vawe`
+role. Role still drives per-role voice replay + the escalation-gated owner CTA
+(engine state, not a static grant). **Seamless upgrade** = flip `entitlement lite→
+pumpini` + swap the responsibility to Manager — Operations / Owner — Full. Two
+`/admin` clicks, reversible. VAWE→Pumpini payload must expose the escalation tier
+for the tile to gate the owner CTA (VAWE side already tracks it).
+
+**Phase 1 — foundation (DONE, staging):**
+- `vawe.proof` module + global **"Lite — SO Tile"** responsibility (`[vawe.proof]`).
+- `permissions.js`: `entitlement='lite'` now caps to `['vawe.proof']` (was
+  `['dashboard.view']`) — the "Free is FREE" ceiling. `Effective = Responsibility ∩
+  ['vawe.proof']`, so even a mis-assigned full responsibility can't reach the paid app.
+
+**Phase 2 — Lite landing (DONE, staging):**
+- New `/lite` page: one clean `SoInstructionsTile`, minimal chrome, no sidebar/zeros.
+- `AppShell`: any user whose effective access is SO-tile-only (`can('vawe.proof') &&
+  !can('dashboard.view')`) is redirected to `/lite`. `/lite` sends a full-app user back home.
+- The vawe interaction routes are `authenticate`+station+`requireCanAct` (not
+  `requirePerm`), so a Lite manager/owner can load + act on the tile. (Gating them on
+  `vawe.proof` too is a later hardening.)
+
+**Phase 3 — provisioning:** set a `lite` outlet + create its manager/owner with the
+Lite responsibility. Manual path works today via `/admin` (plan→entitlement lite +
+create user + assign "Lite — SO Tile"). VAWE→Pumpini auto-provision — see below.
