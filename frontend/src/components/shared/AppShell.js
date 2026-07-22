@@ -36,7 +36,7 @@ export default function AppShell({ children }) {
     }
   }, [user, loading]);
 
-  if (loading) return (
+  const brandedLoader = (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100dvh',background:'#0F1923'}}>
       <div style={{textAlign:'center'}}>
         <div style={{fontSize:28,fontWeight:900,marginBottom:16}}>
@@ -48,7 +48,16 @@ export default function AppShell({ children }) {
     </div>
   );
 
+  if (loading) return brandedLoader;
   if (!user) return null;
+
+  // Don't paint the paid shell until we KNOW this isn't a Lite (SO-tile-only) user —
+  // otherwise the sidebar/dashboard flashes for a beat before the /lite redirect above
+  // fires. Hold the branded loader while perms are still resolving, and while a lite
+  // user's /lite redirect is in flight. permLoading is true only on the first load
+  // (perms are cached in context after), so a paid user sees this splash once, briefly.
+  const liteRedirectPending = !permLoading && can('vawe.proof') && !can('dashboard.view') && pathname !== '/lite';
+  if (permLoading || liteRedirectPending) return brandedLoader;
 
   return (
     <>
