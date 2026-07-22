@@ -77,20 +77,22 @@ managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
 - [x] "Add Attendant" — DONE 2026-06-22. /add-attendant + POST /users/attendant
       force role='attendant' + station scope + dummy password (no POS/login);
       perm 'attendant.add' on Manager_lite + manager defaults. Manager-facing.
-- [ ] SECURITY: lock down responsibility create/assign. Today POST /api/templates
-      and /api/templates/assign are authorize('owner','manager') — a manager can
-      mint a template with ANY permissions and assign it (privilege escalation).
-      Mitigated for now only because managers don't create users. Tighten to
-      owner-only (or "can only grant ⊆ your own perms") when we open this up.
+- [x] SECURITY: lock down responsibility create/assign — **DONE 2026-07-22** (access-model
+      cleanup, PR #170). The tenant POST/PUT/DELETE `/api/templates` + `/assign` routes and
+      the tenant template pages are REMOVED; responsibility create/assign is superadmin
+      (`/admin`) ONLY, and the superadmin assign enforces the role-affinity guardrail
+      (422 if a role-locked module goes to the wrong role). Privilege-escalation gap closed.
 - [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
       with the platform admin.
 - [ ] Auditor responsibility (e.g. tally.export + reports.view only).
-- [ ] MERGE PENDING: Add-User modal Responsibility picker. Built + pushed to
-      branch `claude/voice-triggered-forms-1aa121` (commit 2926ce7) but NOT
-      merged to main yet — owner wants to test first. The /admin "Add User to
-      Station" modal now has a Responsibility dropdown (lists the bunk's
-      role_templates, e.g. Manager_lite) so you can assign at creation instead
-      of only via the row dropdown afterward. Merge after click-through.
+- [x] ~~MERGE PENDING: Add-User modal Responsibility picker (branch
+      `claude/voice-triggered-forms-1aa121`)~~ — **RETIRED 2026-07-22. DO NOT MERGE.**
+      That branch was 350 commits stale (predated the whole access-model + drift cleanup):
+      it still calls the removed public `/auth/register` and still carries the deleted
+      tenant `templates` pages — merging it would RE-OPEN the security hole + escalation
+      surface. Its one feature (assign responsibility at creation) is superseded — `/admin`
+      already assigns responsibilities (row dropdown + affinity guardrail). If wanted, add
+      a picker fresh on top of current staging (~20 min), do NOT resurrect the branch.
 
 ## 6. Root cause: new station-user password "doesn't work" at first login (2026-06-22)
 J Madhu (9398013493, Kamala) was created via /admin Add User; owner is "sure"
