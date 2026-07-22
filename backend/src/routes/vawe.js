@@ -175,12 +175,17 @@ router.post('/provision-lite', async (req, res, next) => {
           if (existing.length) {
             userId = existing[0].id;
           } else {
-            // Random passcode: the SO enrolls the device (WhatsApp link / QR), so the
-            // manager never types this; mustChangePassword forces a reset on any login.
+            // Login credential = the person's mobile number, BOTH fields. Pumpini
+            // login is already by mobile number; here we set the password to that
+            // same 10-digit number the SO entered at outlet creation. So the SO
+            // simply tells the manager/owner "log in with your mobile number as the
+            // password too." No enrollment friction, nothing to remember. Not forced
+            // to change (mustChangePassword=false) so it keeps working; the future
+            // device-passkey enrollment supersedes this. (Owner decision 2026-07-22.)
             const created = await createUser({
               name: person.name, phone: person.phone, email: person.email || null,
-              password: crypto.randomBytes(9).toString('base64url'),
-              role, language: person.language || 'te', mustChangePassword: true,
+              password: person.phone,
+              role, language: person.language || 'te', mustChangePassword: false,
             }, client);
             userId = created.id;
           }
