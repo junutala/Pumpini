@@ -65,20 +65,38 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
     const { gstn, pan, tan, address, city, state, pincode, owner_whatsapp, owner_email,
             variance_threshold, invoice_prefix,
             latitude, longitude, geo_fence_radius, geo_fence_enabled } = req.body;
+    // PARTIAL upsert: only overwrite a column when the caller actually sent it.
+    // (This endpoint is shared by the geofence tab, which posts ONLY the 4 geo
+    // fields — a plain overwrite nulled GSTN/PAN/address and reset the prefix. The
+    // INSERT path keeps first-time defaults; DO UPDATE COALESCEs against the
+    // existing row so unsent fields are preserved.) See docs/drift-audit.md A2.
     const { rows } = await pool.query(
       `INSERT INTO station_settings(station_id,gstn,pan,tan,address,city,state,pincode,
          owner_whatsapp,owner_email,variance_threshold,invoice_prefix,
          latitude,longitude,geo_fence_radius,geo_fence_enabled)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,50),COALESCE($12,'INV'),
+         $13,$14,COALESCE($15,500),COALESCE($16,FALSE))
        ON CONFLICT(station_id) DO UPDATE SET
-         gstn=$2,pan=$3,tan=$4,address=$5,city=$6,state=$7,pincode=$8,
-         owner_whatsapp=$9,owner_email=$10,variance_threshold=$11,invoice_prefix=$12,
-         latitude=$13,longitude=$14,geo_fence_radius=$15,geo_fence_enabled=$16,
+         gstn=COALESCE($2,station_settings.gstn),
+         pan=COALESCE($3,station_settings.pan),
+         tan=COALESCE($4,station_settings.tan),
+         address=COALESCE($5,station_settings.address),
+         city=COALESCE($6,station_settings.city),
+         state=COALESCE($7,station_settings.state),
+         pincode=COALESCE($8,station_settings.pincode),
+         owner_whatsapp=COALESCE($9,station_settings.owner_whatsapp),
+         owner_email=COALESCE($10,station_settings.owner_email),
+         variance_threshold=COALESCE($11,station_settings.variance_threshold),
+         invoice_prefix=COALESCE($12,station_settings.invoice_prefix),
+         latitude=COALESCE($13,station_settings.latitude),
+         longitude=COALESCE($14,station_settings.longitude),
+         geo_fence_radius=COALESCE($15,station_settings.geo_fence_radius),
+         geo_fence_enabled=COALESCE($16,station_settings.geo_fence_enabled),
          updated_at=NOW()
        RETURNING *`,
-      [req.params.id,gstn,pan,tan,address,city,state,pincode,owner_whatsapp,owner_email,
-       variance_threshold||50,invoice_prefix||'INV',
-       latitude||null,longitude||null,geo_fence_radius||500,geo_fence_enabled||false]
+      [req.params.id,gstn??null,pan??null,tan??null,address??null,city??null,state??null,pincode??null,
+       owner_whatsapp??null,owner_email??null,variance_threshold??null,invoice_prefix??null,
+       latitude??null,longitude??null,geo_fence_radius??null,geo_fence_enabled??null]
     );
     queueOutletSync(req.params.id);
     res.json(rows[0]);
