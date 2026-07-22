@@ -6,25 +6,8 @@ const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const { authenticate, bumpTokenVersion } = require('../middleware/auth');
 const { sendWhatsApp } = require('../services/whatsappService');
-
-// Normalize phone — accept 10 digits, with/without +91, with/without spaces
-const normalizePhone = (raw) => {
-  if (!raw) return '';
-  const digits = raw.replace(/\D/g, '');            // strip everything non-digit
-  if (digits.length === 10) return `+91${digits}`;  // plain 10-digit
-  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`; // 91XXXXXXXXXX
-  if (digits.length === 11 && digits.startsWith('0')) return `+91${digits.slice(1)}`; // 0XXXXXXXXXX
-  return `+91${digits.slice(-10)}`;                 // fallback — take last 10
-};
-
-const validatePhone = (raw) => {
-  const digits = raw.replace(/\D/g, '');
-  const ten = digits.length === 10 ? digits
-    : digits.length === 12 && digits.startsWith('91') ? digits.slice(2)
-    : digits.length === 11 && digits.startsWith('0')  ? digits.slice(1)
-    : digits.slice(-10);
-  return /^[6-9]\d{9}$/.test(ten);
-};
+// Shared Indian-mobile normalizer/validator (one implementation for every caller).
+const { normalizePhone, validatePhone } = require('../utils/phone');
 
 // ── Brute-force throttle ────────────────────────────────────
 // In-memory sliding window keyed by IP + phone: 10 attempts / 15 min. A wrong
@@ -103,32 +86,11 @@ router.post('/login', rateLimitAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/auth/register
-router.post('/register', async (req, res, next) => {
-  try {
-    const { name, phone, email, password, role, language = 'en' } = req.body;
-
-    if (!name)     return res.status(400).json({ error: 'Name is required' });
-    if (!phone)    return res.status(400).json({ error: 'Mobile number is required' });
-    if (!password || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    if (!role)     return res.status(400).json({ error: 'Role is required' });
-    if (!validatePhone(phone)) return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
-
-    const normalized = normalizePhone(phone);
-    const hash = await bcrypt.hash(password, 12);
-
-    const { rows } = await pool.query(
-      `INSERT INTO users(name,phone,email,password_hash,role,language)
-       VALUES($1,$2,$3,$4,$5,$6)
-       RETURNING id,name,phone,email,role,language,created_at`,
-      [name, normalized, email||null, hash, role, language]
-    );
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Mobile number already registered' });
-    next(err);
-  }
-});
+// POST /api/auth/register — REMOVED (was public + accepted an arbitrary `role`,
+// i.e. anyone could mint an owner). User creation now goes through the guarded,
+// single-writer paths: POST /api/users (owner) and POST /api/users/attendant
+// (manager), both backed by services/userService.createUser. Superadmin creators
+// live under /api/superadmin/*. See docs/drift-audit.md.
 
 // POST /api/auth/logout — server-side session kill (invalidates all this
 // user's existing tokens immediately).
