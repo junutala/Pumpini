@@ -11,6 +11,8 @@ const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/re
 const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles');
 // Single user-writer (one insert path for every creator — tenant + admin).
 const { createUser, linkUserToStation } = require('../services/userService');
+// Single station-writer (superadmin "Add outlet" + VAWE Lite provisioning share it).
+const { createStation } = require('../services/stationService');
 // Retired multi-tier plans map to the binary access ceiling: only 'lite' caps to
 // the SO tile; everything else is uncapped 'pumpini'. Keeps the admin Plan toggle
 // as the thing that actually drives `stations.entitlement` (the real gate).
@@ -266,12 +268,10 @@ router.post('/stations', authAdmin, async (req, res, next) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const { rows } = await client.query(
-        `INSERT INTO stations(name,address,gst_number,oil_company,city,state)
-         VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-        [name, address, gst_number, oil_company, city, state]
+      const station = await createStation(
+        { name, address, gst_number, oil_company, city, state }, client
       );
-      const sid = rows[0].id;
+      const sid = station.id;
 
       // Seed the standard 'Manager_lite' responsibility for this bunk so it's
       // ready to assign in /admin (is_system => not editable by a manager).
@@ -314,7 +314,7 @@ router.post('/stations', authAdmin, async (req, res, next) => {
       }
       await client.query('COMMIT');
       queueOutletSync(sid); // push the new outlet to VAWE
-      res.status(201).json(rows[0]);
+      res.status(201).json(station);
     } catch(e){ await client.query('ROLLBACK'); throw e; }
     finally{ client.release(); }
   } catch (err) { next(err); }
