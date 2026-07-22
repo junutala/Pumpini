@@ -346,6 +346,22 @@ for the tile to gate the owner CTA (VAWE side already tracks it).
   `requirePerm`), so a Lite manager/owner can load + act on the tile. (Gating them on
   `vawe.proof` too is a later hardening.)
 
-**Phase 3 — provisioning:** set a `lite` outlet + create its manager/owner with the
-Lite responsibility. Manual path works today via `/admin` (plan→entitlement lite +
-create user + assign "Lite — SO Tile"). VAWE→Pumpini auto-provision — see below.
+**Phase 3 — provisioning (DONE, staging):** set a `lite` outlet + create its
+manager/owner with the Lite responsibility. Two paths, ONE writer:
+- **Manual (`/admin`):** plan→entitlement lite + create user + assign "Lite — SO Tile".
+- **Auto (VAWE→Pumpini):** new signed webhook **`POST /api/vawe/provision-lite`**
+  (same HMAC as `/interactions`), body `{ pumpiniOutletId, manager:{name,phone,email?,
+  language?}, owner?:{…} }`. In ONE bypass-role transaction it (1) `UPDATE stations
+  SET entitlement='lite'`, (2) resolves the global "Lite — SO Tile" template, (3) for
+  the manager (and owner if given) dedups on normalized phone → `userService.createUser`
+  (the single writer) → `linkUserToStation` → upserts the responsibility
+  (`ON CONFLICT(user_id,station_id)`), then `clearStationPermCache`. Idempotent /
+  re-runnable. Unknown outlet → 400; unseeded template → 503; bad phone/dup → the
+  service's `{status,message}`. Random passcode (device enrolled via SO link/QR;
+  `mustChangePassword`). **VAWE-side caller (cross-repo) is the remaining wiring** —
+  VAWE calls this on DIRECT-outlet registration so those outlets get a proof surface.
+
+**Seamless upgrade (lite→pumpini):** flip `stations.entitlement` back to `pumpini`
+(the cap lifts — `getPlanModules` returns null → uncapped) + swap the responsibility
+to Manager — Operations / Owner — Full in `/admin`. The `/lite` redirect stops firing
+the moment `can('dashboard.view')` becomes true. Reversible.
