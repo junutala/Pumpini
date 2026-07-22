@@ -87,6 +87,26 @@ When unsure which bucket a change is in, treat it as **medium/high** and route i
 through staging. Staging exists precisely so the owner verifies risky changes before
 they touch real outlets.
 
+## 🔴 One writer per concept (anti-drift rule) — owner-set 2026-07-22
+
+Rapid dev grew **multiple forms/endpoints for the same insert** (e.g. FOUR ways to
+create an attendant, TWO credit-limit columns, TWO meter tables). That drift is a
+money/access risk. The standing rule now:
+
+1. **One backend WRITER per concept.** The actual insert/update logic (SQL, validation,
+   dedup, which columns) lives in ONE service function (e.g. `services/userService.createUser`).
+   Every path funnels through it. Callers may pass a transaction `client` to compose.
+2. **One FORM component per concept.** A single reusable form; other flows EMBED it, never
+   re-implement it. One travel route to the DB.
+3. **Different trust boundaries = thin guarded entry points, not divergent logic.** Tenant
+   (JWT + `requirePerm`) and superadmin (`authAdmin`) may be SEPARATE routes, but both call
+   the SAME service. Don't duplicate the insert to change the guard.
+4. **Search before you build.** Before adding a new form/endpoint for an existing concept,
+   `grep` for the existing writer and REUSE/extend it. Never stack "forms above forms."
+
+The living inventory + fix checklist is `docs/drift-audit.md`. Fix drift in small,
+reversible, one-concept-per-PR slices.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO

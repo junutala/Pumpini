@@ -26,11 +26,14 @@ const roleDefaults = {
     'lubes.manage','pettycash.manage','deposits.manage','stock.reconcile','tally.export','ai_chat.use',
     'attendant.add',
   ],
-  // Operators are locked to their own self-settlement screen — no default access to
-  // dashboard, POS, shifts, dipstick, etc. The Settlement screen and its endpoints
-  // are not permission-gated (auth + geofence + own-line-only guard the flow), so an
-  // empty default gives an operator exactly one capability: settle their own shift.
-  attendant: [],
+  // Operators are locked to their own self-settlement screen. `settlement.enter` is
+  // their one capability by default (it matches config/roles.js attendant.defaultResponsibility
+  // = 'Attendant — Settlement'), so a freshly-created attendant can settle + scan the
+  // meter (POST /reconcile/pos-meter is requirePerm('settlement.enter')) with NO manual
+  // /admin assignment. POS per-sale entry (dispense.entry) is the extra that must be
+  // granted explicitly via a responsibility. Was [] — which left new attendants 403'd
+  // at the meter-scan step (docs/drift-audit.md).
+  attendant: ['settlement.enter'],
   rsa: [
     'dashboard.view','dispense.entry','dispense.view','corporate.view','shifts.view','ai_chat.use',
   ],
