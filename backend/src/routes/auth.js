@@ -82,7 +82,25 @@ router.post('/login', rateLimitAuth, async (req, res, next) => {
       expiresIn: process.env.JWT_EXPIRES_IN || '10h'
     });
 
-    res.json({ token, user: { ...payload, stations } });
+    // Landing hint (access-driven, not role-driven). A user whose EFFECTIVE access
+    // on their outlet is the SO tile only (a `lite` outlet: Effective ∩ ['vawe.proof'])
+    // lands straight on /lite — deterministic, exactly like an attendant → /settlement,
+    // so the landing NEVER depends on a client-side permission race. Best-effort and
+    // fully guarded: any error just omits the hint and the client falls back to its
+    // role-based landing (today's behaviour). Only meaningful for single-outlet Lite
+    // staff; a paid user's perms include dashboard.view so this never fires for them.
+    let landing;
+    try {
+      const { getUserPermissions } = require('../middleware/permissions');
+      const primary = stations[0]?.id;
+      if (primary) {
+        const perms = await getUserPermissions(user.id, primary);
+        const has = (m) => perms.includes('ALL') || perms.includes(m);
+        if (has('vawe.proof') && !has('dashboard.view')) landing = '/lite';
+      }
+    } catch { /* fall back to role-based landing on the client */ }
+
+    res.json({ token, user: { ...payload, stations, ...(landing ? { landing } : {}) } });
   } catch (err) { next(err); }
 });
 
