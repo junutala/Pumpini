@@ -80,7 +80,7 @@ function PromoRail({ promo }) {
   );
 }
 
-export default function SoInstructionsTile({ stationId }) {
+export default function SoInstructionsTile({ stationId, standalone = false }) {
   const { user } = useAuth();
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
@@ -90,6 +90,9 @@ export default function SoInstructionsTile({ stationId }) {
   // once VAWE unlocked it via escalation). Completed tasks are read-only.
   const canActFor = (it) => it?.status === 'OPEN' && (isManager || (isOwner && !!it?.owner_can_act));
   const [items, setItems] = useState([]);
+  // Track the first load so the standalone (/lite) empty state doesn't flash
+  // before the fetch resolves. Embedded-on-dashboard usage ignores this.
+  const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState(null);
   const [tab, setTab] = useState('pending');
   // Pumpini Lite promo rail — global content set from superadmin. Null (invisible)
@@ -97,11 +100,12 @@ export default function SoInstructionsTile({ stationId }) {
   const [promo, setPromo] = useState(null);
 
   const load = useCallback(async () => {
-    if (!stationId) return;
+    if (!stationId) { setLoading(false); return; }
     try {
       const res = await getVaweInteractions(stationId);
       setItems(res?.interactions || []);
     } catch { /* keep last */ }
+    finally { setLoading(false); }
   }, [stationId]);
 
   useEffect(() => { load(); }, [load]);
@@ -109,7 +113,29 @@ export default function SoInstructionsTile({ stationId }) {
     getLitePromo().then((r) => setPromo(r?.promo || null)).catch(() => {});
   }, []);
 
-  if (!items.length) return null;
+  if (!items.length) {
+    // Embedded on the paid dashboard → stay invisible when there's nothing.
+    if (!standalone) return null;
+    // Standalone Pumpini Lite (/lite) → the tile IS the whole page, so NEVER a
+    // blank void. Show a calm, set-up-and-working empty state ("Free is FREE" —
+    // free must read as clean, not broken), plus the promo rail if enabled.
+    return (
+      <>
+        <div style={{ background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14, padding: '32px 20px', marginBottom: 14, textAlign: 'center' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 12, background: '#FF6B0015', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+            <ClipboardList size={22} color="#FF6B00" />
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 6 }}>{tc('vawe.title', 'SO Instructions')}</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2,#555)', lineHeight: 1.55, maxWidth: 320, margin: '0 auto' }}>
+            {loading
+              ? tc('vawe.loading', 'Loading…')
+              : tc('vawe.liteEmpty', 'No instructions right now. When your Sales Officer sends you a task, it will show up here.')}
+          </div>
+        </div>
+        <PromoRail promo={promo} />
+      </>
+    );
+  }
   const pending = items.filter((i) => i.status !== 'CLOSED');
   const completed = items.filter((i) => i.status === 'CLOSED');
   const shown = tab === 'completed' ? completed : pending;
