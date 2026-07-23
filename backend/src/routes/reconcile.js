@@ -6,7 +6,41 @@ const { requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
+const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 const Anthropic = require('@anthropic-ai/sdk');
+
+// Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
+// doc bucket and keep only the storage PATH in the DB (no base64 blob in Postgres).
+// Best-effort by contract (a store failure must never break OCR / shift close), and
+// column-tolerant: this deploys BEFORE the DDL adds `storage_path`, so on a missing
+// column (42703) it falls back to the legacy base64 insert. image_base64 is nullable
+// so there is no NOT-NULL case here. Always call this OUTSIDE / after any open
+// transaction (autocommit) so a failed insert can't poison a shift-close tx.
+async function storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by }) {
+  let path = null;
+  if (storageConfigured()) {
+    try {
+      path = await uploadDocumentBase64({
+        prefix: 'meter-photos', scope: shift_id, base64: image_base64, contentType: media_type, filename: 'meter.jpg',
+      });
+    } catch (e) {
+      path = null;
+      try { require('../utils/logger').warn('meter-photo upload failed, storing base64: ' + (e.message || e)); } catch { /* noop */ }
+    }
+  }
+  const attempts = [];
+  if (path) attempts.push({ cols: ['storage_path'], vals: [path], base64: false });
+  attempts.push({ cols: [], vals: [], base64: true });   // legacy base64 shape
+  let lastErr;
+  for (const a of attempts) {
+    const cols = ['shift_id', 'nozzle_id', ...a.cols, ...(a.base64 ? ['image_base64'] : []), 'media_type', 'ocr_reading', 'ocr_legible', 'recorded_by'];
+    const vals = [shift_id, nozzle_id, ...a.vals, ...(a.base64 ? [image_base64] : []), media_type, ocr_reading, ocr_legible, recorded_by];
+    const ph   = vals.map((_, i) => `$${i + 1}`).join(',');
+    try { await pool.query(`INSERT INTO meter_photos(${cols.join(',')}) VALUES(${ph})`, vals); return; }
+    catch (e) { lastErr = e; if (e.code === '42703') continue; throw e; }
+  }
+  throw lastErr;
+}
 
 // Great-circle distance in metres (haversine) — for the server-side geofence.
 function haversineM(lat1, lon1, lat2, lon2) {
@@ -696,14 +730,6 @@ router.post('/pos-meter', authenticate,
       notes   = String(parsed.notes ?? '');
     } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
 
-    // Audit image (best-effort).
-    try {
-      await client.query(
-        `INSERT INTO meter_photos(shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7)`,
-        [shift_id, nozzle_id, image_base64, media_type, reading || null, legible, req.user.id]);
-    } catch { /* meter_photos not present — OCR still returns */ }
-
     let phase = 'opening', mismatch = null, source_conflict = null;
     if (reading) {
       const num = Number(reading);
@@ -724,6 +750,12 @@ router.post('/pos-meter', authenticate,
       }
     }
     await client.query('COMMIT');
+    // Audit image (best-effort) — stored AFTER commit so the slow bucket upload
+    // never holds the shift-close transaction open and a store failure can't touch
+    // the saved reading. bytes → private bucket, DB keeps only the path.
+    try {
+      await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
+    } catch { /* store failed — OCR + reading already saved and returned */ }
     res.json({ reading, legible, notes, phase, mismatch, source_conflict });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
@@ -766,12 +798,10 @@ router.post('/ocr-meter', authenticate,
       notes = 'OCR failed: ' + (e.message || 'unknown');
     }
 
-    // Keep the image for audit (best-effort — works once meter_photos exists).
+    // Keep the image for audit (best-effort). bytes → private bucket, DB keeps
+    // only the path; falls back to legacy base64 if storage_path isn't migrated.
     try {
-      await pool.query(
-        `INSERT INTO meter_photos(shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by)
-         VALUES($1,$2,$3,$4,$5,$6,$7)`,
-        [shift_id, nozzle_id || null, image_base64, media_type, reading || null, legible, req.user.id]);
+      await storeMeterPhoto({ shift_id, nozzle_id: nozzle_id || null, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* table not yet created / store failed — OCR result still returns */ }
 
     res.json({ reading, legible, notes });

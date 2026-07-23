@@ -67,12 +67,16 @@ export default function DeliveriesPage() {
   const openInvoice = async (deliveryId) => {
     try {
       const r = await api.get(`/deliveries/${deliveryId}/invoice`);
+      // Migrated invoices come back as a ready-to-render signed URL; legacy rows
+      // still return base64 which we turn into a local blob URL.
+      if (r.url) { setViewDoc({ media_type: r.media_type, url: r.url, remote: true }); return; }
       const bytes = Uint8Array.from(atob(r.file_base64), c => c.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: r.media_type }));
       setViewDoc({ media_type: r.media_type, url });
     } catch (err) { alert(err.error || tc('deliv_page.invoice_fail','Could not load the invoice.')); }
   };
-  const closeViewer = () => { if (viewDoc?.url) URL.revokeObjectURL(viewDoc.url); setViewDoc(null); };
+  // Only blob: URLs need revoking; a remote signed URL is left as-is.
+  const closeViewer = () => { if (viewDoc?.url && !viewDoc.remote) URL.revokeObjectURL(viewDoc.url); setViewDoc(null); };
 
   const OIL_MAP = { IOC:'IOC', 'INDIAN OIL':'IOC', IOCL:'IOC', HPCL:'HPCL', BPCL:'BPCL', ESSAR:'Essar', SHELL:'Shell', RELIANCE:'Reliance', NAYARA:'Nayara' };
 
