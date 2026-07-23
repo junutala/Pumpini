@@ -1,6 +1,7 @@
 import './globals.css';
 import Providers from '../components/shared/Providers';
 import PwaRegister from '../components/shared/PwaRegister';
+import PostHogAnalytics from '../components/shared/PostHogAnalytics';
 
 export const metadata = {
   metadataBase: new URL('https://pumpini.in'),
@@ -93,6 +94,7 @@ export default function RootLayout({ children }) {
       </head>
       <body>
         <PwaRegister />
+        <PostHogAnalytics />
         <Providers>
           {children}
         </Providers>
