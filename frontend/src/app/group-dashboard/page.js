@@ -12,6 +12,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import DashboardPage from '../dashboard/page';
+import { GroupDataHealthCard } from '../../components/shared/DataHealthCard';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -122,6 +123,9 @@ export default function GroupDashboardPage() {
               <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 12px', borderRadius: 99, background: exc.length ? '#633806' : '#173404', color: exc.length ? '#fac775' : '#c0dd97' }}>{exc.length ? <><AlertTriangle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.needYou', '{n} need you').replace('{n}', exc.length)}</> : <><CheckCircle size={13} style={{ verticalAlign: -2 }} /> {tc('gdash.allClear', 'all clear')}</>}</span>
             </div>
           </div>
+
+          {/* Data health — read-only tripwire rollup across all the owner's outlets */}
+          {selectedGroup && <GroupDataHealthCard groupId={selectedGroup.id} />}
 
           <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
             <div style={mini}>
