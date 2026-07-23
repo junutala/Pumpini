@@ -64,12 +64,6 @@ shift's closing dip and flag any mismatch (a dip "handover tripwire"), instead o
 re-keying it. Keep manual capture for now.
 
 ## 5. User-management access model — relook with ample time (deferred 2026-06-22)
-> **→ Approach doc written 2026-07-21: `docs/access-model-cleanup.md`** — full
-> current-state map (Role vs Responsibility vs Plan vs Membership vs Superadmin),
-> the membership-only money-leak + template privilege-escalation gaps, a clean target
-> model, and where VAWE Lite (`Manager_vawe`/`Owner_vawe`) slots in. Staging-first
-> plan for a clean pass. Start there.
-
 For now the platform admin (/admin) creates ALL users (owners, managers,
 attendants) and assigns responsibilities. Owners come back to admin for extra
 managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
@@ -77,22 +71,20 @@ managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
 - [x] "Add Attendant" — DONE 2026-06-22. /add-attendant + POST /users/attendant
       force role='attendant' + station scope + dummy password (no POS/login);
       perm 'attendant.add' on Manager_lite + manager defaults. Manager-facing.
-- [x] SECURITY: lock down responsibility create/assign — **DONE 2026-07-22** (access-model
-      cleanup, PR #170). The tenant POST/PUT/DELETE `/api/templates` + `/assign` routes and
-      the tenant template pages are REMOVED; responsibility create/assign is superadmin
-      (`/admin`) ONLY, and the superadmin assign enforces the role-affinity guardrail
-      (422 if a role-locked module goes to the wrong role). Privilege-escalation gap closed.
+- [ ] SECURITY: lock down responsibility create/assign. Today POST /api/templates
+      and /api/templates/assign are authorize('owner','manager') — a manager can
+      mint a template with ANY permissions and assign it (privilege escalation).
+      Mitigated for now only because managers don't create users. Tighten to
+      owner-only (or "can only grant ⊆ your own perms") when we open this up.
 - [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
       with the platform admin.
 - [ ] Auditor responsibility (e.g. tally.export + reports.view only).
-- [x] ~~MERGE PENDING: Add-User modal Responsibility picker (branch
-      `claude/voice-triggered-forms-1aa121`)~~ — **RETIRED 2026-07-22. DO NOT MERGE.**
-      That branch was 350 commits stale (predated the whole access-model + drift cleanup):
-      it still calls the removed public `/auth/register` and still carries the deleted
-      tenant `templates` pages — merging it would RE-OPEN the security hole + escalation
-      surface. Its one feature (assign responsibility at creation) is superseded — `/admin`
-      already assigns responsibilities (row dropdown + affinity guardrail). If wanted, add
-      a picker fresh on top of current staging (~20 min), do NOT resurrect the branch.
+- [ ] MERGE PENDING: Add-User modal Responsibility picker. Built + pushed to
+      branch `claude/voice-triggered-forms-1aa121` (commit 2926ce7) but NOT
+      merged to main yet — owner wants to test first. The /admin "Add User to
+      Station" modal now has a Responsibility dropdown (lists the bunk's
+      role_templates, e.g. Manager_lite) so you can assign at creation instead
+      of only via the row dropdown afterward. Merge after click-through.
 
 ## 6. Root cause: new station-user password "doesn't work" at first login (2026-06-22)
 J Madhu (9398013493, Kamala) was created via /admin Add User; owner is "sure"
@@ -423,28 +415,3 @@ the moment his readings are recorded — no waiting for the rest.
       (he goes live via the existing `/assign` → `/shifts/active` path), then finishes.
       **Pending staging test.**
 - [ ] (later, if wanted) make the Dipstick step skippable at start too.
-
-## 18. Pumpini Lite — SO voice-recording playback in the SO-Instruction drawer — ✅ DONE 2026-07-23
-
-**DONE:** VAWE pushes the SO recording URLs (PR #98 → main); Pumpini stores them
-column-tolerantly + plays a role-aware <audio> in the drawer (PR #184 → staging).
-Owner action left: run the two ADD COLUMN statements on Pumpini staging Supabase
-(`so_audio_url`, `so_owner_audio_url`), then roll a NEW task with an SO voice note
-to test. Below is the original design note for reference.
-
-**Agreed design ("SO voice replay per role"): the manager should hear the SO's task in
-the SO's OWN voice; an escalated owner hears the owner message.** Today the Lite
-SO-Instruction drawer (`SoInstructionsTile` → `InteractionDrawer`) shows the text,
-commit-by date, Proof (photo/upload) and Mark-complete — but there is **no audio
-player**. Missing feature, confirmed on staging 2026-07-22 (Vawe 5 manager on `/lite`).
-
-To wire tomorrow (cross-repo — verify the exact flow first, don't assume):
-- **VAWE side:** the interaction/recording has the SO's voice (the same WAV VAWE plays
-  on the escalation call). Confirm whether the interaction push to Pumpini
-  (`/api/vawe/interactions`) already carries an audio URL; if not, add it (per-role:
-  manager = task recording, escalated owner = owner message).
-- **Pumpini side:** store/carry the audio URL on `vawe_interactions`, expose it on the
-  GET, and render an **audio player** in the drawer (role-aware). Public/ signed URL
-  the manager can play without extra auth (like the artifact URL pattern).
-- Everything else in the Lite loop (provision → land on /lite → tile → commit → proof →
-  complete → FULFILMENT) is validated on staging as of 2026-07-22.
