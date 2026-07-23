@@ -126,6 +126,8 @@ app.use('/api/tank-reco', require('./routes/tankReco'));
 app.use('/api/cash-deposits', require('./routes/cashDeposits'));
 app.use('/api/tally', require('./routes/tally'));
 app.use('/api/credit-reports', require('./routes/creditReports'));
+// Read-only data-health tripwire (per-station + owner-group rollup)
+app.use('/api/data-health', require('./routes/dataHealth'));
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
