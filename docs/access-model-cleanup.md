@@ -319,6 +319,37 @@ dashboard.view) is **freely composable**.
 - Prod `station_users` shape (staging has no `role` column; the prod snapshot showed one).
 - Any manager currently relying on `dispense.entry` (POS) who would lose it (expected none).
 
+### 10.9 ✅ PROMOTED + VERIFIED ON PROD (2026-07-23)
+
+**Track A is LIVE in production and data-verified.** The framework (§10.8) shipped to
+`main` via **PR #175**; a truncated `stations.js` from that manual merge crash-looped the
+backend on boot and was restored by the **HOTFIX PR #178** (root cause: `require()` returned
+`{}` → `app.use()` threw at boot — not an access-model bug). Backend healthy since.
+
+- **Gated prod SQL — all run + verified** (the exact §10.8 steps, re-derived against prod):
+  `entitlement` column (all outlets `pumpini`), `settlement.enter` module, `dashboard.group`→
+  `group.view` consolidation, **10 canonical global templates**, and the **43-user backfill**.
+- **Per-persona effective-access check on the prod DB (2026-07-23) — CLEAN, zero violations:**
+  | Role | Responsibility | Effective modules | owner-only? | money-read? |
+  |---|---|---|---|---|
+  | attendant ×31 | Attendant — Settlement | `settlement.enter` only | ✗ | ✗ |
+  | rsa ×1 | Cashier / RSA | dispense.*, shifts.view, corporate.view, dashboard.view | ✗ | ✗ |
+  | corporate ×1 | Corporate | corporate.view, invoice.generate, reports.view, dashboard.view | ✗ | ✗ |
+  | manager ×5 | Manager — Operations | full ops (shifts/reconcile/dipstick/deposits/pettycash/prices/settings/corporate.manage/lubes/stock/…) | ✗ | ✗ |
+  | owner ×3 | Owner — Full | everything incl. `group.view`, `cash.integrity`, `users.manage`, `tally.export` | ✓ | ✓ |
+  - **Guardrails hold:** no non-owner has `group.view`/`users.manage`; no attendant has any
+    money/ops module; owner is the ONLY role with `cash.integrity`/`group.view`/`users.manage`.
+  - Every active membership resolves to a responsibility (0 unassigned → no fat-default fallback).
+  - Belt-and-suspenders: `/margin` + `/cash-integrity` are ALSO `authorize('owner')` in code.
+- **Not done (optional):** literal UI click-through (attendant hits a money URL → sees the 403
+  page). The data + code layers all line up, so this is reassurance, not a blocker.
+
+**Track A = COMPLETE.** Remaining items are non-blocking follow-ups (group-scoped user
+resolution; generalized responsibility-driven landing — the `login.landing` hint built for
+Lite on 2026-07-23 is the seed) and future decisions in `TODO.md §5` (owner self-serve;
+Auditor responsibility). Adjacent deferred drift: A4 settlement two-meter-tables; `/dispense`
+broken manager-settle path.
+
 ---
 
 ## 11. Track B — VAWE Lite (Pumpini Lite) — build log (2026-07-22, STAGING)
