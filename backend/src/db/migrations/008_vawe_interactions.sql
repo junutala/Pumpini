@@ -61,3 +61,10 @@ ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS owner_can_act BOOLEAN NOT
 
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_station ON vawe_interactions(station_id);
 CREATE INDEX IF NOT EXISTS idx_vawe_interactions_status  ON vawe_interactions(status);
+
+-- 2026-07-23: carry the SO's voice-recording URLs so Pumpini Lite can replay the
+-- SO's voice on the tile (manager = task recording; escalated owner = owner
+-- message, if the SO recorded a distinct one). Public vawe-audio URLs, like
+-- artifact_url — a pointer, not bytes. Idempotent; code is column-tolerant.
+ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS so_audio_url TEXT;
+ALTER TABLE vawe_interactions ADD COLUMN IF NOT EXISTS so_owner_audio_url TEXT;

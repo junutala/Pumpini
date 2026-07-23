@@ -44,7 +44,7 @@ router.post('/interactions', async (req, res, next) => {
 
   const {
     interactionId, pumpiniOutletId, taskName, instruction,
-    desiredBy, soExecutedAt, status,
+    desiredBy, soExecutedAt, status, soAudioUrl, soOwnerAudioUrl,
   } = req.body || {};
 
   if (!interactionId || !pumpiniOutletId || !taskName || !instruction || !soExecutedAt || !status) {
@@ -57,19 +57,43 @@ router.post('/interactions', async (req, res, next) => {
   try {
     // Upsert on the VAWE interaction id. VAWE's status drives the tile:
     // OPEN shows it on the manager/owner dashboards; CLOSED removes it.
-    await pool.query(
-      `INSERT INTO vawe_interactions
-         (id, station_id, task_name, instruction, desired_by, so_executed_at, status, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, now())
-       ON CONFLICT (id) DO UPDATE SET
-         task_name      = EXCLUDED.task_name,
-         instruction    = EXCLUDED.instruction,
-         desired_by     = EXCLUDED.desired_by,
-         so_executed_at = EXCLUDED.so_executed_at,
-         status         = EXCLUDED.status,
-         updated_at     = now()`,
-      [interactionId, pumpiniOutletId, taskName, instruction, desiredBy || null, soExecutedAt, status]
-    );
+    // COLUMN-TOLERANT: try storing the SO voice-recording URLs (so_audio_url /
+    // so_owner_audio_url); if those columns aren't migrated yet the INSERT 42703s,
+    // so we fall back to the base upsert (no audio) rather than dropping the whole
+    // push. Once the ADD COLUMN SQL is run, the audio lands on the next push.
+    const base = [interactionId, pumpiniOutletId, taskName, instruction, desiredBy || null, soExecutedAt, status];
+    try {
+      await pool.query(
+        `INSERT INTO vawe_interactions
+           (id, station_id, task_name, instruction, desired_by, so_executed_at, status, so_audio_url, so_owner_audio_url, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+         ON CONFLICT (id) DO UPDATE SET
+           task_name          = EXCLUDED.task_name,
+           instruction        = EXCLUDED.instruction,
+           desired_by         = EXCLUDED.desired_by,
+           so_executed_at     = EXCLUDED.so_executed_at,
+           status             = EXCLUDED.status,
+           so_audio_url       = EXCLUDED.so_audio_url,
+           so_owner_audio_url = EXCLUDED.so_owner_audio_url,
+           updated_at         = now()`,
+        [...base, soAudioUrl || null, soOwnerAudioUrl || null]
+      );
+    } catch (err) {
+      if (err.code !== '42703') throw err;   // only tolerate "column does not exist"
+      await pool.query(
+        `INSERT INTO vawe_interactions
+           (id, station_id, task_name, instruction, desired_by, so_executed_at, status, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+         ON CONFLICT (id) DO UPDATE SET
+           task_name      = EXCLUDED.task_name,
+           instruction    = EXCLUDED.instruction,
+           desired_by     = EXCLUDED.desired_by,
+           so_executed_at = EXCLUDED.so_executed_at,
+           status         = EXCLUDED.status,
+           updated_at     = now()`,
+        base
+      );
+    }
     logger.info(`VAWE interaction ${interactionId} ${status} for station ${pumpiniOutletId}`);
     res.status(202).json({ status: 'accepted' });
   } catch (err) {
@@ -331,19 +355,25 @@ router.get('/interactions', authenticate, requireStationAccess({ required: true 
         ORDER BY (status = 'OPEN') DESC,
                  COALESCE(committed_date, desired_by, so_executed_at) ASC,
                  created_at ASC`;
+  // Optional columns, tolerated in tiers so a not-yet-migrated column can't 500
+  // the tile: owner_can_act (Part B) and the SO voice-recording URLs (so_audio_url
+  // / so_owner_audio_url). Try richest → progressively substitute defaults on a
+  // 42703. On staging owner_can_act exists but the audio columns may not yet, so
+  // tier 2 (real owner_can_act, NULL audio) is the graceful landing until the SQL runs.
+  const optTiers = [
+    `COALESCE(owner_can_act, false) AS owner_can_act, so_audio_url, so_owner_audio_url`,
+    `COALESCE(owner_can_act, false) AS owner_can_act, NULL::text AS so_audio_url, NULL::text AS so_owner_audio_url`,
+    `false AS owner_can_act, NULL::text AS so_audio_url, NULL::text AS so_owner_audio_url`,
+  ];
   try {
     let rows;
-    try {
-      ({ rows } = await bypass(
-        `SELECT ${base}, COALESCE(owner_can_act, false) AS owner_can_act ${tail}`,
-        [req.query.station_id]
-      ));
-    } catch (err) {
-      if (err.code !== '42703') throw err;
-      ({ rows } = await bypass(
-        `SELECT ${base}, false AS owner_can_act ${tail}`,
-        [req.query.station_id]
-      ));
+    for (let i = 0; i < optTiers.length; i++) {
+      try {
+        ({ rows } = await bypass(`SELECT ${base}, ${optTiers[i]} ${tail}`, [req.query.station_id]));
+        break;
+      } catch (err) {
+        if (err.code !== '42703' || i === optTiers.length - 1) throw err;
+      }
     }
     res.json({ interactions: rows });
   } catch (err) { next(err); }
