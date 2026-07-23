@@ -138,13 +138,19 @@ Owner (junutala) to **ratify or revert**:
 Default lean was **B** (independent verification is the whole point of the confirm
 step) — so the current live behaviour may be unintended. Worth a conscious call.
 
-## 9. Dashboard cockpit — manager + Intelligence SHIPPED; two levers HELD (2026-06-23)
-> **Verified 2026-07-23 (largely built, not "paused"):** the manager **Bunk
-> cockpit** (`dashboard/page.js`: hero + Needs-you + settlement + receivables +
-> fuel health + briefing) and the owner **Intelligence dashboard**
-> (`intelligence/page.js`: Balanced Scorecard + credit-liability **IRR simulator**
-> + leak-ledger + AI recs, fed by `/groups/:id/dashboard`) are BOTH real and in
-> prod. Owner Operational per-outlet reuses the manager cockpit unmasked.
+## 9. Dashboard cockpit — SHIPPED & navigable; only two levers HELD (2026-06-23)
+> **Verified 2026-07-23 (built + reachable in prod, confirmed live via owner
+> screenshot — NOT "paused"):** the full three-surface cockpit is live and wired:
+> - **Bunk View** (sidebar → `/dashboard`) = manager **Bunk cockpit** (hero +
+>   Needs-you + settlement + receivables + fuel health + briefing).
+> - **Group View** (sidebar, owner-only `group.view` → `/group-dashboard`) = owner
+>   **Operational** rollup (per-outlet + global), with an **Intelligence** button.
+> - `/intelligence` = owner **Intelligence dashboard** (Balanced Scorecard +
+>   credit-liability **IRR simulator** + money-on-the-table + AI recs, fed by
+>   `/groups/:id/dashboard`), with an **Operations** button back to group-dashboard.
+>
+> The old "PR 2–5" build plan is effectively **DONE**. Only the two owner-HELD
+> levers below remain.
 
 DECISIONS locked (kept for reference): margin basis = LAST delivery rate; AI
 briefing = rule-based v1; simulator period = actual collection lag; earnings =
