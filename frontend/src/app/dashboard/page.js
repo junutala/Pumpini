@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Fuel, Lock, Bell, AlertTriangle, CheckCircle, Landmark, FileText,
   Droplets, ArrowRight, Sparkles, Clock, ChevronRight, Flame } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
+import DataHealthCard from '../../components/shared/DataHealthCard';
 import { getOwnerDashboard } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -199,6 +200,10 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           <span style={{ fontSize: 12.5, color: '#d3d1c7', lineHeight: 1.5 }}>{aiLines.slice(0, 2).join(' ')}</span>
         </div>
       </div>
+
+      {/* Data health — read-only tripwire for out-of-sync data entry (dips/shifts) */}
+      <DataHealthCard stationId={stationId} />
+
 
       {/* Needs you — live 'now' actions; only when viewing today */}
       {actions.length > 0 && (

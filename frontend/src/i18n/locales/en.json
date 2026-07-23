@@ -2510,5 +2510,21 @@
     "templateCreated": "Template created!",
     "roleAssigned": "Role assigned!",
     "failed": "Failed"
+  },
+  "dh": {
+    "title": "Data health",
+    "allCurrent": "All data current",
+    "allCurrentGroup": "All outlets current",
+    "nFlags": "{n} to check",
+    "nAcrossOutlets": "{n} to check across {o} outlet(s)",
+    "tankFuel": "Tank {n} · {fuel}",
+    "missingDip": "{t} — no dip in {d} day(s)",
+    "missingDipNever": "{t} — no dip on record",
+    "physOverdue": "{t} — physical dip overdue ({d} days)",
+    "physNever": "{t} — no physical dip on record",
+    "staleOpen1": "1 shift still open past its day (since {d})",
+    "staleOpenN": "{n} shifts still open past their day",
+    "lateClose": "{n} shift(s) closed late — batch entry",
+    "handover": "{t} — handover gap {v} L ({from} → {to})"
   }
 }

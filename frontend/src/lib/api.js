@@ -41,6 +41,10 @@ export const getCorporateDashboard = (id)                => api.get(`/dashboard/
 export const getAttendantDashboard = (aId, shiftId)      => api.get(`/dashboard/attendant?attendant_id=${aId}&shift_id=${shiftId}`);
 export const getFuelMargin = (stationId, date) => api.get('/dashboard/margin', { params: { station_id: stationId, date } });
 
+// Data-health tripwire (read-only). Per-station flags + owner-group rollup.
+export const getStationDataHealth = (stationId) => api.get('/data-health/station', { params: { station_id: stationId } });
+export const getGroupDataHealth   = (groupId)   => api.get(`/data-health/group/${groupId}`);
+
 // Shifts
 export const getShifts       = (params) => api.get('/shifts', { params });
 export const getShift        = (id)     => api.get(`/shifts/${id}`);
