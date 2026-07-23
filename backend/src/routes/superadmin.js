@@ -21,6 +21,9 @@ const planToEntitlement = (plan) => (String(plan || '').toLowerCase().includes('
 // VAWE push must fire from these routes. Fire-and-forget — never blocks/breaks
 // the request.
 const { queueOutletSync } = require('../services/vaweService');
+// Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
+// backfill below.
+const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 
 const authAdmin = (req, res, next) => {
   const header = req.headers.authorization;
@@ -1086,6 +1089,70 @@ router.put('/lite-promo', authAdmin, async (req, res, next) => {
        cta_label || null, cta_url || null]
     );
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Base64 → object-storage BACKFILL (superadmin-only, gated, batched, resumable).
+//
+// Walks rows that still hold a base64 blob but no storage_path, uploads the bytes
+// to the private doc bucket, and writes the path. Idempotent (only touches rows
+// with storage_path IS NULL) and resumable (call repeatedly with ?limit=N until
+// remaining hits 0). It does NOT clear the base64 column — dropping that is a
+// separate, later, owner-gated step once every row is confirmed migrated.
+//
+// Table/column names are server constants (never request input) — no injection.
+// ─────────────────────────────────────────────────────────────────────────────
+async function runBackfill({ table, blobCol, scopeCol, prefix, limit, res }) {
+  if (!storageConfigured()) {
+    return res.status(400).json({ error: 'Object storage not configured (SUPABASE_* env missing).' });
+  }
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  let rows;
+  try {
+    ({ rows } = await pool.query(
+      `SELECT id, ${scopeCol} AS scope, ${blobCol} AS blob, media_type
+         FROM ${table}
+        WHERE storage_path IS NULL AND ${blobCol} IS NOT NULL
+        ORDER BY created_at ASC
+        LIMIT $1`, [lim]));
+  } catch (e) {
+    if (e.code === '42703') {
+      return res.status(400).json({ error: `Add the storage_path column to ${table} first (run the DDL).` });
+    }
+    throw e;
+  }
+  let processed = 0;
+  const errors = [];
+  for (const r of rows) {
+    try {
+      const mt = r.media_type || 'application/octet-stream';
+      const path = await uploadDocumentBase64({
+        prefix, scope: r.scope, base64: r.blob, contentType: mt,
+        filename: mt === 'application/pdf' ? 'doc.pdf' : 'doc.jpg',
+      });
+      await pool.query(`UPDATE ${table} SET storage_path=$1 WHERE id=$2 AND storage_path IS NULL`, [path, r.id]);
+      processed++;
+    } catch (e) {
+      errors.push({ id: r.id, error: String(e.message || e).slice(0, 200) });
+    }
+  }
+  const { rows: rem } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM ${table} WHERE storage_path IS NULL AND ${blobCol} IS NOT NULL`);
+  res.json({ table, processed, errored: errors.length, remaining: rem[0].n, errors });
+}
+
+// POST /api/superadmin/backfill/delivery-invoices?limit=25
+router.post('/backfill/delivery-invoices', authAdmin, async (req, res, next) => {
+  try {
+    await runBackfill({ table: 'delivery_invoices', blobCol: 'file_base64', scopeCol: 'station_id', prefix: 'delivery-invoices', limit: req.query.limit, res });
+  } catch (err) { next(err); }
+});
+
+// POST /api/superadmin/backfill/meter-photos?limit=25
+router.post('/backfill/meter-photos', authAdmin, async (req, res, next) => {
+  try {
+    await runBackfill({ table: 'meter_photos', blobCol: 'image_base64', scopeCol: 'shift_id', prefix: 'meter-photos', limit: req.query.limit, res });
   } catch (err) { next(err); }
 });
 
