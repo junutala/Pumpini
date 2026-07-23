@@ -6,6 +6,14 @@ Items the owner asked to keep on the list. Pick these up when he says
 Items tagged **🔴 OPERATIONAL · PRIORITY** are the exception — the owner wants
 these addressed on priority (not parked), ahead of the general backlog.
 
+> **Housekeeping (2026-07-23):** this file was pruned to hold ONLY open work.
+> Removed because DONE/settled: new-user password "doesn't work" (disproven
+> non-bug; `must_change_password` hardening shipped), Tank Name/Label (owner
+> SKIPPED), Pumpini Lite SO voice-recording playback (✅ shipped — VAWE PR #98
+> + Pumpini PR #184), and the completed access-model sub-items (Add-Attendant,
+> responsibility lock-down PR #170, the retired stale branch). See git history
+> for the retired detail.
+
 ## 1. Credit ageing report
 Ageing of credit-customer outstanding (e.g. 0–30 / 31–60 / 61–90 / 90+ days
 buckets, by customer, with totals and drill-down to invoices). Discussed
@@ -35,7 +43,7 @@ Owner-side (only he can do):
 Expectation: AI answers lag the web by 4–8 weeks after the above lands.
 
 ## 3. Next.js 15 upgrade — security audit clear-out (deferred 2026-06-22)
-Revisit AFTER the current 7 deployments are live and stable.
+Revisit AFTER the current deployments are live and stable.
 
 Context: `npm audit` on the frontend flags ~5 advisories (high/moderate) that
 are **only** fixed in Next 15.5.16+. We bumped Next 14.0.4 → 14.2.35 (cleared
@@ -63,104 +71,38 @@ The closing dipstick of one shift/day is physically the opening dip of the next
 shift's closing dip and flag any mismatch (a dip "handover tripwire"), instead of
 re-keying it. Keep manual capture for now.
 
-## 5. User-management access model — relook with ample time (deferred 2026-06-22)
-> **→ Approach doc written 2026-07-21: `docs/access-model-cleanup.md`** — full
-> current-state map (Role vs Responsibility vs Plan vs Membership vs Superadmin),
-> the membership-only money-leak + template privilege-escalation gaps, a clean target
-> model, and where VAWE Lite (`Manager_vawe`/`Owner_vawe`) slots in. Staging-first
-> plan for a clean pass. Start there.
+## 5. User-management access model — remaining open decisions (deferred 2026-06-22)
+> **→ Approach doc: `docs/access-model-cleanup.md`** — full current-state map
+> (Role vs Responsibility vs Plan vs Membership vs Superadmin), the target model,
+> and where VAWE Lite (`Manager_vawe`/`Owner_vawe`) slots in. Start there.
 
-For now the platform admin (/admin) creates ALL users (owners, managers,
-attendants) and assigns responsibilities. Owners come back to admin for extra
-managers / an auditor (e.g. tally upload). Manager_lite is seeded per bunk
-(migration 006) WITHOUT user-management. When we revisit, decide:
-- [x] "Add Attendant" — DONE 2026-06-22. /add-attendant + POST /users/attendant
-      force role='attendant' + station scope + dummy password (no POS/login);
-      perm 'attendant.add' on Manager_lite + manager defaults. Manager-facing.
-- [x] SECURITY: lock down responsibility create/assign — **DONE 2026-07-22** (access-model
-      cleanup, PR #170). The tenant POST/PUT/DELETE `/api/templates` + `/assign` routes and
-      the tenant template pages are REMOVED; responsibility create/assign is superadmin
-      (`/admin`) ONLY, and the superadmin assign enforces the role-affinity guardrail
-      (422 if a role-locked module goes to the wrong role). Privilege-escalation gap closed.
+Done this cycle (do NOT reopen): Add-Attendant (manager-facing), responsibility
+create/assign locked to superadmin with the role-affinity guardrail (PR #170),
+lite entitlement caps to `['vawe.proof']`. Still open to decide:
 - [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
       with the platform admin.
 - [ ] Auditor responsibility (e.g. tally.export + reports.view only).
-- [x] ~~MERGE PENDING: Add-User modal Responsibility picker (branch
-      `claude/voice-triggered-forms-1aa121`)~~ — **RETIRED 2026-07-22. DO NOT MERGE.**
-      That branch was 350 commits stale (predated the whole access-model + drift cleanup):
-      it still calls the removed public `/auth/register` and still carries the deleted
-      tenant `templates` pages — merging it would RE-OPEN the security hole + escalation
-      surface. Its one feature (assign responsibility at creation) is superseded — `/admin`
-      already assigns responsibilities (row dropdown + affinity guardrail). If wanted, add
-      a picker fresh on top of current staging (~20 min), do NOT resurrect the branch.
 
-## 6. Root cause: new station-user password "doesn't work" at first login (2026-06-22)
-J Madhu (9398013493, Kamala) was created via /admin Add User; owner is "sure"
-he set the password, but login rejected it. Admin **Reset PW → known value →
-login succeeded**, so the account/phone/RLS are all fine — the stored hash just
-didn't match what the owner typed at login. Deferred: owner will create a fresh
-test user and reproduce.
-
-NEW EVIDENCE (2026-06-22, narrows it a lot): we bcrypt-verified a freshly
-created owner's stored hash directly. Owner Anjayya (+917680985046) hash was
-checked against candidates → **exact match for the typed `Welcome@2026`**, NOT
-the `Welcome@123` default. So the Add-User modal **does persist the exact typed
-password**; the create→hash→store path is sound.
-=> The "silent Welcome@123 default" / "modal drops password" theory is
-   effectively DISPROVEN. Madhu's one-off failure was almost certainly a
-   typo/mismatch between what was typed at creation vs at login that day. No
-   code bug. Downgrade this whole item to a non-bug unless it reproduces.
-
-Leading hypotheses (verify, don't assume):
-- (downgraded) Password field blank at creation → silent `Welcome@123` default.
-  Contradicted by the Anjayya hash check above.
-- Human typo/mismatch between create-time and login-time entry. **Most likely.**
-- Stray leading/trailing space or autofill mismatch between create vs login.
-- (ruled out) phone normalization / is_active / RLS — all verified OK.
-
-When reproducing, capture:
-- [ ] Exactly what's typed in the modal Password field at creation (screenshot).
-- [ ] The Network `login` response status on first attempt: 401 = hash mismatch
-      (password problem, expected); 200-then-bounce = different bug.
-Hardening (now nice-to-have, not a bug fix — see NEW EVIDENCE):
-- [ ] Make the Add-User Password **required** (no silent Welcome@123 default), OR
-      show the effective password back to the admin after create, OR force
-      must_change_password=TRUE so the user sets their own on first login.
-      Rationale shifts from "fix a bug" to "remove operator ambiguity".
-
-## 7. Admin-set Station Code + attendant display (deferred 2026-06-22)
+## 6. Admin-set Station Code + attendant display (deferred 2026-06-22)
 Owner wants attendants uniquely identifiable so common names (e.g. dozens of
-"Kumar") aren't confused across the 7 outlets, especially once POS login goes
-live. DECISIONS (owner-approved):
-- Attendant unique key / future POS login = **mobile number**. ALREADY ENFORCED:
-  POST /users/attendant requires name+phone, users.phone is globally UNIQUE
-  (dupes → 409 "already registered"), add-attendant list shows the mobile, and
-  RLS scopes each station's attendants. So disambiguation is already handled.
-- **Station Code** = a short code (e.g. KAM) the platform admin sets per outlet.
-  NOT YET BUILT. Scope when picked up:
-  - [ ] Migration: ALTER TABLE stations ADD COLUMN code VARCHAR(8) (nullable).
-  - [ ] superadmin POST /stations + PATCH /stations/:id accept & return `code`.
-  - [ ] /admin station create/edit modal: add a "Station Code" input.
-  - [ ] Show the code in cross-station/admin/group views and (optionally) beside
-        attendant names where outlet context helps (e.g. "Kumar · KAM").
-  Note: with mobile-as-key already done, the station code is a human-readable
-  display aid, not a uniqueness mechanism — low urgency.
+"Kumar") aren't confused across outlets, especially once POS login goes live.
+Disambiguation is ALREADY handled (attendant key = mobile, `users.phone` globally
+UNIQUE, RLS-scoped). Remaining work is the human-readable **Station Code** display
+aid — NOT YET BUILT (low urgency):
+- [ ] Migration: ALTER TABLE stations ADD COLUMN code VARCHAR(8) (nullable).
+- [ ] superadmin POST /stations + PATCH /stations/:id accept & return `code`.
+- [ ] /admin station create/edit modal: add a "Station Code" input.
+- [ ] Show the code in cross-station/admin/group views and (optionally) beside
+      attendant names where outlet context helps (e.g. "Kumar · KAM").
 
-## 8. Tank Name/Label field — SKIPPED by owner (2026-06-22)
-Considered adding an optional descriptive tank label (e.g. "Diesel — East") so
-two same-capacity diesel tanks read clearly for operators. Owner said IGNORE —
-plain "Tank 1 / Tank 2" (number = sequential id, not capacity) is fine. Capacity
-(20000) goes in the Capacity field. Revisit only if operators ask.
-
-## 9. Add a "Pump" layer above nozzles (deferred 2026-06-22)
+## 7. Add a "Pump" layer above nozzles (deferred 2026-06-22)
 Owner request. Today the hierarchy is Tank → Nozzle. Add a **Pump** (a.k.a.
 dispensing unit) layer in between, so each nozzle belongs to a numbered pump:
   Tank → (Nozzle) and Pump → Nozzle(s), with Nozzle still mapped to a Tank.
 WHY it's valuable: the physical **pump stock slips** (the printed meter/receipt
-the operator tears off) carry the **pump number**. Capturing the pump number in
-our model lets us tie meter readings, receipt images, and reconciliation to the
-exact physical pump — much stronger audit trail and matches what staff read off
-the slip.
+the operator tears off) carry the **pump number**. Capturing it lets us tie meter
+readings, receipt images, and reconciliation to the exact physical pump — much
+stronger audit trail and matches what staff read off the slip.
 
 Scope when picked up:
 - [ ] New table `pumps` (id, station_id, pump_number/label, ...). RLS: direct
@@ -171,10 +113,10 @@ Scope when picked up:
       dipstick/receipt capture, and dashboards where nozzle appears.
 - [ ] Backfill: create a default pump per existing nozzle grouping, or prompt
       the owner to map existing nozzles to pumps.
-Note: a pump typically has 1-2 nozzles (e.g. one per fuel, or two same-fuel
-guns). Keep nozzle→tank mapping intact; pump is an organisational/audit layer.
+Note: a pump typically has 1-2 nozzles. Keep nozzle→tank mapping intact; pump is
+an organisational/audit layer.
 
-## 10. Dipstick + attendant entry on an already-open shift (watch item 2026-06-22)
+## 8. Dipstick + attendant entry on an already-open shift (watch item 2026-06-22)
 Owner opened a shift but hadn't collected the opening dip / attendants yet, plans
 to load them later onto the OPEN shift (dip readings + assign operators + pump
 receipt images). Confirmed backend allows assign while open and next-day close.
@@ -182,71 +124,46 @@ IF the open-shift screens don't allow loading the opening dipstick after the fac
 (e.g. dip capture is gated to shift-open only), make opening dip enterable on an
 open shift. Revisit only if owner reports he can't load it.
 
-## 11. GO-LIVE LEARNINGS (Kamala, 2026-06-22) → harden before the Vishakhapatnam round
-Context: first production outlet bring-up took ~5h vs the ~30min expected. The
-time went almost entirely into DIAGNOSING first-time-in-prod issues (RLS freshly
-enabled + generic error messages), NOT into building. Most root causes are now
-FIXED and benefit every future outlet. Plan: finish the 2 current implementations,
-then in the ~8-day gap fix Section B before the next 4 (Vizag).
-
-### A. Root causes already FIXED tonight (should not recur)
-- RLS write-path gap: Add Attendant inserts into `users` under a MANAGER's
-  (non-bypass) identity — the only user-creation path not on the admin bypass
-  role — so RLS blocked it. FIX: run that insert on the bypass role
-  (pool.als.run(undefined,…)). LESSON: when RLS is enabled, EVERY write path must
-  be tested under a real manager/attendant identity, not just the admin console.
-- Stale DB connections ("first click fails, retry works"): idle pooler/NAT drops
-  a connection the pool still thinks is alive. FIX: keepAlive + auto-retry on
-  connection-layer errors only (pool.js). Global — protects all outlets incl. POS.
-- Owner fail-open overrode an assigned responsibility (owner saw the FULL sidebar
-  despite Owner_lite). FIX: an assigned responsibility now caps owners too.
-- Margin tile 500'd on a non-existent `stock_receipts` table. FIX: correct table
-  name (product_stock_receipts). Only surfaced when that screen was hit in prod.
-- New users weren't forced to change password (inconsistent with Reset PW).
-  FIX: must_change_password=TRUE on create (station-users + owners).
-
-### B. Hardening to do in the 8-day gap (BEFORE Vizag)
+## 9. GO-LIVE hardening — remaining before the next outlet round (from Kamala bring-up)
+Context: first production outlet bring-up took ~5h vs ~30min expected, almost all
+in DIAGNOSING first-time-in-prod issues (RLS + generic errors). Root causes are
+FIXED (bypass-role Add-Attendant insert, pool keepAlive+retry, owner-caps-on-
+responsibility, margin-tile table name, `must_change_password` on create). The
+hardening below is what's still open:
 - [ ] Surface backend error detail in ALL forms (fixed add-attendant only; others
       still show generic catch-alls). Precise message = minutes, not hours.
 - [ ] Pre-go-live SMOKE TEST checklist, run as EACH role (owner/manager/attendant)
       under live RLS: add attendant, open+close shift, dipstick, delivery, invoice,
       dashboard, AI chat. Catches RLS/permission gaps before the client is watching.
 - [ ] Per-outlet SQL/migration checklist (which scripts to run in Supabase, in
-      order). Manual migrations caused repo↔prod DRIFT tonight (users RLS policy,
-      settings.manage top-up). Consider a tiny migration runner / version tracker.
+      order). Manual migrations caused repo↔prod DRIFT. Consider a tiny migration
+      runner / version tracker.
 - [ ] Vercel canonical domain redirect (www → apex). The www/apex origin split
       cost time on a phantom "login bounce."
 - [ ] CI gate: frontend `npm run build` + backend boot check before merge to main.
-      A broken main blocks ALL outlets; tonight we pushed straight to prod ~10x.
+      A broken main blocks ALL outlets. (Reinforced 2026-07: a truncated
+      `stations.js` hand-merge 500'd all of prod — a boot check would have caught it.)
 - [ ] Document the permission model (Role vs Responsibility vs Plan; owner
       fail-open; owner-only sidebar role-gates). The /admin UI conflates Role and
-      Responsibility — caused the Manager_lite-vs-Owner_lite mis-assignment.
+      Responsibility.
 
-### C. Net
-The 5h was first-time-RLS-in-prod discovery + generic errors, not inherent
-fragility. With Section A fixed and Section B done before Vizag, a fresh outlet
-should be close to the ~30min it ought to be.
-
-## 12. Bank deposit confirmation (reco) — who confirms? (pending owner, 2026-06-23)
+## 10. Bank deposit confirmation (reco) — who confirms? (pending owner, 2026-06-23)
 On Bank Deposits, a recorded deposit shows **"Bank Confirmed: Pending"** until
-someone confirms it actually hit the bank. Today that confirm is **owner-only**
+someone confirms it hit the bank. Today that confirm is **owner-only**
 (`PATCH /api/cash-deposits/:id/confirm` → `authorize('owner')`), so a MANAGER can
-record a deposit but cannot confirm it — it sits Pending. Example: J Madhu
-(manager) recorded ₹4,00,000 on 22 Jun → Pending (no owner has confirmed).
+record a deposit but cannot confirm it.
 
 This is a **maker-checker / segregation-of-duties** decision, NOT a bug:
 - Option A — give the **manager** the confirm (reco) capability (self-serve, faster).
-- Option B — **leave confirmation to the accountant/owner** — a separate person
-  who *checks what the manager does* (stronger control; manager records, checker
-  verifies it reached the bank).
+- Option B — **leave confirmation to the accountant/owner** — independent check
+  (stronger control; manager records, checker verifies it reached the bank).
 
-Owner (junutala) to decide and revert. Default lean = **B** (keep maker≠checker;
-the whole point of the confirm step is independent verification). If A is chosen:
+Owner (junutala) to decide and revert. Default lean = **B**. If A is chosen:
 relax the confirm route to `authorize('owner','manager')` + add a `deposits.confirm`
 permission, and decide whether a manager can confirm his *own* deposit or only
 another's. No build until the owner confirms the model.
 
-## 13. Dashboard cockpit redesign — DESIGNED + FROZEN, build PAUSED (2026-06-23)
+## 11. Dashboard cockpit redesign — DESIGNED + FROZEN, build PAUSED (2026-06-23)
 Reimagined the dashboards as role-aware "cockpits" that drive decisions, not raw
 numbers. Designs frozen via mockups. **Build paused pending ground acceptance** —
 see the ⚠️ at the end.
@@ -285,31 +202,25 @@ HELD by owner (2026-06-23) — do NOT build yet:
       HELD: heavy **on-the-ground resistance**; owner worried managers may quit if
       pushed on accountability. Acceptance must mature first.
 - [ ] **#3 Product-mix / non-fuel margin lever** (non-fuel share of margin per
-      outlet). HELD: **sensitive**. Outlets are forced to sell fuel above the local
-      market (roadside automobile shops undercut); to hit OMC targets, stock is
-      sometimes moved on paper (paying the GST component to the supplier). Surfacing
-      non-fuel margin would expose this. Revisit carefully.
+      outlet). HELD: **sensitive**. Revisit carefully.
 
 FUTURE: once there are **more outlets**, **anonymize cross-owner data** and feed
 owners anonymous peer-benchmark inputs — a network-effect intelligence play.
 
 ⚠️ WHY PAUSED: an owner who fears his manager won't turn up tomorrow is signalling
-that *sequencing* beats features. A manager-accountability cockpit shipped into
-active resistance risks attrition. Resume on the owner's go — lead with the
-manager-FRIENDLY surfaces (the action/ops help that makes the manager's day
-easier), and bring accountability/benchmarking in only once trust is there.
+that *sequencing* beats features. Resume on the owner's go — lead with the
+manager-FRIENDLY surfaces first, bring accountability/benchmarking in once trust is there.
 
-## 14. Environment / connector security hardening (deferred 2026-06-28)
+## 12. Environment / connector security hardening (deferred 2026-06-28)
 Owner asked to use the security tooling Supabase/Vercel provide. None are fires;
 they make the platform "stronger over time". Pick a calm slot. Prioritised:
 
 Tier 1 (high value, low effort — mostly dashboard, no code):
 - [ ] **2FA on ALL four dashboard accounts** — GitHub, Vercel, Railway, Supabase.
-      These control prod DB, deploys and secrets; a leaked dashboard login dwarfs any
-      app-level risk. Biggest bang for buck.
-- [ ] **Lock down staging access** — `staging.pumpini.in` is currently PUBLIC and, since
-      we loaded the real-data copy, holds **real customer PII** behind the login. Turn on
-      **Vercel → Deployment Protection** (Vercel Auth or password) on the staging project.
+      These control prod DB, deploys and secrets; biggest bang for buck.
+- [ ] **Lock down staging access** — `staging.pumpini.in` is PUBLIC and holds
+      **real customer PII** behind the login. Turn on **Vercel → Deployment
+      Protection** (Vercel Auth or password) on the staging project.
 - [ ] **Run Supabase Security Advisor** (Dashboard → Advisors) on prod + staging; fix
       what it flags (RLS gaps, exposed views, function search_path, etc.).
 Tier 2 (defence-in-depth):
@@ -322,7 +233,7 @@ Tier 2 (defence-in-depth):
       build-out) — reset in Supabase + update prod Railway `DATABASE_URL` + redeploy.
       Also rotate the staging password. ~2 min, brief redeploy blip.
 
-## 15. Get document images OUT of Postgres → object storage (deferred 2026-06-28)
+## 13. Get document images OUT of Postgres → object storage (deferred 2026-06-28)
 Most images are already stored as references (`photo_url`, `plate_photo_url`,
 `challan_photo_url`, `bank_statement_url`, `logo_url`, `qr_code_url`) — good. BUT two
 columns embed the raw image **as base64 text inside Postgres**: `file_base64` and
@@ -333,44 +244,23 @@ Decision (owner-approved direction): the fix is **object storage, NOT a second D
       keep only the URL/path in the DB — same pattern the other images already use.
 - [ ] For old-document lifecycle, use **Storage lifecycle/retention rules** (auto-archive
       or cheapen objects >1 month old) — far simpler than a separate archive database.
-- Why NOT a second Postgres DB: adds sync complexity, cross-DB queries, and another
-      thing to secure/back up, without fixing the root cause (images shouldn't be in
-      Postgres at all).
 - ⚠️ **Medium/high impact** (changes how documents are written/read across deliveries,
-      invoices, receipts, meter photos) → per the change-management rules, ship to
-      **staging first, owner physical-tests**, then prod.
+      invoices, receipts, meter photos) → ship to **staging first, owner physical-tests**,
+      then prod.
 
-## 16. Data-entry out-of-sync detection + Highway reconciliation learnings (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
-Context: chasing "Highway dashboard off by ₹72" opened a deeper audit. What we
-learned (all now understood; owner to advise on the data fix):
-- **Sales were filed by data-ENTRY time, not trade day.** Manager closes stamped
-  `occurred_at = NOW()`, and the dashboard bucketed by `occurred_at::date`. When a
-  manager closes days late / in batches, multiple trade days pile onto one calendar
-  day → totals that don't reconcile. Affects ALL outlets (Kamala 1-day lag, Highway
-  1–3 days). FIXED in code (synthesis now stamps the shift's trade day; per-shift
-  dashboard files by `shifts.date`); historical rows need the gated `occurred_at`
-  backfill (`ops/staging/backfill-occurred-at.sql`).
-- **`shifts.date` is the reliable trade-day label** — trust it over
-  `start_time`/`end_time`/`occurred_at`, which are entry-time and lag by days.
-- **Dips not entered as agreed.** Owner has AUTOMATED (ATG/HPCL) dip readings, so
-  staff skip physical dips. The agreed cadence — enter the HPCL reading DAILY, and a
-  PHYSICAL dip confirmation ONCE A WEEK — is not being followed. Highway has ZERO
-  dips → wet-stock reco can't run. (Adhoc Highway, by contrast, had demo/garbage
-  meter values — separate item, validate later.)
+## 14. Data-entry out-of-sync detection + data-health tripwire (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+Context: chasing "Highway dashboard off by ₹72" opened a deeper audit. Learnings
+(all understood; trade-day dating FIXED in code — synthesis stamps the shift's trade
+day, dashboard files by `shifts.date`; historical rows need the gated `occurred_at`
+backfill `ops/staging/backfill-occurred-at.sql`). Trust `shifts.date` over
+`start_time`/`end_time`/`occurred_at` (entry-time, lag by days).
 
-OWNER REFINED (2026-07-02): **no cadence enforcement, no schema field.** Staff keep
-entering the ATG/HPCL reading as they please. The real gap was that shift-start only
-accepted a **dip** (we compute litres via calibration), but HPCL shows **litres** —
-so staff couldn't enter what they see. Fix = accept EITHER on shift-start and compute
-the other; **source is inferred from the input**: litres typed = system (ATG/HPCL)
-reading (`dip_cm` left NULL); dip typed = physical check (`dip_cm` set). No
-`method`/`source` column needed — the null-vs-set `dip_cm` distinguishes them.
-- [x] BUILT (2026-07-02, on branch → staging): shift-start dip step now takes a dip
-      OR a litres value per tank (litres field shows the computed value when a dip is
-      entered on a calibrated tank). Backend already tolerant (nullable `dip_cm`;
-      computes litres from dip when a chart exists). **Pending staging test.**
+Shift-start dip-or-litres input (owner refined: accept EITHER, infer source from the
+input — litres = ATG/HPCL reading with `dip_cm` NULL; dip typed = physical check):
+- [x] BUILT (on branch → staging): shift-start dip step takes a dip OR a litres value
+      per tank. **Pending staging test → then prod.**
 
-TODO (later, lower priority) — build an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
+Still to build — an **out-of-sync / data-health tripwire**, visible ACROSS outlets:
 - [ ] Flag **missing daily dip entry** (no dip for a tank for N days).
 - [ ] Flag **overdue weekly physical-dip confirmation**.
 - [ ] Flag **late/batch closes** (shift closed ≫ its trade day) and **shifts left
@@ -378,73 +268,28 @@ TODO (later, lower priority) — build an **out-of-sync / data-health tripwire**
 - [ ] Surface as a small **"data health"** indicator on the dashboard AND in the
       owner/global rollup, so out-of-sync entry is obvious at a glance.
 
-LEARNING to keep visible (fold into GO-LIVE LEARNINGS §11 before Vizag): staff skip
-cadence (dips, timely closes) unless the system nags — ship the tripwire, and add
-reconciliation (meter↔POS↔dip, trade-day dating) to the per-role smoke test.
+LEARNING to keep visible: staff skip cadence (dips, timely closes) unless the system
+nags — ship the tripwire, and add reconciliation (meter↔POS↔dip, trade-day dating)
+to the per-role smoke test.
 
-## 17. Orphan / duplicate open shifts — auto-clean or manual delete (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
-At bring-up staff make mistakes and **open multiple shifts** that never close. E.g.
-Highway had TWO open shifts at once: `96f749ce` (dated 28 Jun but opened 01 Jul and
-never closed = orphan) and `0ba36329` (the real current one). Orphan opens skew the
-"live" tiles and block clean reconciliation.
-OWNER DECISION (2026-07-02): **manual delete**, guarded — a delete button enabled
-ONLY when the shift has **no operators** AND **another shift the same date has
-operators** (so you can remove an empty stray, never the real working shift). No
-auto-close.
-- [x] BUILT (2026-07-02, on branch → staging): `DELETE /api/shifts/:id` with the
-      guard + refusal on any real activity (sales/settlement/invoices/deliveries/
-      suspense) + safe cleanup of the orphan's opening dips; Delete button on the
-      shift-start "Currently open shifts" list, shown only when eligible. **Pending
-      staging test**, then prod.
-- [x] BUILT (2026-07-02): empty-shift **close** on End-Shift. The delete guard needs a
-      sibling shift with operators; when there's none, an empty shift was stuck (can't
-      delete, can't close — "Close every operator first" with no operators). End-Shift
-      now shows "Close empty shift" when the shift has no operators (backend already
-      closes a 0-operator shift). Allowed for any empty shift (close is harmless);
-      delete still offered when a sibling exists.
+## 15. Orphan / duplicate open shifts — manual delete + empty-close (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+At bring-up staff **open multiple shifts** that never close, skewing "live" tiles and
+blocking clean reconciliation. Owner decision: **manual delete**, guarded — a delete
+button enabled ONLY when the shift has **no operators** AND **another shift the same
+date has operators**. No auto-close.
+- [x] BUILT (on branch → staging): `DELETE /api/shifts/:id` (guard + refusal on any
+      real activity + safe cleanup of the orphan's opening dips) and empty-shift
+      **close** on End-Shift (for the case with no sibling). **Pending staging test →
+      then prod.**
 - [ ] (later) warn/block opening a *second* concurrent shift for one-shift outlets.
 
-## 18. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
-Owner: "We can't start the shift until ALL attendants are assigned — start-shift
-makes no sense. Let an attendant start operations as soon as HIS nozzle readings
-are entered."
-Finding: the backend ALREADY activates per-attendant — `POST /shifts/:id/assign`
-persists immediately and `/shifts/active` returns that operator's shift right away,
-so an operator is live the moment he's added (no all-operators gate in the API). The
-friction is the **3-step wizard** (Open → Dipstick → Operators, ending in one "Start —
-Shift is live ✓" button), which *feels* like a single upfront setup that isn't live
-until the end.
-OWNER CLARIFIED (2026-07-02): make the bottom CTA a **"Start shift"** that activates
-as soon as ONE operator + his nozzle readings are entered, so an attendant goes live
-the moment his readings are recorded — no waiting for the rest.
-- [x] BUILT (2026-07-02, on branch → staging): bottom CTA relabelled "Start shift";
-      enabled once one operator is added OR the add-form holds a picked operator with
-      a nozzle. On click, if the form holds an un-added operator it assigns him first
-      (he goes live via the existing `/assign` → `/shifts/active` path), then finishes.
-      **Pending staging test.**
+## 16. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+Owner: "Let an attendant start operations as soon as HIS nozzle readings are entered."
+Backend ALREADY activates per-attendant (`POST /shifts/:id/assign` persists immediately;
+`/shifts/active` returns that operator's shift). The friction was the 3-step wizard
+*feeling* like an all-upfront setup.
+- [x] BUILT (on branch → staging): bottom CTA relabelled "Start shift"; enabled once
+      one operator + nozzle readings are entered; if the add-form holds an un-added
+      operator on click, it assigns him first (goes live), then finishes. **Pending
+      staging test → then prod.**
 - [ ] (later, if wanted) make the Dipstick step skippable at start too.
-
-## 18. Pumpini Lite — SO voice-recording playback in the SO-Instruction drawer — ✅ DONE 2026-07-23
-
-**DONE:** VAWE pushes the SO recording URLs (PR #98 → main); Pumpini stores them
-column-tolerantly + plays a role-aware <audio> in the drawer (PR #184 → staging).
-Owner action left: run the two ADD COLUMN statements on Pumpini staging Supabase
-(`so_audio_url`, `so_owner_audio_url`), then roll a NEW task with an SO voice note
-to test. Below is the original design note for reference.
-
-**Agreed design ("SO voice replay per role"): the manager should hear the SO's task in
-the SO's OWN voice; an escalated owner hears the owner message.** Today the Lite
-SO-Instruction drawer (`SoInstructionsTile` → `InteractionDrawer`) shows the text,
-commit-by date, Proof (photo/upload) and Mark-complete — but there is **no audio
-player**. Missing feature, confirmed on staging 2026-07-22 (Vawe 5 manager on `/lite`).
-
-To wire tomorrow (cross-repo — verify the exact flow first, don't assume):
-- **VAWE side:** the interaction/recording has the SO's voice (the same WAV VAWE plays
-  on the escalation call). Confirm whether the interaction push to Pumpini
-  (`/api/vawe/interactions`) already carries an audio URL; if not, add it (per-role:
-  manager = task recording, escalated owner = owner message).
-- **Pumpini side:** store/carry the audio URL on `vawe_interactions`, expose it on the
-  GET, and render an **audio player** in the drawer (role-aware). Public/ signed URL
-  the manager can play without extra auth (like the artifact URL pattern).
-- Everything else in the Lite loop (provision → land on /lite → tile → commit → proof →
-  complete → FULFILMENT) is validated on staging as of 2026-07-22.
