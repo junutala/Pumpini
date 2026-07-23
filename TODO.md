@@ -63,8 +63,10 @@ in an isolated worktree, full build + click-through before merge):
 - [ ] Add CI (npm ci && build) + commit the workspace lockfile in the same PR
 
 ## 3. Dip continuity: closing dip → next opening dip (deferred 2026-06-22)
-> Verified 2026-07-23: no dip prefill in prod. NB the **meter** handover mismatch
-> check DOES exist (`reconcile.js` opening-vs-prior-closing) — use it as the model.
+> Verified 2026-07-23: no DIP prefill in prod. NB the **meter/nozzle** handover
+> prefill ALREADY exists (`shift-start/page.js:55` `openings` = "nozzle_id →
+> suggested opening (prior close)" + `reconcile.js` opening-vs-prior-closing mismatch
+> check) — copy that exact pattern for the dipstick.
 
 The closing dipstick of one shift/day is physically the opening dip of the next.
 Later: auto-prefill the opening dip from the prior shift's closing dip and flag any
@@ -72,15 +74,21 @@ mismatch (a dip "handover tripwire"), instead of re-keying it. Keep manual captu
 for now.
 
 ## 4. User-management access model — remaining open decisions (deferred 2026-06-22)
-> **→ Approach doc: `docs/access-model-cleanup.md`.** Verified 2026-07-23: no
-> Auditor responsibility and no owner-self-serve user route in prod — both open.
+> **→ Approach doc: `docs/access-model-cleanup.md`.** **Verified 2026-07-23 (doc was
+> STALE — owner self-serve already exists):** owners CAN self-serve create users.
+> `POST /api/users` = `authorize('owner')` → owner creates any role incl. **manager**
+> (station-scoped, via the single `createUser` writer); the **Users** sidebar entry
+> (`/users`, `perm:'users.manage'`, `roles:['owner']`) exposes it. So "platform admin
+> creates ALL users" is no longer true — owners self-serve managers/attendants today.
 
-Done this cycle (do NOT reopen): Add-Attendant (manager-facing), responsibility
-create/assign locked to superadmin with the role-affinity guardrail (PR #170),
-lite entitlement caps to `['vawe.proof']`. Still open to decide:
-- [ ] How much of this to grant OWNERS (self-serve managers/auditors) vs keep
-      with the platform admin.
-- [ ] Auditor responsibility (e.g. tally.export + reports.view only).
+Done this cycle (do NOT reopen): Add-Attendant (manager-facing), owner self-serve
+`/users`, responsibility create/assign locked to superadmin with the role-affinity
+guardrail (PR #170), lite entitlement caps to `['vawe.proof']`. Genuinely still open:
+- [ ] **Auditor responsibility** (e.g. `tally.export` + `reports.view` only). No
+      auditor role/responsibility exists in prod — this is the real remaining gap.
+- [ ] (optional) let the owner **assign a responsibility at creation** on `/users`
+      — today `createUser` sets ROLE only; responsibility assignment stays at `/admin`.
+      Decide whether to bring that into the owner's self-serve flow.
 
 ## 5. Admin-set Station Code + attendant display (deferred 2026-06-22)
 > Verified 2026-07-23: no `stations.code` column/route/input in prod — not built.
