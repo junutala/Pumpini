@@ -1,0 +1,76 @@
+name: CI
+
+# Gate every change into the two protected branches BEFORE it can merge and
+# auto-deploy (frontend -> Vercel, backend -> Railway). This exists because on
+# 2026-07-22 a truncated route file (stations.js lost `module.exports = router`)
+# shipped to main and crash-looped the backend for every outlet. These jobs
+# catch that class of failure without needing a database.
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-build:
+    name: Frontend build (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No lockfile in the repo (neither frontend nor backend), so `npm ci`
+      # cannot run — use `npm install`. If a package-lock.json is added later,
+      # switch this to `npm ci` for reproducible installs.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # A real compile/import break must fail here. Provide safe dummy env so
+      # that a *missing runtime env var* can never mask a genuine build error:
+      # everything the build reads (NEXT_PUBLIC_API_URL, build id) has a code
+      # fallback, so these are belt-and-braces only.
+      - name: Build
+        env:
+          NEXT_PUBLIC_API_URL: https://dummy.invalid
+          NEXT_TELEMETRY_DISABLED: '1'
+          CI: 'true'
+        run: npm run build
+
+  backend-boot-check:
+    name: Backend boot / route-export check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # Cheap syntax guard across ALL backend source: catches unbalanced
+      # braces / partial edits that would throw only when the file is loaded.
+      - name: Syntax check (node --check) all backend source
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+      # The real prod-outage guard: require() every route module and assert it
+      # exports a usable Express router. Reproduces nothing against the DB and
+      # never calls listen() — it fails loudly (non-zero) naming the offending
+      # file if a route is truncated / missing `module.exports = router`, which
+      # is exactly what took prod down on 2026-07-22.
+      - name: Route export check
+        run: node scripts/ci-route-check.js
