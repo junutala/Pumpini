@@ -424,7 +424,13 @@ the moment his readings are recorded — no waiting for the rest.
       **Pending staging test.**
 - [ ] (later, if wanted) make the Dipstick step skippable at start too.
 
-## 18. Pumpini Lite — SO voice-recording playback in the SO-Instruction drawer (2026-07-22) — 🔴 next up
+## 18. Pumpini Lite — SO voice-recording playback in the SO-Instruction drawer — ✅ DONE 2026-07-23
+
+**DONE:** VAWE pushes the SO recording URLs (PR #98 → main); Pumpini stores them
+column-tolerantly + plays a role-aware <audio> in the drawer (PR #184 → staging).
+Owner action left: run the two ADD COLUMN statements on Pumpini staging Supabase
+(`so_audio_url`, `so_owner_audio_url`), then roll a NEW task with an SO voice note
+to test. Below is the original design note for reference.
 
 **Agreed design ("SO voice replay per role"): the manager should hear the SO's task in
 the SO's OWN voice; an escalated owner hears the owner message.** Today the Lite
