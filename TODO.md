@@ -6,23 +6,33 @@ Items the owner asked to keep on the list. Pick these up when he says
 Items tagged **🔴 OPERATIONAL · PRIORITY** are the exception — the owner wants
 these addressed on priority (not parked), ahead of the general backlog.
 
-> **Revalidated 2026-07-23 against PROD code (`origin/main`), not the doc.**
-> The doc had drifted (items get built without the doc being updated). Corrections
-> made this pass:
-> - **Credit ageing report → REMOVED (already live in prod):** `creditReports.js`
->   `/api/credit-reports/ageing` (FIFO 0-30/31-60/61-90/90+) + `reports/credit`
->   page, sidebar-linked.
-> - **§14/§15/§16 operational items are IN PROD since 2026-07-02** (commits
->   `864b7a5`, `d314a3f`, + dip-or-litres) — not "pending staging test". Only their
->   *later* sub-items remain open.
-> - **Bank-deposit confirm (§8):** the confirm route is now `deposits.manage`
->   (managers hold it) — the maker≠checker "decision" is de-facto Option A. Flagged
->   for owner ratification, not still-open build.
-> - **Dashboard cockpit (§9):** manager cockpit + Intelligence dashboard are BUILT
->   and in prod; only Targets + Product-mix remain owner-HELD.
+> **Revalidated 2026-07-23 against PROD code (`origin/main`), not the doc** — the
+> doc had drifted (items get built without the doc being updated). Method now:
+> derive ground truth from the code surface (pages + routes + sidebar) and
+> reconcile, rather than trust the doc's wording. Corrections this pass:
+> - **Credit ageing report → REMOVED (already live):** `creditReports.js /ageing`
+>   + `reports/credit` page, sidebar-linked.
+> - **Dashboard cockpit → SHIPPED & navigable** (Bunk / Group / Intelligence, with
+>   Operations⇄Intelligence toggle); only Targets + Product-mix remain owner-HELD.
+> - **Owner self-serve user creation → already exists** (`POST /users` owner-only +
+>   `/users` sidebar); only the Auditor responsibility is a real gap.
+> - **Operational items (dip-or-litres, orphan delete/close, per-attendant start)
+>   are IN PROD since 2026-07-02**, not "pending staging test".
+> - **Bank-deposit confirm** is de-facto self-serve (`deposits.manage`); owner
+>   chose (2026-07-23) to leave it — full accounting is a Phase-3/4 rethink instead.
+> - **Disposed 2026-07-23 (owner call — enhancement adds nothing real):** Dip
+>   continuity (dipstick prefill), Station Code, and the Pump-above-Nozzle layer.
+>   Reasons kept below where relevant. The Pump hierarchy is already covered by the
+>   `nozzle_number` (`varchar(8)`) "pump.nozzle" convention — a formal `pumps` table
+>   would add only DB normalization, no capability. Station uniqueness is already
+>   solved by mobile-as-key. The one useful sliver of dip continuity (flag a
+>   closing→opening dip mismatch) is folded into the data-health tripwire below.
 
 ## 1. AI-search content pass (deferred 2026-06-12)
 > Verified 2026-07-23: `/ai`, `/pricing`, `/faq` pages all absent in prod — open.
+> Criticality LOW: this is inbound/organic discovery (a stranger Googling), a
+> *different channel* from the SO-led push that is the current go-to-market. No
+> operational bearing; AI answers also lag the web 4–8 weeks after it ships.
 
 Goal: make Pumpini surface in Gemini/ChatGPT answers for "petrol pump
 software with AI" type probes (currently PetroPulse360 dominates because it
@@ -42,38 +52,28 @@ Owner-side (only he can do):
 - [ ] Free listings on 2–3 Indian software directories (use kit above)
 - [ ] One short YouTube demo (voice POS + AI chat, even 90s screen record)
 
-Expectation: AI answers lag the web by 4–8 weeks after the above lands.
+Highest-leverage 20% when picked up: `/pricing` + `/faq` (FAQPage schema) +
+LinkedIn page + one demo video. The rest is polish.
 
 ## 2. Next.js 15 upgrade — security audit clear-out (deferred 2026-06-22)
-> Verified 2026-07-23: prod `frontend/package.json` is on **next 14.2.35** — still open.
+> Verified 2026-07-23: prod `frontend/package.json` is on **next 14.2.35** — open.
+> Criticality LOW–MODERATE (hygiene, not a fire): the *critical* auth-bypass CVE was
+> already patched inside 14.x. The residual advisories are mostly N/A for our setup.
+> Do it in a calm slot, isolated worktree, full click-through — and bundle it with
+> the CI build gate (§9) since you'd be re-testing the whole app anyway.
 
-Revisit AFTER the current deployments are live and stable. `npm audit` flags ~5
-advisories fixed only in Next 15.5.16+. We bumped 14.0.4 → 14.2.35 (cleared the
-critical auth-bypass within 14.x). The rest need a major 14 → 15 migration
-(breaking: async cookies()/headers()/params/searchParams, caching defaults,
-React 19), deferred as too risky pre-rollout.
-
-Most flagged surface is N/A for us (image optimizer OFF, no Next middleware, no
-`beforeInteractive`, App Router, Vercel-hosted mitigations). When picked up (do
-in an isolated worktree, full build + click-through before merge):
+`npm audit` flags ~5 advisories fixed only in Next 15.5.16+. The rest need a major
+14 → 15 migration (breaking: async cookies()/headers()/params/searchParams, caching
+defaults, React 19), deferred as too risky pre-rollout. Most flagged surface is N/A
+(image optimizer OFF, no Next middleware, no `beforeInteractive`, App Router,
+Vercel-hosted mitigations). When picked up:
 - [ ] Bump `next` + `eslint-config-next` to latest 15.x (>=15.5.16)
 - [ ] Migrate async request APIs (cookies/headers/params/searchParams)
 - [ ] Re-check data fetching/caching defaults (fetch no longer cached by default)
 - [ ] `npm run build` + smoke-test every page; then PR to main
 - [ ] Add CI (npm ci && build) + commit the workspace lockfile in the same PR
 
-## 3. Dip continuity: closing dip → next opening dip (deferred 2026-06-22)
-> Verified 2026-07-23: no DIP prefill in prod. NB the **meter/nozzle** handover
-> prefill ALREADY exists (`shift-start/page.js:55` `openings` = "nozzle_id →
-> suggested opening (prior close)" + `reconcile.js` opening-vs-prior-closing mismatch
-> check) — copy that exact pattern for the dipstick.
-
-The closing dipstick of one shift/day is physically the opening dip of the next.
-Later: auto-prefill the opening dip from the prior shift's closing dip and flag any
-mismatch (a dip "handover tripwire"), instead of re-keying it. Keep manual capture
-for now.
-
-## 4. User-management access model — remaining open decisions (deferred 2026-06-22)
+## 3. User-management access model — remaining open decisions (deferred 2026-06-22)
 > **→ Approach doc: `docs/access-model-cleanup.md`.** **Verified 2026-07-23 (doc was
 > STALE — owner self-serve already exists):** owners CAN self-serve create users.
 > `POST /api/users` = `authorize('owner')` → owner creates any role incl. **manager**
@@ -90,63 +90,25 @@ guardrail (PR #170), lite entitlement caps to `['vawe.proof']`. Genuinely still 
       — today `createUser` sets ROLE only; responsibility assignment stays at `/admin`.
       Decide whether to bring that into the owner's self-serve flow.
 
-## 5. Admin-set Station Code + attendant display (deferred 2026-06-22)
-> Verified 2026-07-23: no `stations.code` column/route/input in prod — not built.
-
-Disambiguation is ALREADY handled (attendant key = mobile, `users.phone` globally
-UNIQUE, RLS-scoped). Remaining is the human-readable **Station Code** display aid
-(low urgency):
-- [ ] Migration: ALTER TABLE stations ADD COLUMN code VARCHAR(8) (nullable).
-- [ ] superadmin POST /stations + PATCH /stations/:id accept & return `code`.
-- [ ] /admin station create/edit modal: add a "Station Code" input.
-- [ ] Show the code in cross-station/admin/group views and (optionally) beside
-      attendant names where outlet context helps (e.g. "Kumar · KAM").
-
-## 6. Add a "Pump" layer above nozzles (deferred 2026-06-22)
-> Verified 2026-07-23: NO `pumps` table / `nozzles.pump_id` FK in prod. (An OCR
-> `pump_id` string IS parsed off receipts in `reconcile.js`, but that's a captured
-> text field, not the hierarchy.) — open.
-
-Today the hierarchy is Tank → Nozzle. Add a **Pump** (dispensing unit) layer in
-between: Pump → Nozzle(s), with Nozzle still mapped to a Tank. WHY: physical pump
-stock slips carry the pump number; capturing it ties meter readings / receipt
-images / reconciliation to the exact physical pump.
-
-Scope when picked up:
-- [ ] New table `pumps` (id, station_id, pump_number/label, ...). RLS: direct
-      station_id isolation (add to rls/02 direct-tables list).
-- [ ] `nozzles` gets `pump_id` FK (nullable first for backfill, then required).
-      (Can seed off the OCR `pump_id` already captured in reconcile.)
-- [ ] Settings → Pumps tab (CRUD), and nozzle form picks its Pump.
-- [ ] Show pump number in shift-start/-end, dipstick/receipt capture, dashboards.
-- [ ] Backfill: default pump per existing nozzle grouping, or owner maps them.
-
-## 7. Dipstick + attendant entry on an already-open shift (watch item 2026-06-22)
+## 4. Dipstick + attendant entry on an already-open shift (watch item 2026-06-22)
 Owner opened a shift but hadn't collected the opening dip / attendants yet, plans
 to load them later onto the OPEN shift. Backend allows assign-while-open and
 next-day close. IF the open-shift screens don't allow loading the opening dipstick
 after the fact, make opening dip enterable on an open shift. Revisit only if owner
 reports he can't load it.
 
-## 8. Bank deposit confirmation (reco) — DECISION NOW DE-FACTO MADE, owner to ratify
-> **Verified 2026-07-23 (this changed since the doc was written):** the confirm
-> route is no longer owner-only. `cashDeposits.js:125` →
-> `PATCH /:id/confirm` now uses `requirePerm('deposits.manage')`, and the RECORD
-> route (`POST /`) uses the SAME `deposits.manage`. Managers **hold**
-> `deposits.manage` (permissions.js manager defaults + Manager_lite seed 006).
-> ⇒ **A manager can record AND confirm — including his OWN deposit.** This is
-> **Option A** (self-serve), reached as a side effect of the access-model flip
-> (`authorize('owner')` → `requirePerm`), NOT a deliberate maker-checker call.
+## 5. Bank deposit confirmation (reco) — owner chose to LEAVE (2026-07-23)
+> **Verified 2026-07-23:** the confirm route is no longer owner-only.
+> `cashDeposits.js:125` `PATCH /:id/confirm` uses `requirePerm('deposits.manage')`,
+> same perm as the RECORD route (`POST /`), and managers hold it ⇒ a manager can
+> record AND confirm his OWN deposit (Option A / self-serve), reached as a side
+> effect of the access-model flip. **Owner decision 2026-07-23: leave it as-is** —
+> maker≠checker segregation will be revisited inside the planned **full accounting
+> module (Phase 3/4)** that lets owners drop Tally and depend on Pumpini end-to-end,
+> rather than as a one-off re-gate now.
+- [ ] (Phase 3/4) Fold deposit maker-checker into the full accounting module design.
 
-Owner (junutala) to **ratify or revert**:
-- [ ] **Ratify Option A** (leave as-is: manager self-confirms) — do nothing, OR
-- [ ] **Revert to maker≠checker** (Option B): re-gate `/:id/confirm` to a distinct
-      `deposits.confirm` perm that managers DON'T get by default (owner/accountant
-      only), and optionally block confirming one's *own* deposit.
-Default lean was **B** (independent verification is the whole point of the confirm
-step) — so the current live behaviour may be unintended. Worth a conscious call.
-
-## 9. Dashboard cockpit — SHIPPED & navigable; only two levers HELD (2026-06-23)
+## 6. Dashboard cockpit — SHIPPED & navigable; only two levers HELD (2026-06-23)
 > **Verified 2026-07-23 (built + reachable in prod, confirmed live via owner
 > screenshot — NOT "paused"):** the full three-surface cockpit is live and wired:
 > - **Bunk View** (sidebar → `/dashboard`) = manager **Bunk cockpit** (hero +
@@ -171,14 +133,12 @@ Still open — HELD by owner (do NOT build yet; people-management reasons):
 - [ ] **Product-mix / non-fuel margin lever** (non-fuel share of margin per outlet).
       HELD: sensitive (exposes above-market pricing / on-paper stock moves). Revisit
       carefully.
-- [ ] (nav) confirm the Intelligence page is owner-gated + reachable — it is NOT in
-      the standard Sidebar (only `/dashboard` is); verify how owners reach it.
 
 FUTURE: with more outlets, anonymize cross-owner data → anonymous peer-benchmark
 inputs (network-effect intelligence). Sequencing rule stands: lead with
 manager-FRIENDLY surfaces; bring accountability/benchmarking once trust is there.
 
-## 10. Environment / connector security hardening (deferred 2026-06-28)
+## 7. Environment / connector security hardening (deferred 2026-06-28)
 > Dashboard-side (Supabase/Vercel/Railway/GitHub) — not verifiable from repo code.
 > All still owner actions.
 
@@ -194,7 +154,7 @@ Tier 2 (defence-in-depth):
 - [ ] Rotate the prod DB password (typed into a chat during staging build-out) +
       the staging password; update Railway `DATABASE_URL` + redeploy.
 
-## 11. Get document images OUT of Postgres → object storage (deferred 2026-06-28)
+## 8. Get document images OUT of Postgres → object storage (deferred 2026-06-28)
 > **Verified 2026-07-23: still open.** `delivery_invoices.file_base64`
 > (`deliveries.js`) and `image_base64` (`reconcile.js:672`) are still stored as
 > base64 TEXT in Postgres.
@@ -208,7 +168,7 @@ second DB:
 - ⚠️ **Medium/high impact** (changes document write/read across deliveries, invoices,
       receipts, meter photos) → staging first, owner physical-tests, then prod.
 
-## 12. GO-LIVE hardening — remaining before the next outlet round
+## 9. GO-LIVE hardening — remaining before the next outlet round
 > **Verified 2026-07-23:** no `.github/workflows` build/CI exists in prod (the CI
 > gate below is genuinely open — reinforced by the truncated-`stations.js` outage
 > that a boot check would have caught). Root causes from Kamala bring-up (bypass-role
@@ -223,11 +183,11 @@ second DB:
       (not in repo).
 - [ ] **CI gate: frontend `npm run build` + backend boot check before merge to main.**
       A broken main blocks ALL outlets (a truncated `stations.js` 500'd prod on
-      2026-07-22 — a boot check catches exactly this).
+      2026-07-22 — a boot check catches exactly this). Bundle with the Next 15 bump (§2).
 - [ ] Document the permission model (Role vs Responsibility vs Plan; owner fail-open;
       owner-only sidebar role-gates).
 
-## 13. Data-entry out-of-sync detection + data-health tripwire (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+## 10. Data-entry out-of-sync detection + data-health tripwire (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
 > **Verified 2026-07-23:** the **dip-or-litres** shift-start input is **IN PROD**
 > (`shift-start/page.js` litres/ATG-HPCL path) — done. The cross-outlet tripwire
 > below is NOT built — open. Trade-day dating is fixed in code (dashboard files by
@@ -239,13 +199,18 @@ Still to build — an **out-of-sync / data-health tripwire**, visible ACROSS out
 - [ ] Flag **overdue weekly physical-dip confirmation**.
 - [ ] Flag **late/batch closes** (shift closed ≫ its trade day) and **shifts left
       open** past their day — the mis-dating early-warning.
+- [ ] Flag a **closing→opening dip mismatch at handover** (the useful sliver of the
+      disposed "dip continuity" item — the closing dip of one shift IS the opening dip
+      of the next; a gap is a wet-stock red flag). NB the meter/nozzle handover
+      already prefills opening from prior close (`shift-start/page.js:55`) — copy that
+      pattern if a dip prefill is ever wanted, but the *flag* is the valuable part.
 - [ ] Surface as a small **"data health"** indicator on the dashboard AND in the
       owner/global rollup.
 
 LEARNING: staff skip cadence unless the system nags — ship the tripwire, and add
 reconciliation (meter↔POS↔dip, trade-day dating) to the per-role smoke test.
 
-## 14. Orphan / duplicate open shifts (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+## 11. Orphan / duplicate open shifts (2026-07-02) — 🔴 OPERATIONAL · PRIORITY
 > **Verified 2026-07-23: the delete + empty-close ARE IN PROD** (not pending).
 > `DELETE /api/shifts/:id` (`shifts.js:134`, commit `864b7a5`, 2026-07-02) with the
 > full guard; Delete button (`shift-start/page.js:121`, guarded by `canDelete`);
@@ -264,7 +229,7 @@ Still open:
       relax the guard for that specific case (still block on any real activity).
 - [ ] (later) warn/block opening a *second* concurrent shift for one-shift outlets.
 
-## 15. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
+## 12. Shift-start: per-attendant go-live (owner request 2026-07-02) — 🔴 OPERATIONAL · PRIORITY
 > **Verified 2026-07-23: IN PROD** (not pending). `shift-start/page.js:238,449` —
 > bottom CTA "Start Shift" enabled once one operator + nozzle readings are entered;
 > assigns an un-added operator on click, then finishes. Per-attendant go-live works.
