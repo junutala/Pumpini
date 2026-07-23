@@ -609,3 +609,23 @@ ALTER TABLE public.users ADD CONSTRAINT users_role_check
 ALTER TABLE public.owner_group_members DROP CONSTRAINT IF EXISTS owner_group_members_role_check;
 ALTER TABLE public.owner_group_members ADD CONSTRAINT owner_group_members_role_check
   CHECK ((role)::text = ANY (ARRAY['admin','member','cco']::text[]));
+
+-- ──────────────────────────────────────────────────────────────
+-- DOCUMENT BYTES → OBJECT STORAGE (2026-07-23)
+-- Move raw image/PDF bytes OUT of Postgres into Supabase Storage (private
+-- `pumpini-docs` bucket), keeping only a storage PATH in the DB. Additive +
+-- column-tolerant with the shipped code. base64 columns are RETAINED (fallback
+-- + un-migrated rows); dropping them is a SEPARATE later owner-gated step after
+-- the superadmin backfill confirms every row has a storage_path. Idempotent.
+-- Canonical copy of backend/src/db/migrations/009_document_object_storage.sql.
+-- ⚠️ RUN THESE STEPS on the target DB (staging first) before the code relies on them.
+-- ──────────────────────────────────────────────────────────────
+
+-- Step 1 — delivery invoices: add the path column.
+ALTER TABLE public.delivery_invoices ADD COLUMN IF NOT EXISTS storage_path TEXT;
+
+-- Step 2 — delivery invoices: allow URL-only rows (file_base64 no longer required).
+ALTER TABLE public.delivery_invoices ALTER COLUMN file_base64 DROP NOT NULL;
+
+-- Step 3 — meter photos: add the path column (image_base64 already nullable).
+ALTER TABLE public.meter_photos ADD COLUMN IF NOT EXISTS storage_path TEXT;

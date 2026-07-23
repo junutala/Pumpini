@@ -6,6 +6,53 @@ const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const { storageConfigured, uploadDocumentBase64, signedDocUrl } = require('../services/vaweStorage');
+
+// Persist a scanned delivery invoice. Preferred: upload the bytes to the private
+// doc bucket and keep only the storage PATH in the DB (no base64 blob in Postgres).
+// Column-tolerant + additive: this code deploys BEFORE the owner runs the DDL, so
+// it must not break while `storage_path` is missing or `file_base64` is still
+// NOT NULL. We try progressively more legacy INSERT shapes and only fall through on
+// a missing-column (42703) / not-null (23502) error — never losing the invoice.
+async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_by }) {
+  let path = null;
+  if (storageConfigured()) {
+    try {
+      path = await uploadDocumentBase64({
+        prefix: 'delivery-invoices', scope: station_id, base64, contentType: media_type,
+        filename: media_type === 'application/pdf' ? 'invoice.pdf' : 'invoice.jpg',
+      });
+    } catch (e) {
+      path = null;
+      try { require('../utils/logger').warn('delivery-invoice upload failed, storing base64: ' + (e.message || e)); } catch { /* noop */ }
+    }
+  }
+  // Ordered fallbacks — first that the live schema accepts wins:
+  //  1. path only            (migrated: storage_path added + file_base64 NULLable)
+  //  2. path + base64         (storage_path added but file_base64 still NOT NULL)
+  //  3. base64 only           (pre-migration legacy shape)
+  const attempts = [];
+  if (path) {
+    attempts.push({ cols: ['storage_path'], vals: [path], base64: false });
+    attempts.push({ cols: ['storage_path'], vals: [path], base64: true });
+  }
+  attempts.push({ cols: [], vals: [], base64: true });
+  let lastErr;
+  for (const a of attempts) {
+    const cols = ['station_id', ...a.cols, ...(a.base64 ? ['file_base64'] : []), 'media_type', 'uploaded_by'];
+    const vals = [station_id, ...a.vals, ...(a.base64 ? [base64] : []), media_type, uploaded_by];
+    const ph   = vals.map((_, i) => `$${i + 1}`).join(',');
+    try {
+      const { rows } = await pool.query(`INSERT INTO delivery_invoices(${cols.join(',')}) VALUES(${ph}) RETURNING id`, vals);
+      return rows[0].id;
+    } catch (e) {
+      lastErr = e;
+      if (e.code === '42703' || e.code === '23502') continue;  // column/NOT NULL not migrated → next shape
+      throw e;
+    }
+  }
+  throw lastErr;
+}
 
 // GET /api/deliveries/book-stock/:station_id  ← must be before /:id routes
 router.get('/book-stock/:station_id', authenticate, requireStationAccess(), async (req, res, next) => {
@@ -159,12 +206,9 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     // share the one record (no duplicate blobs).
     let invoiceId = invoice_id || null;
     if (!invoiceId && invoice_base64 && invoice_media_type && INVOICE_OK_TYPES.includes(invoice_media_type)) {
-      const { rows: ir } = await pool.query(
-        `INSERT INTO delivery_invoices(station_id, file_base64, media_type, uploaded_by)
-         VALUES($1,$2,$3,$4) RETURNING id`,
-        [station_id, invoice_base64, invoice_media_type, req.user.id]
-      );
-      invoiceId = ir[0].id;
+      invoiceId = await insertDeliveryInvoice({
+        station_id, base64: invoice_base64, media_type: invoice_media_type, uploaded_by: req.user.id,
+      });
     } else if (invoiceId) {
       // Re-scope a passed invoice_id to this station — never link another outlet's file.
       const { rows: iv } = await pool.query('SELECT 1 FROM delivery_invoices WHERE id=$1 AND station_id=$2', [invoiceId, station_id]);
@@ -255,18 +299,42 @@ router.patch('/:id/verify', authenticate, requireStationVia('SELECT station_id F
   } catch (err) { next(err); }
 });
 
-// GET /api/deliveries/:id/invoice — the stored scan attached to a delivery,
-// returned as { media_type, file_base64 } for viewing/download. Station-scoped.
+// GET /api/deliveries/:id/invoice — the stored scan attached to a delivery.
+// Migrated rows live in the private doc bucket → we return { media_type, url }
+// (a short-lived signed URL). Un-migrated rows still hold base64 → we return
+// { media_type, file_base64 }. Column-tolerant: works before/after the DDL adds
+// `storage_path`. Station-scoped.
 router.get('/:id/invoice', authenticate,
   requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'),
   async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT di.media_type, di.file_base64
-       FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
-       WHERE fd.id = $1`, [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: 'No invoice attached to this delivery.' });
-    res.json(rows[0]);
+    let row;
+    try {
+      const { rows } = await pool.query(
+        `SELECT di.media_type, di.file_base64, di.storage_path
+         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
+         WHERE fd.id = $1`, [req.params.id]);
+      row = rows[0];
+    } catch (e) {
+      if (e.code !== '42703') throw e;   // storage_path not migrated yet → legacy select
+      const { rows } = await pool.query(
+        `SELECT di.media_type, di.file_base64
+         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
+         WHERE fd.id = $1`, [req.params.id]);
+      row = rows[0];
+    }
+    if (!row) return res.status(404).json({ error: 'No invoice attached to this delivery.' });
+    if (row.storage_path) {
+      try {
+        const url = await signedDocUrl(row.storage_path);
+        return res.json({ media_type: row.media_type, url });
+      } catch (e) {
+        try { require('../utils/logger').error('invoice signed-url failed: ' + (e.message || e)); } catch { /* noop */ }
+        if (row.file_base64) return res.json({ media_type: row.media_type, file_base64: row.file_base64 });
+        return res.status(503).json({ error: 'Could not load the invoice right now — try again.' });
+      }
+    }
+    return res.json({ media_type: row.media_type, file_base64: row.file_base64 });
   } catch (err) { next(err); }
 });
 
