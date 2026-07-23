@@ -10,7 +10,7 @@
 // manager-facing strings go through tc() with Telugu in te.json.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ClipboardList, CalendarClock, Upload, Camera, CheckCircle2, X, Paperclip, AlertTriangle, ChevronRight } from 'lucide-react';
+import { ClipboardList, CalendarClock, Upload, Camera, CheckCircle2, X, Paperclip, AlertTriangle, ChevronRight, Volume2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 import {
@@ -237,7 +237,16 @@ export default function SoInstructionsTile({ stationId, standalone = false }) {
 
 function InteractionDrawer({ it, canAct, onClose, onChanged }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
+  // The SO's own voice, per role: an owner (once escalated to) hears the SO's
+  // owner-message if the SO recorded a distinct one, else the task recording;
+  // everyone else (the manager) hears the task recording. Public Supabase URL
+  // (VAWE's vawe-audio bucket) — playable inline with no extra auth, same as the
+  // proof artifact URL. Absent on tasks the SO typed, or pre-audio interactions.
+  const soVoiceUrl = (user?.role === 'owner' && it.so_owner_audio_url)
+    ? it.so_owner_audio_url
+    : (it.so_audio_url || null);
   const [committed, setCommitted] = useState(toLocalInput(it.committed_date));
   // The last SAVED commit-by value, so the Save button knows when there are
   // unsaved edits (dirty) and can confirm "Saved ✓" once persisted.
@@ -312,7 +321,16 @@ function InteractionDrawer({ it, canAct, onClose, onChanged }) {
         </div>
 
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{it.task_name}</div>
-        <div style={{ ...meta, whiteSpace: 'pre-wrap', marginBottom: 16 }}>{it.instruction}</div>
+        <div style={{ ...meta, whiteSpace: 'pre-wrap', marginBottom: soVoiceUrl ? 10 : 16 }}>{it.instruction}</div>
+
+        {soVoiceUrl && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ ...label, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Volume2 size={13} /> {tc('vawe.playSoVoice', "Play the SO's voice")}
+            </div>
+            <audio controls preload="none" src={soVoiceUrl} style={{ width: '100%', height: 38 }} />
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 20, marginBottom: 18 }}>
           <div>
