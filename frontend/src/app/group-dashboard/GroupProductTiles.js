@@ -66,7 +66,7 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
   const groupMargin = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.buy == null ? 0 : r.l * (r.sell - r.buy)); }, 0), 0);
   const marginBearingSales = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.buy == null ? 0 : r.amt); }, 0), 0);
   const blended = period => { const b = marginBearingSales(period); return b > 0 ? groupMargin(period) / b * 100 : 0; };
-  const untracked = period => { const m = {}; outlets.forEach(o => Object.keys(o[period]).forEach(k => { const r = o[period][k]; if (r.buy == null && r.amt > 0) { (m[k] = m[k] || { key: k, label: meta(k).label, sales: 0 }).sales += r.amt; } })); return Object.values(m).sort((a, b) => b.sales - a.sales); };
+  const untracked = period => { const m = {}; outlets.forEach(o => Object.keys(o[period]).forEach(k => { const r = o[period][k]; if (r.buy == null && r.amt > 0) { const e = (m[k] = m[k] || { key: k, label: meta(k).label, sales: 0, outlets: [] }); e.sales += r.amt; if (!e.outlets.includes(o.short)) e.outlets.push(o.short); } })); return Object.values(m).sort((a, b) => b.sales - a.sales); };
 
   const surface = 'var(--surface,#fff)';
   const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10 };
@@ -126,7 +126,7 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
             <AlertTriangle size={19} color="var(--brand,#e07b0c)" style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.4, color: 'var(--text-2,#475569)' }}>
               <b style={{ display: 'block', color: 'var(--text-1)', fontSize: 12.5 }}>{tc('gprod.notTracked', 'Margin not tracked on {n} products').replace('{n}', ut.length)}</b>
-              {ut.map(u => `${u.label} ${compactR(u.sales)}`).join(' · ')} — {tc('gprod.noRate', 'no delivery rate on file, booking ₹0 margin.')}
+              {ut.map(u => `${u.label} ${compactR(u.sales)}${outlets.length > 1 ? ` (${u.outlets.join(', ')})` : ''}`).join(' · ')} — {tc('gprod.noRate', 'no delivery rate on file, booking ₹0 margin.')}
             </div>
             <button onClick={() => router.push('/deliveries')} style={{ whiteSpace: 'nowrap', background: 'var(--brand,#e07b0c)', color: '#fff', border: 0, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
               {tc('gprod.enterRate', 'Enter delivery rate →')}
@@ -290,7 +290,7 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
           {utMtd.length > 0 && (
             <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--text-3)', display: 'flex', gap: 7, alignItems: 'flex-start', lineHeight: 1.5 }}>
               <AlertTriangle size={14} color="var(--brand,#e07b0c)" style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>{tc('gprod.varUntracked', '{list} are missing here — no delivery rate on file, so their margin can\'t be computed. The blended % already excludes them; enter their delivery rates to bring them into the margin picture.').replace('{list}', utMtd.map(u => u.label).join(' & '))}</span>
+              <span>{tc('gprod.varUntracked', '{list} are missing here — no delivery rate on file, so their margin can\'t be computed. The blended % already excludes them; enter their delivery rates to bring them into the margin picture.').replace('{list}', utMtd.map(u => outlets.length > 1 ? `${u.label} (${u.outlets.join(', ')})` : u.label).join(' & '))}</span>
             </div>
           )}
         </div>
