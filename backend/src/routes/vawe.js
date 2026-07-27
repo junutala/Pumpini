@@ -221,11 +221,51 @@ router.post('/provision-lite', async (req, res, next) => {
              ON CONFLICT(user_id,station_id) DO UPDATE SET template_id=$2, assigned_at=NOW()`,
             [userId, templateId, pumpiniOutletId]
           );
+          // Keep the NAME current too. Re-provisioning is how VAWE pushes a
+          // corrected contact, and dedup matches on phone alone — so without
+          // this an existing row keeps its old name and Pumpini Lite shows the
+          // previous person against a live number.
+          await client.query(
+            `UPDATE users SET name=$2 WHERE id=$1 AND name IS DISTINCT FROM $2`,
+            [userId, person.name]
+          );
           provisioned.push({ role, userId, phone });
         }
 
+        // RECONCILE: the payload declares who the manager/owner ARE, so anyone
+        // else still holding this station's Lite tile is a PREVIOUS holder —
+        // typically a manager whose number VAWE just replaced. Without this
+        // they keep station access and can still submit proof for an outlet
+        // they've left, because linkUserToStation only ever INSERTs.
+        //
+        // Deliberately narrow: it only revokes users whose assignment IS the
+        // "Lite — SO Tile" template at THIS station. Real Pumpini staff on a
+        // paid outlet that was flipped to lite hold a different template and
+        // are never touched.
+        const keep = provisioned.map((p) => p.userId);
+        const { rows: revoked } = await client.query(
+          `DELETE FROM user_role_assignments
+            WHERE station_id = $1
+              AND template_id = $2
+              AND NOT (user_id = ANY($3::uuid[]))
+          RETURNING user_id`,
+          [pumpiniOutletId, templateId, keep]
+        );
+        for (const r of revoked) {
+          // Drop the station link as well, so the outlet stops appearing for
+          // them at all rather than showing up empty.
+          await client.query(
+            'DELETE FROM station_users WHERE station_id=$1 AND user_id=$2',
+            [pumpiniOutletId, r.user_id]
+          );
+        }
+
         await client.query('COMMIT');
-        return { provisioned, stationId: pumpiniOutletId };
+        return {
+          provisioned,
+          stationId: pumpiniOutletId,
+          revoked: revoked.map((r) => r.user_id),
+        };
       } catch (e) {
         try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
         throw e;
@@ -242,16 +282,80 @@ router.post('/provision-lite', async (req, res, next) => {
     try { require('../middleware/permissions').clearStationPermCache(pumpiniOutletId); } catch { /* best-effort */ }
     logger.info(
       `VAWE provision-lite: outlet ${pumpiniOutletId} → lite; provisioned ` +
-      `${result.provisioned.map(p => p.role).join(', ') || 'none'}`
+      `${result.provisioned.map(p => p.role).join(', ') || 'none'}` +
+      `${result.revoked.length ? `; revoked ${result.revoked.length} previous holder(s)` : ''}`
     );
     // Return the resolved Pumpini station id so VAWE can confirm the deterministic
     // mapping (it equals the id VAWE sent).
-    res.json({ ok: true, entitlement: 'lite', pumpiniOutletId: result.stationId, provisioned: result.provisioned });
+    res.json({ ok: true, entitlement: 'lite', pumpiniOutletId: result.stationId, provisioned: result.provisioned, revoked: result.revoked });
   } catch (err) {
     // createUser throws { status, message } for bad input (invalid phone, dup, …).
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
   }
+});
+
+// POST /api/vawe/revoke-lite  — signature-verified (VAWE → Pumpini, same HMAC as
+// the inbound webhook). The SO disabled the outlet in VAWE (it changed hands and
+// now runs as a separate ADHOC outlet, or it closed), so its staff must stop
+// being able to submit proof for it. Strips the "Lite — SO Tile" responsibility
+// and the station link for that station.
+//
+// DELIBERATELY NARROW — it only removes assignments whose template IS the global
+// "Lite — SO Tile". Real Pumpini staff at a paid outlet that was once flipped to
+// lite hold different templates and are never touched, so this can't strip a
+// working outlet's employees. The users themselves are left intact (they may run
+// other outlets); only this station's lite access goes.
+//
+// Idempotent: revoking an already-revoked outlet removes nothing and still 200s.
+// Body: { pumpiniOutletId }.
+router.post('/revoke-lite', async (req, res, next) => {
+  const code = checkSignature(req);
+  if (code === 503) return res.status(503).json({ error: 'VAWE integration not configured' });
+  if (code !== 200) return res.status(401).json({ error: 'Invalid signature' });
+
+  const { pumpiniOutletId } = req.body || {};
+  if (!pumpiniOutletId) return res.status(400).json({ error: 'pumpiniOutletId is required' });
+
+  try {
+    const result = await pool.als.exit(async () => {
+      const client = await pool.connect();   // no ALS store → real bypass client
+      try {
+        await client.query('BEGIN');
+        const { rows: tmpl } = await client.query(
+          `SELECT id FROM role_templates WHERE station_id IS NULL AND name='Lite — SO Tile' LIMIT 1`
+        );
+        // No template seeded ⇒ nothing was ever granted ⇒ nothing to revoke.
+        if (!tmpl.length) { await client.query('ROLLBACK'); return { revoked: [] }; }
+
+        const { rows: revoked } = await client.query(
+          `DELETE FROM user_role_assignments
+            WHERE station_id = $1 AND template_id = $2
+          RETURNING user_id`,
+          [pumpiniOutletId, tmpl[0].id]
+        );
+        for (const r of revoked) {
+          await client.query(
+            'DELETE FROM station_users WHERE station_id=$1 AND user_id=$2',
+            [pumpiniOutletId, r.user_id]
+          );
+        }
+        await client.query('COMMIT');
+        return { revoked: revoked.map((r) => r.user_id) };
+      } catch (e) {
+        try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
+        throw e;
+      } finally {
+        client.release();
+      }
+    });
+
+    // Access changed → drop the cached perms so the revoke bites immediately
+    // rather than after the 5-minute cache window.
+    try { require('../middleware/permissions').clearStationPermCache(pumpiniOutletId); } catch { /* best-effort */ }
+    logger.info(`VAWE revoke-lite: outlet ${pumpiniOutletId} → revoked ${result.revoked.length} user(s)`);
+    res.json({ ok: true, revoked: result.revoked });
+  } catch (err) { next(err); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
