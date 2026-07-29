@@ -2350,7 +2350,8 @@
     "gaugeFilled": "Filled {n} tank(s) from the screen. Check each figure, then Save.",
     "gaugeSkipped": "Not matched: {list}.",
     "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
-    "gaugeFail": "Could not read the screen — enter the readings manually."
+    "gaugeFail": "Could not read the screen — enter the readings manually.",
+    "gaugeMismatch": "Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering."
   },
   "streco": {
     "title": "Stock Reconciliation",

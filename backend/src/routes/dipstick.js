@@ -221,7 +221,9 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
 Rules:
 - product: MS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; Power / Speed / XtraPremium / any branded premium -> "premium_petrol"; CNG -> "cng". Keep the printed text in product_raw either way.
 - DIP IS IN MILLIMETRES on these consoles (e.g. 766.30, 1540.80). Report it as printed in dip_mm — do NOT convert to cm.
-- The screen usually shows the same tanks TWICE: graphical cards on top and a summary table below. They are the SAME tanks — return ONE entry per tank, and use the two views to CHECK each other. If a figure differs between them, trust the table and say so in notes.
+- ANCHOR ON THE SUMMARY TABLE AT THE BOTTOM. These screens show the same tanks TWICE: graphical cards on top, and below them a plain table with column headers (typically TANK | PRODUCT | VOLUME (Ltr.) | DIP (MM.) | CAPACITY (Ltr.)). The table is labelled, tabular and free of the cards' glare-prone artwork, so it is the RELIABLE source. Read tank_label, product, net_volume_ltrs, dip_mm and capacity_ltrs FROM THE TABLE. Use the cards only to (a) supply the fields the table does not carry — water, temperature, ullage, today's sale/receipt — and (b) cross-check the table. They are the SAME tanks: return ONE entry per tank, never one per view. If a figure differs between the two, TRUST THE TABLE and say so in notes.
+- The table's VOLUME column is the NET volume (it matches the card's "Net Volume", not "Gross Volume"). Put it in net_volume_ltrs.
+- capacity_ltrs from the table matters — we use it to identify which of OUR tanks a row belongs to. Read it carefully.
 - Volumes are litres, temperature is Celsius, water dip is millimetres.
 - ARITHMETIC CROSS-CHECK: gross_volume_ltrs - net_volume_ltrs should approximately equal water_ltrs, and net_volume_ltrs + ullage_ltrs should approximately equal capacity_ltrs. If either is badly off you have misread a digit — re-read that tank's block before answering.
 - This is a photo of a screen: glare bands, moire and a skewed angle are expected. If a digit is genuinely unreadable use null and say which field in notes. NEVER guess a digit.
