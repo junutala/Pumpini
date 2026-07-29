@@ -2357,7 +2357,13 @@
     "dipMissingBody": "No opening dip has been recorded for:",
     "dipMissingWhy": "Without an opening dip this shift cannot be reconciled — any stock loss on these tanks will go undetected.",
     "dipMissingEnter": "Enter dip readings",
-    "dipMissingSkip": "Continue without dip readings"
+    "dipMissingSkip": "Continue without dip readings",
+    "gaugeScan": "Scan gauge screen",
+    "gaugeReading": "Reading screen…",
+    "gaugeFilled": "Filled {n} tank(s) from the screen. Check each figure, then Save.",
+    "gaugeSkipped": "Not matched: {list}.",
+    "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
+    "gaugeFail": "Could not read the screen — enter the readings manually."
   },
   "streco": {
     "title": "Stock Reconciliation",
