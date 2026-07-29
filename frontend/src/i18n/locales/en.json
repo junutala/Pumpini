@@ -2382,7 +2382,18 @@
     "recoSaved": "Reconciliation saved for {n} tank(s).",
     "breachAlert": "⚠️ {n} beyond tolerance — owner alerted.",
     "allWithinTol": "All within tolerance.",
-    "failed": "Failed"
+    "failed": "Failed",
+    "dayTitle": "Day",
+    "dayHint": "All shifts on this day, opening dip to closing dip.",
+    "monthTitle": "This month",
+    "monthHint": "The whole period reconciled once: the first dip of the month against the last, with every delivery and sale in between.",
+    "emptyDay": "No dip readings recorded on this day.",
+    "emptyMonth": "No dip readings recorded this month.",
+    "allOfFuel": "All {f}",
+    "totalRowNote": "Where a fuel has more than one tank, judge the “All” row. Pumps can draw from either tank, so a single tank’s figure depends on how sales were split between them — the combined line is the one that reflects the stock actually on the ground.",
+    "noShiftsToFinalize": "No shifts on this day to finalize.",
+    "noBaseline": "No opening baseline",
+    "noBaselineNote": "“No opening baseline” = no opening dip and no prior closing dip to carry forward — record an opening dip so the tank can be reconciled (it is never counted as a loss)."
   },
   "tallyp": {
     "title": "Tally Export",
