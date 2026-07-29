@@ -45,6 +45,8 @@ export default function ShiftEndPage() {
   const [dips, setDips]   = useState({});
   const [dipVol, setDipVol] = useState({});
   const [savedDips, setSavedDips] = useState({});
+  const [shiftDips, setShiftDips] = useState(new Set()); // tank_ids already dipped for THIS shift (server)
+  const [dipWarn, setDipWarn] = useState(null);          // [tank] awaiting acknowledgement
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
   const [done, setDone]   = useState(false);
@@ -58,12 +60,17 @@ export default function ShiftEndPage() {
   const pickShift = async (s) => {
     setBusy('pick'); setErr('');
     try {
-      const [d, tk, pr, reco] = await Promise.all([
+      const [d, tk, pr, reco, dr] = await Promise.all([
         api.get(`/shifts/${s.id}`),
         api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
         api.get(`/prices/${stationId}/current`).catch(()=>[]),
         api.get(`/reconcile/${s.id}`).catch(()=>[]),   // already-settled operators
+        api.get('/dipstick', { params:{ station_id: stationId, shift_id: s.id } }).catch(()=>[]),
       ]);
+      // Tanks that ALREADY have a closing dip for this shift — so re-entering the
+      // screen never nags about readings that are safely stored.
+      setShiftDips(new Set((Array.isArray(dr)?dr:[])
+        .filter(x => x.reading_type === 'closing').map(x => x.tank_id)));
       setShift(d);
       setActiveShift({ id:d.id, shift_number:d.shift_number, start_time:d.start_time, station_id:d.station_id });
       setTanks(Array.isArray(tk)?tk:[]);
@@ -187,24 +194,54 @@ export default function ShiftEndPage() {
     if (tk.diameter_cm && tk.length_cm) return dipToVolume(tk.diameter_cm, tk.length_cm, markToTrueDip(entered));
     return dipVol[tk.id] !== '' && dipVol[tk.id] != null ? num(dipVol[tk.id]) : null;
   };
-  const saveDip = async (tk) => {
+  // Typed into a tank's box but NOT yet in the database. The per-tank Save used to
+  // be the only writer, so a manager who typed a closing dip and pressed Close Shift
+  // lost it silently — which is how two live outlets ran a month with no dips at all
+  // and no stock reconciliation.
+  const isDirty = (tk) => !savedDips[tk.id] && dips[tk.id] !== '' && dips[tk.id] != null;
+
+  // Covered = saved just now, or already on the server for this shift.
+  const hasReading = (tk) => !!savedDips[tk.id] || shiftDips.has(tk.id);
+
+  // Persist ONE tank. Returns true on success. Caller owns busy/err so the per-tank
+  // button and the bulk flush share this single writer.
+  const persistDip = async (tk) => {
     const entered = dips[tk.id];
-    if (entered === '' || entered == null) return;
+    if (entered === '' || entered == null) return true;   // nothing typed — not a failure
     const hasChart = tk.diameter_cm && tk.length_cm;
     const vol = tankVol(tk);
-    if (vol == null) return setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number));
-    setBusy('dip'+tk.id); setErr('');
+    if (vol == null) {
+      setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number));
+      return false;
+    }
     try {
       await api.post('/dipstick', { station_id: stationId, tank_id: tk.id, shift_id: shift.id,
         reading_type: 'closing', dip_cm: hasChart ? markToTrueDip(entered) : entered, volume_ltrs: vol });
       setSavedDips(p => ({ ...p, [tk.id]: true }));
+      setShiftDips(s => new Set(s).add(tk.id));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
       setTanks(ts => ts.map(t => t.id === tk.id
         ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'closing' }
         : t));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.couldNotSaveDip', 'Could not save dip')); }
+      return true;
+    } catch (e) {
+      setErr(e.response?.data?.error || e.error || tc('send.couldNotSaveDip', 'Could not save dip'));
+      return false;
+    }
+  };
+
+  const saveDip = async (tk) => { setBusy('dip'+tk.id); setErr(''); await persistDip(tk); setBusy(''); };
+
+  // Commit anything typed but not yet saved, before the shift is closed.
+  const flushDips = async () => {
+    const pending = dipTanks.filter(isDirty);
+    if (!pending.length) return true;
+    setBusy('dip'); setErr('');
+    let ok = true;
+    for (const tk of pending) { if (!(await persistDip(tk))) ok = false; }
     setBusy('');
+    return ok;
   };
 
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
@@ -216,6 +253,18 @@ export default function ShiftEndPage() {
     try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
     catch(e){ setErr(e.response?.data?.error||e.error||tc('send.closeFailed', 'Close failed')); }
     setBusy('');
+  };
+
+  // Closing is the last chance to capture the closing dip — it is this shift's
+  // reconciliation AND tomorrow's opening baseline, and the shift can't be reopened
+  // to add it later. So commit whatever was typed, then HARD-STOP on any tank still
+  // missing a reading. Deliberately a blocking prompt naming the tanks: the passive
+  // "last saved" note was already there and outlets still went a month without dips.
+  const requestClose = async () => {
+    if (!(await flushDips())) return;                  // a save failed — err shown, stay put
+    const missing = dipTanks.filter(tk => !hasReading(tk));
+    if (missing.length) { setDipWarn(missing); return; }
+    closeShift();
   };
 
   const vBadge = (v) => {
@@ -372,9 +421,10 @@ export default function ShiftEndPage() {
                           value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
                     <button onClick={()=>saveDip(tk)} disabled={busy==='dip'+tk.id||savedDips[tk.id]}
                       style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
-                        background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
+                        background:savedDips[tk.id]?'#dcfce7':isDirty(tk)?'#d97706':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
                       {savedDips[tk.id]?tc('send.saved','✓ Saved'):tc('send.save','Save')}
                     </button>
+                    {isDirty(tk) && <span style={{fontSize:12,fontWeight:700,color:'#b45309'}}>{tc('send.notSaved','● Not saved')}</span>}
                   </div>
                   {/* Last saved reading — so a blank entry box never looks like lost data. */}
                   {tk.last_reading_at
@@ -397,11 +447,45 @@ export default function ShiftEndPage() {
               ))}
             </div>
 
-            <button onClick={closeShift} disabled={busy==='close' || !allClosed}
+            <button onClick={requestClose} disabled={busy==='close' || busy==='dip' || !allClosed}
               style={{width:'100%',height:48,marginTop:'1rem',background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>
               {busy==='close'?tc('send.closingEllipsis','Closing…'):tc('send.closeShift','Close Shift')}
             </button>
           </>)}
+        </div>
+      )}
+
+      {/* Hard stop: the closing dip is this shift's reconciliation AND tomorrow's
+          opening baseline, and a closed shift can't be reopened to add it. */}
+      {dipWarn && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:16}}>
+          <div className="card" style={{maxWidth:440,width:'100%'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+              <AlertTriangle size={20} color="#dc2626"/>
+              <span style={{fontWeight:800,fontSize:16,color:'#991b1b'}}>{tc('send.dipMissingTitle','Closing dip readings missing')}</span>
+            </div>
+            <div style={{fontSize:13.5,color:'var(--text-2)',marginBottom:10}}>
+              {tc('send.dipMissingBody','No closing dip has been recorded for:')}
+            </div>
+            <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+              {dipWarn.map(tk => (
+                <div key={tk.id} style={{fontSize:13,fontWeight:700,color:'#991b1b'}}>
+                  {tc('send.tank','Tank')} {tk.tank_number} <span style={{fontWeight:400}}>{tk.fuel_type}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:12.5,color:'var(--text-2)',marginBottom:16}}>
+              {tc('send.dipMissingWhy','Once the shift is closed this cannot be added. These tanks will have no stock reconciliation for today, and no opening baseline for tomorrow — any loss will go undetected.')}
+            </div>
+            <button onClick={()=>setDipWarn(null)}
+              style={{width:'100%',height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:14.5,cursor:'pointer'}}>
+              {tc('send.dipMissingEnter','Enter dip readings')}
+            </button>
+            <button onClick={()=>{ setDipWarn(null); closeShift(); }}
+              style={{width:'100%',height:40,marginTop:8,background:'none',color:'var(--text-3)',border:'none',fontWeight:600,fontSize:13,cursor:'pointer',textDecoration:'underline'}}>
+              {tc('send.dipMissingSkip','Close shift without dip readings')}
+            </button>
+          </div>
         </div>
       )}
     </AppShell>

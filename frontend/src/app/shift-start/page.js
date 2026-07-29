@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
-import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X } from 'lucide-react';
+import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X, AlertTriangle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -48,6 +48,8 @@ export default function ShiftStartPage() {
   const [dips, setDips]       = useState({});       // tank_id -> entered mark-ordinal
   const [dipVol, setDipVol]   = useState({});       // tank_id -> manual volume (no-chart fallback)
   const [savedDips, setSavedDips] = useState({});   // tank_id -> true
+  const [shiftDips, setShiftDips] = useState(new Set()); // tank_ids already dipped for THIS shift (server)
+  const [dipWarn, setDipWarn] = useState(null);     // [{tank_number, fuel_type}] awaiting acknowledgement
 
   // Operators step
   const [asg, setAsg]         = useState({});       // { attendant_id, opening_cash }
@@ -95,6 +97,11 @@ export default function ShiftStartPage() {
     const ops = await api.get(`/shifts/${id}/nozzle-openings`).catch(()=>[]);
     const map = {}; (Array.isArray(ops)?ops:[]).forEach(o => { if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening; });
     setOpenings(map);
+    // Which tanks ALREADY have an opening dip stored for this shift, so resuming or
+    // refreshing never nags about readings that are safely in.
+    const dr = await api.get('/dipstick', { params:{ station_id: stationId, shift_id: id } }).catch(()=>[]);
+    setShiftDips(new Set((Array.isArray(dr)?dr:[])
+      .filter(x => x.reading_type === 'opening').map(x => x.tank_id)));
   };
 
   const openShift = async () => {
@@ -138,32 +145,80 @@ export default function ShiftStartPage() {
     }
     return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres entered directly (system)
   };
-  const saveDip = async (tank) => {
+  // Something typed into a tank's boxes that is NOT yet in the database. This is the
+  // difference between "no reading" and "reading lost": the per-tank Save used to be
+  // the ONLY writer, so a manager who typed a dip and pressed on lost it silently —
+  // two live outlets ran a whole month with zero dips that way, which left their
+  // stock reconciliation permanently blank.
+  const isDirty = (tank) => !savedDips[tank.id] &&
+    ((dips[tank.id] !== '' && dips[tank.id] != null) ||
+     (dipVol[tank.id] !== '' && dipVol[tank.id] != null));
+
+  // A tank is covered if it was saved just now or already has a reading on the server.
+  const hasReading = (tank) => !!savedDips[tank.id] || shiftDips.has(tank.id);
+
+  // Persist ONE tank. Returns true on success. The caller owns busy/err so the
+  // per-tank button and the bulk flush below can share this single writer.
+  const persistDip = async (tank) => {
     const dip = dips[tank.id], litres = dipVol[tank.id];
     const hasDip = dip !== '' && dip != null;
     const hasLitres = litres !== '' && litres != null;
-    if (!hasDip && !hasLitres) return;
+    if (!hasDip && !hasLitres) return true;      // nothing typed — not a failure
     const hasChart = tank.diameter_cm && tank.length_cm;
     const vol = tankVol(tank);
-    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number));
+    if (vol == null) {
+      setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number));
+      return false;
+    }
     // Dip entered → physical reading (store dip_cm). Litres only → system (ATG/HPCL)
     // reading: dip_cm stays null, which is how we tell the two apart.
     const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
-    setBusy(true); setErr('');
     try {
       await api.post('/dipstick', {
         station_id: stationId, tank_id: tank.id, shift_id: shift.id,
         reading_type: 'opening', dip_cm, volume_ltrs: vol,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
+      setShiftDips(s => new Set(s).add(tank.id));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
       setTanks(ts => ts.map(t => t.id === tank.id
         ? { ...t, last_dip_cm: dip_cm, last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
         : t));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); }
-    setBusy(false);
+      return true;
+    } catch (e) {
+      setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip'));
+      return false;
+    }
   };
+
+  const saveDip = async (tank) => { setBusy(true); setErr(''); await persistDip(tank); setBusy(false); };
+
+  // Save everything typed but not yet saved. Called before leaving the dip step so
+  // pressing on can never throw away a reading the manager actually entered.
+  const flushDips = async () => {
+    const pending = dipTanks.filter(isDirty);
+    if (!pending.length) return true;
+    setBusy(true); setErr('');
+    let ok = true;
+    for (const tk of pending) { if (!(await persistDip(tk))) ok = false; }
+    setBusy(false);
+    return ok;
+  };
+
+  // ANY navigation off the dip step commits what was typed first — going back must
+  // not throw a reading away either. Moving FORWARD additionally hard-stops when a
+  // tank still has no opening dip: reconciliation is impossible without it, so this
+  // is a blocking prompt naming the tanks, not a note that can be scrolled past.
+  const goFromDipStep = async (target) => {
+    if (!(await flushDips())) return;                 // a save failed — err is shown, stay put
+    if (target > 1) {
+      const missing = dipTanks.filter(tk => !hasReading(tk));
+      if (missing.length) { setDipWarn(missing); return; }
+    }
+    setStep(target);
+  };
+  const leaveDipStep = () => goFromDipStep(2);
 
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
   const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
@@ -267,7 +322,9 @@ export default function ShiftStartPage() {
       {/* Stepper */}
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if(shift) setStep(i); }} disabled={!shift && i>0}
+          // Navigating OFF the dip step via a chip goes through the same commit (and,
+          // forwards, the same check) as the Next button — the chips can't slip past it.
+          <button key={s} onClick={()=>{ if(!shift) return; if(step===1 && i!==1) goFromDipStep(i); else setStep(i); }} disabled={!shift && i>0}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
@@ -352,9 +409,10 @@ export default function ShiftStartPage() {
                     onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                   <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
                     style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
-                      background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
+                      background:savedDips[tk.id]?'#dcfce7':isDirty(tk)?'#d97706':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
                     {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
                   </button>
+                  {isDirty(tk) && <span style={{fontSize:12,fontWeight:700,color:'#b45309'}}>{tc('sstart.notSaved','● Not saved')}</span>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
@@ -367,8 +425,8 @@ export default function ShiftStartPage() {
               </div>
             );
           })}
-          <button onClick={()=>setStep(2)} style={{width:'100%',height:46,marginTop:12,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
-            {tc('sstart.nextOperators','Next: Operators →')}
+          <button onClick={leaveDipStep} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer',opacity:busy?0.7:1}}>
+            {busy ? tc('sstart.savingDips','Saving dips…') : tc('sstart.nextOperators','Next: Operators →')}
           </button>
         </div>
       )}
@@ -449,6 +507,40 @@ export default function ShiftStartPage() {
             <button onClick={startShift} disabled={busy || (attendants.length===0 && !formReady)}
               style={{width:'100%',height:46,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
               {tc('sstart.doneToDashboard','Done — go to dashboard')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hard stop: no opening dip = no stock reconciliation for this shift, ever.
+          Blocking and specific, because a passive note demonstrably did not work. */}
+      {dipWarn && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:16}}>
+          <div className="card" style={{maxWidth:440,width:'100%'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+              <AlertTriangle size={20} color="#dc2626"/>
+              <span style={{fontWeight:800,fontSize:16,color:'#991b1b'}}>{tc('sstart.dipMissingTitle','Dip readings missing')}</span>
+            </div>
+            <div style={{fontSize:13.5,color:'var(--text-2)',marginBottom:10}}>
+              {tc('sstart.dipMissingBody','No opening dip has been recorded for:')}
+            </div>
+            <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'10px 12px',marginBottom:12}}>
+              {dipWarn.map(tk => (
+                <div key={tk.id} style={{fontSize:13,fontWeight:700,color:'#991b1b'}}>
+                  {tc('sstart.tank','Tank')} {tk.tank_number} <span style={{fontWeight:400}}>{tk.fuel_type}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:12.5,color:'var(--text-2)',marginBottom:16}}>
+              {tc('sstart.dipMissingWhy','Without an opening dip this shift cannot be reconciled — any stock loss on these tanks will go undetected.')}
+            </div>
+            <button onClick={()=>setDipWarn(null)}
+              style={{width:'100%',height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:14.5,cursor:'pointer'}}>
+              {tc('sstart.dipMissingEnter','Enter dip readings')}
+            </button>
+            <button onClick={()=>{ setDipWarn(null); setStep(2); }}
+              style={{width:'100%',height:40,marginTop:8,background:'none',color:'var(--text-3)',border:'none',fontWeight:600,fontSize:13,cursor:'pointer',textDecoration:'underline'}}>
+              {tc('sstart.dipMissingSkip','Continue without dip readings')}
             </button>
           </div>
         </div>
