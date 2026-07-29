@@ -69,14 +69,19 @@ export default function DipstickPage() {
     } finally { setGaugeBusy(false); }
   };
 
-  // Map a scanned row onto one of OUR tanks BY FUEL, never by the printed number.
-  // The console numbers tanks in its own namespace — a real outlet has console
-  // 1=HSD, 3=MS, 4=Power while its Pumpini tanks are 1=petrol, 2=diesel, so the
-  // number match pointed a DIESEL reading at the PETROL tank. Fuel is the only
-  // field both systems agree on, and we only accept it when it is unambiguous;
-  // otherwise the manager picks the tank in the form.
+  // Map a scanned row onto one of OUR tanks BY TANK NUMBER, guarded by fuel.
+  // The console's numbering is kept aligned with Pumpini's, so the number is an
+  // exact key — and it is the ONLY one that separates two tanks of the same fuel
+  // at the same capacity, which an outlet can genuinely have (two diesel tanks,
+  // both 22,000 L). Fuel and capacity both pick arbitrarily in that case.
+  // Fuel is still checked: if the number matches but the product disagrees, the
+  // numbering has drifted, and we return null rather than point at a tank holding
+  // a different fuel. Falls back to fuel only when it is unambiguous.
+  const norm = v => String(v || '').toLowerCase();
   const matchTank = (row) => {
-    const sameFuel = tanks.filter(t => String(t.fuel_type||'').toLowerCase() === String(row.product||'').toLowerCase());
+    const byNumber = tanks.find(t => String(t.tank_number) === String(row.tank_label));
+    if (byNumber) return norm(byNumber.fuel_type) === norm(row.product) ? byNumber : null;
+    const sameFuel = tanks.filter(t => norm(t.fuel_type) === norm(row.product));
     return sameFuel.length === 1 ? sameFuel[0] : null;
   };
 
