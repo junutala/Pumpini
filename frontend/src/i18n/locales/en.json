@@ -579,7 +579,6 @@
     "oil_co": "Oil Co.",
     "depot": "Depot",
     "gross_vol": "Gross Vol (L)",
-    "net_vol": "Net Vol (L)",
     "rate_l": "Rate/L",
     "total_value": "Total Value",
     "tank": "Tank",
@@ -610,8 +609,6 @@
     "gross_volume": "Gross Volume (L)",
     "temperature": "Temperature (°C)",
     "density": "Density (kg/L)",
-    "net_15": "Net Volume @ 15°C",
-    "auto_calc": "Auto-calculated",
     "financial_details": "Financial Details",
     "rate_per_ltr": "Rate per Litre (₹ ex-depot)",
     "freight": "Freight (₹)",
@@ -625,7 +622,11 @@
     "failed_record": "Failed to record delivery",
     "exceeds": "⚠ Delivery quantity ({q}L) exceeds available tank space ({a}L).",
     "tank_cap": "Tank {n} capacity: {c}L, current stock: {s}L.",
-    "dc_ph": "DC/2026/04/12345"
+    "dc_ph": "DC/2026/04/12345",
+    "volume_l": "Volume (L)",
+    "stock_vol": "Volume booked to stock (L)",
+    "as_per_challan": "As per challan",
+    "thermal_hint": "As per challan. May settle ~{n}L lower once cooled."
   },
   "live_page": {
     "title": "Live Events",
