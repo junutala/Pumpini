@@ -2343,7 +2343,13 @@
     "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
     "slipNoMatchSome": "No app nozzle for: {x}.",
     "slipVerify": "⚠ Some digits unclear — verify.",
-    "slipFailed": "Slip scan failed"
+    "slipFailed": "Slip scan failed",
+    "gaugeScan": "Scan gauge screen",
+    "gaugeReading": "Reading screen…",
+    "gaugeFilled": "Filled {n} tank(s) from the screen. Check each figure, then Save.",
+    "gaugeSkipped": "Not matched: {list}.",
+    "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
+    "gaugeFail": "Could not read the screen — enter the readings manually."
   },
   "streco": {
     "title": "Stock Reconciliation",
