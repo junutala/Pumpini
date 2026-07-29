@@ -58,7 +58,11 @@ applied, and break.** When a change needs schema:
 
 - Branch off `origin/main` → push → open PR → **merge to `main` yourself** (owner does not
   merge). Vercel green is the gate; CodeRabbit is advisory.
-- **Backend changes need a Railway redeploy**; **frontend is live on Vercel automatically.**
+- **Both auto-deploy on merge** — Railway (backend) and Vercel (frontend). No manual
+  redeploy step. Railway marks a merge SKIPPED ("no changes to watched files") when it
+  touches nothing it watches, e.g. a docs-only PR. *(Corrected 29-Jul-2026: this line
+  used to read "backend changes need a Railway redeploy", contradicting the deploy-ordering
+  section above and sending a session chasing a button that does not need pressing.)*
 - Never `cd` into or hardcode a local worktree path. Work via GitHub.
 
 ---
