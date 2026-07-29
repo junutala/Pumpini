@@ -21,7 +21,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     const isOwner = req.user.role === 'owner'; // blind drop: non-owners don't get open-shift sales
 
     // Fetch live station context
-    const [salesRes, shiftsRes, stockRes, alertsRes, pricesRes, cashIntRes, densityRes] = await Promise.all([
+    const [salesRes, shiftsRes, recentRes, mtdRes, stockRes, alertsRes, pricesRes, cashIntRes, densityRes] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(de.amount), 0)                                                     AS total_sales,
@@ -41,6 +41,34 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
         SELECT shift_number, status, start_time
         FROM shifts WHERE station_id = $1 AND date = $2 ORDER BY shift_number`,
         [station_id, today]
+      ),
+      // Recent trading days. Without this the assistant only ever knew about TODAY,
+      // and a pump usually has NO shift yet in the morning — so "what did we sell
+      // yesterday?" was unanswerable and it correctly replied that it had no sales
+      // data, which reads as broken. Filed by shifts.date (the trade day), matching
+      // Group View, Stock Reco and the daily tally.
+      pool.query(`
+        SELECT s.date::text AS date,
+               COALESCE(SUM(de.amount), 0)        AS amount,
+               COALESCE(SUM(de.quantity_ltrs), 0) AS litres,
+               BOOL_OR(s.status <> 'closed')      AS has_open_shift
+        FROM shifts s
+        LEFT JOIN dispense_events de ON de.shift_id = s.id
+             AND NOT COALESCE(de.is_voided, FALSE)
+        WHERE s.station_id = $1 AND s.date < $2 AND s.date >= $2::date - 14
+          AND (s.status = 'closed' OR $3)
+        GROUP BY s.date ORDER BY s.date DESC`,
+        [station_id, today, isOwner]
+      ),
+      // Month to date, same trade-day rule, so the assistant's total agrees with the
+      // dashboard's rather than being a third opinion.
+      pool.query(`
+        SELECT COALESCE(SUM(de.amount), 0) AS amount, COALESCE(SUM(de.quantity_ltrs), 0) AS litres
+        FROM dispense_events de JOIN shifts s ON s.id = de.shift_id
+        WHERE s.station_id = $1 AND s.date >= date_trunc('month', $2::date)::date
+          AND s.date <= $2 AND (s.status = 'closed' OR $3)
+          AND NOT COALESCE(de.is_voided, FALSE)`,
+        [station_id, today, isOwner]
       ),
       pool.query(`
         SELECT tank_number, fuel_type, capacity_ltrs, current_stock
@@ -108,19 +136,47 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     try { const { rows } = await pool.query(`SELECT COALESCE(SUM(CASE WHEN direction='in' THEN amount ELSE -amount END),0) AS bal FROM credit_suspense_entries WHERE station_id=$1`, [station_id]); creditSuspense = Number(rows[0].bal || 0); } catch { /* absent until migration 004 */ }
 
     const s = salesRes.rows[0];
+    const inr = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+    const dayLabel = d => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN',
+      { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short' });
+    const recent = recentRes.rows;
+    // The most recent PAST day that actually traded — what "last day's sales" means to
+    // an owner asking in the morning, before today's shift has been opened.
+    const lastTrading = recent.find(r => Number(r.amount) > 0) || null;
+    const mtd = mtdRes.rows[0] || { amount: 0, litres: 0 };
+    const noShiftsToday = shiftsRes.rows.length === 0;
+
     const contextLines = [
-      `Date: ${today}`,
+      `Date: ${today} (today, IST)`,
       `Logged in as: ${req.user.name} (${req.user.role})`,
       '',
       '--- Today\'s Sales ---',
-      `Total: ₹${parseFloat(s.total_sales).toLocaleString('en-IN')} (${s.txn_count} transactions)`,
-      `Cash: ₹${parseFloat(s.cash_sales).toLocaleString('en-IN')} | UPI: ₹${parseFloat(s.upi_sales).toLocaleString('en-IN')} | Credit: ₹${parseFloat(s.credit_sales).toLocaleString('en-IN')} | Card: ₹${parseFloat(s.card_sales).toLocaleString('en-IN')}`,
-      `Fuel dispensed: ${parseFloat(s.total_litres).toFixed(2)} L`,
+      noShiftsToday
+        ? 'No shift has been opened today yet, so today\'s sales are ₹0 so far. This is normal early in the day and does NOT mean sales data is missing — use the recent trading days below for the latest actual figures.'
+        : `Total: ${inr(s.total_sales)} (${s.txn_count} transactions)`,
+      ...(noShiftsToday ? [] : [
+        `Cash: ${inr(s.cash_sales)} | UPI: ${inr(s.upi_sales)} | Credit: ${inr(s.credit_sales)} | Card: ${inr(s.card_sales)}`,
+        `Fuel dispensed: ${parseFloat(s.total_litres).toFixed(2)} L`,
+      ]),
       '',
       '--- Shifts Today ---',
       shiftsRes.rows.length
         ? shiftsRes.rows.map(x => `Shift ${x.shift_number}: ${x.status}`).join(' | ')
-        : 'No shifts found',
+        : 'No shift opened today yet.',
+      '',
+      '--- Last Completed Trading Day ---',
+      lastTrading
+        ? `${dayLabel(lastTrading.date)} (${lastTrading.date}): ${inr(lastTrading.amount)}, ${parseFloat(lastTrading.litres).toFixed(0)} L`
+        : 'No sales recorded on any of the last 14 days.',
+      '',
+      '--- Recent Trading Days (most recent first) ---',
+      'Use these for "yesterday", "last day", "this week" and trend questions. A day may appear with ₹0 if a shift was opened but no meter readings were entered.',
+      recent.length
+        ? recent.map(r => `${dayLabel(r.date)} (${r.date}): ${inr(r.amount)}, ${parseFloat(r.litres).toFixed(0)} L${r.has_open_shift ? ' [shift still open]' : ''}`).join('\n')
+        : 'No shifts in the last 14 days.',
+      '',
+      '--- Month to Date ---',
+      `${inr(mtd.amount)}, ${parseFloat(mtd.litres).toFixed(0)} L (1st of this month through today)`,
       '',
       '--- Tank Stock ---',
       stockRes.rows.length
@@ -188,6 +244,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     }[language] || 'Respond in English.';
 
     const systemPrompt = `You are a helpful assistant for Pumpini, a petrol station management system. You answer questions about the station's operations, sales, stock, shifts, and alerts using the live data below. Be concise, friendly, and use Indian number formatting where appropriate.
+
+A pump usually has no shift open until partway through the day, so "Today's Sales" being ₹0 is normal and is NOT missing data. Never answer that you have no sales data while "Recent Trading Days" has rows — answer from those instead, and say which date you are quoting. Treat "last day", "yesterday" and "last sales" as the most recent day in that list that actually traded, which is called out under "Last Completed Trading Day". Only say data is unavailable when the relevant section is genuinely empty.
 
 ${langNote}
 
