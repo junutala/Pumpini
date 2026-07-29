@@ -2101,7 +2101,13 @@
     "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
     "slipNoMatchSome": "No operator nozzle for: {x}.",
     "slipVerify": "⚠ Some digits unclear — verify.",
-    "slipFailed": "Slip scan failed"
+    "slipFailed": "Slip scan failed",
+    "notSaved": "● Not saved",
+    "dipMissingTitle": "Closing dip readings missing",
+    "dipMissingBody": "No closing dip has been recorded for:",
+    "dipMissingWhy": "Once the shift is closed this cannot be added. These tanks will have no stock reconciliation for today, and no opening baseline for tomorrow — any loss will go undetected.",
+    "dipMissingEnter": "Enter dip readings",
+    "dipMissingSkip": "Close shift without dip readings"
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2329,7 +2335,14 @@
     "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
     "slipNoMatchSome": "No app nozzle for: {x}.",
     "slipVerify": "⚠ Some digits unclear — verify.",
-    "slipFailed": "Slip scan failed"
+    "slipFailed": "Slip scan failed",
+    "notSaved": "● Not saved",
+    "savingDips": "Saving dips…",
+    "dipMissingTitle": "Dip readings missing",
+    "dipMissingBody": "No opening dip has been recorded for:",
+    "dipMissingWhy": "Without an opening dip this shift cannot be reconciled — any stock loss on these tanks will go undetected.",
+    "dipMissingEnter": "Enter dip readings",
+    "dipMissingSkip": "Continue without dip readings"
   },
   "streco": {
     "title": "Stock Reconciliation",

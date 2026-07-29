@@ -48,9 +48,10 @@ async function computeShiftReco(shift_id) {
         SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
         FROM fuel_deliveries fd
         WHERE fd.tank_id = t.id
-          AND fd.received_at >  COALESCE(op.recorded_at, $2)
+          AND fd.received_at >  COALESCE(win.from_at, op.recorded_at, $2)
           AND fd.received_at <= COALESCE(cl.recorded_at, $3)
       ), 0) AS deliveries_ltrs,
+      COALESCE(win.from_at, op.recorded_at) AS delivery_window_from,
       COALESCE((
         SELECT SUM(de.quantity_ltrs) FROM dispense_events de
         JOIN nozzles n ON n.id = de.nozzle_id
@@ -69,7 +70,8 @@ async function computeShiftReco(shift_id) {
       -- opening baseline: this shift's own opening dip, else the prior shift's
       -- closing dip carried forward (the reading just before this closing). NULL if
       -- neither exists — never a fabricated 0.
-      SELECT dr.volume_ltrs, dr.recorded_at
+      SELECT dr.volume_ltrs, dr.recorded_at,
+             (dr.shift_id = $1 AND dr.reading_type = 'opening') AS is_own_opening
       FROM dipstick_readings dr
       WHERE dr.tank_id = t.id
         AND ( (dr.shift_id = $1 AND dr.reading_type = 'opening')
@@ -78,6 +80,47 @@ async function computeShiftReco(shift_id) {
                dr.recorded_at DESC
       LIMIT 1
     ) op ON TRUE
+    LEFT JOIN LATERAL (
+      -- The reading this shift's OPENING dip chains from — the previous shift's
+      -- closing dip. Needed only to decide the delivery window (see win, below).
+      SELECT dr.volume_ltrs, dr.recorded_at
+      FROM dipstick_readings dr
+      WHERE dr.tank_id = t.id
+        AND dr.reading_type = 'closing'
+        AND (dr.shift_id IS NULL OR dr.shift_id <> $1)
+        AND dr.recorded_at < op.recorded_at
+      ORDER BY dr.recorded_at DESC LIMIT 1
+    ) pc ON TRUE
+    LEFT JOIN LATERAL (
+      -- Where this reconciliation starts counting DELIVERIES.
+      --
+      -- Normally that is the opening baseline itself. But managers dip at shift
+      -- CLOSE and then re-key the same figure as the next shift's OPENING, hours
+      -- later — so consecutive reconciliations did NOT tile the timeline: a tanker
+      -- decanted between one shift's closing dip and the next shift's opening dip
+      -- fell in the hole and was counted by NO reconciliation. Book stayed at the
+      -- pre-delivery level while the dip showed the full tank, surfacing a phantom
+      -- full-tanker "gain" (Kamala T1, 18-Jul-2026: +10,386 L on a 10,000 L decant)
+      -- that then flattered the 30-day drift KPI to green while the tank was
+      -- actually losing stock every day.
+      --
+      -- The test is PHYSICAL, not a timestamp comparison — received_at is typed
+      -- by hand off the challan and is routinely an hour or two out (Kamala,
+      -- 24-Jul-2026: recorded 04:00, but the 04:45 opening dip proves the tanker
+      -- had not yet decanted). Stock in a tank only RISES on a delivery. So if the
+      -- opening dip is no higher than the prior closing dip, no delivery can be
+      -- baked into it, and anything recorded in the gap belongs to THIS
+      -- reconciliation — start the window at the prior closing dip and the hole
+      -- closes. If the opening dip is higher, the tank demonstrably gained stock
+      -- before it was read: that dip already absorbed the delivery, so the window
+      -- stays put and we do not double-count.
+      --
+      -- (+1 L of slack absorbs dip-chart rounding on an otherwise flat re-key.)
+      SELECT CASE
+        WHEN op.is_own_opening AND pc.recorded_at IS NOT NULL
+             AND op.volume_ltrs <= pc.volume_ltrs + 1
+        THEN pc.recorded_at ELSE op.recorded_at END AS from_at
+    ) win ON TRUE
     WHERE t.station_id = $4
     ORDER BY t.tank_number`,
     [shift_id, start_time, end_time, station_id]);
@@ -104,6 +147,7 @@ async function computeShiftReco(shift_id) {
       opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
       book_closing: book, actual_closing: actual,
       has_closing: hasClosing, has_baseline: hasBaseline,
+      delivery_window_from: r.delivery_window_from || null,
       variance_ltrs: variance, variance_pct: variancePct,
       tolerance_ltrs: tolerance, beyond_tolerance: beyond,
     };
