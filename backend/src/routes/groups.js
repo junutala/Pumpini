@@ -35,11 +35,20 @@ async function outletMetrics(sid, date) {
   const monthStart = date.slice(0, 8) + '01';
   try {
     const [sf, yd, pr, by, rv, wt, lg, ud, ml, mf] = await Promise.all([
+      // Sales are filed by the shift's TRADE DAY (shifts.date), never by
+      // occurred_at. occurred_at is a data-entry timestamp — it is written when the
+      // shift is settled, so a shift traded on 30-Jun that closed at 01:20 on 1-Jul
+      // carries a July stamp and got counted in July's month-to-date. That put 6,702 L
+      // of June trade into Kamala's July figure here while Stock Reco (which files by
+      // shifts.date) excluded it, so the same metric read differently on two screens.
+      // dashboard.js already files per-shift sales this way; this matches it.
       pool.query(`SELECT de.fuel_type, de.payment_mode, COALESCE(SUM(de.quantity_ltrs),0) AS ltrs, COALESCE(SUM(de.amount),0) AS amt
-                  FROM dispense_events de WHERE de.station_id=$1 AND de.occurred_at::date=$2 AND NOT COALESCE(de.is_voided,FALSE)
+                  FROM dispense_events de JOIN shifts s ON s.id=de.shift_id
+                  WHERE s.station_id=$1 AND s.date=$2 AND NOT COALESCE(de.is_voided,FALSE)
                   GROUP BY 1,2`, [sid, date]),
-      pool.query(`SELECT COALESCE(SUM(amount),0) AS amt FROM dispense_events
-                  WHERE station_id=$1 AND occurred_at::date=$2::date-1 AND NOT COALESCE(is_voided,FALSE)`, [sid, date]),
+      pool.query(`SELECT COALESCE(SUM(de.amount),0) AS amt FROM dispense_events de
+                  JOIN shifts s ON s.id=de.shift_id
+                  WHERE s.station_id=$1 AND s.date=$2::date-1 AND NOT COALESCE(de.is_voided,FALSE)`, [sid, date]),
       pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, price FROM fuel_prices WHERE station_id=$1 ORDER BY fuel_type, effective_from DESC`, [sid]),
       pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, rate_per_ltr FROM fuel_deliveries WHERE station_id=$1 AND rate_per_ltr IS NOT NULL ORDER BY fuel_type, received_at DESC NULLS LAST`, [sid]),
       pool.query(`SELECT COALESCE((SELECT SUM(total_amount) FROM gst_invoices WHERE station_id=$1),0) AS invoiced,
@@ -55,11 +64,14 @@ async function outletMetrics(sid, date) {
                               WHERE s.station_id=$1 AND r.manager_confirmed=TRUE),0)
                   + COALESCE((SELECT SUM(amount) FROM corporate_receipts WHERE station_id=$1 AND payment_type='cash'),0)
                   - COALESCE((SELECT SUM(amount) FROM cash_deposits WHERE station_id=$1),0) AS undeposited`, [sid]),
-      pool.query(`SELECT COALESCE(SUM(quantity_ltrs),0) AS l FROM dispense_events WHERE station_id=$1 AND occurred_at>=$2 AND NOT COALESCE(is_voided,FALSE)`, [sid, monthStart]),
+      pool.query(`SELECT COALESCE(SUM(de.quantity_ltrs),0) AS l FROM dispense_events de
+                  JOIN shifts s ON s.id=de.shift_id
+                  WHERE s.station_id=$1 AND s.date>=$2 AND NOT COALESCE(de.is_voided,FALSE)`, [sid, monthStart]),
       // Month-to-date sales per product (1st of the trade month → the settled day),
       // for the by-outlet-&-product tiles. Same voided/date rules as the day slice.
-      pool.query(`SELECT fuel_type, COALESCE(SUM(quantity_ltrs),0) AS ltrs, COALESCE(SUM(amount),0) AS amt
-                  FROM dispense_events WHERE station_id=$1 AND occurred_at::date BETWEEN $2 AND $3 AND NOT COALESCE(is_voided,FALSE)
+      pool.query(`SELECT de.fuel_type, COALESCE(SUM(de.quantity_ltrs),0) AS ltrs, COALESCE(SUM(de.amount),0) AS amt
+                  FROM dispense_events de JOIN shifts s ON s.id=de.shift_id
+                  WHERE s.station_id=$1 AND s.date BETWEEN $2 AND $3 AND NOT COALESCE(de.is_voided,FALSE)
                   GROUP BY 1`, [sid, monthStart, date]),
     ]);
 
@@ -134,9 +146,9 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
       FROM stations s
       JOIN station_group_members sgm ON sgm.station_id = s.id
       JOIN station_groups stg ON stg.id = sgm.station_group_id
-      LEFT JOIN dispense_events de ON de.station_id = s.id AND de.occurred_at::date = $2
-        AND NOT COALESCE(de.is_voided,FALSE)
       LEFT JOIN shifts sh ON sh.station_id = s.id AND sh.date = $2
+      LEFT JOIN dispense_events de ON de.shift_id = sh.id
+        AND NOT COALESCE(de.is_voided,FALSE)
       LEFT JOIN alerts al ON al.station_id = s.id
       WHERE stg.owner_group_id = $1
       GROUP BY s.id ORDER BY s.name`,
