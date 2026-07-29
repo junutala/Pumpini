@@ -78,23 +78,51 @@ export default function ShiftStartPage() {
       });
       const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type });
       const rows = Array.isArray(res.tanks) ? res.tanks : [];
-      // Match on the printed tank number, else on fuel type when that is unambiguous.
-      // A tank we cannot place with certainty is left blank for the manager to type.
-      let filled = 0; const skipped = [];
-      rows.forEach(r => {
-        const byNumber = dipTanks.find(t => String(t.tank_number) === String(r.tank_label));
-        const sameFuel = dipTanks.filter(t => t.fuel_type === r.product);
-        const tank = byNumber || (sameFuel.length === 1 ? sameFuel[0] : null);
-        if (!tank || r.net_volume_ltrs == null) { skipped.push(r.tank_label ?? '?'); return; }
+      // MATCH ON FUEL, NEVER ON THE PRINTED NUMBER. The console numbers tanks in its
+      // OWN namespace: a real outlet has console 1=HSD, 3=MS, 4=Power while its
+      // Pumpini tanks are 1=petrol, 2=diesel. Trusting the number put a DIESEL
+      // volume into the PETROL tank, and a second row then silently overwrote it —
+      // so the count said 2 while one tank held a figure from the wrong product.
+      // Fuel is the only field both systems agree on. The printed number is kept
+      // solely to order same-fuel tanks, and to name a row we could not place.
+      const norm = v => String(v || '').toLowerCase();
+      const numOf = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER; };
+
+      const usable = rows.filter(r => r.net_volume_ltrs != null);
+      const dropped = rows.filter(r => r.net_volume_ltrs == null).map(r => r.tank_label ?? '?');
+
+      const byFuel = {};
+      usable.forEach(r => { (byFuel[norm(r.product)] ||= []).push(r); });
+
+      const pairs = [];            // [tank, row]
+      const unplaced = [];         // console labels we could not place with certainty
+      Object.entries(byFuel).forEach(([fuel, rs]) => {
+        const cands = dipTanks.filter(t => norm(t.fuel_type) === fuel);
+        if (cands.length === rs.length && cands.length > 0) {
+          // Same count both sides — pair them in tank-number order. With one of each
+          // (the common case) this is unambiguous; with several it is the only stable
+          // ordering both systems share, and every figure is still checked by hand.
+          const ts = [...cands].sort((a, b) => numOf(a.tank_number) - numOf(b.tank_number));
+          const rr = [...rs].sort((a, b) => numOf(a.tank_label) - numOf(b.tank_label));
+          ts.forEach((t, i) => pairs.push([t, rr[i]]));
+        } else {
+          // Counts disagree (e.g. Power on the console but no premium tank here, or
+          // two diesel tanks and one reading) — refuse to guess which is which.
+          rs.forEach(r => unplaced.push(r.tank_label ?? '?'));
+        }
+      });
+
+      pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
         setDips(p => ({ ...p, [tank.id]: '' }));
         setSavedDips(p => ({ ...p, [tank.id]: false }));
-        filled++;
       });
+
+      const skipped = [...unplaced, ...dropped];
       setGaugeMsg(
-        filled === 0
+        pairs.length === 0
           ? tc('sstart.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
-          : tc('sstart.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', filled)
+          : tc('sstart.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length)
             + (skipped.length ? ' ' + tc('sstart.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
       );
     } catch (e) {
