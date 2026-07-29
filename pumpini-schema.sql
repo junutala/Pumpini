@@ -649,7 +649,7 @@ ALTER TABLE public.meter_photos ADD COLUMN IF NOT EXISTS storage_path TEXT;
 -- EXPLANATION on the delivery form, never as a stock adjustment -- the dip is
 -- what measures the litres actually in the ground.
 --
--- The column is KEPT (not dropped) because v_tank_shift and four backend
+-- The column is KEPT (not dropped) because tank_book_stock and four backend
 -- modules read it; making it mirror gross is the minimal, reversible fix and
 -- needs no code deploy to be correct. Requires PG >= 17 (SET EXPRESSION AS);
 -- prod and staging are both 17.6. Rewrites the table -- trivial at this size.

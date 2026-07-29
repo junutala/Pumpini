@@ -152,7 +152,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     // us the fuel is genuine, never how many litres arrived. Thermal contraction is
     // shown as a variance EXPLANATION on the delivery form; the dip is what actually
     // measures the litres in the ground. The column is kept (rather than dropped)
-    // because v_tank_shift and four backend modules read it.
+    // because tank_book_stock and four backend modules read it.
 
     // Split discharge: one product can be discharged into several tanks. Normalise
     // to a list of lines. Without splits it's the single (tank_id, gross) as before.
