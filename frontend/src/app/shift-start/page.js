@@ -78,37 +78,49 @@ export default function ShiftStartPage() {
       });
       const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type });
       const rows = Array.isArray(res.tanks) ? res.tanks : [];
-      // MATCH ON FUEL, NEVER ON THE PRINTED NUMBER. The console numbers tanks in its
-      // OWN namespace: a real outlet has console 1=HSD, 3=MS, 4=Power while its
-      // Pumpini tanks are 1=petrol, 2=diesel. Trusting the number put a DIESEL
-      // volume into the PETROL tank, and a second row then silently overwrote it —
-      // so the count said 2 while one tank held a figure from the wrong product.
-      // Fuel is the only field both systems agree on. The printed number is kept
-      // solely to order same-fuel tanks, and to name a row we could not place.
+      // MATCHING: CAPACITY FIRST, THEN FUEL — NEVER THE PRINTED NUMBER.
+      // The console numbers tanks in its OWN namespace: a real outlet has console
+      // 1=HSD, 3=MS, 4=Power while its Pumpini tanks are 1=petrol, 2=diesel. Trusting
+      // that number put a DIESEL volume into the PETROL tank, and a second row then
+      // silently overwrote it. Capacity is the strongest field BOTH systems hold
+      // (22000 / 16000 / 9000 read straight off the console's summary table), and it
+      // disambiguates an outlet with two tanks of the same fuel — which fuel alone
+      // cannot. Fuel must still agree; capacity only chooses among same-fuel tanks.
       const norm = v => String(v || '').toLowerCase();
       const numOf = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER; };
+      const capOf = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : null; };
 
-      const usable = rows.filter(r => r.net_volume_ltrs != null);
+      const usable  = rows.filter(r => r.net_volume_ltrs != null);
       const dropped = rows.filter(r => r.net_volume_ltrs == null).map(r => r.tank_label ?? '?');
 
       const byFuel = {};
       usable.forEach(r => { (byFuel[norm(r.product)] ||= []).push(r); });
 
-      const pairs = [];            // [tank, row]
-      const unplaced = [];         // console labels we could not place with certainty
+      const pairs = [];      // [tank, row]
+      const unplaced = [];   // console labels we could not place with certainty
       Object.entries(byFuel).forEach(([fuel, rs]) => {
-        const cands = dipTanks.filter(t => norm(t.fuel_type) === fuel);
-        if (cands.length === rs.length && cands.length > 0) {
-          // Same count both sides — pair them in tank-number order. With one of each
-          // (the common case) this is unambiguous; with several it is the only stable
-          // ordering both systems share, and every figure is still checked by hand.
-          const ts = [...cands].sort((a, b) => numOf(a.tank_number) - numOf(b.tank_number));
-          const rr = [...rs].sort((a, b) => numOf(a.tank_label) - numOf(b.tank_label));
+        const pool = dipTanks.filter(t => norm(t.fuel_type) === fuel);
+        const left = [...rs];
+
+        // Pass 1 — capacity. Take only close matches (within 1%), so a coincidental
+        // near-miss on a differently-sized tank can never claim a row.
+        for (let i = left.length - 1; i >= 0; i--) {
+          const rc = capOf(left[i].capacity_ltrs);
+          if (rc == null) continue;
+          const hit = pool.find(t => { const tc2 = capOf(t.capacity_ltrs); return tc2 != null && Math.abs(tc2 - rc) <= rc * 0.01; });
+          if (hit) { pairs.push([hit, left[i]]); pool.splice(pool.indexOf(hit), 1); left.splice(i, 1); }
+        }
+
+        // Pass 2 — whatever is left pairs only if the counts now agree exactly,
+        // ordered by tank number. One-of-each (the norm) is unambiguous.
+        if (left.length && left.length === pool.length) {
+          const ts = [...pool].sort((a, b) => numOf(a.tank_number) - numOf(b.tank_number));
+          const rr = [...left].sort((a, b) => numOf(a.tank_label) - numOf(b.tank_label));
           ts.forEach((t, i) => pairs.push([t, rr[i]]));
         } else {
-          // Counts disagree (e.g. Power on the console but no premium tank here, or
-          // two diesel tanks and one reading) — refuse to guess which is which.
-          rs.forEach(r => unplaced.push(r.tank_label ?? '?'));
+          // Counts disagree (Power on the console but no premium tank here, two diesel
+          // tanks and one reading) — refuse to guess; name them instead.
+          left.forEach(r => unplaced.push(r.tank_label ?? '?'));
         }
       });
 
