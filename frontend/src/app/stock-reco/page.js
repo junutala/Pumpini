@@ -5,7 +5,7 @@
 // longer period — first dip to last dip, with every delivery and sale between —
 // never a sum of the daily variances, which only piles up per-shift noise instead
 // of letting it cancel.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { AlertTriangle, CheckCircle, Save } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
@@ -162,8 +162,18 @@ export default function StockRecoPage() {
           </thead>
           <tbody>
             {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{empty}</td></tr>}
-            {tanks.map(r => <Row key={r.tank_id} r={r} />)}
-            {totals.map(r => <Row key={`total-${r.fuel_type}`} r={r} total />)}
+            {tanks.map((r, i) => {
+              // A fuel's subtotal sits directly under its own tanks, not in a block at
+              // the foot of the table — it belongs with the rows it adds up.
+              const total = totals.find(x => x.fuel_type === r.fuel_type);
+              const lastOfFuel = !tanks.slice(i + 1).some(x => x.fuel_type === r.fuel_type);
+              return (
+                <Fragment key={r.tank_id}>
+                  <Row r={r} />
+                  {total && lastOfFuel && <Row r={total} total />}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
