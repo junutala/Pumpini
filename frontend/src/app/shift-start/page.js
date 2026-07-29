@@ -106,6 +106,16 @@ export default function ShiftStartPage() {
             mismatch.push(`${r.tank_label} (${r.product_raw || r.product})`);
             return;                                   // never fill across products
           }
+          // Capacity as a CHECK, never a matcher. Number+fuel cannot catch a swap
+          // between two tanks of the SAME fuel with crossed numbering — but if their
+          // capacities differ, this catches it. Skipped when either side lacks a
+          // capacity, so an unmaintained Settings figure can't block a good reading.
+          const rc = parseFloat(r.capacity_ltrs), tcap = parseFloat(byNumber.capacity_ltrs);
+          if (Number.isFinite(rc) && rc > 0 && Number.isFinite(tcap) && tcap > 0
+              && Math.abs(tcap - rc) > rc * 0.01) {
+            mismatch.push(`${r.tank_label} (${Math.round(rc)}L vs ${Math.round(tcap)}L)`);
+            return;
+          }
           if (claimed.has(byNumber.id)) return;        // one row per tank, no overwrite
           claimed.add(byNumber.id); pairs.push([byNumber, r]);
           return;
