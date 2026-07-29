@@ -182,12 +182,23 @@ export default function DeliveriesPage() {
     } finally { setScanning(false); }
   };
 
-  // Auto-calculate net volume
-  const netVolume = () => {
-    if (form.gross_volume_ltrs && form.density && form.temperature_c) {
-      return (form.gross_volume_ltrs * form.density * (1 - 0.00090*(form.temperature_c - 15))).toFixed(2);
-    }
-    return form.gross_volume_ltrs || '';
+  // Stock volume = the CHALLAN volume. We do NOT restate the quantity from density
+  // and temperature (that old formula multiplied by density, which yields KILOGRAMS,
+  // and it was booked into tank stock). Density is a QUALITY control — it proves the
+  // fuel is genuine, it never says how many litres arrived. The invoice figure is the
+  // number the OMC billed and an auditor will check, so it is the number we book.
+  // Thermal contraction is surfaced as a variance EXPLANATION (see thermalHint), not
+  // as a stock adjustment — the dip already measures what physically reached the tank.
+  const stockVolume = () => form.gross_volume_ltrs || '';
+
+  // Advisory only: roughly how much the load is expected to contract as it cools from
+  // the decant temperature toward ground temperature (~29°C in Telangana). Explains a
+  // short dip; never changes book stock.
+  const GROUND_TEMP_C = 29;
+  const thermalHint = () => {
+    const g = parseFloat(form.gross_volume_ltrs), t = parseFloat(form.temperature_c);
+    if (!Number.isFinite(g) || !Number.isFinite(t) || t <= GROUND_TEMP_C) return null;
+    return (g * 0.00090 * (t - GROUND_TEMP_C)).toFixed(0);
   };
 
   // Total value = the invoice's "Total for material" (incl. taxes) when scanned or
@@ -267,7 +278,7 @@ export default function DeliveriesPage() {
         station_id:      stationId,
         received_at:     new Date(form.received_at).toISOString(),
         gross_volume_ltrs: gross,
-        net_volume_ltrs:   parseFloat(netVolume())||gross,
+        // net_volume_ltrs is GENERATED ALWAYS in the DB — never send it.
         total_value:       parseFloat(totalValue())||null,
         temperature_c:     form.temperature_c ? parseFloat(form.temperature_c) : null,
         density:           form.density ? parseFloat(form.density) : null,
@@ -358,8 +369,9 @@ export default function DeliveriesPage() {
                 <th>{tc('deliv_page.fuel','Fuel')}</th>
                 <th>{tc('deliv_page.oil_co','Oil Co.')}</th>
                 <th>{tc('deliv_page.depot','Depot')}</th>
-                <th>{tc('deliv_page.gross_vol','Gross Vol (L)')}</th>
-                <th>{tc('deliv_page.net_vol','Net Vol (L)')}</th>
+                {/* One volume column: the challan quantity. There is no separate "net"
+                    any more — we book what the invoice says. */}
+                <th>{tc('deliv_page.volume_l','Volume (L)')}</th>
                 <th>{tc('deliv_page.rate_l','Rate/L')}</th>
                 <th>{tc('deliv_page.total_value','Total Value')}</th>
                 <th>{tc('deliv_page.tank','Tank')}</th>
@@ -368,7 +380,7 @@ export default function DeliveriesPage() {
             </thead>
             <tbody>
               {deliveries.length===0 && (
-                <tr><td colSpan={12} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>
+                <tr><td colSpan={11} style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>
                   <Truck size={28} style={{margin:'0 auto 8px',opacity:.3}}/>
                   <div>{tc('deliv_page.no_deliveries','No deliveries recorded yet')}</div>
                 </td></tr>
@@ -391,7 +403,6 @@ export default function DeliveriesPage() {
                   <td><span className="badge badge-info" style={{fontSize:11}}>{d.oil_company||'—'}</span></td>
                   <td style={{fontSize:12,color:'var(--text-3)'}}>{d.depot_name||'—'}</td>
                   <td className="num">{fmtL(d.gross_volume_ltrs)}</td>
-                  <td className="num">{fmtL(d.net_volume_ltrs)}</td>
                   <td className="num">{d.rate_per_ltr ? `₹${fmt(d.rate_per_ltr)}` : '—'}</td>
                   <td className="num">{d.total_value ? `₹${fmt(d.total_value)}` : '—'}</td>
                   <td>{tc('deliv_page.tank','Tank')} {d.tank_number||'—'}</td>
@@ -617,10 +628,14 @@ export default function DeliveriesPage() {
                     onChange={e=>f('density',e.target.value)}/>
                 </div>
                 <div>
-                  <label className="label">{tc('deliv_page.net_15','Net Volume @ 15°C')}</label>
-                  <input className="input" value={netVolume()} readOnly
+                  <label className="label">{tc('deliv_page.stock_vol','Volume booked to stock (L)')}</label>
+                  <input className="input" value={stockVolume()} readOnly
                     style={{background:'var(--surface-2)',fontFamily:'var(--font-mono)',fontWeight:600}}/>
-                  <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>{tc('deliv_page.auto_calc','Auto-calculated')}</div>
+                  <div style={{fontSize:10,color:'var(--text-3)',marginTop:2}}>
+                    {thermalHint()
+                      ? tc('deliv_page.thermal_hint','As per challan. May settle ~{n}L lower once cooled.').replace('{n}', thermalHint())
+                      : tc('deliv_page.as_per_challan','As per challan')}
+                  </div>
                 </div>
               </div>
 
