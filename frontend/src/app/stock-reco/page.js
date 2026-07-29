@@ -1,10 +1,12 @@
 'use client';
-// Wet-stock (tank dip) reconciliation. Per tank, per shift:
+// Wet-stock (tank dip) reconciliation.
 //   book = opening dip + deliveries − sales(L);  variance = actual dip − book.
-// Negative = loss (evaporation/pilferage). Beyond the per-fuel tolerance → owner
-// alert. Also shows cumulative drift per tank to catch slow, under-tolerance leaks.
+// Two tiles, ONE format: a chosen DAY and the month it falls in. A month is just a
+// longer period — first dip to last dip, with every delivery and sale between —
+// never a sum of the daily variances, which only piles up per-shift noise instead
+// of letting it cancel.
 import { useState, useEffect } from 'react';
-import { Droplet, AlertTriangle, CheckCircle, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Save } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -13,6 +15,15 @@ import { useTranslation } from 'react-i18next';
 
 const L = n => `${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })} L`;
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+// DD MMM YYYY, en-IN — never a raw ISO string in front of a user.
+const human = d => d ? new Date(`${d}T00:00:00`).toLocaleDateString('en-IN',
+  { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const firstOfMonth = d => `${d.slice(0, 7)}-01`;
+const lastOfMonth  = d => {
+  const [y, m] = d.split('-').map(Number);
+  return `${d.slice(0, 7)}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+};
+const minDate = (a, b) => (a && b) ? (a < b ? a : b) : (a || b);
 
 export default function StockRecoPage() {
   const { user, station } = useAuth();
@@ -21,29 +32,22 @@ export default function StockRecoPage() {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
-  const [shifts, setShifts]   = useState([]);
-  const [shiftId, setShiftId] = useState('');
-  const [date, setDate]       = useState(today());  // which day to reconcile — NOT locked to today
-  const [reco, setReco]       = useState(null);   // { tanks: [...] }
-  const [cum, setCum]         = useState([]);     // cumulative drift
-  const [busy, setBusy]       = useState(false);
-  const [tol, setTol]         = useState({});     // tolerance settings
+  const [date, setDate]     = useState('');     // chosen trade day (blank until we know the last one)
+  const [lastDay, setLastDay] = useState('');   // most recent day that actually has dips
+  const [day, setDayReco]   = useState(null);   // { tanks, totals }
+  const [month, setMonth]   = useState(null);   // { tanks, totals, date_from, date_to }
+  const [busy, setBusy]     = useState(false);
+  const [tol, setTol]       = useState({});
   const [savingTol, setSavingTol] = useState(false);
 
-  // Shifts for the CHOSEN day. Must not be hard-locked to today(): a shift often
-  // settles the next morning, and past days routinely need (re-)reconciling — so
-  // scoping to today() left the picker empty whenever no shift was open today.
-  const loadShifts = async (d = date) => {
+  // Open on the last day that HAS readings, not on today. Today is usually empty —
+  // a screen full of dashes reads as "broken" rather than "nothing recorded yet".
+  const loadLastDay = async () => {
     if (!stationId) return;
-    const s = await api.get('/shifts', { params: { station_id: stationId, date: d } }).catch(() => []);
-    const arr = Array.isArray(s) ? s : [];
-    setShifts(arr);
-    setShiftId(arr.length ? arr[0].id : '');
-  };
-  const loadCum = async () => {
-    if (!stationId) return;
-    const r = await api.get('/tank-reco', { params: { station_id: stationId, days: 30 } }).catch(() => ({}));
-    setCum(Array.isArray(r?.cumulative) ? r.cumulative : []);
+    const r = await api.get('/tank-reco/last-day', { params: { station_id: stationId } }).catch(() => ({}));
+    const d = r?.last_day || today();
+    setLastDay(r?.last_day || '');
+    setDate(p => p || d);
   };
   const loadTol = async () => {
     if (!stationId) return;
@@ -55,25 +59,43 @@ export default function StockRecoPage() {
     });
   };
 
-  useEffect(() => { loadCum(); loadTol(); }, [stationId]);
-  useEffect(() => { loadShifts(); }, [stationId, date]);   // reload the picker when the day changes
-  useRefreshOnFocus(loadCum);
+  const period = (from, to) => api
+    .get('/tank-reco/period', { params: { station_id: stationId, date_from: from, date_to: to } })
+    .catch(() => null);
 
-  useEffect(() => {
-    if (!shiftId) { setReco(null); return; }
-    api.get(`/tank-reco/shift/${shiftId}`).then(setReco).catch(() => setReco(null));
-  }, [shiftId]);
+  // The month tile covers the 1st of the chosen day's month up to the last day that
+  // has data — so it reads "1 Jul – 28 Jul 2026" and never trails empty days.
+  const monthTo = date ? minDate(lastOfMonth(date), lastDay || today()) : '';
+  const monthFrom = date ? firstOfMonth(date) : '';
 
+  const reload = async () => {
+    if (!stationId || !date) return;
+    const [d, m] = await Promise.all([period(date, date), period(monthFrom, monthTo)]);
+    setDayReco(d); setMonth(m);
+  };
+
+  useEffect(() => { loadLastDay(); loadTol(); }, [stationId]);           // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { reload(); }, [stationId, date, monthFrom, monthTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRefreshOnFocus(reload);
+
+  // Finalize every shift on the chosen day — the stored reconciliation and the owner
+  // alert are still per shift, so the day view fans out to each of them.
   const finalize = async () => {
-    if (!shiftId) return;
+    if (!date) return;
     setBusy(true);
     try {
-      const r = await api.post(`/tank-reco/shift/${shiftId}`);
-      const breachMsg = r.breaches
-        ? tc('streco.breachAlert', '⚠️ {n} beyond tolerance — owner alerted.').replace('{n}', r.breaches)
-        : tc('streco.allWithinTol', 'All within tolerance.');
-      alert(tc('streco.recoSaved', 'Reconciliation saved for {n} tank(s).').replace('{n}', r.stored) + ' ' + breachMsg);
-      loadCum();
+      const shifts = await api.get('/shifts', { params: { station_id: stationId, date } }).catch(() => []);
+      const list = Array.isArray(shifts) ? shifts : [];
+      if (!list.length) { alert(tc('streco.noShiftsToFinalize', 'No shifts on this day to finalize.')); setBusy(false); return; }
+      let stored = 0, breaches = 0;
+      for (const s of list) {
+        const r = await api.post(`/tank-reco/shift/${s.id}`).catch(() => null);
+        if (r) { stored += r.stored || 0; breaches += r.breaches || 0; }
+      }
+      alert(tc('streco.recoSaved', 'Reconciliation saved for {n} tank(s).').replace('{n}', stored) + ' ' +
+        (breaches ? tc('streco.breachAlert', '⚠️ {n} beyond tolerance — owner alerted.').replace('{n}', breaches)
+                  : tc('streco.allWithinTol', 'All within tolerance.')));
+      reload();
     } catch (e) { alert(e.response?.data?.error || e.error || tc('streco.failed', 'Failed')); }
     setBusy(false);
   };
@@ -86,12 +108,70 @@ export default function StockRecoPage() {
         stock_tol_pct_diesel: parseFloat(tol.stock_tol_pct_diesel),
         stock_tol_floor_ltrs: parseFloat(tol.stock_tol_floor_ltrs),
       });
-      if (shiftId) api.get(`/tank-reco/shift/${shiftId}`).then(setReco).catch(() => {});
+      reload();
     } catch (e) { alert(e.response?.data?.error || tc('streco.failed', 'Failed')); }
     setSavingTol(false);
   };
 
-  const tanks = reco?.tanks || [];
+  const Row = ({ r, total }) => {
+    const reconcilable = r.has_baseline && r.has_closing;
+    const loss = reconcilable && r.variance_ltrs < 0;
+    const label = total
+      ? tc('streco.allOfFuel', 'All {f}').replace('{f}', r.fuel_type)
+      : <>T{r.tank_number} <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 12 }}>{r.fuel_type}</span></>;
+    const bg = total ? '#f8fafc' : (r.beyond_tolerance ? '#fef2f2' : undefined);
+    const fw = total ? 700 : undefined;
+    return (
+      <tr style={{ background: bg, borderTop: total ? '2px solid #e2e8f0' : undefined }}>
+        <td style={{ fontWeight: total ? 800 : 600 }}>{label}</td>
+        <td className="num" style={{ textAlign: 'right', fontWeight: fw }}>{r.has_baseline ? L(r.opening_ltrs) : '—'}</td>
+        <td className="num" style={{ textAlign: 'right', color: '#16a34a', fontWeight: fw }}>{L(r.deliveries_ltrs)}</td>
+        <td className="num" style={{ textAlign: 'right', fontWeight: fw }}>{L(r.sales_ltrs)}</td>
+        <td className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{reconcilable ? L(r.book_closing) : '—'}</td>
+        <td className="num" style={{ textAlign: 'right', fontWeight: fw }}>{r.has_closing ? L(r.actual_closing) : '—'}</td>
+        <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: !reconcilable ? 'var(--text-3)' : loss ? '#dc2626' : '#16a34a' }}>
+          {reconcilable ? `${r.variance_ltrs > 0 ? '+' : ''}${L(r.variance_ltrs)}${r.variance_pct != null ? ` (${r.variance_pct}%)` : ''}` : '—'}
+        </td>
+        <td style={{ textAlign: 'center', fontSize: 12 }}>
+          {!r.has_closing ? <span style={{ color: 'var(--text-3)' }}>{tc('streco.awaitingDip', 'Awaiting dip')}</span>
+            : !r.has_baseline ? <span style={{ color: '#d97706', fontWeight: 600 }}>{tc('streco.noBaseline', 'No opening baseline')}</span>
+            : r.beyond_tolerance ? <span style={{ color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={13} />{loss ? tc('streco.loss', 'Loss') : tc('streco.gain', 'Gain')}</span>
+            : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}><CheckCircle size={13} />{tc('streco.ok', 'OK')}</span>}
+        </td>
+      </tr>
+    );
+  };
+
+  const Table = ({ data, empty }) => {
+    const tanks  = data?.tanks || [];
+    const totals = data?.totals || [];
+    return (
+      <div className="table-wrap">
+        <table className="dms-table">
+          <thead>
+            <tr>
+              <th>{tc('streco.colTank', 'Tank')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colOpening', 'Opening')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colDeliveries', '+ Deliveries')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colSales', '− Sales')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colBook', 'Book')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colActualDip', 'Actual dip')}</th>
+              <th style={{ textAlign: 'right' }}>{tc('streco.colVariance', 'Variance')}</th>
+              <th style={{ textAlign: 'center' }}>{tc('streco.colStatus', 'Status')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{empty}</td></tr>}
+            {tanks.map(r => <Row key={r.tank_id} r={r} />)}
+            {totals.map(r => <Row key={`total-${r.fuel_type}`} r={r} total />)}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // Only meaningful when a fuel actually has more than one tank.
+  const hasTotals = (month?.totals?.length || 0) > 0;
 
   return (
     <AppShell>
@@ -99,13 +179,6 @@ export default function StockRecoPage() {
         <div>
           <h1 className="page-title">{tc('streco.title', 'Stock Reconciliation')}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('streco.subtitle', 'Tank dip vs book — catches evaporation, leakage and pilferage.')}</div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="date" className="input" style={{ width: 150 }} value={date} max={today()} onChange={e => setDate(e.target.value)} />
-          <select className="input" style={{ width: 220 }} value={shiftId} onChange={e => setShiftId(e.target.value)}>
-            <option value="">{shifts.length ? tc('streco.selectShift', 'Select a shift…') : tc('streco.noShifts', 'No shifts on this day')}</option>
-            {shifts.map(s => <option key={s.id} value={s.id}>{tc('streco.shiftOption', 'Shift {n}').replace('{n}', s.shift_number)} · {s.status}</option>)}
-          </select>
         </div>
       </div>
 
@@ -123,77 +196,45 @@ export default function StockRecoPage() {
         </div>
       )}
 
-      {/* Per-tank reconciliation for the selected shift */}
+      {/* ── Tile 1: one day ─────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '1.25rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{tc('streco.selectedShift', 'Selected Shift')}</div>
-          <button className="btn btn-primary" onClick={finalize} disabled={busy || !tanks.some(t => t.has_closing && t.has_baseline !== false)}>
-            {busy ? tc('streco.saving', 'Saving…') : tc('streco.finalizeAlert', 'Finalize & Alert')}
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{tc('streco.dayTitle', 'Day')} · {human(date)}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+              {tc('streco.dayHint', 'All shifts on this day, opening dip to closing dip.')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="date" className="input" style={{ width: 150 }} value={date} max={today()} onChange={e => setDate(e.target.value)} />
+            <button className="btn btn-primary" onClick={finalize} disabled={busy || !date}>
+              {busy ? tc('streco.saving', 'Saving…') : tc('streco.finalizeAlert', 'Finalize & Alert')}
+            </button>
+          </div>
         </div>
-        <div className="table-wrap">
-          <table className="dms-table">
-            <thead>
-              <tr>
-                <th>{tc('streco.colTank', 'Tank')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colOpening', 'Opening')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colDeliveries', '+ Deliveries')}</th>
-                <th style={{ textAlign: 'right' }}>{tc('streco.colSales', '− Sales')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colBook', 'Book')}</th>
-                <th style={{ textAlign: 'right' }}>{tc('streco.colActualDip', 'Actual dip')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colVariance', 'Variance')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colStatus', 'Status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tanks.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>{tc('streco.emptyTanks', 'Select a shift to see its tank reconciliation.')}</td></tr>}
-              {tanks.map(t => {
-                const noBaseline = t.has_baseline === false;   // no opening dip + nothing to carry forward
-                const loss = t.has_closing && !noBaseline && t.variance_ltrs < 0;
-                return (
-                  <tr key={t.tank_id} style={t.beyond_tolerance ? { background: '#fef2f2' } : undefined}>
-                    <td style={{ fontWeight: 600 }}>T{t.tank_number} <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 12 }}>{t.fuel_type}</span></td>
-                    <td className="num" style={{ textAlign: 'right' }}>{noBaseline ? '—' : L(t.opening_ltrs)}</td>
-                    <td className="num" style={{ textAlign: 'right', color: '#16a34a' }}>{L(t.deliveries_ltrs)}</td>
-                    <td className="num" style={{ textAlign: 'right' }}>{L(t.sales_ltrs)}</td>
-                    <td className="num" style={{ textAlign: 'right', fontWeight: 600 }}>{noBaseline ? '—' : L(t.book_closing)}</td>
-                    <td className="num" style={{ textAlign: 'right' }}>{t.has_closing ? L(t.actual_closing) : '—'}</td>
-                    <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: (!t.has_closing || noBaseline) ? 'var(--text-3)' : loss ? '#dc2626' : '#16a34a' }}>
-                      {(t.has_closing && !noBaseline) ? `${t.variance_ltrs > 0 ? '+' : ''}${L(t.variance_ltrs)} (${t.variance_pct}%)` : '—'}
-                    </td>
-                    <td style={{ textAlign: 'center', fontSize: 12 }}>
-                      {!t.has_closing ? <span style={{ color: 'var(--text-3)' }}>{tc('streco.awaitingDip', 'Awaiting dip')}</span>
-                        : noBaseline ? <span style={{ color: '#d97706', fontWeight: 600 }}>{tc('streco.noBaseline', 'No opening baseline')}</span>
-                        : t.beyond_tolerance ? <span style={{ color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><AlertTriangle size={13} />{loss ? tc('streco.loss', 'Loss') : tc('streco.gain', 'Gain')}</span>
-                          : <span style={{ color: '#16a34a', display: 'inline-flex', alignItems: 'center', gap: 3 }}><CheckCircle size={13} />{tc('streco.ok', 'OK')}</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <Table data={day} empty={tc('streco.emptyDay', 'No dip readings recorded on this day.')} />
+        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>
+          {tc('streco.awaitingDipNote', '“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).')}{' '}
+          {tc('streco.noBaselineNote', '“No opening baseline” = no opening dip and no prior closing dip to carry forward — record an opening dip so the tank can be reconciled (it is never counted as a loss).')}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.awaitingDipNote', '“Awaiting dip” = closing dip not yet entered for that tank (record it on the Dipstick screen, then finalize).')} {tc('streco.noBaselineNote', '“No opening baseline” = no opening dip and no prior closing dip to carry forward — record an opening dip so the tank can be reconciled (it is never counted as a loss).')}</div>
       </div>
 
-      {/* Cumulative drift — slow leaks that hide under per-shift tolerance */}
+      {/* ── Tile 2: the month that day falls in, same format ────────── */}
       <div className="card">
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: '0.75rem' }}>{tc('streco.cumulativeDrift', 'Cumulative Drift')} <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)' }}>· {tc('streco.last30Days', 'last 30 days')}</span></div>
-        <div className="table-wrap">
-          <table className="dms-table">
-            <thead><tr><th>{tc('streco.colTank', 'Tank')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colReconciliations', 'Reconciliations')}</th><th style={{ textAlign: 'center' }}>{tc('streco.colBreaches', 'Breaches')}</th><th style={{ textAlign: 'right' }}>{tc('streco.colNetVariance', 'Net variance (30d)')}</th></tr></thead>
-            <tbody>
-              {cum.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '1.5rem' }}>{tc('streco.emptyCum', 'No finalized reconciliations yet.')}</td></tr>}
-              {cum.map(c => {
-                const net = parseFloat(c.cum_variance || 0);
-                return (
-                  <tr key={c.tank_id}>
-                    <td style={{ fontWeight: 600 }}>T{c.tank_number} <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 12 }}>{c.fuel_type}</span></td>
-                    <td style={{ textAlign: 'center' }}>{c.recos}</td>
-                    <td style={{ textAlign: 'center', color: c.breaches ? '#dc2626' : 'var(--text-3)', fontWeight: c.breaches ? 700 : 400 }}>{c.breaches}</td>
-                    <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: net < 0 ? '#dc2626' : '#16a34a' }}>{net > 0 ? '+' : ''}{L(net)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div style={{ marginBottom: '0.75rem' }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>
+            {tc('streco.monthTitle', 'This month')} · {human(monthFrom)} — {human(monthTo)}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+            {tc('streco.monthHint', 'The whole period reconciled once: the first dip of the month against the last, with every delivery and sale in between.')}
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>{tc('streco.cumNote', 'A persistent one-way net variance — even if each shift passes — is the fingerprint of a slow leak or steady pilferage.')}</div>
+        <Table data={month} empty={tc('streco.emptyMonth', 'No dip readings recorded this month.')} />
+        {hasTotals && (
+          <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 14px' }}>
+            {tc('streco.totalRowNote', 'Where a fuel has more than one tank, judge the “All” row. Pumps can draw from either tank, so a single tank’s figure depends on how sales were split between them — the combined line is the one that reflects the stock actually on the ground.')}
+          </div>
+        )}
       </div>
     </AppShell>
   );
