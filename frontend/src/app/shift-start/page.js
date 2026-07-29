@@ -6,9 +6,9 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
-import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X, AlertTriangle } from 'lucide-react';
+import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X, AlertTriangle, ScanLine } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import api from '../../lib/api';
+import api, { parseGaugeScreen } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 
@@ -48,6 +48,101 @@ export default function ShiftStartPage() {
   const [dips, setDips]       = useState({});       // tank_id -> entered mark-ordinal
   const [dipVol, setDipVol]   = useState({});       // tank_id -> manual volume (no-chart fallback)
   const [savedDips, setSavedDips] = useState({});   // tank_id -> true
+
+  // ── Gauge-screen scan (ATG / Pinelabs console photo) ──────────────────
+  // Fills the LITRES box only, never the dip. That is deliberate: persistDip below
+  // treats "dip entered" as a physical check and "litres only" as a system (ATG)
+  // reading, keeping dip_cm null — which is exactly what a console reading is. So
+  // the scan slots into the existing distinction instead of blurring it.
+  // Nothing is saved by scanning; the manager still presses Save per tank.
+  const [gaugeBusy, setGaugeBusy] = useState(false);
+  const [gaugeMsg,  setGaugeMsg]  = useState('');
+
+  const handleGaugeScan = async (file) => {
+    if (!file) return;
+    setGaugeBusy(true); setGaugeMsg(''); setErr('');
+    try {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      const { base64, media_type } = await new Promise((resolve, reject) => {
+        img.onload = () => {
+          const max = 2600, scale = Math.min(1, max / Math.max(img.width, img.height));
+          const cw = Math.round(img.width*scale), ch = Math.round(img.height*scale);
+          const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+          c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          URL.revokeObjectURL(url);
+          resolve({ base64: c.toDataURL('image/jpeg', 0.92).split(',')[1], media_type: 'image/jpeg' });
+        };
+        img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+        img.src = url;
+      });
+      const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type });
+      const rows = Array.isArray(res.tanks) ? res.tanks : [];
+      // MATCH ON TANK NUMBER, GUARDED BY FUEL.
+      // The owner keeps the console's tank numbering aligned with Pumpini's, so the
+      // number is an exact, deterministic key — better than any heuristic, and it
+      // separates two tanks of the SAME fuel, which fuel or capacity cannot.
+      //
+      // But nothing in the DB enforces that alignment: add a tank in Settings and
+      // number it 2 while the console calls it 3, and a number match would put a
+      // DIESEL reading into the PETROL tank. That already happened once on staging
+      // (console 1=HSD, 3=MS, 4=Power vs our 1=petrol, 2=diesel). So the number
+      // decides WHICH tank, and fuel is the check that the numbering is still sane:
+      // if they disagree we fill NOTHING for that row and say so — a visible
+      // misconfiguration beats a silently wrong opening stock.
+      const norm = v => String(v || '').toLowerCase();
+
+      const usable   = rows.filter(r => r.net_volume_ltrs != null);
+      const dropped  = rows.filter(r => r.net_volume_ltrs == null).map(r => r.tank_label ?? '?');
+      const claimed  = new Set();
+      const pairs    = [];   // [tank, row]
+      const unplaced = [];   // console labels with no tank here
+      const mismatch = [];   // number matched but the FUEL disagrees — misconfiguration
+
+      usable.forEach(r => {
+        const byNumber = dipTanks.find(t => String(t.tank_number) === String(r.tank_label));
+        if (byNumber) {
+          if (norm(byNumber.fuel_type) !== norm(r.product)) {
+            mismatch.push(`${r.tank_label} (${r.product_raw || r.product})`);
+            return;                                   // never fill across products
+          }
+          // Capacity as a CHECK, never a matcher. Number+fuel cannot catch a swap
+          // between two tanks of the SAME fuel with crossed numbering — but if their
+          // capacities differ, this catches it. Skipped when either side lacks a
+          // capacity, so an unmaintained Settings figure can't block a good reading.
+          const rc = parseFloat(r.capacity_ltrs), tcap = parseFloat(byNumber.capacity_ltrs);
+          if (Number.isFinite(rc) && rc > 0 && Number.isFinite(tcap) && tcap > 0
+              && Math.abs(tcap - rc) > rc * 0.01) {
+            mismatch.push(`${r.tank_label} (${Math.round(rc)}L vs ${Math.round(tcap)}L)`);
+            return;
+          }
+          if (claimed.has(byNumber.id)) return;        // one row per tank, no overwrite
+          claimed.add(byNumber.id); pairs.push([byNumber, r]);
+          return;
+        }
+        // No such number here — fall back to fuel only when it is unambiguous.
+        const sameFuel = dipTanks.filter(t => norm(t.fuel_type) === norm(r.product) && !claimed.has(t.id));
+        if (sameFuel.length === 1) { claimed.add(sameFuel[0].id); pairs.push([sameFuel[0], r]); }
+        else unplaced.push(r.tank_label ?? '?');
+      });
+
+      pairs.forEach(([tank, r]) => {
+        setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
+        setDips(p => ({ ...p, [tank.id]: '' }));
+        setSavedDips(p => ({ ...p, [tank.id]: false }));
+      });
+
+      const skipped = [...unplaced, ...dropped];
+      setGaugeMsg(
+        (pairs.length === 0
+          ? tc('sstart.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
+          : tc('sstart.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
+        + (skipped.length  ? ' ' + tc('sstart.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
+        + (mismatch.length ? ' ' + tc('sstart.gaugeMismatch','Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering.').replace('{list}', mismatch.join(', ')) : '')
+      );
+    } catch (e) {
+      setErr(e.error || e.response?.data?.error || tc('sstart.gaugeFail','Could not read the screen — enter the readings manually.'));
+    } finally { setGaugeBusy(false); }
+  };
   const [shiftDips, setShiftDips] = useState(new Set()); // tank_ids already dipped for THIS shift (server)
   const [dipWarn, setDipWarn] = useState(null);     // [{tank_number, fuel_type}] awaiting acknowledgement
 
@@ -391,6 +486,22 @@ export default function ShiftStartPage() {
         <div className="card" style={{maxWidth:620}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
           <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','For each tank enter EITHER the dip (a physical check) OR the litres shown on the ATG/HPCL system — we compute the other. This is the opening stock; the reconciliation shows any variance.')}</div>
+          {/* Optional shortcut for outlets with an automation console. Outlets that take
+              a physical dip (e.g. IOCL) simply never use it — the boxes below are
+              unchanged and remain the primary way in. */}
+          {dipTanks.length>0 && (
+            <div style={{marginBottom:'1rem'}}>
+              <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 12px',borderRadius:8,
+                border:'1px solid #cbd5e1',background:'#f8fafc',fontSize:12.5,fontWeight:600,
+                cursor:gaugeBusy?'wait':'pointer',color:'#334155'}}>
+                <ScanLine size={15}/>
+                {gaugeBusy ? tc('sstart.gaugeReading','Reading screen…') : tc('sstart.gaugeScan','Scan gauge screen')}
+                <input type="file" accept="image/*" capture="environment" style={{display:'none'}} disabled={gaugeBusy}
+                  onChange={e=>{ handleGaugeScan(e.target.files?.[0]); e.target.value=''; }}/>
+              </label>
+              {gaugeMsg && <div style={{fontSize:12,color:'#b45309',marginTop:6}}>{gaugeMsg}</div>}
+            </div>
+          )}
           {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;

@@ -138,9 +138,22 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
       tank_splits,   // optional: [{ tank_id, gross_volume_ltrs }] — one product discharged into >1 tank
     } = req.body;
 
-    // net_volume_ltrs is a GENERATED ALWAYS column in the DB (same VCF formula:
-    // round(gross*density*(1-0.0009*(temp-15)),2), else gross) — we must NOT
-    // insert it, Postgres rejects a value for a generated column.
+    // net_volume_ltrs is a GENERATED ALWAYS column — never insert it, Postgres
+    // rejects a value for a generated column.
+    //
+    // It now simply MIRRORS gross_volume_ltrs, i.e. the challan quantity. It used to
+    // be round(gross*density*(1-0.0009*(temp-15)),2) whenever both temp and density
+    // were present. That was wrong twice over: multiplying litres by density (kg/L)
+    // yields KILOGRAMS, and the result was fed straight into tanks.current_stock via
+    // the increase_tank_stock() trigger — so a 20,000 L load booked as 14,730 L and
+    // the missing 5,270 L looked like a stock loss.
+    //
+    // The rule now, and don't re-derive it: the invoice volume IS the volume. Density
+    // is a QUALITY control (see the density register in routes/dipstick.js) — it tells
+    // us the fuel is genuine, never how many litres arrived. Thermal contraction is
+    // shown as a variance EXPLANATION on the delivery form; the dip is what actually
+    // measures the litres in the ground. The column is kept (rather than dropped)
+    // because tank_book_stock and four backend modules read it.
 
     // Split discharge: one product can be discharged into several tanks. Normalise
     // to a list of lines. Without splits it's the single (tank_id, gross) as before.

@@ -629,3 +629,38 @@ ALTER TABLE public.delivery_invoices ALTER COLUMN file_base64 DROP NOT NULL;
 
 -- Step 3 — meter photos: add the path column (image_base64 already nullable).
 ALTER TABLE public.meter_photos ADD COLUMN IF NOT EXISTS storage_path TEXT;
+
+-- ──────────────────────────────────────────────────────────────
+-- NET DELIVERY VOLUME = THE CHALLAN VOLUME (2026-07-29)
+-- fuel_deliveries.net_volume_ltrs was GENERATED AS
+--   round(gross_volume_ltrs * density * (1 - 0.0009*(temperature_c - 15)), 2)
+-- whenever BOTH temperature_c and density were present, else gross.
+--
+-- That is wrong twice over:
+--   1. litres x density (kg/L) = KILOGRAMS, not litres; and
+--   2. the result is fed into tanks.current_stock by the increase_tank_stock()
+--      trigger, so a 20,000 L load was booked as 14,730 L and the missing
+--      5,270 L appeared as a stock LOSS. (Two such rows existed in prod --
+--      both 28-May test rows, 6,135.74 L of phantom loss between them.)
+--
+-- The rule going forward: the invoice volume IS the volume. Density is a
+-- QUALITY control (the density register proves the fuel is genuine); it never
+-- restates the quantity. Thermal contraction is surfaced as a variance
+-- EXPLANATION on the delivery form, never as a stock adjustment -- the dip is
+-- what measures the litres actually in the ground.
+--
+-- The column is KEPT (not dropped) because tank_book_stock and four backend
+-- modules read it; making it mirror gross is the minimal, reversible fix and
+-- needs no code deploy to be correct. Requires PG >= 17 (SET EXPRESSION AS);
+-- prod and staging are both 17.6. Rewrites the table -- trivial at this size.
+-- Idempotent: re-running sets the same expression.
+--
+-- Rollback: ALTER TABLE public.fuel_deliveries ALTER COLUMN net_volume_ltrs
+--   SET EXPRESSION AS (CASE WHEN temperature_c IS NOT NULL AND density IS NOT NULL
+--     THEN round(gross_volume_ltrs * density * (1 - 0.00090*(temperature_c - 15)), 2)
+--     ELSE gross_volume_ltrs END);
+-- ──────────────────────────────────────────────────────────────
+
+-- Step 1 — book the challan volume, nothing derived.
+ALTER TABLE public.fuel_deliveries
+  ALTER COLUMN net_volume_ltrs SET EXPRESSION AS (gross_volume_ltrs);

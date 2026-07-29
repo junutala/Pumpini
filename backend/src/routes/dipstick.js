@@ -4,6 +4,8 @@ const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 const { dipToVolume } = require('../lib/calibration');
+const Anthropic = require('@anthropic-ai/sdk');
+const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/dipstick
 // dip_cm is the TRUE dip (the form converts the mark-ordinal entry first). When
@@ -180,6 +182,107 @@ router.get('/tanks/:station_id', authenticate, requireStationAccess(), async (re
        WHERE t.station_id=$1 ORDER BY t.tank_number`, [req.params.station_id]
     );
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// ── Gauge-screen scan (ATG / Pinelabs tank-status photo) ──────────────
+// Reads a photo of the automation console's tank-status screen and returns the
+// per-tank figures so the manager doesn't retype them. NOTHING is saved here —
+// the rows only PRE-FILL the normal dipstick form, which the manager reviews,
+// edits and submits through POST /api/dipstick like any manual reading. That
+// matters: IOCL outlets have no such console and take a physical dip, so manual
+// entry stays the primary path and this is purely a typing accelerator.
+// Mirrors the invoice-scan pattern in routes/deliveries.js.
+const GAUGE_OK_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const GAUGE_PROMPT = `You read an Indian petrol-pump fuel automation console screen (Pinelabs/Dresser Wayne/Gilbarco "TANK STATUS"), photographed off a monitor. It lists several underground tanks with their gauge readings.
+
+Return ONLY a JSON object (no prose, no markdown) of this exact shape:
+{
+ "customer_code": "dealer/customer code shown in the header, or null",
+ "tanks": [{
+   "tank_label": "the tank NUMBER as printed (e.g. \\"1\\", \\"3\\", \\"4\\")",
+   "product": "petrol|diesel|premium_petrol|cng|null",
+   "product_raw": "as printed (MS, HSD, Power, XtraPremium, ...) or null",
+   "capacity_ltrs": number or null,
+   "dip_mm": number or null,
+   "gross_volume_ltrs": number or null,
+   "net_volume_ltrs": number or null,
+   "water_dip_mm": number or null,
+   "water_ltrs": number or null,
+   "temperature_c": number or null,
+   "ullage_ltrs": number or null,
+   "todays_sale_ltrs": number or null,
+   "todays_receipt_ltrs": number or null
+ }],
+ "confidence": "high|medium|low",
+ "notes": "anything unclear, glared out, or cut off"
+}
+
+Rules:
+- product: MS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; Power / Speed / XtraPremium / any branded premium -> "premium_petrol"; CNG -> "cng". Keep the printed text in product_raw either way.
+- DIP IS IN MILLIMETRES on these consoles (e.g. 766.30, 1540.80). Report it as printed in dip_mm — do NOT convert to cm.
+- ANCHOR ON THE SUMMARY TABLE AT THE BOTTOM. These screens show the same tanks TWICE: graphical cards on top, and below them a plain table with column headers (typically TANK | PRODUCT | VOLUME (Ltr.) | DIP (MM.) | CAPACITY (Ltr.)). The table is labelled, tabular and free of the cards' glare-prone artwork, so it is the RELIABLE source. Read tank_label, product, net_volume_ltrs, dip_mm and capacity_ltrs FROM THE TABLE. Use the cards only to (a) supply the fields the table does not carry — water, temperature, ullage, today's sale/receipt — and (b) cross-check the table. They are the SAME tanks: return ONE entry per tank, never one per view. If a figure differs between the two, TRUST THE TABLE and say so in notes.
+- The table's VOLUME column is the NET volume (it matches the card's "Net Volume", not "Gross Volume"). Put it in net_volume_ltrs.
+- capacity_ltrs from the table matters — we use it to identify which of OUR tanks a row belongs to. Read it carefully.
+- Volumes are litres, temperature is Celsius, water dip is millimetres.
+- ARITHMETIC CROSS-CHECK: gross_volume_ltrs - net_volume_ltrs should approximately equal water_ltrs, and net_volume_ltrs + ullage_ltrs should approximately equal capacity_ltrs. If either is badly off you have misread a digit — re-read that tank's block before answering.
+- This is a photo of a screen: glare bands, moire and a skewed angle are expected. If a digit is genuinely unreadable use null and say which field in notes. NEVER guess a digit.
+- One entry per tank shown. If a tank reads all zeros or "Idle" that is legitimate — report the zeros.`;
+
+// Advisory arithmetic check per tank, so the form can flag a suspect row instead
+// of silently trusting a misread digit. Never blocks; just annotates.
+function withGaugeChecks(parsed) {
+  try {
+    const tanks = Array.isArray(parsed.tanks) ? parsed.tanks : [];
+    parsed.tanks = tanks.map(t => {
+      const num = v => (v == null ? null : Number(v));
+      const gross = num(t.gross_volume_ltrs), net = num(t.net_volume_ltrs);
+      const water = num(t.water_ltrs), ull = num(t.ullage_ltrs), cap = num(t.capacity_ltrs);
+      const checks = [];
+      // Water accounts for the gross/net gap (tolerate 1 L of rounding).
+      if (gross != null && net != null && water != null && Math.abs((gross - net) - water) > 1) {
+        checks.push('gross − net does not match water');
+      }
+      // Net + ullage should fill the tank (tolerate 1% — ullage is a coarse figure).
+      if (net != null && ull != null && cap && Math.abs((net + ull) - cap) > cap * 0.01) {
+        checks.push('net + ullage does not match capacity');
+      }
+      return { ...t, checks, checks_ok: checks.length === 0 };
+    });
+  } catch { /* noop */ }
+  return parsed;
+}
+
+router.post('/parse-gauge', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { file_base64, media_type } = req.body;
+    if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
+    if (!GAUGE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) of the gauge screen.' });
+
+    let msg;
+    try {
+      msg = await ai.messages.create({
+        model: 'claude-sonnet-4-6', max_tokens: 3000,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
+          { type: 'text', text: GAUGE_PROMPT },
+        ] }],
+      });
+    } catch (e) {
+      try { require('../utils/logger').error('parse-gauge API error: ' + (e.message || e)); } catch { /* noop */ }
+      return res.status(503).json({ error: 'Screen scanning is unavailable right now — enter the reading manually.' });
+    }
+
+    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    let parsed;
+    try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
+    if (!parsed) {
+      try { require('../utils/logger').warn(`parse-gauge unparsed (stop=${msg.stop_reason}): ${txt.slice(0, 300)}`); } catch { /* noop */ }
+      return res.status(422).json({ error: 'Could not read the screen — enter the reading manually.' });
+    }
+    if (!Array.isArray(parsed.tanks)) parsed.tanks = [];
+    res.json(withGaugeChecks(parsed));
   } catch (err) { next(err); }
 });
 
