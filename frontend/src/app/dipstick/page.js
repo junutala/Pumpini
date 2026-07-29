@@ -1,9 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, Droplets } from 'lucide-react';
+import { Plus, X, Droplets, ScanLine, AlertTriangle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getDipstick, recordDipstick, getTankStock, getShifts, getCalibrationCharts, setTankChart } from '../../lib/api';
+import { getDipstick, recordDipstick, getTankStock, getShifts, getCalibrationCharts, setTankChart, parseGaugeScreen } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { markToTrueDip, dipToVolume, dipTolerance } from '../../lib/calibration';
@@ -28,6 +28,72 @@ export default function DipstickPage() {
   const [dipEntry, setDipEntry] = useState('');   // mark-ordinal entry, e.g. "64.2"
   const [loading, setLoading]   = useState(false);
 
+  // ── Gauge-screen scan (ATG / Pinelabs console photo) ──────────────────
+  // Optional accelerator ONLY. Outlets without a console (IOCL) keep taking a
+  // physical dip and typing it — nothing below is on that path. A scanned row
+  // pre-fills the SAME form, and every field stays editable before saving.
+  const [gaugeRows,  setGaugeRows]  = useState([]);
+  const [gaugeMeta,  setGaugeMeta]  = useState(null);
+  const [gaugeBusy,  setGaugeBusy]  = useState(false);
+  const [gaugeErr,   setGaugeErr]   = useState('');
+
+  const gaugeFileToBase64 = (file) => new Promise((resolve, reject) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      // Screen photos sit at the OCR legibility edge (glare, moire), so keep them
+      // large and lightly compressed — same reasoning as the invoice scanner.
+      const max = 2600, scale = Math.min(1, max / Math.max(img.width, img.height));
+      const cw = Math.round(img.width * scale), ch = Math.round(img.height * scale);
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+      URL.revokeObjectURL(url);
+      resolve({ base64: c.toDataURL('image/jpeg', 0.92).split(',')[1], media_type: 'image/jpeg' });
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+
+  const handleGaugeFile = async (file) => {
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)) {
+      setGaugeErr(tc('dip_page.gauge_bad_file','Upload a photo (JPG/PNG) of the gauge screen.')); return;
+    }
+    setGaugeErr(''); setGaugeBusy(true);
+    try {
+      const { base64, media_type } = await gaugeFileToBase64(file);
+      const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type });
+      setGaugeRows(Array.isArray(res.tanks) ? res.tanks : []);
+      setGaugeMeta({ confidence: res.confidence, notes: res.notes });
+    } catch (err) {
+      setGaugeErr(err.error || tc('dip_page.gauge_fail','Could not read the screen — enter the reading manually.'));
+    } finally { setGaugeBusy(false); }
+  };
+
+  // Map a scanned row onto one of OUR tanks: prefer the printed tank number, else
+  // fall back to fuel type when that is unambiguous. Never guesses between two
+  // tanks of the same fuel — the manager picks in the form.
+  const matchTank = (row) => {
+    const byNumber = tanks.find(t => String(t.tank_number) === String(row.tank_label));
+    if (byNumber) return byNumber;
+    const sameFuel = tanks.filter(t => t.fuel_type === row.product);
+    return sameFuel.length === 1 ? sameFuel[0] : null;
+  };
+
+  // Load a scanned row into the normal form. The console reports dip in MILLIMETRES
+  // and our form takes centimetres — this is the one conversion, done in one place.
+  const useGaugeRow = (row) => {
+    const tank = matchTank(row);
+    setDipEntry(row.dip_mm != null ? String(+(Number(row.dip_mm) / 10).toFixed(2)) : '');
+    setForm(p => ({
+      ...p,
+      station_id:    stationId,
+      tank_id:       tank ? tank.id : '',
+      temperature_c: row.temperature_c != null ? String(row.temperature_c) : p.temperature_c,
+      volume_ltrs:   row.net_volume_ltrs != null ? String(row.net_volume_ltrs) : '',
+    }));
+    setShowForm(true);
+  };
+
   const load = async () => {
     if (!stationId) return;
     const [t, r, s, c] = await Promise.all([
@@ -46,6 +112,15 @@ export default function DipstickPage() {
   const trueDip  = dipEntry === '' ? null : markToTrueDip(dipEntry);
   const calcVol  = hasChart && trueDip != null ? dipToVolume(selectedTank.diameter_cm, selectedTank.length_cm, trueDip) : null;
   const calcTol  = hasChart && trueDip != null ? dipTolerance(selectedTank.diameter_cm, selectedTank.length_cm, trueDip) : null;
+
+  // How far the console's own NET volume sits from our chart's dip→volume figure.
+  // Shown only when a gauge row supplied a volume AND the chart also has an opinion;
+  // beyond the chart's own tolerance it is worth the manager's eye. Advisory only.
+  const gaugeGap = (hasChart && calcVol != null && form.volume_ltrs)
+    ? (Math.abs(Number(form.volume_ltrs) - calcVol) > (calcTol ?? 0)
+        ? +Math.abs(Number(form.volume_ltrs) - calcVol).toFixed(2)
+        : null)
+    : null;
 
   const assignChart = async (tankId, chartId) => {
     try { await setTankChart(tankId, { station_id: stationId, chart_id: chartId || null }); load(); }
@@ -76,8 +151,90 @@ export default function DipstickPage() {
         <div style={{fontSize:13,color:'var(--text-3)',marginBottom:'1rem',maxWidth:600}}>
         {tc('dip_page.info','ℹ️ Record dip readings at shift open and close only. Book stock is calculated as: Opening Dip + Deliveries − Sales. Variance = Closing Dip − Book Stock.')}
       </div>
-      <button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={16} />{t('dipstick.record')}</button>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+        <button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={16} />{t('dipstick.record')}</button>
+        {/* Optional shortcut for outlets with an automation console. Outlets without
+            one simply never use it — "Record reading" above is unchanged. */}
+        <label className="btn btn-secondary" style={{cursor: gaugeBusy ? 'wait' : 'pointer'}}>
+          <ScanLine size={16} />
+          {gaugeBusy ? tc('dip_page.gauge_reading','Reading screen…') : tc('dip_page.gauge_scan','Scan gauge screen')}
+          <input type="file" accept="image/*" capture="environment" style={{display:'none'}} disabled={gaugeBusy}
+            onChange={e => { handleGaugeFile(e.target.files?.[0]); e.target.value=''; }}/>
+        </label>
       </div>
+      </div>
+
+      {/* Scanned gauge rows — review, then load one into the form */}
+      {(gaugeErr || gaugeRows.length > 0) && (
+        <div className="card" style={{marginBottom:'1.5rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
+            <span style={{fontWeight:600,fontSize:14}}>{tc('dip_page.gauge_title','From the gauge screen')}</span>
+            <button onClick={() => { setGaugeRows([]); setGaugeMeta(null); setGaugeErr(''); }}
+              style={{background:'none',border:'none',cursor:'pointer'}}><X size={16}/></button>
+          </div>
+          {gaugeErr && <div style={{fontSize:13,color:'var(--danger)'}}>{gaugeErr}</div>}
+          {gaugeRows.length > 0 && (
+            <>
+              <div style={{fontSize:12,color:'var(--text-3)',marginBottom:'0.75rem'}}>
+                {tc('dip_page.gauge_help','Read from the photo — nothing is saved yet. Pick a tank, then check and correct every figure before saving.')}
+              </div>
+              {gaugeMeta?.confidence === 'low' && (
+                <div style={{fontSize:12,color:'var(--warning)',marginBottom:8,display:'flex',gap:6,alignItems:'center'}}>
+                  <AlertTriangle size={14}/>{tc('dip_page.gauge_low','The photo was hard to read — check each figure carefully.')}
+                </div>
+              )}
+              <div className="table-wrap">
+                <table className="dms-table">
+                  <thead>
+                    <tr>
+                      <th>{tc('dip_page.tank','Tank')}</th>
+                      <th>{tc('dip_page.fuel','Fuel')}</th>
+                      <th>{tc('dip_page.dip_mm','Dip (mm)')}</th>
+                      <th>{tc('dip_page.net_volume','Net Vol (L)')}</th>
+                      <th>{tc('dip_page.water_l','Water (L)')}</th>
+                      <th>{tc('dip_page.temp_c','Temp (°C)')}</th>
+                      <th>{tc('dip_page.ullage','Ullage (L)')}</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gaugeRows.map((r, i) => {
+                      const tank = matchTank(r);
+                      return (
+                        <tr key={i}>
+                          <td>{tc('dip_page.tank','Tank')} {r.tank_label ?? '—'}</td>
+                          <td>{r.product_raw || r.product || '—'}</td>
+                          <td className="num">{r.dip_mm ?? '—'}</td>
+                          <td className="num">{r.net_volume_ltrs != null ? fmtL(r.net_volume_ltrs) : '—'}</td>
+                          <td className="num" style={{color: Number(r.water_ltrs) > 0 ? 'var(--warning)' : undefined}}>
+                            {r.water_ltrs != null ? fmtL(r.water_ltrs) : '—'}
+                          </td>
+                          <td className="num">{r.temperature_c ?? '—'}</td>
+                          <td className="num">{r.ullage_ltrs != null ? fmtL(r.ullage_ltrs) : '—'}</td>
+                          <td>
+                            {!r.checks_ok && (
+                              <span title={(r.checks||[]).join('; ')} style={{marginRight:6}}>
+                                <AlertTriangle size={14} style={{color:'var(--warning)',verticalAlign:'middle'}}/>
+                              </span>
+                            )}
+                            <button className="btn btn-secondary" style={{padding:'3px 10px',fontSize:12}}
+                              onClick={() => useGaugeRow(r)}>
+                              {tank ? tc('dip_page.gauge_use','Use →') : tc('dip_page.gauge_pick','Pick tank →')}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {gaugeMeta?.notes && (
+                <div style={{fontSize:11,color:'var(--text-3)',marginTop:8}}>{gaugeMeta.notes}</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Current tank stock */}
       <div style={{ marginBottom: '1.5rem' }}>
@@ -178,7 +335,8 @@ export default function DipstickPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label className="label">{tc('dip_page.tank','Tank')}</label>
-                  <select className="input" onChange={e => setForm(p => ({ ...p, tank_id: e.target.value }))} required>
+                  <select className="input" value={form.tank_id || ''} required
+                    onChange={e => setForm(p => ({ ...p, tank_id: e.target.value }))}>
                     <option value="">{tc('dip_page.select_tank','Select tank...')}</option>
                     {tanks.map(t => <option key={t.id} value={t.id}>{tc('dip_page.tank','Tank')} {t.tank_number} – {t.fuel_type}</option>)}
                   </select>
@@ -212,18 +370,31 @@ export default function DipstickPage() {
                 <div>
                   <label className="label">{tc('dip_page.volume_ltrs','Volume (Ltrs)')}</label>
                   {hasChart ? (
-                    <div className="input" style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-2)', fontWeight: 600 }}>
-                      {calcVol != null ? `${fmtL(calcVol)} L` : '—'}
-                      {calcTol != null && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', marginLeft: 6 }}>± {fmtL(calcTol)} L</span>}
-                    </div>
+                    <>
+                      <div className="input" style={{ display: 'flex', alignItems: 'center', background: 'var(--surface-2)', fontWeight: 600 }}>
+                        {calcVol != null ? `${fmtL(calcVol)} L` : '—'}
+                        {calcTol != null && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-3)', marginLeft: 6 }}>± {fmtL(calcTol)} L</span>}
+                      </div>
+                      {/* When the figure came off a gauge screen, show how the console's own
+                          volume compares with our chart. A persistent gap is a calibration
+                          signal worth seeing — the chart still wins, as it always has. */}
+                      {gaugeGap != null && (
+                        <div style={{ fontSize: 11, color: 'var(--warning)', marginTop: 4 }}>
+                          {tc('dip_page.gauge_gap','Gauge screen read {g} L — {d} L apart.')
+                            .replace('{g}', fmtL(form.volume_ltrs)).replace('{d}', fmtL(gaugeGap))}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <input className="input" type="number" step="0.01" placeholder="e.g. 8500.00" required
+                      value={form.volume_ltrs || ''}
                       onChange={e => setForm(p => ({ ...p, volume_ltrs: e.target.value }))} />
                   )}
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.density','Density (kg/L)')}</label>
                   <input className="input" type="number" step="0.0001" placeholder="e.g. 0.7350"
+                    value={form.density || ''}
                     onChange={e => setForm(p => ({ ...p, density: e.target.value }))} />
                 </div>
                 <div>

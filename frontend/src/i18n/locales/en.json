@@ -786,7 +786,21 @@
     "volume_ltrs": "Volume (Ltrs)",
     "temperature": "Temperature (°C)",
     "saving": "Saving...",
-    "save_reading": "Save Reading"
+    "save_reading": "Save Reading",
+    "gauge_scan": "Scan gauge screen",
+    "gauge_reading": "Reading screen…",
+    "gauge_bad_file": "Upload a photo (JPG/PNG) of the gauge screen.",
+    "gauge_fail": "Could not read the screen — enter the reading manually.",
+    "gauge_title": "From the gauge screen",
+    "gauge_help": "Read from the photo — nothing is saved yet. Pick a tank, then check and correct every figure before saving.",
+    "gauge_low": "The photo was hard to read — check each figure carefully.",
+    "gauge_use": "Use →",
+    "gauge_pick": "Pick tank →",
+    "gauge_gap": "Gauge screen read {g} L — {d} L apart.",
+    "dip_mm": "Dip (mm)",
+    "net_volume": "Net Vol (L)",
+    "water_l": "Water (L)",
+    "ullage": "Ullage (L)"
   },
   "support_page": {
     "access_denied": "Access denied. Owner or SuperAdmin only.",
@@ -2330,7 +2344,13 @@
     "slipNoMatch": "Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).",
     "slipNoMatchSome": "No app nozzle for: {x}.",
     "slipVerify": "⚠ Some digits unclear — verify.",
-    "slipFailed": "Slip scan failed"
+    "slipFailed": "Slip scan failed",
+    "gaugeScan": "Scan gauge screen",
+    "gaugeReading": "Reading screen…",
+    "gaugeFilled": "Filled {n} tank(s) from the screen. Check each figure, then Save.",
+    "gaugeSkipped": "Not matched: {list}.",
+    "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
+    "gaugeFail": "Could not read the screen — enter the readings manually."
   },
   "streco": {
     "title": "Stock Reconciliation",

@@ -77,6 +77,10 @@ export const markAttendance = (data)   => api.post('/attendance', data);
 // Dipstick
 export const getDipstick    = (params)    => api.get('/dipstick', { params });
 export const recordDipstick = (data)      => api.post('/dipstick', data);
+// Reads an ATG/Pinelabs tank-status screen photo into pre-fill rows. Saves nothing —
+// the manager still reviews and submits via recordDipstick. Generous timeout: vision
+// + a Railway cold start can outrun the default.
+export const parseGaugeScreen = (data)    => api.post('/dipstick/parse-gauge', data, { timeout: 90000 });
 export const getTankStock   = (stationId) => api.get(`/dipstick/tanks/${stationId}`);
 export const getDensityRegister = (params) => api.get('/dipstick/density-register', { params });
 
