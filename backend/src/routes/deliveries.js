@@ -92,8 +92,9 @@ router.get('/book-stock/:station_id', authenticate, requireStationAccess(), asyn
         COALESCE((
           SELECT SUM(de.quantity_ltrs) FROM dispense_events de
           JOIN nozzles n ON n.id=de.nozzle_id
+          JOIN shifts sd ON sd.id=de.shift_id
           WHERE n.tank_id=t.id AND ($2::uuid IS NULL OR de.shift_id=$2)
-          AND de.occurred_at::date=$3 AND NOT COALESCE(de.is_voided,FALSE)
+          AND sd.date=$3 AND NOT COALESCE(de.is_voided,FALSE)
         ), 0) AS sales_ltrs,
         -- Closing dip
         (

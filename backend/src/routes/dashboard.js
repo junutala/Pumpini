@@ -21,7 +21,7 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
                SUM(de.amount) AS total_amount
         FROM dispense_events de
         JOIN shifts s ON s.id = de.shift_id
-        WHERE de.station_id=$1 AND de.occurred_at::date = $2
+        WHERE s.station_id=$1 AND s.date = $2
           AND (s.status='closed' OR $3=TRUE)
           AND NOT COALESCE(de.is_voided,FALSE)
         GROUP BY de.fuel_type, de.payment_mode`, [station_id, date, isOwner]),
@@ -110,7 +110,8 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
                     ORDER BY fuel_type, received_at DESC NULLS LAST`, [station_id]),
         pool.query(`SELECT n.fuel_type, COALESCE(SUM(de.quantity_ltrs),0)/7.0 AS avg_daily
                     FROM dispense_events de JOIN nozzles n ON n.id=de.nozzle_id
-                    WHERE de.station_id=$1 AND de.occurred_at::date > $2::date - 7
+                    JOIN shifts s ON s.id=de.shift_id
+                    WHERE s.station_id=$1 AND s.date > $2::date - 7
                       AND NOT COALESCE(de.is_voided,FALSE)
                     GROUP BY n.fuel_type`, [station_id, date]),
         pool.query(`SELECT
@@ -615,7 +616,8 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
                SUM(de.quantity_ltrs)    AS litres,
                SUM(de.amount)           AS revenue
         FROM dispense_events de
-        WHERE de.station_id = $1 AND de.occurred_at::date = $2
+        JOIN shifts s ON s.id = de.shift_id
+        WHERE s.station_id = $1 AND s.date = $2
           AND NOT COALESCE(de.is_voided, FALSE)
         GROUP BY de.fuel_type`, [station_id, date]),
 
