@@ -4,12 +4,13 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const invoiceNo = require('../services/invoiceNumberService');
 
 // POST /api/invoices — save invoice
 router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('invoice.generate'), async (req, res, next) => {
   try {
     const {
-      station_id, corporate_id, invoice_number, invoice_date,
+      station_id, corporate_id, invoice_date,
       period_from, period_to, subtotal, cgst_rate, sgst_rate,
       cgst_amount, sgst_amount, total_amount, line_items,
       is_opening_balance,   // pre-go-live balance: create the receivable but DON'T draw down the control total
@@ -22,6 +23,15 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      // The number is allocated HERE, inside the transaction, not by the browser.
+      // A client-supplied number is accepted only for an opening-balance backfill,
+      // where the owner is deliberately reproducing a pre-Pumpini invoice.
+      let invoice_number = (is_opening_balance && req.body.invoice_number)
+        ? req.body.invoice_number : null;
+      if (!invoice_number) {
+        ({ invoice_number } = await invoiceNo.allocate({ station_id }, client));
+      }
 
       const { rows: existing } = await client.query(
         'SELECT id, station_id FROM gst_invoices WHERE invoice_number=$1 FOR UPDATE',
@@ -68,10 +78,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
         }
       }
 
-      await client.query(
-        `UPDATE station_settings SET invoice_seq = COALESCE(invoice_seq,1)+1 WHERE station_id=$1`,
-        [station_id]
-      );
+      // (the sequence was already consumed by invoiceNo.allocate above)
 
       await client.query('COMMIT');
 
@@ -158,6 +165,31 @@ router.get('/credit-pending', authenticate, requireStationAccess({ required: tru
       invoiced: Number(rows[0].invoiced || 0),
       pending:  Number(rows[0].pending  || 0),
     });
+  } catch (err) { next(err); }
+});
+
+// GET /api/invoices/:id — one invoice with everything the printed document needs.
+// Declared AFTER /saved and /credit-pending so it cannot shadow them.
+// Station-scoped: an invoice id from another outlet is a 404, not a leak.
+router.get('/:id', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(
+      `SELECT gi.*,
+              ca.company_name, ca.gstn AS customer_gstn, ca.gst_number AS customer_gst_number,
+              ca.address AS customer_address, ca.contact_phone AS customer_phone,
+              s.name  AS outlet_name,
+              ss.gstn AS outlet_gstn, ss.address AS outlet_address,
+              ss.city AS outlet_city, ss.state AS outlet_state, ss.pincode AS outlet_pincode
+       FROM gst_invoices gi
+       LEFT JOIN corporate_accounts ca ON ca.id = gi.corporate_id
+       LEFT JOIN stations s            ON s.id  = gi.station_id
+       LEFT JOIN station_settings ss   ON ss.station_id = gi.station_id
+       WHERE gi.id = $1 AND gi.station_id = $2`,
+      [req.params.id, station_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Invoice not found for this outlet.' });
+    res.json(rows[0]);
   } catch (err) { next(err); }
 });
 

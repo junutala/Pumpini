@@ -62,7 +62,9 @@ export const submitReco  = (data) => api.post('/reconcile', data);
 export const getReco     = (sid)  => api.get(`/reconcile/${sid}`);
 
 // Corporate
-export const getCorporates       = ()         => api.get('/corporate');
+// station_id is REQUIRED by the route guard — without it the endpoint 400s rather
+// than returning every outlet's customers (see middleware/stationAccess).
+export const getCorporates       = (params)   => api.get('/corporate', { params });
 export const createCorporate     = (data)     => api.post('/corporate', data);
 export const getDrivers          = (id)       => api.get(`/corporate/${id}/drivers`);
 export const addDriver           = (id, data) => api.post(`/corporate/${id}/drivers`, data);
@@ -87,6 +89,23 @@ export const getDensityRegister = (params) => api.get('/dipstick/density-registe
 // Tank calibration (formula-based: diameter x length)
 export const getCalibrationCharts = ()             => api.get('/calibration/charts');
 export const setTankChart         = (tankId, data) => api.patch(`/calibration/tank/${tankId}`, data);
+
+// Credit slip books — the control record over requisition-coupon books issued to
+// credit customers (cheque-book model). Books are per OUTLET, so a coupon number
+// resolves to exactly one book and therefore one customer. See
+// docs/credit-slip-invoicing.md.
+export const getCreditSlipBooks   = (params)   => api.get('/credit-slip-books', { params });
+export const issueCreditSlipBook  = (data)     => api.post('/credit-slip-books', data);
+export const updateCreditSlipBook = (id, data) => api.patch(`/credit-slip-books/${id}`, data);
+export const resolveCouponBook    = (params)   => api.get('/credit-slip-books/resolve', { params });
+
+// Coupon capture — a filled-in requisition coupon becomes a credit sale through the
+// SAME writer the POS uses. Nothing auto-commits: parse pre-fills, validate previews
+// the customer + rate + warnings, and the manager confirms. docs/credit-slip-invoicing.md.
+export const parseCoupon    = (data)   => api.post('/coupons/parse', data, { timeout: 90000 });
+export const validateCoupon = (data)   => api.post('/coupons/validate', data);
+export const captureCoupon  = (data)   => api.post('/coupons', data);
+export const getCoupons     = (params) => api.get('/coupons', { params });
 
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);

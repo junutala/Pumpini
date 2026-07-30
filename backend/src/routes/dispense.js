@@ -6,6 +6,7 @@ const path    = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const dispenseSvc = require('../services/dispenseService');
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -27,10 +28,11 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // Sanity bounds — a fat-fingered 999999 litres would pollute every report,
     // reconciliation and Tally export downstream. Largest tanker compartment
     // delivery is ~20,000 L; a single vehicle fill is far below that.
-    const qty = Number(quantity_ltrs);
-    if (!Number.isFinite(qty) || qty <= 0 || qty > 20000) {
-      return res.status(400).json({ error: 'Invalid quantity. Enter litres between 0 and 20,000.' });
-    }
+    // Bound + credit headroom + the insert now live in services/dispenseService so
+    // coupon capture reuses them instead of duplicating the writer (anti-drift rule).
+    // Behaviour here is unchanged.
+    try { dispenseSvc.assertQuantity(quantity_ltrs); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
 
     // Get current fuel price for this nozzle
     const { rows: priceRows } = await pool.query(
@@ -51,42 +53,19 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // station-wise outstanding past its credit limit. Outstanding is the sum
     // of uninvoiced credit dispense events for this corporate at this station.
     if (payment_mode === 'credit') {
-      if (!corporate_id) {
-        return res.status(400).json({ error: 'Credit sale requires a credit customer.' });
-      }
-      const saleAmount = Number(quantity_ltrs) * Number(price);
-
-      const { rows: limitRows } = await pool.query(
-        `SELECT credit_limit FROM corporate_station_links
-         WHERE corporate_id = $1 AND station_id = $2 AND is_active = TRUE
-         LIMIT 1`,
-        [corporate_id, station_id]
-      );
-      if (!limitRows.length) {
-        return res.status(400).json({ error: 'This credit customer is not linked to this station.' });
-      }
-      const creditLimit = Number(limitRows[0].credit_limit) || 0;
-
-      const { rows: outRows } = await pool.query(
-        `SELECT COALESCE(SUM(amount),0) AS outstanding
-         FROM dispense_events
-         WHERE corporate_id = $1 AND station_id = $2
-           AND payment_mode = 'credit'
-           AND (is_invoiced IS NULL OR is_invoiced = FALSE)
-           AND NOT COALESCE(is_voided,FALSE)`,
-        [corporate_id, station_id]
-      );
-      const outstanding = Number(outRows[0].outstanding) || 0;
-      const available   = creditLimit - outstanding;
-
-      if (saleAmount > available) {
-        return res.status(400).json({
-          error: `Credit limit exceeded. Available credit is ₹${available.toFixed(2)} but this sale is ₹${saleAmount.toFixed(2)}.`,
-          credit_limit: creditLimit,
-          outstanding,
-          available,
-          sale_amount: saleAmount,
+      try {
+        await dispenseSvc.assertCreditHeadroom({
+          station_id, corporate_id, amount: Number(quantity_ltrs) * Number(price),
         });
+      } catch (e) {
+        if (e.status === 400) {
+          const body = { error: e.message };
+          for (const k of ['credit_limit','outstanding','available','sale_amount']) {
+            if (e[k] !== undefined) body[k] = e[k];
+          }
+          return res.status(400).json(body);
+        }
+        throw e;
       }
     }
 
@@ -123,22 +102,12 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       }
     }
 
-    const { rows } = await pool.query(
-      `INSERT INTO dispense_events(
-         station_id, shift_id, rfid_tag_id, nozzle_id, attendant_id,
-         fuel_type, quantity_ltrs, rate_per_ltr, payment_mode, upi_ref,
-         vehicle_number, latitude, longitude, corporate_id
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [
-        station_id, shift_id || null, rfid_id, nozzle_id, attendant_id,
-        fuel_type, quantity_ltrs, price,
-        payment_mode || 'cash', upi_ref || null,
-        vehicle_number || null, latitude || null, longitude || null,
-        (payment_mode === 'credit' && corporate_id) ? corporate_id : null,
-      ]
-    );
+    const event = await dispenseSvc.insertDispense({
+      station_id, shift_id, rfid_tag_id: rfid_id, nozzle_id, attendant_id,
+      fuel_type, quantity_ltrs, rate_per_ltr: price,
+      payment_mode, upi_ref, vehicle_number, latitude, longitude, corporate_id,
+    });
 
-    const event = rows[0];
     // Blind drop: the shift is open when a sale streams out, so staff rooms get
     // amount/quantity masked (they could otherwise just sum the live feed).
     // Owners join the `:owner` rooms (see index.js) and get the full event.
