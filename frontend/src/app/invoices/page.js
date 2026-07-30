@@ -65,17 +65,24 @@ export default function InvoicesPage() {
   useRefreshOnFocus(load);
 
   // The invoice number is allocated SERVER-SIDE inside the invoice transaction — see
-  // services/invoiceNumberService. This is only a preview of what will be used.
+  // services/invoiceNumberService. This is only a PREVIEW of what will be used, and it
+  // mirrors the same opt-in rule so the screen never shows a shape the server wouldn't
+  // produce.
   //
-  // It used to be built HERE and posted, which was wrong twice: two managers running
+  // The FY series (PREFIX/FY/SEQ) applies only when the outlet has a Financial year set
+  // in Settings. Blank keeps this outlet's existing format, so a live series does not
+  // change shape under a customer who is already receiving it.
+  //
+  // It used to be BUILT here and posted, which was wrong twice: two managers running
   // month-end together would compute the SAME number off one stale invoice_seq read,
-  // and the embedded date was the GENERATION date, not the invoice date (so
-  // INV-20260730-0146 was dated 28 Jul — actively misleading).
+  // and the embedded date was the GENERATION date, not the invoice date.
   useEffect(() => {
     const prefix = settings?.invoice_prefix || 'INV';
     const fy     = settings?.invoice_fy || '';
     const seq    = settings?.invoice_seq || 1;
-    setInvNo(fy ? `${prefix}/${fy}/${seq}` : `${prefix}/${seq}`);
+    if (fy) { setInvNo(`${prefix}/${fy}/${seq}`); return; }
+    const stamp = today().replace(/-/g, '');
+    setInvNo(`${prefix}-${stamp}-${String(seq).padStart(4, '0')}`);
   }, [settings]);
 
   const total   = lines.reduce((s,l) => s + lineAmt(l), 0);
