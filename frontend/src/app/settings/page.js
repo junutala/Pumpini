@@ -502,8 +502,10 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
           </div>
         </div>
         <div style={{fontSize:11,color:'var(--text-3)',marginBottom:'1.25rem'}}>
-          {tc('setp.invoiceNumHint', 'Next invoice will be {n}. Set "Next number" to continue a series your accounts package was already running — it is used once and then advances on its own. The series restarts at 1 each financial year.')
-            .replace('{n}', `${form.invoice_prefix||'INV'}/${form.invoice_fy||'2026-2027'}/${form.invoice_seq||1}`)}
+          {form.invoice_fy
+            ? tc('setp.invoiceNumHint', 'Next invoice will be {n}. "Next number" is used once and then advances on its own; the series restarts at 1 each financial year.')
+                .replace('{n}', `${form.invoice_prefix||'INV'}/${form.invoice_fy}/${form.invoice_seq||1}`)
+            : tc('setp.invoiceNumLegacy', 'Leave Financial year BLANK to keep this outlet\u2019s current numbering unchanged. Fill it in only for an outlet that should use the PREFIX/YEAR/NUMBER series — set "Next number" to continue a series your accounts package was already running.')}
         </div>
         <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}}
           onClick={save} disabled={loading}>

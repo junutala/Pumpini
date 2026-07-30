@@ -555,7 +555,7 @@ router.post('/self-settle', authenticate,
         // Same allocator as the credit-invoice screen — one shape, one counter.
         // Previously this produced `INV-<seq>` while the screen produced
         // `INV-<generation date>-<seq>`: two formats off one sequence.
-        const { invoice_number } = await invoiceNo.allocate({ station_id: sa.station_id }, client);
+        const { invoice_number } = await invoiceNo.allocate({ station_id: sa.station_id, style: 'plain' }, client);
         const { rows: inv } = await client.query(
           `INSERT INTO gst_invoices(station_id, corporate_id, invoice_number, invoice_date, subtotal, total_amount, line_items, created_by, status)
            VALUES($1,$2,$3,(SELECT date FROM shifts WHERE id=$4),$5,$5,$6,$7,'sent') RETURNING *`,
