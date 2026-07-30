@@ -110,6 +110,9 @@ export const getCoupons     = (params) => api.get('/coupons', { params });
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);
 export const setPrice         = (data)       => api.post('/prices', data);
+// The rate in force per fuel at that outlet ON A GIVEN DATE — defaults a manual
+// credit-invoice line. Prices differ per outlet (~₹1/L observed), so station matters.
+export const getPricesAsAt    = (stationId, date) => api.get(`/prices/${stationId}/as-at`, { params: { date } });
 
 // Alerts
 export const getAlerts        = (params) => api.get('/alerts', { params });
