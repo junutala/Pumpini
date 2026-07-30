@@ -6,7 +6,7 @@
 // control total simply DEPRECIATES by the invoice amount — no rate reconciliation.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, FileText, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, FileText, ChevronRight, ArrowLeft, Ticket, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
@@ -17,7 +17,11 @@ const fmt   = n => Number(n||0).toLocaleString('en-IN', { minimumFractionDigits:
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const inp   = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const FUELS = ['petrol','diesel'];
-const emptyLine = () => ({ vehicle:'', fuel:'diesel', qty:'', rate:'' });
+// A line is either keyed by hand (the original control-total flow, for outlets with no
+// coupon books) or loaded FROM A CAPTURED COUPON. A coupon line carries the sale's id,
+// which is what lets the invoice mark it billed — manual lines have no id, which is why
+// raising an invoice never marked anything before coupons existed.
+const emptyLine = () => ({ vehicle:'', fuel:'diesel', qty:'', rate:'', id:null, coupon_no:null, chln_date:null });
 const lineAmt  = l => (parseFloat(l.qty)||0) * (parseFloat(l.rate)||0);
 
 export default function InvoicesPage() {
@@ -37,6 +41,10 @@ export default function InvoicesPage() {
   const [invDate, setInvDate] = useState(today());
   const [lines,   setLines]   = useState([emptyLine()]);
   const [busy,    setBusy]    = useState(false);
+  const [from,    setFrom]    = useState('');    // period for pulling unbilled coupons
+  const [to,      setTo]      = useState('');
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [couponMode, setCouponMode] = useState(false);   // lines came from coupons
   const [msg,     setMsg]     = useState(null);   // { ok, text }
 
   const load = useCallback(async () => {
@@ -77,6 +85,47 @@ export default function InvoicesPage() {
   const addLine = () => setLines(ls => [...ls, emptyLine()]);
   const delLine = (i) => setLines(ls => ls.length>1 ? ls.filter((_,idx)=>idx!==i) : [emptyLine()]);
 
+  // Pull this customer's UNBILLED coupons for the period. Each becomes an invoice line
+  // with its stored rate and amount — never recomputed, so the invoice reproduces
+  // exactly what was captured even if prices have moved since.
+  const loadCoupons = async () => {
+    if (!corp) return setMsg({ ok:false, text:tc('invp.errPickCustomer', 'Pick a credit customer first.') });
+    setLoadingCoupons(true); setMsg(null);
+    try {
+      const rows = await api.get('/coupons', {
+        params: { station_id: stationId, corporate_id: corp, from: from || undefined,
+                  to: to || undefined, uninvoiced: true },
+      });
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        setMsg({ ok:false, text:tc('invp.noCoupons', 'No unbilled coupons for this customer in that period.') });
+        setLoadingCoupons(false); return;
+      }
+      setLines(list.map(r => ({
+        id:        r.id,
+        coupon_no: r.coupon_no,
+        chln_date: String(r.occurred_at).slice(0,10),
+        vehicle:   r.vehicle_number || '',
+        fuel:      r.fuel_type,
+        qty:       String(r.quantity_ltrs),
+        rate:      String(r.rate_per_ltr),
+      })));
+      setCouponMode(true);
+      setMsg({ ok:true, text:tc('invp.loadedCoupons', 'Loaded {n} unbilled coupon(s). Check them, then generate.')
+        .replace('{n}', list.length) });
+    } catch (e) {
+      setMsg({ ok:false, text: e.error || tc('invp.errCoupons', 'Could not load coupons.') });
+    }
+    setLoadingCoupons(false);
+  };
+
+  // Earliest / latest challan date among the loaded lines — used when the period boxes
+  // were left blank so the printed invoice still states its coverage.
+  const couponPeriod = () => {
+    const ds = lines.map(l => l.chln_date).filter(Boolean).sort();
+    return { from: ds[0] || null, to: ds[ds.length - 1] || null };
+  };
+
   const generate = async () => {
     if (!corp) return setMsg({ ok:false, text:tc('invp.errPickCustomer', 'Pick a credit customer first.') });
     const valid = lines.filter(l => lineAmt(l) > 0);
@@ -85,6 +134,10 @@ export default function InvoicesPage() {
     try {
       const t = +total.toFixed(2);
       const line_items = valid.map(l => ({
+        // id is what marks the coupon billed server-side (null for a manual line).
+        id:             l.id || undefined,
+        coupon_no:      l.coupon_no ?? undefined,
+        chln_date:      l.chln_date ?? undefined,
         vehicle_number: l.vehicle?.trim() || null,
         fuel_type:      l.fuel,
         quantity_ltrs:  parseFloat(l.qty)  || 0,
@@ -96,6 +149,11 @@ export default function InvoicesPage() {
         corporate_id: corp,
         // No invoice_number — the server allocates it inside the transaction.
         invoice_date: invDate,
+        // Period appears on the printed document ("1-Jun-26 TO 30-Jun-26"). When lines
+        // came from coupons, derive it from the coupons themselves if the boxes were
+        // left blank, so the invoice always states the range it actually covers.
+        period_from:  from || couponPeriod().from || null,
+        period_to:    to   || couponPeriod().to   || null,
         subtotal:     t,
         cgst_rate: 0, sgst_rate: 0, cgst_amount: 0, sgst_amount: 0,
         total_amount: t,
@@ -106,7 +164,7 @@ export default function InvoicesPage() {
       const suffix = tc('invp.successReduced', ' Control total reduced.');
       setMsg({ ok:true, text: tc('invp.successInvoice', '✓ Invoice {invNo} raised for {name} — ₹{amt}.')
         .replace('{invNo}', invNo).replace('{name}', name).replace('{amt}', fmt(t)) + suffix });
-      setLines([emptyLine()]); setCorp('');
+      setLines([emptyLine()]); setCorp(''); setCouponMode(false);
       load();
     } catch (e) {
       setMsg({ ok:false, text: e.response?.data?.error || e.error || tc('invp.errGeneric', 'Could not raise the invoice.') });
@@ -166,12 +224,39 @@ export default function InvoicesPage() {
           </div>
         </div>
 
+        {/* Pull unbilled coupons for this customer + period. Optional: an outlet with no
+            coupon books keys lines by hand exactly as before. */}
+        <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',marginBottom:'0.9rem',
+                     padding:'0.75rem',background:'#f8fafc',border:'1px solid #e2e8f0',borderRadius:10}}>
+          <div>
+            <label className="label" style={{fontSize:11}}>{tc('invp.periodFrom', 'Period from')}</label>
+            <input style={{...inp,padding:'7px 9px',width:150}} type="date" value={from} onChange={e=>setFrom(e.target.value)}/>
+          </div>
+          <div>
+            <label className="label" style={{fontSize:11}}>{tc('invp.periodTo', 'Period to')}</label>
+            <input style={{...inp,padding:'7px 9px',width:150}} type="date" value={to} onChange={e=>setTo(e.target.value)}/>
+          </div>
+          <button onClick={loadCoupons} disabled={loadingCoupons}
+            style={{display:'inline-flex',alignItems:'center',gap:6,background:'#0f172a',color:'#fff',
+                    border:'none',borderRadius:8,padding:'9px 14px',fontSize:13,fontWeight:700,
+                    cursor:loadingCoupons?'wait':'pointer'}}>
+            <Ticket size={15}/>{loadingCoupons ? tc('invp.loadingCoupons', 'Loading…') : tc('invp.loadCoupons', 'Load unbilled coupons')}
+          </button>
+          <div style={{fontSize:11,color:'var(--text-3)',flex:'1 1 220px'}}>
+            {couponMode
+              ? tc('invp.couponModeNote', 'Lines are from captured coupons — each carries the rate stored when it was captured. Generating will mark them billed.')
+              : tc('invp.couponHint', 'Leave the dates blank for every unbilled coupon, or set a month.')}
+          </div>
+        </div>
+
         {/* Lines */}
         <div className="table-wrap">
           <table className="dms-table" style={{minWidth:640}}>
             <thead>
               <tr>
-                <th style={{width:'30%'}}>{tc('invp.vehicleNo', 'Vehicle No.')}</th>
+                <th style={{width:90}}>{tc('invp.slipNo', 'Slip No.')}</th>
+                <th style={{width:110}}>{tc('invp.chlnDate', 'Chln. Date')}</th>
+                <th style={{width:'22%'}}>{tc('invp.vehicleNo', 'Vehicle No.')}</th>
                 <th style={{width:120}}>{tc('invp.fuel', 'Fuel')}</th>
                 <th style={{width:110,textAlign:'right'}}>{tc('invp.qtyL', 'Qty (L)')}</th>
                 <th style={{width:110,textAlign:'right'}}>{tc('invp.rateL', 'Rate ₹/L')}</th>
@@ -182,6 +267,12 @@ export default function InvoicesPage() {
             <tbody>
               {lines.map((l,i) => (
                 <tr key={i}>
+                  <td style={{fontFamily:'var(--font-mono)',fontSize:12.5,fontWeight:600}}>{l.coupon_no ?? '—'}</td>
+                  <td style={{fontSize:12,whiteSpace:'nowrap'}}>
+                    {l.chln_date
+                      ? new Date(l.chln_date).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'2-digit'})
+                      : '—'}
+                  </td>
                   <td><input style={{...inp,padding:'7px 9px'}} placeholder={tc('invp.vehiclePlaceholder', 'e.g. TN09AB1234')} value={l.vehicle} onChange={e=>setLine(i,'vehicle',e.target.value.toUpperCase())} /></td>
                   <td>
                     <select style={{...inp,padding:'7px 9px'}} value={l.fuel} onChange={e=>setLine(i,'fuel',e.target.value)}>
@@ -228,7 +319,7 @@ export default function InvoicesPage() {
         ) : (
           <div className="table-wrap">
             <table className="dms-table">
-              <thead><tr><th>{tc('invp.invoiceNoCol', 'Invoice No.')}</th><th>{tc('invp.customer', 'Customer')}</th><th>{tc('invp.date', 'Date')}</th><th style={{textAlign:'right'}}>{tc('invp.amount', 'Amount')}</th></tr></thead>
+              <thead><tr><th>{tc('invp.invoiceNoCol', 'Invoice No.')}</th><th>{tc('invp.customer', 'Customer')}</th><th>{tc('invp.date', 'Date')}</th><th style={{textAlign:'right'}}>{tc('invp.amount', 'Amount')}</th><th></th></tr></thead>
               <tbody>
                 {recent.map(iv => (
                   <tr key={iv.id}>
@@ -236,6 +327,13 @@ export default function InvoicesPage() {
                     <td>{iv.company_name}</td>
                     <td>{iv.invoice_date ? String(iv.invoice_date).slice(0,10) : '—'}</td>
                     <td className="num">₹{fmt(iv.total_amount)}</td>
+                    <td>
+                      <button onClick={()=>router.push(`/invoices/print/${iv.id}?station_id=${stationId}`)}
+                        title={tc('invp.print', 'Print')}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'var(--brand)',display:'inline-flex',alignItems:'center',gap:4,fontSize:12.5}}>
+                        <Printer size={14}/>{tc('invp.print', 'Print')}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

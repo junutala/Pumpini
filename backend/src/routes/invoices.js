@@ -168,4 +168,29 @@ router.get('/credit-pending', authenticate, requireStationAccess({ required: tru
   } catch (err) { next(err); }
 });
 
+// GET /api/invoices/:id — one invoice with everything the printed document needs.
+// Declared AFTER /saved and /credit-pending so it cannot shadow them.
+// Station-scoped: an invoice id from another outlet is a 404, not a leak.
+router.get('/:id', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id } = req.query;
+    const { rows } = await pool.query(
+      `SELECT gi.*,
+              ca.company_name, ca.gstn AS customer_gstn, ca.gst_number AS customer_gst_number,
+              ca.address AS customer_address, ca.contact_phone AS customer_phone,
+              s.name  AS outlet_name,
+              ss.gstn AS outlet_gstn, ss.address AS outlet_address,
+              ss.city AS outlet_city, ss.state AS outlet_state, ss.pincode AS outlet_pincode
+       FROM gst_invoices gi
+       LEFT JOIN corporate_accounts ca ON ca.id = gi.corporate_id
+       LEFT JOIN stations s            ON s.id  = gi.station_id
+       LEFT JOIN station_settings ss   ON ss.station_id = gi.station_id
+       WHERE gi.id = $1 AND gi.station_id = $2`,
+      [req.params.id, station_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Invoice not found for this outlet.' });
+    res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

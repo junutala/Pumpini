@@ -1694,7 +1694,19 @@
     "recentInvoices": "Recent credit invoices",
     "noInvoices": "No credit invoices raised yet.",
     "invoiceNoCol": "Invoice No.",
-    "customer": "Customer"
+    "customer": "Customer",
+    "slipNo": "Slip No.",
+    "chlnDate": "Chln. Date",
+    "periodFrom": "Period from",
+    "periodTo": "Period to",
+    "loadCoupons": "Load unbilled coupons",
+    "loadingCoupons": "Loading…",
+    "couponHint": "Leave the dates blank for every unbilled coupon, or set a month.",
+    "couponModeNote": "Lines are from captured coupons — each carries the rate stored when it was captured. Generating will mark them billed.",
+    "loadedCoupons": "Loaded {n} unbilled coupon(s). Check them, then generate.",
+    "noCoupons": "No unbilled coupons for this customer in that period.",
+    "errCoupons": "Could not load coupons.",
+    "print": "Print"
   },
   "lubecat": {
     "nameAndPriceRequired": "Name and selling price are required",
