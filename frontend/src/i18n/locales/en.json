@@ -70,7 +70,8 @@
     "bunkview": "Bunk View",
     "density": "Density Register",
     "credit_reports": "Credit Reports",
-    "slipbooks": "Coupon Books"
+    "slipbooks": "Coupon Books",
+    "coupons": "Credit Coupons"
   },
   "roles": {
     "owner": "Owner",
@@ -2586,5 +2587,42 @@
     "lookupNone": "Not in any book issued at this outlet.",
     "errIssue": "Could not issue the book.",
     "errUpdate": "Could not update the book."
+  },
+  "coupon": {
+    "title": "Credit Coupons",
+    "info": "ℹ️ Record each filled-in requisition coupon. The coupon number decides which credit customer it belongs to, and the amount is worked out from that day's selling price at this outlet and stored on the sale. Photograph the coupon to save typing — then check every figure before you confirm.",
+    "capture": "Capture a coupon",
+    "scan": "Scan coupon",
+    "reading": "Reading coupon…",
+    "scanFail": "Could not read the coupon — enter the details manually.",
+    "lowConf": "The handwriting was hard to read — check every figure.",
+    "noSig": "No signature visible on the coupon.",
+    "noSeal": "No office seal visible on the coupon.",
+    "no": "Coupon no.",
+    "date": "Coupon date",
+    "product": "Product",
+    "qty": "Litres",
+    "vehicle": "Vehicle no.",
+    "hint": "Name on coupon",
+    "hintNote": "Cross-check only — the number decides the customer.",
+    "book": "book",
+    "rate": "Rate",
+    "amount": "Amount",
+    "customer": "Customer",
+    "rateAsAt": "Rate in force on {d} at this outlet (set {e}).",
+    "dup": "Already recorded. It cannot be captured again.",
+    "dupInvoiced": "Already recorded AND invoiced. It cannot be captured again.",
+    "check": "Check coupon",
+    "confirm": "Confirm & record",
+    "saving": "Saving…",
+    "checkFirst": "Check the coupon first — it confirms the customer and the rate before anything is saved.",
+    "checkFail": "Could not check this coupon.",
+    "saveFail": "Could not record the coupon.",
+    "savedMsg": "Coupon {n} recorded — ₹{a}.",
+    "recent": "Captured coupons",
+    "none": "No coupons captured yet.",
+    "invoiced": "Invoiced",
+    "yes": "Invoiced",
+    "pending": "Pending"
   }
 }
