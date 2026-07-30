@@ -88,6 +88,15 @@ export const getDensityRegister = (params) => api.get('/dipstick/density-registe
 export const getCalibrationCharts = ()             => api.get('/calibration/charts');
 export const setTankChart         = (tankId, data) => api.patch(`/calibration/tank/${tankId}`, data);
 
+// Credit slip books — the control record over requisition-coupon books issued to
+// credit customers (cheque-book model). Books are per OUTLET, so a coupon number
+// resolves to exactly one book and therefore one customer. See
+// docs/credit-slip-invoicing.md.
+export const getCreditSlipBooks   = (params)   => api.get('/credit-slip-books', { params });
+export const issueCreditSlipBook  = (data)     => api.post('/credit-slip-books', data);
+export const updateCreditSlipBook = (id, data) => api.patch(`/credit-slip-books/${id}`, data);
+export const resolveCouponBook    = (params)   => api.get('/credit-slip-books/resolve', { params });
+
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);
 export const setPrice         = (data)       => api.post('/prices', data);
