@@ -51,6 +51,15 @@ applied, and break.** When a change needs schema:
 - **Prefer column-tolerant code**: don't `SELECT new_col` in a hot read path until the
   column is guaranteed present; or wrap so a missing column can't 500 the endpoint.
 - Make all DDL idempotent (`ADD COLUMN IF NOT EXISTS`, etc.) so re-running is safe.
+- **🔴 INSIDE A TRANSACTION, PROBE — NEVER "TRY AND CATCH 42703".** A failed statement
+  ABORTS the whole transaction, so the fallback query dies with *"current transaction is
+  aborted, commands ignored until end of transaction block"* and the operation fails
+  anyway. The try/catch pattern in `deliveries.js insertDeliveryInvoice` is safe ONLY
+  because it runs on `pool` outside a transaction — it is **not** portable into a
+  `BEGIN…COMMIT` block. Inside one, check `information_schema.columns` first (a catalog
+  SELECT succeeds either way and cannot poison the transaction), or use a SAVEPOINT.
+  (Learned 30-Jul-2026: `invoiceNumberService` caught 42703 inside the credit-invoice
+  transaction and broke every credit invoice in prod until the DDL was run.)
 - **🔴 A NEW TABLE MUST SHIP ITS RLS POLICY IN THE SAME DDL BLOCK.** New tables get RLS
   **enabled automatically** on this Supabase project, and RLS-on-with-no-policy denies
   everything. The failure is asymmetric, which is why it slips through: `SELECT` silently
