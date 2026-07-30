@@ -51,6 +51,15 @@ applied, and break.** When a change needs schema:
 - **Prefer column-tolerant code**: don't `SELECT new_col` in a hot read path until the
   column is guaranteed present; or wrap so a missing column can't 500 the endpoint.
 - Make all DDL idempotent (`ADD COLUMN IF NOT EXISTS`, etc.) so re-running is safe.
+- **🔴 A NEW TABLE MUST SHIP ITS RLS POLICY IN THE SAME DDL BLOCK.** New tables get RLS
+  **enabled automatically** on this Supabase project, and RLS-on-with-no-policy denies
+  everything. The failure is asymmetric, which is why it slips through: `SELECT` silently
+  returns **zero rows** (the screen just looks empty) while `INSERT` raises *"new row
+  violates row-level security policy"*. Copy the shape every station-scoped table already
+  uses — `FOR ALL USING (station_id IN (SELECT my_stations())) WITH CHECK (same)` — and
+  check with `SELECT * FROM pg_policies WHERE tablename='...'` before calling it done.
+  (Learned 30-Jul-2026: `credit_slip_books` shipped without one and issuing a coupon book
+  failed while its list read as empty.)
 
 ---
 
