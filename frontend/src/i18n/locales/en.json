@@ -2290,7 +2290,8 @@
     "invoiceNumbering": "Credit invoice numbering",
     "invoiceFy": "Financial year",
     "invoiceSeq": "Next number",
-    "invoiceNumHint": "Next invoice will be {n}. Set \"Next number\" to continue a series your accounts package was already running — it is used once and then advances on its own. The series restarts at 1 each financial year."
+    "invoiceNumHint": "Next invoice will be {n}. \"Next number\" is used once and then advances on its own; the series restarts at 1 each financial year.",
+    "invoiceNumLegacy": "Leave Financial year BLANK to keep this outlet’s current numbering unchanged. Fill it in only for an outlet that should use the PREFIX/YEAR/NUMBER series — set \"Next number\" to continue a series your accounts package was already running."
   },
   "sstart": {
     "dashboard": "Dashboard",
