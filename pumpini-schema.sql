@@ -741,3 +741,57 @@ CREATE INDEX IF NOT EXISTS idx_credit_slip_books_corporate ON public.credit_slip
 -- between outlets (~₹1/L observed), so the station column is load-bearing.
 CREATE INDEX IF NOT EXISTS idx_fuel_prices_lookup
   ON public.fuel_prices(station_id, fuel_type, effective_from DESC);
+
+-- ──────────────────────────────────────────────────────────────
+-- COUPON CAPTURE ON THE CREDIT SALE (2026-07-30)
+-- Piece 2 of credit invoicing. docs/credit-slip-invoicing.md §3.
+--
+-- The coupon is NOT a second sale record — it is the paper authorisation for a
+-- credit sale we ALREADY record in dispense_events. So we add the coupon to that
+-- row rather than starting a parallel ledger, which keeps ONE credit ledger, ONE
+-- invoiced marker (the existing is_invoiced/invoice_id) and ONE credit-suspense
+-- drawdown. A second ledger would be exactly the drift CLAUDE.md forbids.
+--
+-- Run these together (staging). Additive and idempotent throughout.
+-- ──────────────────────────────────────────────────────────────
+
+-- Step 1 — the coupon on the sale.
+ALTER TABLE public.dispense_events ADD COLUMN IF NOT EXISTS coupon_book_id uuid REFERENCES public.credit_slip_books(id);
+ALTER TABLE public.dispense_events ADD COLUMN IF NOT EXISTS coupon_no      bigint;
+-- The meter reading OCR'd from a nozzle photo. The nozzle-image capture is PAUSED
+-- (attendant acceptance), so this stays null for now — the column exists so enabling
+-- it later needs no migration. Deliberately NO comparison logic against
+-- quantity_ltrs: the coupon is handwritten and the MANAGER is the check (owner call).
+ALTER TABLE public.dispense_events ADD COLUMN IF NOT EXISTS meter_quantity_ltrs numeric(10,3);
+
+-- Step 2 — a coupon leaf can be billed at most ONCE. This index IS the
+-- no-double-invoicing guarantee, enforced by Postgres rather than by a flag someone
+-- must remember to set, and it simultaneously kills the double-entry risk inherent
+-- in a two-part (ORIGINAL + DUPLICATE) coupon. Partial, so the millions of non-coupon
+-- POS sales carry no index cost and are unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dispense_coupon
+  ON public.dispense_events(coupon_book_id, coupon_no)
+  WHERE coupon_book_id IS NOT NULL;
+
+-- Step 3 — find a customer's coupons for an invoice period.
+CREATE INDEX IF NOT EXISTS idx_dispense_coupon_lookup
+  ON public.dispense_events(station_id, corporate_id, occurred_at)
+  WHERE coupon_book_id IS NOT NULL;
+
+-- Step 4 — document images against a sale, typed by kind so adding the nozzle-meter
+-- photo later needs NO migration: just a new `kind`. dispense_events.photo_url is
+-- already used by an existing upload endpoint, so it must not be overloaded.
+CREATE TABLE IF NOT EXISTS public.dispense_artifacts (
+  id                 uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  dispense_event_id  uuid NOT NULL REFERENCES public.dispense_events(id) ON DELETE CASCADE,
+  station_id         uuid NOT NULL REFERENCES public.stations(id),
+  kind               character varying(20) NOT NULL,
+  storage_path       text,
+  file_base64        text,
+  media_type         character varying(40),
+  ocr                jsonb,
+  captured_at        timestamp with time zone DEFAULT now(),
+  uploaded_by        uuid REFERENCES public.users(id),
+  CONSTRAINT dispense_artifacts_kind_chk CHECK (kind IN ('coupon','nozzle_meter'))
+);
+CREATE INDEX IF NOT EXISTS idx_dispense_artifacts_event ON public.dispense_artifacts(dispense_event_id);

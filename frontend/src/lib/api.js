@@ -97,6 +97,14 @@ export const issueCreditSlipBook  = (data)     => api.post('/credit-slip-books',
 export const updateCreditSlipBook = (id, data) => api.patch(`/credit-slip-books/${id}`, data);
 export const resolveCouponBook    = (params)   => api.get('/credit-slip-books/resolve', { params });
 
+// Coupon capture — a filled-in requisition coupon becomes a credit sale through the
+// SAME writer the POS uses. Nothing auto-commits: parse pre-fills, validate previews
+// the customer + rate + warnings, and the manager confirms. docs/credit-slip-invoicing.md.
+export const parseCoupon    = (data)   => api.post('/coupons/parse', data, { timeout: 90000 });
+export const validateCoupon = (data)   => api.post('/coupons/validate', data);
+export const captureCoupon  = (data)   => api.post('/coupons', data);
+export const getCoupons     = (params) => api.get('/coupons', { params });
+
 // Prices
 export const getCurrentPrices = (stationId) => api.get(`/prices/${stationId}/current`);
 export const setPrice         = (data)       => api.post('/prices', data);

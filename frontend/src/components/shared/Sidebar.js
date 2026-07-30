@@ -9,7 +9,7 @@ import {
   Gauge, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked
+  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket
 } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
@@ -51,6 +51,7 @@ const NAV_GROUPS = [
       { key:'invoices',   href:'/invoices',        icon:FileText,       perm:'invoice.generate' },
       { key:'receipts',   href:'/receipts',        icon:Receipt,        perm:'invoice.generate' },
       { key:'creditnotes',href:'/credit-notes',    icon:RotateCcw,      perm:'invoice.generate' },
+      { key:'coupons',    href:'/credit-coupons',   icon:Ticket,     perm:'dispense.entry' },
       { key:'slipbooks',  href:'/credit-slip-books', icon:BookMarked, perm:'corporate.view' },
     ]
   },
@@ -110,6 +111,7 @@ const NAV_LABELS = {
   group:'Group View',       reports:'Reports',       alerts:'Alerts',
   invoices:'Credit Invoices',  receipts:'Credit Receipts', settings:'Settings',
   creditnotes:'Credit Notes',
+  coupons:'Credit Coupons',
   slipbooks:'Coupon Books',
   pettycash:'Petty Cash',
   deposits:'Bank Deposits',
