@@ -2610,7 +2610,9 @@
     "book": "book",
     "lookupNone": "Not in any book issued at this outlet.",
     "errIssue": "Could not issue the book.",
-    "errUpdate": "Could not update the book."
+    "errUpdate": "Could not update the book.",
+    "noCustomers": "No active credit customers are linked to this outlet — add one under Credit Customers first.",
+    "errLoad": "Could not load coupon books for this outlet."
   },
   "coupon": {
     "title": "Credit Coupons",

@@ -62,7 +62,9 @@ export const submitReco  = (data) => api.post('/reconcile', data);
 export const getReco     = (sid)  => api.get(`/reconcile/${sid}`);
 
 // Corporate
-export const getCorporates       = ()         => api.get('/corporate');
+// station_id is REQUIRED by the route guard — without it the endpoint 400s rather
+// than returning every outlet's customers (see middleware/stationAccess).
+export const getCorporates       = (params)   => api.get('/corporate', { params });
 export const createCorporate     = (data)     => api.post('/corporate', data);
 export const getDrivers          = (id)       => api.get(`/corporate/${id}/drivers`);
 export const addDriver           = (id, data) => api.post(`/corporate/${id}/drivers`, data);
