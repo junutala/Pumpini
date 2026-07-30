@@ -69,7 +69,8 @@
     "grp_manage": "Manage",
     "bunkview": "Bunk View",
     "density": "Density Register",
-    "credit_reports": "Credit Reports"
+    "credit_reports": "Credit Reports",
+    "slipbooks": "Coupon Books"
   },
   "roles": {
     "owner": "Owner",
@@ -2572,5 +2573,42 @@
     "staleOpenN": "{n} shifts still open past their day",
     "lateClose": "{n} shift(s) closed late — batch entry",
     "handover": "{t} — handover gap {v} L ({from} → {to})"
+  },
+  "slipbook": {
+    "title": "Coupon Books",
+    "info": "ℹ️ Record every requisition-coupon book handed to a credit customer, like a cheque book. A coupon can then only be accepted if its number falls inside a book issued here — and a number that was never presented shows up as unaccounted instead of being invisible.",
+    "issue": "Issue a book",
+    "issueBtn": "Issue book",
+    "saving": "Saving…",
+    "register": "Books issued",
+    "none": "No coupon books recorded yet for this outlet.",
+    "customer": "Credit customer",
+    "pickCustomer": "Select customer…",
+    "range": "Coupon range",
+    "leaves": "Coupons",
+    "label": "Book",
+    "labelPh": "optional",
+    "first": "First coupon no.",
+    "last": "Last coupon no.",
+    "opening": "First unused no.",
+    "openingPh": "if part-used",
+    "openingHint": "Leave blank unless the book was handed over part-used.",
+    "from": "from",
+    "issuedOn": "Issued",
+    "issuedBy": "Issued by",
+    "status": "Status",
+    "notes": "Notes",
+    "st_active": "Active",
+    "st_exhausted": "Exhausted",
+    "st_cancelled": "Cancelled",
+    "st_lost": "Lost",
+    "lookupTitle": "Whose coupon is this?",
+    "lookupPh": "Coupon number, e.g. 17702",
+    "lookupBtn": "Look up",
+    "lookupHit": "Coupon {n} belongs to",
+    "book": "book",
+    "lookupNone": "Not in any book issued at this outlet.",
+    "errIssue": "Could not issue the book.",
+    "errUpdate": "Could not update the book."
   }
 }

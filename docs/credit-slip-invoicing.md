@@ -87,46 +87,105 @@ Two observations from the sample that shaped the design:
 
 ---
 
-## 3. The model — ledger first, invoice second
+## 3. The model — REUSE the credit sale, do not build a parallel ledger
 
-The invoice is **not** the thing to build. It is a report over a ledger that does not
-yet exist. Build in this order:
+> **Corrected 30-Jul-2026.** The first draft of this section proposed a standalone
+> slip ledger with its own invoice generator. That was wrong, and building it would
+> have created exactly the drift `CLAUDE.md` forbids. Reading the code first showed
+> that **most of this already exists**.
 
-1. **Book register** — issue a book to a customer: range from–to, issue date, status,
-   opening leaf. Small admin screen. Nothing else works without it.
-2. **Slip ledger** — one row per presented leaf: date, book, leaf no, vehicle,
-   product, quantity, rate applied, amount, image, shift, attendant. **This is the
-   foundation.**
-3. **Invoice + control report** — both are queries over (2): the monthly invoice in
-   the layout above, and the book reconciliation (issued / presented / billed /
-   unused / **unaccounted**).
+### What already exists
 
-**OCR is the least important part.** It is data-entry acceleration on top of a ledger
-that must exist regardless — and, exactly as with the gauge scan
-(`routes/dipstick.js` `parse-gauge`), **manual entry must remain the primary path**
-and work standalone.
+`POST /api/invoices` (`routes/invoices.js`) is already a working credit-invoice
+generator: it writes `gst_invoices` (with `period_from`/`period_to`, `line_items`
+jsonb, opening-balance handling), marks the billed lines, bumps the invoice
+sequence, posts the credit-suspense drawdown, and 409s on a cross-station invoice
+number collision.
 
-### What exists today, and what does not
+And `dispense_events` — the credit sale record, written by `POST /api/dispense`
+(`payment_mode='credit'` + `corporate_id`, with a credit-limit check) — already
+carries nearly every column the Tally invoice needs:
 
-| Have | Where |
+| Invoice column | `dispense_events` |
 |---|---|
-| Credit customers | `corporate_accounts` (credit_limit, current_outstanding, billing_cycle) |
-| Vehicle → customer | `corporate_drivers.vehicle_number`, `per_fill_limit` |
-| Historic selling rates | `fuel_prices` (`effective_from`) |
-| Tally bridge | `routes/tally.js` |
-| Document image storage | `services/vaweStorage` (private bucket + signed URLs), as used by `delivery_invoices` |
+| Chln. Date | `occurred_at` |
+| Vehicle No. | `vehicle_number` |
+| Description of Goods | `fuel_type` |
+| Quantity | `quantity_ltrs` |
+| Rate (incl. of tax) | `rate_per_ltr` (NOT NULL) |
+| Amount | `amount` — GENERATED as `quantity_ltrs * rate_per_ltr` |
+| — | `corporate_id`, `attendant_id`, `shift_id`, `source` (default `'pos'`), `is_voided` |
+
+**Including "mark as invoiced".** `is_invoiced` + `invoice_id` already exist and are
+set by the invoice writer in the same transaction. We do **not** add a second flag:
+two markers can disagree, one cannot.
+
+Exactly one column is genuinely missing: **the coupon number.**
+
+### So the model is
+
+**The coupon is not a second sale record — it is the paper authorisation for a sale
+we already record.** Therefore:
+
+1. **Book register** — genuinely new (`credit_slip_books`, §4). Nothing to reuse.
+2. **Coupon capture** — ADD to `dispense_events`: `coupon_book_id`, `coupon_no`,
+   plus **`UNIQUE (coupon_book_id, coupon_no)`**. That index *is* the
+   no-double-invoicing guarantee — enforced by Postgres rather than by a flag
+   someone must remember to set — and it simultaneously kills the
+   original-plus-duplicate double-entry risk (each slip is a two-part form). Capture
+   funnels through the existing `POST /api/dispense` writer with `source='coupon'`.
+3. **Invoice generation** — EXTEND `POST /api/invoices`. Three gaps only: the Tally
+   print layout (Slip No. and Vehicle both come free once step 2 lands), FY-aware
+   numbering (§6), and a print view.
+
+This keeps **one** credit ledger, **one** invoiced marker, and **one**
+credit-suspense drawdown. It is also a much smaller build than the first draft implied.
+
+### Pricing: store the amount at capture, never derive at invoice time
+
+Owner call, 30-Jul: **calculate and store the amount when the coupon is captured**,
+with the rate taken as at the coupon date, so fetching a coupon later for invoicing
+has no dependency on the rate card.
+
+This needs no new mechanism: `dispense_events.rate_per_ltr` is NOT NULL and `amount`
+is a generated column, so storing quantity + rate freezes the amount on the row. The
+invoice then simply reads it.
+
+⇒ The historic-rate lookup is a **backfill helper for batch entry** (keying a coupon
+days later), not the main pricing path. A coupon captured on the day already has the
+right rate. Either way the invoice stays reproducible years later.
+
+**Prices are per OUTLET and genuinely differ.** Verified in prod on the same week:
+Kamala petrol ₹116.15 vs Highway ₹115.09, diesel ₹104.23 vs ₹103.24 — about ₹1/L.
+On a 4 L fill that is ₹4; on one of the 2,000 L bulk diesel lines it is **₹2,120**.
+`fuel_prices.station_id` is already populated on every row (0 nulls), so the striping
+exists — it just has to be *used*: resolve `(station, fuel, coupon date)`, never a
+global rate. This also lines up with books being per outlet, so there is no
+cross-outlet ambiguity to design around.
+
+Resolve rates **once per (fuel, date)** for a whole invoice, not once per line — the
+June sample had 25 lines but only a handful of distinct fuel/date pairs.
+
+### Quantity: the manager is the check, not the machine
+
+Owner call, 30-Jul: don't build quantity cross-validation. The coupon is handwritten,
+the OCR is advisory, and **nothing auto-commits** — the manager eyeballs every line
+before confirming. Responsibility sits with the manager, exactly as with the
+gauge-screen scan.
+
+### What is still missing
 
 | Missing | Note |
 |---|---|
-| Slip book register | New |
-| Slip ledger | New. `credit_suspense_entries` is **amount-only** — no quantity, slip no, vehicle or rate |
-| FY-aware invoice series | `product_invoice_seq` is a flat per-station counter, and belongs to the **shop GST** invoice |
+| Book register | New — this slice |
+| `coupon_book_id` / `coupon_no` on `dispense_events` | Additive, next slice |
+| FY-aware invoice series | `station_settings` has `invoice_prefix` + `invoice_seq` but no FY dimension (§6) |
+| Tally print layout + print view | Rendering over existing data |
 
 **Lubes are out of scope** (owner, 29-Jul) — a GST invoice function already exists for
 them. Fuel only, so there is no GST split to compute: petrol/diesel sit outside GST
-and the pump rate is already all-inclusive.
-
----
+and the pump rate is already all-inclusive. Note `gst_invoices.cgst_rate`/`sgst_rate`
+default to **9** — fuel invoices must pass **0**.
 
 ## 4. Slip books — the control record
 
@@ -240,6 +299,16 @@ these lines at all. **Ask the CA**; better to know now than at a turnover milest
 
 ---
 
+### Nozzle-image note (30-Jul)
+
+`dispense_events.photo_url` is ALREADY used by an existing upload endpoint in
+`routes/dispense.js`, so it must not be overloaded for the nozzle-meter photo. Use a
+separate artifacts table keyed to the sale — `(dispense_event_id, kind, storage_path,
+media_type, captured_at, ocr jsonb)` with `kind` in `'coupon' | 'nozzle_meter'` — so
+enabling the nozzle image later needs no migration, just a new `kind`. Keep
+`meter_quantity_ltrs` nullable on `dispense_events` for the meter reading; the
+coupon-vs-meter comparison is deliberately NOT built (the manager is the check).
+
 ## 7. Rollout — advisory before enforcing
 
 **The single biggest operational risk.** Every book currently in circulation is
@@ -270,14 +339,29 @@ Phase it:
 | Price basis | **Effective rate as at the slip date**, not today's |
 | Enforce book ranges from day one? | **No — advisory first**, then per-station enforcement |
 
+### Decisions added 30-Jul-2026
+
+| Question | Answer |
+|---|---|
+| Books per station or across outlets? | **Per station (outlet).** The units print their own books, so the number sequence is unique per outlet and Pumpini has no control over the printing |
+| Consequence | The no-overlap rule is scoped to `station_id` ALONE, not to the customer ⇒ `(station, coupon no)` resolves to one book and therefore one customer. The name on the coupon is a CHECK, not the key |
+| Build a parallel slip ledger? | **No.** Reuse `dispense_events` + `POST /api/invoices` (§3). The coupon is the authorisation for a sale we already record |
+| Mark coupon as invoiced | Reuse the EXISTING `is_invoiced` / `invoice_id` on `dispense_events` — plus `UNIQUE (coupon_book_id, coupon_no)` as the DB-level guarantee |
+| Amount: derive at invoice time? | **No — calculate and store at capture**, rate as at the coupon date. No rate-card dependency when the coupon is fetched later |
+| Quantity cross-check vs the meter | **Not built.** Coupon is handwritten, OCR is advisory, nothing auto-commits — the manager verifies and commits |
+| Are prices per outlet? | **Yes, already** — `fuel_prices.station_id`, 0 nulls, and outlets genuinely differ (~₹1/L observed) |
+| Invoice number format + start number | Set on the **outlet definition screen**. `station_settings` already has `invoice_prefix` + `invoice_seq`; needs an FY dimension |
+| Importing existing books | **Excel → SQL**, run by **superadmin only**. No import utility exposed to outlets unless it turns out to be trivial |
+
 ### Still open
 
-- The 2,000 L bulk diesel fills — do they go through a slip, or are they handled
+- The 2,000 L bulk diesel fills — do they go through a coupon, or are they handled
   separately? (bowser load, not a nozzle fill)
-- Who physically issues books today, and does any register/spreadsheet exist to import,
-  or does this start from nothing?
+- Confirm the `BS/` prefix per outlet and the opening number (**32** for
+  `BS/2026-2027/`).
 - Does e-invoicing/IRN apply to these fuel lines? (CA question)
-- Actual printed series convention (owner checking — nothing depends on it)
+- Actual printed series convention (owner checking — nothing depends on it, since the
+  register is the source of truth)
 
 ---
 

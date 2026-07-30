@@ -664,3 +664,80 @@ ALTER TABLE public.meter_photos ADD COLUMN IF NOT EXISTS storage_path TEXT;
 -- Step 1 — book the challan volume, nothing derived.
 ALTER TABLE public.fuel_deliveries
   ALTER COLUMN net_volume_ltrs SET EXPRESSION AS (gross_volume_ltrs);
+
+-- ──────────────────────────────────────────────────────────────
+-- CREDIT SLIP BOOKS (2026-07-30)
+-- The control record for requisition-coupon books issued to credit customers —
+-- modelled on a CHEQUE BOOK: issue, range, leaf, presented, stopped, exhausted.
+-- Design + reasoning: docs/credit-slip-invoicing.md.
+--
+-- Why: a credit customer's driver presents a numbered coupon to draw fuel. Today
+-- nothing records which numbers were issued to whom, so a missing coupon is
+-- indistinguishable from an unused one — i.e. fuel may leave the forecourt and
+-- never be billed, with no way to detect it. This table makes that answerable.
+--
+-- Books are per OUTLET: the units print their own books, so the number sequence
+-- is unique per outlet and Pumpini has no control over the printing. That is why
+-- the no-overlap rule below is scoped to station_id ALONE and not to the customer:
+-- within one outlet a coupon number identifies exactly one book, and therefore
+-- exactly one customer. The name written on the coupon is a CHECK, not the key.
+--
+-- ⚠️ RUN THESE STEPS IN ORDER on the target DB (staging first). Idempotent.
+-- ──────────────────────────────────────────────────────────────
+
+-- Step 1 — btree_gist gives gist indexes equality operators for uuid, which the
+-- exclusion constraint in Step 3 needs alongside the range overlap operator.
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
+-- Step 2 — the register itself.
+CREATE TABLE IF NOT EXISTS public.credit_slip_books (
+  id            uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id),
+  corporate_id  uuid NOT NULL REFERENCES public.corporate_accounts(id),
+  book_label    character varying(40),      -- optional printed book id, free text
+  series_start  bigint NOT NULL,
+  series_end    bigint NOT NULL,
+  -- Opening position. A book handed over part-used starts above series_start;
+  -- leaves below this are not expected to be presented here.
+  opening_leaf  bigint,
+  issued_on     date NOT NULL DEFAULT CURRENT_DATE,
+  status        character varying(12) NOT NULL DEFAULT 'active',
+  notes         text,
+  issued_by     uuid REFERENCES public.users(id),
+  created_at    timestamp with time zone DEFAULT now(),
+  updated_at    timestamp with time zone DEFAULT now(),
+  CONSTRAINT credit_slip_books_range_chk  CHECK (series_end >= series_start),
+  CONSTRAINT credit_slip_books_open_chk   CHECK (opening_leaf IS NULL
+                                            OR (opening_leaf >= series_start AND opening_leaf <= series_end)),
+  CONSTRAINT credit_slip_books_status_chk CHECK (status IN ('active','exhausted','cancelled','lost'))
+);
+
+-- Step 3 — no two books at one OUTLET may overlap, whatever their status or
+-- customer. Deliberately unfiltered: once a range is printed it is consumed
+-- forever. Reissuing a cancelled or lost book's numbers would make a recovered
+-- coupon ambiguous, which is exactly the leak this table exists to close.
+-- DB-enforced rather than app-checked so two concurrent issues cannot race.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'credit_slip_books_no_overlap'
+  ) THEN
+    ALTER TABLE public.credit_slip_books
+      ADD CONSTRAINT credit_slip_books_no_overlap
+      EXCLUDE USING gist (
+        station_id WITH =,
+        int8range(series_start, series_end, '[]') WITH &&
+      );
+  END IF;
+END $$;
+
+-- Step 4 — supporting indexes for the register list and the customer rollup.
+CREATE INDEX IF NOT EXISTS idx_credit_slip_books_station   ON public.credit_slip_books(station_id, status);
+CREATE INDEX IF NOT EXISTS idx_credit_slip_books_corporate ON public.credit_slip_books(corporate_id);
+
+-- Step 5 — historic-rate lookup for backfilled coupons. Costs nothing today (the
+-- table is tiny) but the pricing path is per (station, fuel, date) and the table
+-- only grows. Prices ARE already striped by station, and they genuinely differ
+-- between outlets (~₹1/L observed), so the station column is load-bearing.
+CREATE INDEX IF NOT EXISTS idx_fuel_prices_lookup
+  ON public.fuel_prices(station_id, fuel_type, effective_from DESC);
