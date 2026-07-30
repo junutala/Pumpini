@@ -4,12 +4,13 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const invoiceNo = require('../services/invoiceNumberService');
 
 // POST /api/invoices — save invoice
 router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('invoice.generate'), async (req, res, next) => {
   try {
     const {
-      station_id, corporate_id, invoice_number, invoice_date,
+      station_id, corporate_id, invoice_date,
       period_from, period_to, subtotal, cgst_rate, sgst_rate,
       cgst_amount, sgst_amount, total_amount, line_items,
       is_opening_balance,   // pre-go-live balance: create the receivable but DON'T draw down the control total
@@ -22,6 +23,15 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+
+      // The number is allocated HERE, inside the transaction, not by the browser.
+      // A client-supplied number is accepted only for an opening-balance backfill,
+      // where the owner is deliberately reproducing a pre-Pumpini invoice.
+      let invoice_number = (is_opening_balance && req.body.invoice_number)
+        ? req.body.invoice_number : null;
+      if (!invoice_number) {
+        ({ invoice_number } = await invoiceNo.allocate({ station_id }, client));
+      }
 
       const { rows: existing } = await client.query(
         'SELECT id, station_id FROM gst_invoices WHERE invoice_number=$1 FOR UPDATE',
@@ -68,10 +78,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
         }
       }
 
-      await client.query(
-        `UPDATE station_settings SET invoice_seq = COALESCE(invoice_seq,1)+1 WHERE station_id=$1`,
-        [station_id]
-      );
+      // (the sequence was already consumed by invoiceNo.allocate above)
 
       await client.query('COMMIT');
 

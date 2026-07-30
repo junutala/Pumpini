@@ -387,6 +387,8 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
       pan:            info.pan||'',
       owner_whatsapp: info.owner_whatsapp ? info.owner_whatsapp.replace('+91','') : '',
       invoice_prefix: info.invoice_prefix||'INV',
+      invoice_fy:     info.invoice_fy||'',
+      invoice_seq:    info.invoice_seq||'',
     });
   },[info?.name]);
 
@@ -473,13 +475,35 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
               onChange={e=>f('owner_whatsapp',e.target.value.replace(/\D/g,'').slice(0,10))}/>
           </div>
         </div>
-        <div style={{marginBottom:'1.25rem'}}>
-          <label className="label">{tc('setp.invoicePrefix', 'Invoice Number Prefix')}</label>
-          <input className="input" placeholder="INV" maxLength={10} value={form.invoice_prefix||'INV'}
-            onChange={e=>f('invoice_prefix',e.target.value.toUpperCase())}/>
-          <div style={{fontSize:11,color:'var(--text-3)',marginTop:3}}>
-            {tc('setp.invoicePrefixHint', 'e.g. "INV" → INV-20260527-0001')}
+        {/* Credit-invoice numbering — per OUTLET, because each unit prints and numbers
+            its own documents. Format is PREFIX/FY/SEQ so it reads like the series the
+            customer already receives (e.g. BS/2026-2027/32). The number is allocated
+            SERVER-SIDE inside the invoice transaction, so this screen only sets where
+            the series starts. */}
+        <div style={{marginBottom:'0.75rem',fontSize:12,fontWeight:700,color:'var(--text-3)',
+                     textTransform:'uppercase',letterSpacing:'.06em'}}>
+          {tc('setp.invoiceNumbering', 'Credit invoice numbering')}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:'0.5rem'}}>
+          <div>
+            <label className="label">{tc('setp.invoicePrefix', 'Prefix')}</label>
+            <input className="input" placeholder="BS" maxLength={10} value={form.invoice_prefix||''}
+              onChange={e=>f('invoice_prefix',e.target.value.toUpperCase())}/>
           </div>
+          <div>
+            <label className="label">{tc('setp.invoiceFy', 'Financial year')}</label>
+            <input className="input" placeholder="2026-2027" maxLength={9} value={form.invoice_fy||''}
+              onChange={e=>f('invoice_fy',e.target.value)}/>
+          </div>
+          <div>
+            <label className="label">{tc('setp.invoiceSeq', 'Next number')}</label>
+            <input className="input" type="number" min={1} placeholder="32" value={form.invoice_seq||''}
+              onChange={e=>f('invoice_seq',e.target.value)}/>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:'var(--text-3)',marginBottom:'1.25rem'}}>
+          {tc('setp.invoiceNumHint', 'Next invoice will be {n}. Set "Next number" to continue a series your accounts package was already running — it is used once and then advances on its own. The series restarts at 1 each financial year.')
+            .replace('{n}', `${form.invoice_prefix||'INV'}/${form.invoice_fy||'2026-2027'}/${form.invoice_seq||1}`)}
         </div>
         <button className="btn btn-primary" style={{width:'100%',justifyContent:'center'}}
           onClick={save} disabled={loading}>
