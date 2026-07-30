@@ -833,3 +833,20 @@ BEGIN
       WITH CHECK (station_id IN (SELECT my_stations()));
   END IF;
 END $$;
+
+-- ──────────────────────────────────────────────────────────────
+-- FY-AWARE INVOICE NUMBERING, PER OUTLET (2026-07-30)
+-- docs/credit-slip-invoicing.md §6. The invoice number is a STATUTORY artifact, so
+-- Pumpini owning it carries real obligations: consecutive, unique per FY, no reused
+-- or unexplained gaps.
+--
+-- station_settings already has invoice_prefix + invoice_seq. What was missing is the
+-- FINANCIAL YEAR, so a series can reset each year and read like the owner's Tally
+-- output (e.g. BS/2026-2027/32). Format is PREFIX/FY/SEQ, and all three are per
+-- OUTLET because each unit prints and numbers its own documents.
+--
+-- Idempotent, additive, and safe before the code deploys: numbering falls back to
+-- the current behaviour while invoice_fy is absent.
+-- ──────────────────────────────────────────────────────────────
+
+ALTER TABLE public.station_settings ADD COLUMN IF NOT EXISTS invoice_fy character varying(9);

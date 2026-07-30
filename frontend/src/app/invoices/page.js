@@ -56,12 +56,18 @@ export default function InvoicesPage() {
   useEffect(() => { load(); }, [load]);
   useRefreshOnFocus(load);
 
-  // Next invoice number — PREFIX-YYYYMMDD-NNNN (mirrors the prior convention).
+  // The invoice number is allocated SERVER-SIDE inside the invoice transaction — see
+  // services/invoiceNumberService. This is only a preview of what will be used.
+  //
+  // It used to be built HERE and posted, which was wrong twice: two managers running
+  // month-end together would compute the SAME number off one stale invoice_seq read,
+  // and the embedded date was the GENERATION date, not the invoice date (so
+  // INV-20260730-0146 was dated 28 Jul — actively misleading).
   useEffect(() => {
     const prefix = settings?.invoice_prefix || 'INV';
-    const seq    = String(settings?.invoice_seq || 1).padStart(4,'0');
-    const d      = today().replace(/-/g,'');
-    setInvNo(`${prefix}-${d}-${seq}`);
+    const fy     = settings?.invoice_fy || '';
+    const seq    = settings?.invoice_seq || 1;
+    setInvNo(fy ? `${prefix}/${fy}/${seq}` : `${prefix}/${seq}`);
   }, [settings]);
 
   const total   = lines.reduce((s,l) => s + lineAmt(l), 0);
@@ -88,7 +94,7 @@ export default function InvoicesPage() {
       await api.post('/invoices', {
         station_id:   stationId,
         corporate_id: corp,
-        invoice_number: invNo,
+        // No invoice_number — the server allocates it inside the transaction.
         invoice_date: invDate,
         subtotal:     t,
         cgst_rate: 0, sgst_rate: 0, cgst_amount: 0, sgst_amount: 0,

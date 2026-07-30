@@ -3,6 +3,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
+const invoiceNo = require('../services/invoiceNumberService');
 const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
@@ -551,10 +552,10 @@ router.post('/self-settle', authenticate,
       for (const item of creditItems) {
         const { rows: link } = await client.query(`SELECT 1 FROM corporate_station_links WHERE corporate_id=$1 AND station_id=$2`, [item.corporate_id, sa.station_id]);
         if (!link.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'A selected credit customer is not linked to this outlet.' }); }
-        await client.query(`INSERT INTO station_settings(station_id, invoice_seq) VALUES($1, 1) ON CONFLICT(station_id) DO NOTHING`, [sa.station_id]);
-        const { rows: seqRows } = await client.query(
-          `UPDATE station_settings SET invoice_seq=COALESCE(invoice_seq,1)+1 WHERE station_id=$1 RETURNING invoice_seq, COALESCE(invoice_prefix,'INV') AS prefix`, [sa.station_id]);
-        const invoice_number = `${seqRows[0].prefix}-${seqRows[0].invoice_seq}`;
+        // Same allocator as the credit-invoice screen — one shape, one counter.
+        // Previously this produced `INV-<seq>` while the screen produced
+        // `INV-<generation date>-<seq>`: two formats off one sequence.
+        const { invoice_number } = await invoiceNo.allocate({ station_id: sa.station_id }, client);
         const { rows: inv } = await client.query(
           `INSERT INTO gst_invoices(station_id, corporate_id, invoice_number, invoice_date, subtotal, total_amount, line_items, created_by, status)
            VALUES($1,$2,$3,(SELECT date FROM shifts WHERE id=$4),$5,$5,$6,$7,'sent') RETURNING *`,
