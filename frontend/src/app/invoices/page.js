@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, FileText, ChevronRight, ArrowLeft, Ticket, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import AppShell from '../../components/shared/AppShell';
-import api from '../../lib/api';
+import api, { getPricesAsAt } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
@@ -45,6 +45,10 @@ export default function InvoicesPage() {
   const [to,      setTo]      = useState('');
   const [loadingCoupons, setLoadingCoupons] = useState(false);
   const [couponMode, setCouponMode] = useState(false);   // lines came from coupons
+  // Rate in force per fuel at this outlet as at the invoice date — used to DEFAULT a
+  // manual line's rate. Only ever fills a BLANK rate box: whatever the manager types
+  // wins, because they may be honouring a rate that differed on the day.
+  const [rateMap, setRateMap] = useState({});
   const [msg,     setMsg]     = useState(null);   // { ok, text }
 
   const load = useCallback(async () => {
@@ -62,6 +66,26 @@ export default function InvoicesPage() {
   }, [stationId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Re-read on invoice-date change too: a back-dated invoice should default to the rate
+  // that applied THEN, not today's.
+  useEffect(() => {
+    if (!stationId || !invDate) return;
+    getPricesAsAt(stationId, invDate)
+      .then(rows => setRateMap(Object.fromEntries(
+        (Array.isArray(rows) ? rows : []).map(r => [r.fuel_type, Number(r.price)]))))
+      .catch(() => setRateMap({}));
+  }, [stationId, invDate]);
+
+  // Seed the opening blank line once rates are known. Coupon lines carry their own
+  // stored rate and must never be touched by this.
+  useEffect(() => {
+    if (couponMode) return;
+    setLines(ls => ls.map(l => (
+      (l.rate === '' || l.rate == null) && rateMap[l.fuel] != null
+        ? { ...l, rate: String(rateMap[l.fuel]) } : l
+    )));
+  }, [rateMap, couponMode]);
   useRefreshOnFocus(load);
 
   // The invoice number is allocated SERVER-SIDE inside the invoice transaction — see
@@ -89,7 +113,19 @@ export default function InvoicesPage() {
   const willGoNegative = total > Number(pending.pending || 0) + 0.005;
 
   const setLine = (i,k,v) => setLines(ls => ls.map((l,idx) => idx===i ? { ...l, [k]:v } : l));
-  const addLine = () => setLines(ls => [...ls, emptyLine()]);
+  // A new manual line starts at the outlet's rate for its fuel. Editable — the box is
+  // a normal input, so typing over it just works.
+  const addLine = () => setLines(ls => [...ls, { ...emptyLine(), rate: rateMap.diesel != null ? String(rateMap.diesel) : '' }]);
+  // Changing the fuel re-defaults the rate, but never clobbers a figure the manager
+  // typed: we only overwrite when the box is empty or still holds the OLD fuel's default.
+  const onFuelChange = (i, fuel) => setLines(ls => ls.map((l, idx) => {
+    if (idx !== i) return l;
+    const wasDefault = l.rate === '' || l.rate == null
+      || (rateMap[l.fuel] != null && Number(l.rate) === Number(rateMap[l.fuel]));
+    const rate = wasDefault && rateMap[fuel] != null ? String(rateMap[fuel]) : l.rate;
+    return { ...l, fuel, rate };
+  }));
+
   const delLine = (i) => setLines(ls => ls.length>1 ? ls.filter((_,idx)=>idx!==i) : [emptyLine()]);
 
   // Pull this customer's UNBILLED coupons for the period. Each becomes an invoice line
@@ -282,7 +318,7 @@ export default function InvoicesPage() {
                   </td>
                   <td><input style={{...inp,padding:'7px 9px'}} placeholder={tc('invp.vehiclePlaceholder', 'e.g. TN09AB1234')} value={l.vehicle} onChange={e=>setLine(i,'vehicle',e.target.value.toUpperCase())} /></td>
                   <td>
-                    <select style={{...inp,padding:'7px 9px'}} value={l.fuel} onChange={e=>setLine(i,'fuel',e.target.value)}>
+                    <select style={{...inp,padding:'7px 9px'}} value={l.fuel} onChange={e=>onFuelChange(i, e.target.value)}>
                       {FUELS.map(f => <option key={f} value={f}>{f[0].toUpperCase()+f.slice(1)}</option>)}
                     </select>
                   </td>
