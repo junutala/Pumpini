@@ -51,14 +51,24 @@ export default function CreditSlipBooksPage() {
     if (!stationId) return;
     const [b, c] = await Promise.all([
       getCreditSlipBooks({ station_id: stationId }).catch(() => []),
-      getCorporates().catch(() => []),
+      // station_id is REQUIRED here — the route 400s without it rather than returning
+      // every outlet's customers. Do NOT swallow this failure: an empty dropdown looks
+      // like "this outlet has no credit customers", which is a different problem and
+      // sends you looking in the wrong place.
+      getCorporates({ station_id: stationId }),
     ]);
     setBooks(Array.isArray(b) ? b : []);
-    setCustomers((Array.isArray(c) ? c : []).filter(x => x.is_active !== false));
+    const list = (Array.isArray(c) ? c : []).filter(x => x.is_active !== false && x.link_active !== false);
+    setCustomers(list);
+    if (!list.length) {
+      setErr(tc('slipbook.noCustomers', 'No active credit customers are linked to this outlet — add one under Credit Customers first.'));
+    }
   };
 
-  useEffect(() => { load(); }, [stationId]);
-  useRefreshOnFocus(load);
+  const safeLoad = () => load().catch(e =>
+    setErr(e.error || tc('slipbook.errLoad', 'Could not load coupon books for this outlet.')));
+  useEffect(() => { safeLoad(); }, [stationId]);
+  useRefreshOnFocus(safeLoad);
 
   const openForm = () => { setForm({ issued_on: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) }); setErr(''); setShowForm(true); };
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -77,7 +87,7 @@ export default function CreditSlipBooksPage() {
     try {
       await issueCreditSlipBook({ ...form, station_id: stationId });
       setShowForm(false); setForm({});
-      load();
+      safeLoad();
     } catch (e2) {
       setErr(e2.error || e2.response?.data?.error || tc('slipbook.errIssue', 'Could not issue the book.'));
     } finally { setBusy(false); }
@@ -85,7 +95,7 @@ export default function CreditSlipBooksPage() {
 
   const setStatus = async (book, status) => {
     setErr('');
-    try { await updateCreditSlipBook(book.id, { station_id: stationId, status }); load(); }
+    try { await updateCreditSlipBook(book.id, { station_id: stationId, status }); safeLoad(); }
     catch (e) { setErr(e.error || tc('slipbook.errUpdate', 'Could not update the book.')); }
   };
 
