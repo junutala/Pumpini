@@ -795,3 +795,41 @@ CREATE TABLE IF NOT EXISTS public.dispense_artifacts (
   CONSTRAINT dispense_artifacts_kind_chk CHECK (kind IN ('coupon','nozzle_meter'))
 );
 CREATE INDEX IF NOT EXISTS idx_dispense_artifacts_event ON public.dispense_artifacts(dispense_event_id);
+
+-- ──────────────────────────────────────────────────────────────
+-- RLS POLICIES for the coupon tables (2026-07-30) — REQUIRED, not optional
+--
+-- New tables get RLS ENABLED automatically on this Supabase project, and a table
+-- with RLS on and NO policy denies everything. The failure is asymmetric and that
+-- is what makes it easy to miss: SELECT silently returns ZERO ROWS (so a register
+-- screen looks merely empty) while INSERT raises "new row violates row-level
+-- security policy". The list looked fine and only issuing a book failed.
+--
+-- Every station-scoped table here carries exactly ONE policy in the same shape, so
+-- these match it verbatim rather than inventing anything:
+--   FOR ALL  USING (station_id IN (SELECT my_stations()))
+--       WITH CHECK (station_id IN (SELECT my_stations()))
+-- Superadmin routes run on the BYPASSRLS role, so they are unaffected.
+--
+-- ⇒ RULE FOR ANY NEW TABLE: ship its RLS policy in the SAME DDL block as the
+--    CREATE TABLE. A table without one is not "open", it is silently broken.
+-- ──────────────────────────────────────────────────────────────
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='credit_slip_books'
+                   AND policyname='credit_slip_books_station_isolation') THEN
+    CREATE POLICY credit_slip_books_station_isolation ON public.credit_slip_books
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='dispense_artifacts'
+                   AND policyname='dispense_artifacts_station_isolation') THEN
+    CREATE POLICY dispense_artifacts_station_isolation ON public.dispense_artifacts
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
