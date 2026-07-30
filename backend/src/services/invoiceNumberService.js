@@ -27,6 +27,23 @@
 // was actively misleading and is gone.
 const pool = require('../db/pool');
 
+// Does station_settings.invoice_fy exist yet? The owner runs DDL manually, so this
+// code lives both before and after the migration. Cached only once TRUE — a false
+// result is re-probed so the first invoice after the DDL picks it up without needing
+// an app restart. The query is a cheap catalog lookup and, crucially, it SUCCEEDS
+// whether or not the column is there, so it never aborts a caller's transaction.
+let _hasInvoiceFy = false;
+async function hasInvoiceFy(client = pool) {
+  if (_hasInvoiceFy) return true;
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='station_settings'
+        AND column_name='invoice_fy' LIMIT 1`
+  );
+  _hasInvoiceFy = rows.length > 0;
+  return _hasInvoiceFy;
+}
+
 // Indian financial year: 1 April – 31 March, evaluated in IST.
 function financialYear(d = new Date()) {
   const ist = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
@@ -79,21 +96,25 @@ async function allocate({ station_id, style = 'dated' }, client = pool) {
     return { invoice_number, seq, fy: null, legacy: true };
   };
 
-  let row;
-  try {
-    const { rows } = await client.query(
-      `SELECT COALESCE(invoice_prefix,'INV') AS prefix,
-              COALESCE(invoice_seq,1)        AS seq,
-              invoice_fy
-       FROM station_settings WHERE station_id=$1 FOR UPDATE`,
-      [station_id]
-    );
-    row = rows[0];
-  } catch (e) {
-    // Pre-migration: invoice_fy does not exist. Behave exactly as before the change.
-    if (e.code !== '42703') throw e;
-    return legacy();
-  }
+  // Probe the catalog FIRST — do NOT discover the missing column by letting a
+  // statement fail. Inside a transaction a failed statement ABORTS the transaction,
+  // so the fallback query then dies with "current transaction is aborted" and the
+  // whole invoice fails. (That is exactly what happened in prod on 30-Jul: this code
+  // deployed before the DDL and every credit invoice errored.) A catalog SELECT
+  // succeeds either way, so it can never poison the caller's transaction.
+  //
+  // The deliveries.js insertDeliveryInvoice pattern — try, catch 42703, retry — is
+  // safe ONLY because it runs outside a transaction. It is not portable to here.
+  if (!(await hasInvoiceFy(client))) return legacy();
+
+  const { rows: sel } = await client.query(
+    `SELECT COALESCE(invoice_prefix,'INV') AS prefix,
+            COALESCE(invoice_seq,1)        AS seq,
+            invoice_fy
+     FROM station_settings WHERE station_id=$1 FOR UPDATE`,
+    [station_id]
+  );
+  const row = sel[0];
 
   // Not opted in -> unchanged behaviour for that outlet.
   if (!row.invoice_fy) return legacy();
@@ -120,23 +141,19 @@ async function peek({ station_id, style = 'dated' }, client = pool) {
   const legacyOf = (prefix, seq) => style === 'plain'
     ? `${prefix}-${seq}`
     : `${prefix}-${stamp}-${String(seq).padStart(4, '0')}`;
-  try {
-    const { rows } = await client.query(
-      `SELECT COALESCE(invoice_prefix,'INV') AS prefix,
-              COALESCE(invoice_seq,1)        AS seq,
-              invoice_fy
-       FROM station_settings WHERE station_id=$1`,
-      [station_id]
-    );
-    if (!rows.length) return { invoice_number: legacyOf('INV', 1), seq: 1, fy: null, legacy: true };
-    const r = rows[0];
-    if (!r.invoice_fy) return { invoice_number: legacyOf(r.prefix, Number(r.seq)), seq: Number(r.seq), fy: null, legacy: true };
-    const seq = r.invoice_fy !== fy ? 1 : Number(r.seq);
-    return { invoice_number: `${r.prefix}/${fy}/${seq}`, seq, fy };
-  } catch (e) {
-    if (e.code !== '42703') throw e;
-    return { invoice_number: null, seq: null, fy: null, legacy: true, unmigrated: true };
-  }
+
+  const migrated = await hasInvoiceFy(client);
+  const cols = migrated
+    ? `COALESCE(invoice_prefix,'INV') AS prefix, COALESCE(invoice_seq,1) AS seq, invoice_fy`
+    : `COALESCE(invoice_prefix,'INV') AS prefix, COALESCE(invoice_seq,1) AS seq, NULL AS invoice_fy`;
+  const { rows } = await client.query(
+    `SELECT ${cols} FROM station_settings WHERE station_id=$1`, [station_id]
+  );
+  if (!rows.length) return { invoice_number: legacyOf('INV', 1), seq: 1, fy: null, legacy: true };
+  const r = rows[0];
+  if (!r.invoice_fy) return { invoice_number: legacyOf(r.prefix, Number(r.seq)), seq: Number(r.seq), fy: null, legacy: true };
+  const seq = r.invoice_fy !== fy ? 1 : Number(r.seq);
+  return { invoice_number: `${r.prefix}/${fy}/${seq}`, seq, fy };
 }
 
 module.exports = { allocate, peek, financialYear };
