@@ -82,6 +82,32 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
        owner_whatsapp??null,owner_email??null,variance_threshold??null,invoice_prefix??null,
        latitude??null,longitude??null,geo_fence_radius??null,geo_fence_enabled??null]
     );
+    // Credit-invoice numbering (prefix is handled above). Applied as a SEPARATE
+    // guarded update rather than folded into the upsert: invoice_fy is additive and
+    // this code deploys BEFORE the DDL, so naming it in the main statement would
+    // 42703 the whole settings save — including the geofence tab. A missing column
+    // here just means numbering keeps its previous behaviour.
+    const { invoice_fy, invoice_seq } = req.body;
+    if (invoice_fy !== undefined || invoice_seq !== undefined) {
+      try {
+        const { rows: upd } = await pool.query(
+          `UPDATE station_settings
+              SET invoice_fy  = COALESCE($2, invoice_fy),
+                  invoice_seq = COALESCE($3, invoice_seq),
+                  updated_at  = NOW()
+            WHERE station_id = $1 RETURNING *`,
+          [req.params.id,
+           invoice_fy || null,
+           (invoice_seq === '' || invoice_seq === null || invoice_seq === undefined)
+             ? null : parseInt(invoice_seq, 10) || null]
+        );
+        if (upd.length) rows[0] = upd[0];
+      } catch (e) {
+        if (e.code !== '42703') throw e;
+        try { require('../utils/logger').warn('invoice_fy not migrated yet — numbering fields skipped'); } catch { /* noop */ }
+      }
+    }
+
     res.json(rows[0]);
   } catch(err) { next(err); }
 });

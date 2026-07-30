@@ -2189,7 +2189,7 @@
     "gstin": "GSTIN",
     "pan": "PAN",
     "ownerWhatsapp": "Owner WhatsApp (10 digits)",
-    "invoicePrefix": "Invoice Number Prefix",
+    "invoicePrefix": "Prefix",
     "invoicePrefixHint": "e.g. \"INV\" → INV-20260527-0001",
     "saveStationBtn": "Save Station Details",
     "confirmDeleteTank": "Delete this tank? All linked nozzle assignments will also be removed. This cannot be undone.",
@@ -2274,7 +2274,11 @@
     "shiftStart": "Start",
     "shiftEnd": "End",
     "saveShiftBtn": "Save Shift Timings",
-    "egNozzle": "e.g. 1 or 5.1"
+    "egNozzle": "e.g. 1 or 5.1",
+    "invoiceNumbering": "Credit invoice numbering",
+    "invoiceFy": "Financial year",
+    "invoiceSeq": "Next number",
+    "invoiceNumHint": "Next invoice will be {n}. Set \"Next number\" to continue a series your accounts package was already running — it is used once and then advances on its own. The series restarts at 1 each financial year."
   },
   "sstart": {
     "dashboard": "Dashboard",
