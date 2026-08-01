@@ -123,15 +123,16 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
 // POST /api/stations/:id/nozzles
 router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    const { nozzle_number, fuel_type, tank_id, pump_serial, slip_nozzle_no } = req.body;
-    // pump_serial / slip_nozzle_no map this nozzle to the line its dispenser
-    // prints on a totalizer slip, so a scan resolves without inference. Named
-    // only once the DDL has run (owner-run, so code deploys first).
+    const { nozzle_number, fuel_type, tank_id, pump_id, slip_nozzle_no } = req.body;
+    // pump_id + slip_nozzle_no map this nozzle to the line its dispenser prints on
+    // a totalizer slip, so a scan resolves without inference. The SERIAL lives on
+    // the pump, which is the thing that has one. Named only once the DDL has run
+    // (owner-run, so code deploys first).
     const cols = ['station_id','nozzle_number','fuel_type','tank_id'];
     const vals = [req.params.id, nozzle_number, fuel_type, tank_id||null];
     if (await hasSlipMapping()) {
-      cols.push('pump_serial','slip_nozzle_no');
-      vals.push(pump_serial || null, slip_nozzle_no || null);
+      cols.push('pump_id','slip_nozzle_no');
+      vals.push(pump_id || null, slip_nozzle_no || null);
     }
     const { rows } = await pool.query(
       `INSERT INTO nozzles(${cols.join(',')}) VALUES(${cols.map((_,i)=>`$${i+1}`).join(',')}) RETURNING *`,
@@ -141,10 +142,55 @@ router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('s
   } catch(err) { next(err); }
 });
 
+// ── Pumps ────────────────────────────────────────────────────────────────
+// A pump is the MACHINE the nozzles hang off. Thin guarded entry points over
+// services/pumpService, which is the single writer. See that file for why a pump
+// carries no fuel and no tank.
+
+// GET /api/stations/:id/pumps — pumps with their nozzles nested, plus any nozzles
+// no pump owns yet. The screen shows the unassigned ones loudly at the top, so
+// they are returned in the same payload rather than needing a second call.
+router.get('/:id/pumps', authenticate, requireStationId('id'), async (req, res, next) => {
+  try {
+    const [pumps, unassigned] = await Promise.all([
+      pumpService.listPumps(req.params.id),
+      pumpService.unassignedNozzles(req.params.id),
+    ]);
+    res.json({ pumps, unassigned });
+  } catch (err) { next(err); }
+});
+
+router.post('/:id/pumps', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
+  try {
+    res.status(201).json(await pumpService.createPump({ ...req.body, station_id: req.params.id }));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.patch('/:id/pumps/:pump_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
+  try {
+    res.json(await pumpService.updatePump(req.params.pump_id, req.params.id, req.body));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
+router.delete('/:id/pumps/:pump_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
+  try {
+    res.json(await pumpService.retirePump(req.params.pump_id, req.params.id));
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+});
+
 // PATCH /api/stations/:id/nozzles/:nozzle_id
 router.patch('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    const { nozzle_number, fuel_type, tank_id, is_active, pump_serial, slip_nozzle_no } = req.body;
+    const { nozzle_number, fuel_type, tank_id, is_active, pump_id, slip_nozzle_no } = req.body;
     const sets = [
       'nozzle_number=COALESCE($1,nozzle_number)',
       'fuel_type=COALESCE($2,fuel_type)',
@@ -156,8 +202,8 @@ router.patch('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), re
     // mistyped a serial must be able to remove it, and COALESCE would silently
     // keep the wrong one.
     if (await hasSlipMapping()) {
-      vals.push(pump_serial === undefined ? null : (pump_serial || null));
-      sets.push(`pump_serial=$${vals.length}`);
+      vals.push(pump_id === undefined ? null : (pump_id || null));
+      sets.push(`pump_id=$${vals.length}`);
       vals.push(slip_nozzle_no === undefined ? null : (slip_nozzle_no || null));
       sets.push(`slip_nozzle_no=$${vals.length}`);
     }

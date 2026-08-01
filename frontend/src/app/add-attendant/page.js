@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { UserPlus, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api, { addAttendant, getUsers } from '../../lib/api';
+import PhotoCapture from '../../components/shared/PhotoCapture';
 import { useAuth } from '../../lib/auth';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -40,14 +41,27 @@ export default function AddAttendantPage() {
   };
   useEffect(() => { load(); }, [stationId]);
 
+  // The enrolment photograph. Optional by design — a camera that will not
+  // co-operate must never stop an outlet putting a man on shift — but captured
+  // HERE because this is the reference the shift-start pictures get compared
+  // against, first by eye and later by the matcher that replaces the picker.
+  const [photo, setPhoto] = useState(null);
+  const [photoSlot, setPhotoSlot] = useState(0);
+
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setSaved('');
     if (!form.name.trim() || !form.phone.trim()) return setErr(tc('addatt.errEnterNamePhone', 'Enter the name and phone.'));
     setBusy(true);
     try {
-      await addAttendant({ ...form, station_id: stationId });
+      await addAttendant({
+        ...form,
+        station_id: stationId,
+        photo_base64: photo?.base64 || null,
+        photo_media_type: photo?.media_type || null,
+      });
       setSaved(tc('addatt.savedAdded', '{name} added — available for shift assignment.').replace('{name}', form.name));
       setForm({ name:'', phone:'' });
+      setPhoto(null); setPhotoSlot(n => n + 1);   // remount so the next man starts blank
       load();
       setTimeout(()=>setSaved(''), 4000);
     } catch (e) {
@@ -93,6 +107,16 @@ export default function AddAttendantPage() {
             <div>
               <label className="label">{tc('addatt.labelPhone', 'Phone')}</label>
               <input style={inp} value={form.phone} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder={tc('addatt.phPhone', '10-digit mobile')}/>
+            </div>
+            <div>
+              <label className="label">{tc('addatt.labelPhoto', 'Photo')} <span style={{fontWeight:400,color:'var(--text-3)'}}>{tc('addatt.photoOptional', '(optional)')}</span></label>
+              <PhotoCapture
+                key={photoSlot}
+                label={tc('addatt.takePhoto', 'Take photo')}
+                hint={tc('addatt.photoHint', 'Kept as his reference photo — the one his shift-start pictures are checked against.')}
+                onCapture={setPhoto}
+                disabled={busy}
+              />
             </div>
             <button type="submit" disabled={busy} style={{height:44,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:busy?'default':'pointer'}}>
               {busy ? tc('addatt.adding', 'Adding…') : tc('addatt.addAttendant', 'Add attendant')}

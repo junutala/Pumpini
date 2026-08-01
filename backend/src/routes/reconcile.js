@@ -21,7 +21,7 @@ async function hasSlipMapping() {
     const { rows } = await pool.query(
       `SELECT 1 FROM information_schema.columns
         WHERE table_schema='public' AND table_name='nozzles'
-          AND column_name='pump_serial' LIMIT 1`);
+          AND column_name='pump_id' LIMIT 1`);
     _hasSlipMapping = rows.length > 0;
   } catch { _hasSlipMapping = false; }
   return _hasSlipMapping;
@@ -943,10 +943,14 @@ router.post('/parse-slip', authenticate,
     // pump_serial / slip_nozzle_no arrive with owner-run DDL, so they are named
     // only once present. Probed, never discovered by a failing SELECT.
     const slipCols = await hasSlipMapping();
-    const extraCols = slipCols ? ', n.pump_serial, n.slip_nozzle_no' : '';
+    // The serial comes from the PUMP now, joined in, rather than repeated on every
+    // nozzle. Same lookup, one home for the fact.
+    const extraCols = slipCols ? ', p.serial AS pump_serial, n.slip_nozzle_no' : '';
+    const extraJoin = slipCols ? 'LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL' : '';
     const { rows: known } = await pool.query(
       `SELECT n.id, n.nozzle_number, n.fuel_type${extraCols}
          FROM nozzles n
+         ${extraJoin}
         WHERE n.is_active
           AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
       [shift_id]
@@ -1019,6 +1023,8 @@ router.post('/parse-slip', authenticate,
       })
       .filter(n => n.nozzle_no);
 
+    const serialKnown = !!(serialRaw && Object.keys(bySerial).some(k => k.startsWith(`${serialRaw}|`)));
+
     // Keep the SLIP ITSELF. It is the printed evidence behind every opening and
     // closing meter on the shift, and until now it was read and thrown away — the
     // fifth document Pumpini could read but did not keep. Best-effort, as ever.
@@ -1041,7 +1047,25 @@ router.post('/parse-slip', authenticate,
       // Settings when nothing matched — otherwise "no nozzle matched" is a dead
       // end and he has no idea what to do about it.
       pump_serial: serialRaw || null,
-      serial_mapped: !!(serialRaw && Object.keys(bySerial).some(k => k.startsWith(`${serialRaw}|`))),
+      serial_mapped: serialKnown,
+      // ONE wording for the failure, decided here rather than in each screen. The
+      // old message was "Slip read, but no nozzle matched" — true, useless, and a
+      // dead end: it told the manager nothing he could act on. Naming the serial
+      // and the screen that fixes it turns it into an instruction.
+      hint: (() => {
+        if (nozzles.every(n => n.nozzle_id)) return null;
+        if (serialRaw && !serialKnown) {
+          return `This slip is from pump serial ${serialRaw}, which is not set up yet. `
+               + 'Add it under Settings → Pumps & Nozzles, or enter the readings by hand.';
+        }
+        const amb = nozzles.filter(n => n.matched_on === 'ambiguous');
+        if (amb.length) {
+          return 'More than one nozzle carries that number, so the reading was not filled in '
+               + 'automatically. Map this pump\'s serial under Settings → Pumps & Nozzles.';
+        }
+        return 'None of the nozzles on this slip match this outlet. Check the nozzle numbers '
+             + 'under Settings → Pumps & Nozzles, or enter the readings by hand.';
+      })(),
       nozzles,
       unmatched: nozzles.filter(n => !n.nozzle_id).length,
       artifact_id: slipArtifact ? slipArtifact.id : null,
