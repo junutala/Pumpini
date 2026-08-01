@@ -2449,7 +2449,9 @@
     "noPriorClose": "No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.",
     "slipDisagrees": "⚠ The slip disagrees with the last close for {x}. The last close stands — report this.",
     "slipSays": "slip",
-    "slipTicked": "Ticked {n} nozzle(s) from the slip."
+    "slipTicked": "Ticked {n} nozzle(s) from the slip.",
+    "dipShort": "Dip",
+    "litresShort": "Litres"
   },
   "streco": {
     "title": "Stock Reconciliation",
