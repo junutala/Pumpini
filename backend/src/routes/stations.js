@@ -3,6 +3,7 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
+const pumpService = require('../services/pumpService');
 // Outbound integration: push the outlet to VAWE on create/update. Fire-and-forget
 // so a VAWE outage can never break an outlet save.
 const { queueOutletSync } = require('../services/vaweService');
