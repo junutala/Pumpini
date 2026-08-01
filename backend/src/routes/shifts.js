@@ -324,22 +324,24 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
     const openingFor = {};
     for (const r of resolved) openingFor[r.nozzle_id] = r.opening;
 
-    // Operator row stays one-per-operator (cash/identity). For back-compat with
-    // the single-nozzle settlement path, mirror the FIRST nozzle onto sa.nozzle_id
-    // / sa.opening_reading; the full set lives in shift_attendant_nozzles.
+    // The operator row is now about the OPERATOR — who he is, his cash float, his
+    // bank details. It no longer carries a meter reading. It used to mirror the
+    // FIRST nozzle's opening onto sa.opening_reading for the single-nozzle
+    // settlement path; that path is retired, and the mirror was a lie whenever a
+    // man worked more than one nozzle. Meters live in shift_attendant_nozzles,
+    // one row per nozzle, and nowhere else.
     const first = nozzleList[0] || {};
     const { rows } = await pool.query(
       `INSERT INTO shift_attendants(
          shift_id, attendant_id, rfid_tag_id, nozzle_id,
-         bank_account, upi_vpa, opening_reading, opening_cash
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+         bank_account, upi_vpa, opening_cash
+       ) VALUES($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT(shift_id, attendant_id) DO UPDATE SET
          rfid_tag_id=$3, nozzle_id=$4, bank_account=$5,
-         upi_vpa=$6, opening_reading=$7, opening_cash=$8
+         upi_vpa=$6, opening_cash=$7
        RETURNING *`,
       [req.params.id, attendant_id, rfid_tag_id||null, first.nozzle_id||null,
-       bank_account||null, upi_vpa||null,
-       first.nozzle_id ? (openingFor[first.nozzle_id] ?? 0) : 0, opening_cash||0]
+       bank_account||null, upi_vpa||null, opening_cash||0]
     );
 
     // Replace this operator's nozzle set (clean re-assign on edit).

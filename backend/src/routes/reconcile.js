@@ -70,31 +70,6 @@ function haversineM(lat1, lon1, lat2, lon2) {
 }
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Store a meter reading in its source column (manager vs POS), recompute the
-// canonical value (manager wins, else POS) used by reconciliation, and report a
-// cross-source conflict when the two sources disagree for the same nozzle/phase.
-async function writeSourceMeter(client, { shift_id, nozzle_id, phase, source, reading, recorded_by }) {
-  const col = `${phase}_${source}`;   // opening_mgr | opening_pos | closing_mgr | closing_pos (controlled inputs)
-  await client.query(
-    `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
-     VALUES($1,$2,$3,$4)
-     ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
-    [shift_id, nozzle_id, reading, recorded_by]);
-  const { rows } = await client.query(
-    `UPDATE shift_nozzle_readings
-       SET opening_reading = COALESCE(opening_mgr, opening_pos),
-           closing_reading = COALESCE(closing_mgr, closing_pos)
-     WHERE shift_id=$1 AND nozzle_id=$2
-     RETURNING opening_mgr, opening_pos, closing_mgr, closing_pos`,
-    [shift_id, nozzle_id]);
-  const r = rows[0] || {};
-  const mgr = r[`${phase}_mgr`], pos = r[`${phase}_pos`];
-  if (mgr != null && pos != null && Math.abs(Number(mgr) - Number(pos)) > 0.5) {
-    return { manager: Number(mgr), attendant: Number(pos), delta: +(Number(pos) - Number(mgr)).toFixed(3) };
-  }
-  return null;
-}
-
 // POST /api/reconcile/denomination  — save denomination count (attendant)
 router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
@@ -742,8 +717,9 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
 // See docs/drift-audit.md.
 
 // POST /api/reconcile/pos-meter — attendant captures a nozzle's totalizer from
-// the POS. OCR via Claude, store the image, and record it as the OPENING (if none
-// yet for this shift+nozzle) or the CLOSING, flagging a handover mismatch on open.
+// the POS. OCR via Claude, store the image, hand the number back. It does NOT
+// write a meter reading: the settlement is the single writer into
+// shift_attendant_nozzles, and this feeds it.
 // Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
 // gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
 router.post('/pos-meter', authenticate,
@@ -755,9 +731,8 @@ router.post('/pos-meter', authenticate,
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: sh } = await client.query('SELECT start_time FROM shifts WHERE id=$1', [shift_id]);
+    const { rows: sh } = await client.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
     if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
-    const startTime = sh[0].start_time;
 
     // OCR the totalizer
     let reading = '', legible = false, notes = '';
@@ -777,23 +752,30 @@ router.post('/pos-meter', authenticate,
       notes   = String(parsed.notes ?? '');
     } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
 
-    let phase = 'opening', mismatch = null, source_conflict = null;
+    // THIS ROUTE NO LONGER WRITES A METER READING. It reads the totalizer off a
+    // photograph and hands the number back; the settlement form submits it, and the
+    // settlement is the one writer into shift_attendant_nozzles. It used to write a
+    // second, parallel record into shift_nozzle_readings — a whole extra table whose
+    // only job was to disagree with the first one and report the disagreement. That
+    // is the drift, not a safeguard against it.
+    //
+    // The phase is gone with it. Under the carry-forward rule an opening is never
+    // captured — it IS the last close — so every scan an operator takes is a closing
+    // candidate. There is nothing left to decide.
+    let opening_reading = null, below_opening = false;
     if (reading) {
       const num = Number(reading);
-      // Phase from the POS's OWN prior capture, so the attendant's first scan is
-      // their opening even if the manager already recorded one.
-      const { rows: ex } = await client.query(
-        'SELECT opening_pos FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
-      phase = (ex.length && ex[0].opening_pos != null) ? 'closing' : 'opening';
-      source_conflict = await writeSourceMeter(client, { shift_id, nozzle_id, phase, source:'pos', reading: num, recorded_by: req.user.id });
-      if (phase === 'opening') {
-        const { rows: prev } = await client.query(
-          `SELECT snr.closing_reading FROM shift_nozzle_readings snr
-           JOIN shifts s ON s.id = snr.shift_id
-           WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3 AND snr.closing_reading IS NOT NULL
-           ORDER BY s.start_time DESC LIMIT 1`, [nozzle_id, shift_id, startTime]);
-        const pc = prev.length ? Number(prev[0].closing_reading) : null;
-        if (pc != null && Math.abs(num - pc) > 0.5) mismatch = { prior_closing: pc, delta: +(num - pc).toFixed(3) };
+      // The check worth keeping: a totalizer cannot run backwards. If the scan is
+      // below the opening this nozzle was carried in at, either the photo was
+      // misread or it is the wrong nozzle — and the operator should see that before
+      // he settles against it, not after.
+      const { rows: op } = await client.query(
+        `SELECT opening_reading FROM shift_attendant_nozzles
+          WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL LIMIT 1`,
+        [shift_id, nozzle_id]);
+      if (op.length) {
+        opening_reading = Number(op[0].opening_reading);
+        below_opening = num < opening_reading;
       }
     }
     await client.query('COMMIT');
@@ -803,7 +785,7 @@ router.post('/pos-meter', authenticate,
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* store failed — OCR + reading already saved and returned */ }
-    res.json({ reading, legible, notes, phase, mismatch, source_conflict });
+    res.json({ reading, legible, notes, opening_reading, below_opening });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });
