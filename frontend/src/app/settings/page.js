@@ -841,10 +841,24 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
         </div>
       )}
 
+      {/* The catch above cannot tell a not-yet-migrated database from a backend
+          that is still deploying or briefly down — both arrive as one rejected
+          promise. So say what is TRUE (we could not load them) and offer the
+          action that fixes the common case, instead of asserting a per-outlet
+          feature switch that does not exist. The first wording sent two people
+          hunting for a setting that was never there. */}
       {!booting && !pumpsUp && (
-        <div style={{background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10,
-          padding:'0.85rem 1rem',marginBottom:'1.25rem',fontSize:13,color:'#1A5F7A'}}>
-          {tc('setp.pumpsUnavailable', 'Pump records are not switched on for this outlet yet. Nozzles above still work as before, and pumps will appear here once they are.')}
+        <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,
+          padding:'0.85rem 1rem',marginBottom:'1.25rem',fontSize:13,color:'#92400e',
+          display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <span style={{flex:1,minWidth:220}}>
+            {tc('setp.pumpsLoadFailed', 'Could not load pumps just now. If the app was updated in the last few minutes, give it a moment and try again.')}
+          </span>
+          <button onClick={loadPumps}
+            style={{minHeight:44,padding:'0 18px',background:'#92400e',color:'#fff',border:'none',
+              borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>
+            {tc('setp.retry', 'Try again')}
+          </button>
         </div>
       )}
 
