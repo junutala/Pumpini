@@ -27,28 +27,32 @@
 // one. That is a real event, it is rare, and it is visible as `source: 'entered'`.
 const pool = require('../db/pool');
 
-// The most recent closing meter per nozzle at this station, from whichever of the
-// three meter stores holds it. The COALESCE order matches what
-// GET /shifts/:id/nozzle-openings has always used — the per-operator child table
-// first, then the per-nozzle store, then the legacy single-nozzle column — so this
-// service and that endpoint can never disagree about the same nozzle.
+// The most recent closing meter per nozzle at this station, from THE meter store —
+// `shift_attendant_nozzles`, and nothing else.
+//
+// 🔴 This used to COALESCE across three tables: this one, then `shift_nozzle_readings`,
+// then the legacy `shift_attendants.closing_reading`. Both fallbacks are retired
+// (01-Aug-2026) and this is the reason why. The settlement has only ever computed
+// money from `shift_attendant_nozzles`, and that table is clean — 876 rows, not one
+// negative or impossible movement. The other two were not: 70 negative and 150
+// impossible readings sat in `shift_attendants`, unreachable by the settlement but
+// perfectly reachable by THIS query. A nozzle whose good row was missing for any
+// reason would have carried one of those figures straight into a live opening, and
+// the shift would have been measured against it.
+//
+// A fallback that reads a table the money does not trust is not resilience. It is a
+// quiet path from bad data into the one number a shift is judged by. If the good
+// table has no closing for a nozzle, that means no prior close exists, and
+// `source: 'entered'` is the honest answer.
 //
 // `$1` is the shift being opened, excluded from its own lookup so re-running this
 // for a shift that has already been assigned cannot read its own figures back.
 async function nozzleOpenings(shift_id, client = pool) {
   const { rows } = await client.query(`
     SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
-      COALESCE(
-        (SELECT san.closing_reading FROM shift_attendant_nozzles san JOIN shifts s2 ON s2.id=san.shift_id
-          WHERE san.nozzle_id=n.id AND san.shift_id<>$1 AND san.closing_reading IS NOT NULL
-          ORDER BY s2.start_time DESC LIMIT 1),
-        (SELECT snr.closing_reading FROM shift_nozzle_readings snr JOIN shifts s3 ON s3.id=snr.shift_id
-          WHERE snr.nozzle_id=n.id AND snr.shift_id<>$1 AND snr.closing_reading IS NOT NULL
-          ORDER BY s3.start_time DESC LIMIT 1),
-        (SELECT sa.closing_reading FROM shift_attendants sa JOIN shifts s4 ON s4.id=sa.shift_id
-          WHERE sa.nozzle_id=n.id AND sa.shift_id<>$1 AND sa.closing_reading IS NOT NULL
-          ORDER BY s4.start_time DESC LIMIT 1)
-      ) AS carried_opening
+      (SELECT san.closing_reading FROM shift_attendant_nozzles san JOIN shifts s2 ON s2.id=san.shift_id
+        WHERE san.nozzle_id=n.id AND san.shift_id<>$1 AND san.closing_reading IS NOT NULL
+        ORDER BY s2.start_time DESC LIMIT 1) AS carried_opening
     FROM nozzles n
     WHERE n.station_id = (SELECT station_id FROM shifts WHERE id=$1) AND n.is_active
     ORDER BY n.nozzle_number`, [shift_id]);

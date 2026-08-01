@@ -241,28 +241,32 @@ router.post('/manager', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id
+        SELECT sa.id, sa.opening_cash, s.station_id
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Attendant not assigned to this shift' }); }
       const sa = saRows[0];
 
-      // The operator's nozzles (child table); fall back to the legacy single nozzle.
-      const { rows: nozRows } = await client.query(`
+      // The operator's nozzles. ONE source — shift_attendant_nozzles. The legacy
+      // single-nozzle fallback on shift_attendants is retired (01-Aug-2026): it read
+      // a column the settlement never trusted, and every row that would have used it
+      // is an unsettled test shift from before multi-nozzle existed.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles assigned to this operator.' }); }
 
-      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the single form.
+      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the
+      // single form. The single form used to name the nozzle from the retired
+      // sa.nozzle_id column; it now takes the operator's own nozzle, and only when he
+      // has exactly one — with two, a bare closing_reading names nothing and the
+      // caller must send `closings`.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -333,14 +337,16 @@ router.post('/manager', authenticate,
         }
       }
 
-      // Persist each nozzle's closing; mirror the last onto sa for legacy reads.
+      // Persist each nozzle's closing. The mirror onto shift_attendants.closing_reading
+      // is gone — writing "the last leg's closing" onto a single column was where the
+      // impossible figures came from: an operator on four nozzles left one number
+      // standing for four meters, and nothing read it back except a carry-forward
+      // fallback that has now been retired with it.
       for (const leg of legs) {
         await client.query(
           `UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`,
           [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`,
-        [legs[legs.length - 1].closing, shift_id, attendant_id]);
 
       // Petty cash/skimming → one top-up into the station petty-cash fund per
       // operator (idempotent on the operator's settlement row).
@@ -463,11 +469,9 @@ router.post('/self-settle', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id, s.status, s.date AS trade_date
+        SELECT sa.id, sa.opening_cash, s.station_id, s.status, s.date AS trade_date
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
       const sa = saRows[0];
@@ -488,17 +492,20 @@ router.post('/self-settle', authenticate,
         if (!onSite) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You must be at the outlet to settle — location check failed.' }); }
       }
 
-      const { rows: nozRows } = await client.query(`
+      // ONE source for the operator's nozzles — see the manager path above for why
+      // the legacy shift_attendants fallback is retired.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles are assigned to you.' }); }
 
+      // Single form names the operator's own nozzle, and only when he has exactly
+      // one — same as the manager path, and for the same reason.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -564,11 +571,11 @@ router.post('/self-settle', authenticate,
         }
       }
 
-      // Persist each nozzle's closing (mirror the manager close).
+      // Persist each nozzle's closing. No mirror onto shift_attendants — see the
+      // manager path above.
       for (const leg of legs) {
         await client.query(`UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`, [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`, [legs[legs.length-1].closing, shift_id, attendant_id]);
 
       // Petty → station petty-cash fund (idempotent per operator settlement).
       await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
