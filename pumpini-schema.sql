@@ -1017,3 +1017,105 @@ ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS slip_nozzle_no character var
 CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_serial_slip_no
   ON public.nozzles(station_id, pump_serial, slip_nozzle_no)
   WHERE pump_serial IS NOT NULL AND slip_nozzle_no IS NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PUMPS — the machine the nozzles hang off (2026-08-01)
+--
+-- Deferred once already. PR #68 (24-Jun) asked the same question and answered it
+-- with a naming convention: "Instead of building a pump-hierarchy table, label the
+-- nozzles 5.1 / 5.2 / 5.3 / 5.4". Everything since has paid for that shortcut —
+-- pump identity living in a display string that outlets number inconsistently,
+-- nozzle_number carrying no unique constraint (one outlet had THREE nozzles called
+-- "1"), and nowhere to record the serial a slip identifies itself by. Building it
+-- properly now.
+--
+-- A PUMP HAS NO FUEL AND NO TANK (owner, 01-Aug). It is a machine: a number, a
+-- serial, a model, and the slip it prints. One unit routinely dispenses several
+-- grades from several tanks — 2 HSD + 1 MS + 1 Super off three tanks is ordinary.
+-- Fuel and tank stay on the NOZZLE, where they already are. Attaching either here
+-- would force an outlet to split one physical unit into four fictional ones.
+--
+-- serial is NULLABLE: a CNG dispenser prints no slip at all (gas is sold on
+-- commission, the outlet never owns the stock), so it must still be definable.
+--
+-- END-DATED, NEVER DELETED. A defective pump is replaced by end-dating it and its
+-- nozzles and defining new ones — deleting would orphan every meter reading ever
+-- taken on it. is_active is a switch; end_date is the fact, and only a date can
+-- answer "which pump was this reading taken on".
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.pumps (
+  id                uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id        uuid NOT NULL REFERENCES public.stations(id),
+  -- What is painted on the unit. Outlets number pumps 1, 2, 3 and speak that
+  -- language; the serial is what the machine calls itself and nobody remembers.
+  pump_number       character varying(16) NOT NULL,
+  serial            character varying(40),
+  model             character varying(60),
+  -- The sample slip this pump's identity was read off, kept as evidence and as the
+  -- reference for its print format.
+  slip_artifact_id  uuid REFERENCES public.station_artifacts(id),
+  notes             text,
+  is_active         boolean DEFAULT true,
+  end_date          date,
+  created_at        timestamp with time zone DEFAULT now()
+);
+
+-- Unique among LIVE pumps only, so an end-dated Pump 1 does not block its
+-- replacement from also being called Pump 1 — which is exactly what happens when a
+-- unit is swapped and the new one takes its place on the forecourt.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pumps_station_number
+  ON public.pumps(station_id, pump_number) WHERE end_date IS NULL;
+
+-- Serial unique PER OUTLET, not globally. A serial does identify one machine in the
+-- world, but enforcing that across tenants would (a) block an outlet from finishing
+-- setup over a typo or a rebuilt board reusing a serial, with an error only we
+-- could resolve, and (b) let one outlet learn about another's equipment from a
+-- constraint violation. Duplicates across outlets are worth FLAGGING, never
+-- worth BLOCKING.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pumps_station_serial
+  ON public.pumps(station_id, upper(serial)) WHERE serial IS NOT NULL AND end_date IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pumps_station ON public.pumps(station_id) WHERE end_date IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='pumps'
+                   AND policyname='pumps_station_isolation') THEN
+    CREATE POLICY pumps_station_isolation ON public.pumps
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.pumps TO app_authenticated;
+
+-- Every nozzle hangs off exactly one pump. Nullable during migration only: existing
+-- nozzles have none until the owner assigns them, and the Settings screen shows
+-- those loudly at the top rather than hiding the gap.
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS pump_id  uuid REFERENCES public.pumps(id);
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS end_date date;
+CREATE INDEX IF NOT EXISTS idx_nozzles_pump ON public.nozzles(pump_id) WHERE end_date IS NULL;
+
+-- The serial now lives on the PUMP, which is the thing that has one. Carrying it on
+-- every nozzle too would be the same denormalisation this table exists to undo, so
+-- the column added on 01-Aug is folded in and dropped. It holds 0 rows in staging
+-- and prod (verified before writing this) — it never got past being wired up.
+-- slip_nozzle_no STAYS on the nozzle: that genuinely is per-nozzle, and keeping it
+-- separate from nozzle_number is what lets an outlet name its nozzles freely while
+-- the machine keeps its own numbering.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='nozzles' AND column_name='pump_serial') THEN
+    ALTER TABLE public.nozzles DROP COLUMN pump_serial;
+  END IF;
+END $$;
+
+-- The old (station, pump_serial, slip_nozzle_no) index goes with that column; the
+-- replacement is scoped to the pump, which is now where the serial lives.
+DROP INDEX IF EXISTS public.uq_nozzles_pump_serial_slip_no;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_slip_no
+  ON public.nozzles(pump_id, slip_nozzle_no)
+  WHERE pump_id IS NOT NULL AND slip_nozzle_no IS NOT NULL AND end_date IS NULL;

@@ -1075,7 +1075,11 @@
     "loading": "Loading…",
     "statusActive": "Active",
     "statusEnded": "Ended",
-    "toggleAria": "Toggle attendant active"
+    "toggleAria": "Toggle attendant active",
+    "labelPhoto": "Photo",
+    "photoOptional": "(optional)",
+    "takePhoto": "Take photo",
+    "photoHint": "Kept as his reference photo — the one his shift-start pictures are checked against."
   },
   "adminp": {
     "superadminConsole": "SuperAdmin Console",

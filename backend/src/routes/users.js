@@ -1,4 +1,5 @@
 const router  = require('express').Router();
+const artifacts = require('../services/artifactService');
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
@@ -100,7 +101,7 @@ router.post('/:id/force-logout', authenticate, authorize('owner','manager'), asy
 // statement, so the owner's RLS identity can't satisfy the insert policy.
 router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
   try {
-    const { station_id } = req.body;
+    const { station_id, photo_base64, photo_media_type } = req.body;
     if (station_id && !(await canAccessStation(req.user.id, station_id))) {
       return res.status(403).json({ error: 'You do not have access to this station.' });
     }
@@ -120,7 +121,24 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
     let created;
     try { created = await run(); }
     catch (e) { if (pool.isRetryableConnError(e)) created = await run(); else throw e; }
-    res.status(201).json(created);
+    // FACE ENROLMENT. Stored against the USER, not a shift, because it is the
+    // reference photograph the shift-start pictures are compared against — first by
+    // eye, and later by the matcher that replaces the operator picker entirely
+    // (owner: "the picture has to fetch the attendant. This is the ultimate goal").
+    // Best-effort: a camera that will not co-operate must never stop an outlet
+    // adding a member of staff.
+    const enrolment = await artifacts.save({
+      station_id,
+      entity_type: 'user',
+      entity_id: created.id,
+      kind: 'attendant_photo',
+      file_base64: photo_base64 || null,
+      media_type: photo_media_type || null,
+      meta: { phase: 'enrolment', name: created.name },
+      uploaded_by: req.user.id,
+    });
+
+    res.status(201).json({ ...created, photo_artifact_id: enrolment ? enrolment.id : null });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
@@ -133,7 +151,7 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
 // transaction (a manager's RLS identity can't insert a not-yet-linked user).
 router.post('/attendant', authenticate, requireStationAccess({ required: true }), requirePerm('attendant.add'), async (req, res, next) => {
   try {
-    const { name, phone, language = 'en', station_id } = req.body;
+    const { name, phone, language = 'en', station_id, photo_base64, photo_media_type } = req.body;
 
     const insertAttendant = () => pool.als.run(undefined, async () => {
       const client = await pool.connect();   // no ALS store → raw bypass owner client
@@ -160,7 +178,24 @@ router.post('/attendant', authenticate, requireStationAccess({ required: true })
       if (pool.isRetryableConnError(e)) created = await insertAttendant();
       else throw e;
     }
-    res.status(201).json(created);
+    // FACE ENROLMENT. Stored against the USER, not a shift, because it is the
+    // reference photograph the shift-start pictures are compared against — first by
+    // eye, and later by the matcher that replaces the operator picker entirely
+    // (owner: "the picture has to fetch the attendant. This is the ultimate goal").
+    // Best-effort: a camera that will not co-operate must never stop an outlet
+    // adding a member of staff.
+    const enrolment = await artifacts.save({
+      station_id,
+      entity_type: 'user',
+      entity_id: created.id,
+      kind: 'attendant_photo',
+      file_base64: photo_base64 || null,
+      media_type: photo_media_type || null,
+      meta: { phase: 'enrolment', name: created.name },
+      uploaded_by: req.user.id,
+    });
+
+    res.status(201).json({ ...created, photo_artifact_id: enrolment ? enrolment.id : null });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     if (e.code === '23505') return res.status(409).json({ error: 'This phone number is already registered.' });
