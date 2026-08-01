@@ -4,8 +4,25 @@ const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 const { dipToVolume } = require('../lib/calibration');
+const artifacts = require('../services/artifactService');
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Does dipstick_readings.artifact_id exist yet? Owner-run DDL means this code
+// deploys first, so the column is named only once it is there. Probed against the
+// catalog rather than discovered by a failing INSERT — see CLAUDE.md.
+let _hasArtifactCol = false;
+async function hasArtifactCol() {
+  if (_hasArtifactCol) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='dipstick_readings'
+          AND column_name='artifact_id' LIMIT 1`);
+    _hasArtifactCol = rows.length > 0;
+  } catch { _hasArtifactCol = false; }
+  return _hasArtifactCol;   // a false is re-probed, so no restart is needed after the DDL
+}
 
 // POST /api/dipstick
 // dip_cm is the TRUE dip (the form converts the mark-ordinal entry first). When
@@ -14,7 +31,8 @@ const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // the manually entered volume (tanks not yet assigned a type).
 router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
-    const { station_id, tank_id, shift_id, reading_type, dip_cm, density, temperature_c } = req.body;
+    const { station_id, tank_id, shift_id, reading_type, dip_cm, density, temperature_c,
+            artifact_id } = req.body;
     let volume_ltrs = req.body.volume_ltrs;
 
     // Re-scope tank to the validated station — a tank_id from another outlet
@@ -37,10 +55,17 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       if (v != null) volume_ltrs = v;
     }
 
+    // artifact_id links this figure back to the gauge-screen photograph it was read
+    // off, so a number on the stock reconciliation can always be traced to a picture.
+    // A manually dipped tank simply has none — it is optional by design, and the
+    // column is only named once the migration has been applied.
+    const cols = ['station_id','tank_id','shift_id','reading_type','dip_cm','volume_ltrs','density','temperature_c','recorded_by'];
+    const vals = [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id];
+    if (artifact_id && await hasArtifactCol()) { cols.push('artifact_id'); vals.push(artifact_id); }
     const { rows } = await pool.query(
-      `INSERT INTO dipstick_readings(station_id,tank_id,shift_id,reading_type,dip_cm,volume_ltrs,density,temperature_c,recorded_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id]
+      `INSERT INTO dipstick_readings(${cols.join(',')})
+       VALUES(${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
+      vals
     );
 
     // Update tank current stock (station-scoped as a belt-and-suspenders guard)
@@ -187,12 +212,21 @@ router.get('/tanks/:station_id', authenticate, requireStationAccess(), async (re
 
 // ── Gauge-screen scan (ATG / Pinelabs tank-status photo) ──────────────
 // Reads a photo of the automation console's tank-status screen and returns the
-// per-tank figures so the manager doesn't retype them. NOTHING is saved here —
-// the rows only PRE-FILL the normal dipstick form, which the manager reviews,
-// edits and submits through POST /api/dipstick like any manual reading. That
-// matters: IOCL outlets have no such console and take a physical dip, so manual
-// entry stays the primary path and this is purely a typing accelerator.
-// Mirrors the invoice-scan pattern in routes/deliveries.js.
+// per-tank figures so the manager doesn't retype them.
+//
+// NO READING IS SAVED HERE — the rows only PRE-FILL the normal dipstick form,
+// which the manager reviews, edits and submits through POST /api/dipstick like
+// any manual reading. That matters: IOCL outlets have no such console and take a
+// physical dip, so manual entry stays the primary path and this is purely a
+// typing accelerator. Mirrors the invoice-scan pattern in routes/deliveries.js.
+//
+// THE PHOTOGRAPH ITSELF *IS* KEPT (2026-08-01). It used to be parsed and dropped,
+// which meant the opening and closing stock — the two figures the whole wet-stock
+// reconciliation rests on — had nothing behind them. The endpoint now stores the
+// screen and hands back an artifact_id; the form passes that id to POST /dipstick
+// on each tank it fills, so every figure points at the picture it came from.
+// Storing is best-effort (artifactService swallows its own failures): a scan must
+// still work on a database where the migration has not been run.
 const GAUGE_OK_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const GAUGE_PROMPT = `You read an Indian petrol-pump fuel automation console screen (Pinelabs/Dresser Wayne/Gilbarco "TANK STATUS"), photographed off a monitor. It lists several underground tanks with their gauge readings.
 
@@ -255,7 +289,7 @@ function withGaugeChecks(parsed) {
 
 router.post('/parse-gauge', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
-    const { file_base64, media_type } = req.body;
+    const { file_base64, media_type, shift_id, reading_type } = req.body;
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!GAUGE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) of the gauge screen.' });
 
@@ -282,7 +316,22 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
       return res.status(422).json({ error: 'Could not read the screen — enter the reading manually.' });
     }
     if (!Array.isArray(parsed.tanks)) parsed.tanks = [];
-    res.json(withGaugeChecks(parsed));
+    const out = withGaugeChecks(parsed);
+
+    // Keep the screen. A gauge screen photographed inside a shift hangs off that
+    // shift; one taken for the plain dip register belongs to the outlet.
+    const artifact = await artifacts.save({
+      station_id: req.body.station_id,
+      entity_type: shift_id ? 'shift' : 'station',
+      entity_id: shift_id || null,
+      kind: 'gauge_screen',
+      file_base64, media_type,
+      ocr: out,
+      meta: { reading_type: reading_type || null },
+      uploaded_by: req.user.id,
+    });
+
+    res.json({ ...out, artifact_id: artifact ? artifact.id : null });
   } catch (err) { next(err); }
 });
 

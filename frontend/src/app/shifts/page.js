@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { Plus, X, UserPlus, RefreshCw, Clock, Users, Activity } from 'lucide-react';
+import { Plus, X, UserPlus, Clock, Users } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -29,13 +29,9 @@ export default function ShiftsPage() {
   const [selected,  setSelected]  = useState(null);
   const [attendants,setAttendants]= useState([]);
   const [nozzles,   setNozzles]   = useState([]);
-  const [rfidTags,  setRfidTags]  = useState([]);
   const [shiftDefs, setShiftDefs] = useState([]);
-  const [users,     setUsers]     = useState([]);
   const [showOpen,  setShowOpen]  = useState(false);
-  const [showAssign,setShowAssign]= useState(false);
   const [openForm,  setOpenForm]  = useState({shift_number:1,date:today});
-  const [assignForm,setAssignForm]= useState({});
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [managerMode, setManagerMode] = useState(false); // station runs manager-driven blind drop
@@ -59,15 +55,11 @@ export default function ShiftsPage() {
     if(!stationId) return;
     loadShifts();
     Promise.all([
-      api.get(`/users?station_id=${stationId}&role=attendant`),
       api.get(`/stations/${stationId}/nozzles`),
-      api.get(`/rfid?station_id=${stationId}`),
       api.get(`/shifts/definitions/${stationId}`),
       api.get(`/stations/${stationId}/settings`).catch(()=>({})),
-    ]).then(([u,n,r,d,st])=>{
-      setUsers(Array.isArray(u)?u:[]);
+    ]).then(([n,d,st])=>{
       setNozzles(Array.isArray(n)?n:[]);
-      setRfidTags(Array.isArray(r)?r:[]);
       setShiftDefs(Array.isArray(d)?d:[]);
       setManagerMode(!!st?.manager_blind_drop);
     });
@@ -87,18 +79,6 @@ export default function ShiftsPage() {
     try {
       await api.post('/shifts',{...openForm,station_id:stationId});
       setShowOpen(false); loadShifts();
-    } catch(err){ setError(err.error||'Failed'); }
-    finally{ setLoading(false); }
-  };
-
-  const handleAssign = async(e) => {
-    e.preventDefault(); setLoading(true); setError('');
-    try {
-      if(!assignForm.attendant_id) throw {error:tc('shifts_page.select_attendant_err','Select an attendant')};
-      if(!assignForm.nozzle_id)    throw {error:tc('shifts_page.select_nozzle_err','Select a nozzle')};
-      await api.post(`/shifts/${selected.id}/assign`,assignForm);
-      setShowAssign(false); setAssignForm({});
-      loadShiftDetail(selected);
     } catch(err){ setError(err.error||'Failed'); }
     finally{ setLoading(false); }
   };
@@ -196,8 +176,17 @@ export default function ShiftsPage() {
               {/* Actions */}
               {isManager && shift.status==='open' && (
                 <div style={{display:'flex',gap:6,marginTop:8}}>
+                  {/* RETIRED 01-Aug-2026 — this used to open a SECOND attendant-assign
+                      form here. It diverged from the real one badly enough to be
+                      actively misleading: it took one nozzle where an operator may man
+                      several, asked for an opening cash float that outlets do not give,
+                      took no photograph, and — after the close-carries-forward rule —
+                      offered an "Opening Meter Reading" box whose value the server now
+                      correctly IGNORES. A form that silently discards what a manager
+                      types is worse than no form. The button stays because the job is
+                      real; it now goes to the one place that does it. */}
                   <button className="btn btn-primary btn-sm"
-                    onClick={e=>{e.stopPropagation();setSelected(shift);setError('');setShowAssign(true);}}>
+                    onClick={e=>{e.stopPropagation(); router.push('/shift-start?shift='+shift.id);}}>
                     <UserPlus size={13}/>{tc('shifts_page.add_attendant','Add Attendant')}
                   </button>
                   <button className="btn btn-danger btn-sm"
@@ -273,72 +262,6 @@ export default function ShiftsPage() {
               <button className="btn btn-primary" type="submit"
                 style={{width:'100%',justifyContent:'center'}} disabled={loading}>
                 {loading?tc('shifts_page.opening','Opening...'):tc('shifts_page.open_shift','Open Shift')}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Assign Attendant */}
-      {showAssign && selected && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100}}>
-          <div className="card" style={{width:460}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:'1.25rem'}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:16}}>{tc('shifts_page.add_to_shift','Add Attendant to Shift')}</div>
-                <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{getShiftLabel(selected.shift_number)}</div>
-              </div>
-              <button onClick={()=>{setShowAssign(false);setError('');setAssignForm({});}}
-                style={{background:'none',border:'none',cursor:'pointer'}}><X size={18}/></button>
-            </div>
-            {error && <div className="alert-banner danger" style={{marginBottom:'1rem'}}>{error}</div>}
-            <form onSubmit={handleAssign}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <div style={{gridColumn:'1/-1'}}>
-                  <label className="label">{tc('shifts_page.attendant','Attendant')} *</label>
-                  <select className="input" required
-                    onChange={e=>setAssignForm(p=>({...p,attendant_id:e.target.value}))}>
-                    <option value="">{tc('shifts_page.select_attendant','Select attendant...')}</option>
-                    {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">{tc('shifts_page.nozzle','Nozzle')} *</label>
-                  <select className="input" required
-                    onChange={e=>setAssignForm(p=>({...p,nozzle_id:e.target.value}))}>
-                    <option value="">{tc('shifts_page.select_nozzle','Select nozzle...')}</option>
-                    {nozzles.filter(n=>n.is_active).map(n=>(
-                      <option key={n.id} value={n.id}>{tc('shifts_page.nozzle_word','Nozzle')} {n.nozzle_number} — {n.fuel_type}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">{tc('shifts_page.rfid_tag','RFID Tag')}</label>
-                  <select className="input"
-                    onChange={e=>setAssignForm(p=>({...p,rfid_tag_id:e.target.value||null}))}>
-                    <option value="">{tc('shifts_page.no_rfid','No RFID (manual POS)')}</option>
-                    {rfidTags.map(r=><option key={r.id} value={r.id}>{r.tag_uid}{r.label?` — ${r.label}`:''}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">{tc('shifts_page.opening_cash','Opening Cash (₹)')}</label>
-                  <input className="input" type="number" step="0.01" placeholder="0.00"
-                    onChange={e=>setAssignForm(p=>({...p,opening_cash:e.target.value}))}/>
-                </div>
-                <div>
-                  <label className="label">{tc('shifts_page.opening_meter','Opening Meter Reading')}</label>
-                  <input className="input" type="number" step="0.001" placeholder="0.000"
-                    onChange={e=>setAssignForm(p=>({...p,opening_reading:e.target.value}))}/>
-                </div>
-                <div>
-                  <label className="label">{tc('shifts_page.upi_vpa','UPI VPA')}</label>
-                  <input className="input" placeholder="attendant@upi"
-                    onChange={e=>setAssignForm(p=>({...p,upi_vpa:e.target.value}))}/>
-                </div>
-              </div>
-              <button className="btn btn-primary" type="submit"
-                style={{width:'100%',justifyContent:'center',marginTop:'1rem'}} disabled={loading}>
-                {loading?tc('shifts_page.adding','Adding...'):tc('shifts_page.add_to_shift','Add Attendant to Shift')}
               </button>
             </form>
           </div>

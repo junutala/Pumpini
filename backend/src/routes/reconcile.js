@@ -8,6 +8,8 @@ const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
+const artifacts  = require('../services/artifactService');
+const attendance = require('../services/attendanceService');
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
@@ -212,6 +214,9 @@ router.post('/manager', authenticate,
       test_ltrs = 0, card_total = 0, upi_total = 0, cash_actual = 0,
       credit_total = 0, petty_cash = 0,
       resolution, resolution_amount = 0, operator_ack = false, remarks, denomination,
+      // Photograph of the operator being released, mirroring the one taken when he
+      // started. Optional — never a reason a settlement cannot be recorded.
+      photo_base64, photo_media_type,
     } = req.body;
     if (!shift_id || !attendant_id) return res.status(400).json({ error: 'shift_id and attendant_id are required' });
 
@@ -376,6 +381,24 @@ router.post('/manager', authenticate,
          upiVal, creditVal, cardVal, remarks||null, req.user.id,
          resType, resAmt, operator_ack === true || operator_ack === 'true', totalTest, legs[0]?.price || 0, pettyVal]);
 
+      // Close the operator's shift clock and keep his end-of-shift photograph, in
+      // the SAME transaction as the settlement — the two describe one event. Both
+      // are best-effort internally (artifactService uses a SAVEPOINT, the clock
+      // swallows its own errors), so neither can roll back a settled operator.
+      const closePhoto = await artifacts.save({
+        station_id: sa.station_id,
+        entity_type: 'shift_attendant',
+        entity_id: sa.id,
+        kind: 'attendant_photo',
+        file_base64: photo_base64 || null,
+        media_type: photo_media_type || null,
+        meta: { phase: 'close', attendant_id, shift_id },
+        uploaded_by: req.user.id,
+      }, client);
+      await attendance.clockOut({
+        shift_id, attendant_id,
+        artifact_id: closePhoto ? closePhoto.id : null,
+      }, client);
 
       await client.query('COMMIT');
 
@@ -816,20 +839,30 @@ router.post('/ocr-meter', authenticate,
 // too long for one photo, so the client may call this per photo and merge.
 const SLIP_PROMPT = `This image is a printed fuel-dispenser "Electronic Totalizer" / pump report slip. It belongs to ONE pump and lists that pump's nozzles, each with a CUMULATIVE volume totalizer (total litres dispensed over the pump's life).
 
-Two layouts exist — detect which:
+Known layouts — detect which, and if it is NONE of them still apply the rules below:
 - Layout A: header has "FP. ID"; each "Nozzle No1 / No2 …" block has Shif/ShDay/ShMTH lines and a "CumVolume:" (litres) plus "CumSale:" (rupees). Use CumVolume as the nozzle's cumulative volume.
 - Layout B: header has "FIP No."; an "Electronic Totalizer" block lists each "Nozzle No. : 0X" with "Ecal Factor", "Atot" (rupees) and "Vtot" (litres). Use Vtot as the nozzle's cumulative volume.
+- Layout C (HPCL "ETOT-MAIN"): header carries PUMP SERIAL NUMBER and MODEL, then "---: ETOT-MAIN :---" and one block per nozzle reading "NOZZLE : 1" followed by "A:<number>", "V:<number>" and "TOT SALES:<number>". Here **V is the VOLUME in litres and is the figure we want**; A is the cumulative AMOUNT in rupees and TOT SALES is a COUNT of transactions. Use V.
+
+🔴 THE SINGLE MOST IMPORTANT RULE: RETURN LITRES, NEVER RUPEES.
+Every layout prints a money total beside the volume total, and the money total is the BIGGER number — roughly 100x the litres, because fuel sells at about ₹100 per litre. Whatever the labels look like:
+- "V", "Vtot", "CumVolume", "VOLUME", "Ltr" -> LITRES -> this is cumulative_volume.
+- "A", "Atot", "CumSale", "AMOUNT", "Rs", "₹" -> RUPEES -> this is cumulative_amount, NOT the volume.
+If a block shows 146566859.519 next to 1506431.450, the volume is 1506431.450 — the SMALLER one. Putting the rupee figure in cumulative_volume overstates a nozzle's meter by a hundredfold and destroys the shift's sales calculation, so when the labels are ambiguous prefer the SMALLER of the two totals and say so in notes.
 
 Extract the CUMULATIVE VOLUME for EVERY nozzle visible. Read digits exactly; drop leading zeros and separators but KEEP the decimal point.
 
 Respond with ONLY a JSON object, nothing else:
 {
- "slip_type": "A" or "B",
- "pump_id": "<the FP. ID / FIP No. as a plain number string>",
- "nozzles": [ { "nozzle_no": "<1..N>", "cumulative_volume": <number>, "legible": <true|false> } ],
+ "slip_type": "A" or "B" or "C" or "other",
+ "pump_id": "<the FP. ID / FIP No. as a plain number string, or null>",
+ "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <litres>, "cumulative_amount": <rupees or null>, "legible": <true|false> } ],
  "legible": <true|false overall>,
  "notes": "<short note; mention any nozzle cut off the page or unclear>"
 }
+- pump_id: ONLY a genuine pump/FIP identifier — a small number like 1, 2 or 3. A PUMP SERIAL NUMBER ("17CH2653V"), a MODEL ("1224/2224") and a phone number are NOT pump ids: return null instead. A wrong pump id is worse than none, because it is used to match the slip to our nozzles.
+- READ nozzle_no OFF THE SLIP. It is the number printed next to that block — "Nozzle No1" -> "1", "Nozzle No. : 03" -> "3". DO NOT renumber the blocks by their position on the page. If the first block you can see is nozzle 3, report 3, NOT 1. A slip photographed in two parts must report the SAME numbers it prints in each part, or the second photo silently overwrites the first photo's readings against the wrong nozzles.
+- If a block's nozzle number is itself unreadable, return null for nozzle_no rather than inferring it from order.
 Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
 
 router.post('/parse-slip', authenticate,
@@ -862,25 +895,107 @@ router.post('/parse-slip', authenticate,
     if (!parsed || !Array.isArray(parsed.nozzles)) {
       return res.status(422).json({ error: 'Could not read the slip — enter the readings manually.' });
     }
-    // Normalise: keep numeric cumulative_volume, build the {pump}.{nozzle} label.
-    const pump = String(parsed.pump_id ?? '').replace(/[^\d]/g, '') || null;
+    // Normalise, then RESOLVE each slip line to a real nozzle HERE rather than in
+    // the browser.
+    //
+    // This used to hand back only a `{pump}.{nozzle}` label and let each screen do
+    // `nozzles.find(x => x.nozzle_number === label)`. Two problems, both live:
+    //
+    //  1. THAT LABEL SHAPE IS NOT WHAT OUTLETS USE. Real numbering in prod is mixed
+    //     — Highway has 1, 2, 3.1, 3.2, 4.1, 4.2, 5, 6, 7, 8; Dilsukhnagar has plain
+    //     1, 2. A "1.1" matches none of them, so the slip scan silently found
+    //     nothing at three of four outlets and the manager just saw "no nozzle
+    //     matched". Accept BOTH shapes instead of dictating one.
+    //  2. `.find()` SILENTLY TAKES THE FIRST of several equal candidates. Kamala has
+    //     THREE active nozzles numbered "1" (petrol, diesel, CNG) and three numbered
+    //     "2", so a matched reading could land on the wrong fuel's nozzle — the same
+    //     class of fault the gauge matcher was hardened against after a diesel
+    //     reading went into a petrol tank. Ambiguity must REFUSE, not guess.
+    //
+    // Resolving server-side also means one implementation, not one per screen.
+    // A real pump/FIP id is a small number (1, 2, 3…). This used to strip the
+    // non-digits off whatever came back, which turned a PUMP SERIAL NUMBER like
+    // "17CH2653V" into "172653" and a MODEL "1224/2224" into "12242224" — then
+    // built the label "172653.1", which matches no nozzle anywhere. A slip that
+    // prints no pump id (the HPCL ETOT-MAIN layout does not) must yield null, so
+    // the bare nozzle number is used instead.
+    const pumpRaw = String(parsed.pump_id ?? '').replace(/[^\d]/g, '');
+    const pump = pumpRaw && pumpRaw.length <= 2 ? pumpRaw : null;
+
+    const { rows: known } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.fuel_type
+         FROM nozzles n
+        WHERE n.is_active
+          AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
+      [shift_id]
+    );
+    const byNumber = {};
+    for (const k of known) (byNumber[String(k.nozzle_number).trim()] ||= []).push(k);
+
     const nozzles = parsed.nozzles
       .map(n => {
         const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
-        const vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        let vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        const amt = Number(String(n.cumulative_amount ?? '').toString().replace(/[^\d.]/g, ''));
+        const label = pump && no ? `${pump}.${no}` : null;
+
+        // ARITHMETIC CROSS-CHECK — the rupee/litre swap, caught in code as well as
+        // in the prompt. Every slip prints a money total beside the volume total,
+        // and at ~Rs 100/L the money figure is ~100x the litres. If what came back
+        // as the "volume" is the LARGER of the two, it is the amount: reject it
+        // rather than record a meter a hundredfold too high, which would show as a
+        // colossal phantom sale on the shift.
+        let swapped = false;
+        if (isFinite(vol) && isFinite(amt) && amt > 0 && vol > amt) { swapped = true; vol = amt; }
+
+        // Try the qualified form first (it is the more specific), then the bare
+        // number. Never fall back to position.
+        let cands = (label && byNumber[label]) || [];
+        let matchedOn = cands.length ? 'pump.nozzle' : null;
+        if (!cands.length && no) { cands = byNumber[no] || []; matchedOn = cands.length ? 'nozzle' : null; }
+
+        const ambiguous = cands.length > 1;
         return {
           nozzle_no: no || null,
-          label: pump && no ? `${pump}.${no}` : null,   // matches our decimal nozzle_number
+          label,
           cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
-          legible: n.legible === true && isFinite(vol) && vol > 0,
+          cumulative_amount: isFinite(amt) && amt > 0 ? amt : null,
+          // A swap the code had to correct means the labels were read wrongly, so
+          // the figure is shown for confirmation rather than quietly trusted.
+          swapped_amount_for_volume: swapped || undefined,
+          legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped,
+          // Null when nothing matched OR when several nozzles share that number —
+          // the screen then leaves it for the manager instead of picking one.
+          nozzle_id: !ambiguous && cands.length === 1 ? cands[0].id : null,
+          matched_on: ambiguous ? 'ambiguous' : matchedOn,
+          candidates: ambiguous
+            ? cands.map(c => ({ id: c.id, nozzle_number: c.nozzle_number, fuel_type: c.fuel_type }))
+            : undefined,
         };
       })
       .filter(n => n.nozzle_no);
+
+    // Keep the SLIP ITSELF. It is the printed evidence behind every opening and
+    // closing meter on the shift, and until now it was read and thrown away — the
+    // fifth document Pumpini could read but did not keep. Best-effort, as ever.
+    const slipArtifact = await artifacts.save({
+      station_id: req.stationId,
+      entity_type: 'shift',
+      entity_id: shift_id,
+      kind: 'nozzle_slip',
+      file_base64: image_base64,
+      media_type,
+      ocr: { pump_id: pump, nozzles },
+      meta: { pump_id: pump, slip_type: parsed.slip_type ?? null },
+      uploaded_by: req.user.id,
+    });
 
     res.json({
       slip_type: parsed.slip_type === 'B' ? 'B' : (parsed.slip_type === 'A' ? 'A' : null),
       pump_id: pump,
       nozzles,
+      unmatched: nozzles.filter(n => !n.nozzle_id).length,
+      artifact_id: slipArtifact ? slipArtifact.id : null,
       legible: parsed.legible === true && nozzles.length > 0 && nozzles.every(n => n.legible),
       notes: notes || String(parsed.notes ?? ''),
     });

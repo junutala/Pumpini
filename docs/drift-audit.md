@@ -28,6 +28,9 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
 | Deactivate attendant | `PATCH /users/:id`, `PATCH /admin/attendants/:id`, `DELETE /admin/station-users/:id` | TODO — converge |
 | Password reset | `PATCH /users/:id`, `PATCH /admin/owners/:id`, `PATCH /admin/station-users/:id`, `/auth/forgot-password` | TODO — converge |
 | Phone normalizer | auth.js, users/attendant, superadmin (3 impls) | **FIXED (slice 1)** — `utils/phone.js` |
+| Assign attendant to a shift (FORM) | `shift-start` two-screen flow **and** a second modal inside `shifts/page.js` | **FIXED (01-Aug-2026)** — the `shifts/page.js` modal is retired; its Add-Attendant button now routes to `/shift-start?shift=<id>`. It had diverged to one-nozzle-only, asked for a float outlets do not give, took no photograph, and offered an opening-meter box the server ignores once the close carries forward. A form that silently discards typed input is worse than none. |
+| Opening reading (meter + dip) | client-supplied at shift start | **FIXED (01-Aug-2026)** — `services/openingService` is the single answer; the last close IS the next open, decided server-side. `POST /shifts` seeds opening dips, `POST /shifts/:id/assign` ignores a client-supplied opening where a prior close exists. |
+| Stored document images | `dispense_artifacts` (unused) + a planned `dipstick_artifacts` | **FIXED (01-Aug-2026)** — one `station_artifacts` table with a named parent `(entity_type, entity_id)`, one writer `services/artifactService`. `dispense_artifacts` (0 rows) copied over and dropped before a second table could exist. |
 
 ## Dead / broken code to remove
 
