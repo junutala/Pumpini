@@ -117,12 +117,16 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
         a.photo_close_artifact_id = byAssignment[a.id]?.close || null;
       });
     }
+    // The shift clock now lives in its own table (shift_attendance), keyed on the
+    // shift rather than on (user, date, slot) — so these read started_at/ended_at
+    // off the attendant, not check_in/check_out off an HR register row.
     const clocks = await attendance.forShift(req.params.id);
     const clockBy = {};
-    for (const c of clocks) clockBy[c.user_id] = c;
+    for (const c of clocks) clockBy[c.attendant_id] = c;
     attendants.forEach(a => {
-      a.started_at = clockBy[a.attendant_id]?.check_in  || null;
-      a.ended_at   = clockBy[a.attendant_id]?.check_out || null;
+      a.started_at   = clockBy[a.attendant_id]?.started_at || null;
+      a.ended_at     = clockBy[a.attendant_id]?.ended_at   || null;
+      a.hours_worked = clockBy[a.attendant_id]?.hours      || null;
     });
 
     // Blind drop: hide per-attendant sales while the shift is open (non-owners)
@@ -368,6 +372,7 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       shift_id: req.params.id,
       attendant_id,
       artifact_id: photo ? photo.id : null,
+      recorded_by: req.user.id,
     });
 
     res.json({

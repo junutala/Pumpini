@@ -75,6 +75,9 @@ export const getCorpStatement    = (id, m)    => api.get(`/corporate/${id}/state
 // Attendance
 export const getAttendance  = (params) => api.get('/attendance', { params });
 export const markAttendance = (data)   => api.post('/attendance', data);
+// The SHIFT clock — each attendant's start and end date & time, stamped by the
+// shift flow. A different record from markAttendance's by-hand HR register.
+export const getShiftClock  = (params) => api.get('/attendance/shifts', { params });
 
 // Dipstick
 export const getDipstick    = (params)    => api.get('/dipstick', { params });

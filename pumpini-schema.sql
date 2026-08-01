@@ -1119,3 +1119,97 @@ DROP INDEX IF EXISTS public.uq_nozzles_pump_serial_slip_no;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_slip_no
   ON public.nozzles(pump_id, slip_nozzle_no)
   WHERE pump_id IS NOT NULL AND slip_nozzle_no IS NOT NULL AND end_date IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SHIFT ATTENDANCE — the attendant's own start and end, per shift (owner-set,
+-- 01-Aug-2026: "get the attendance and log the start and end date & time for
+-- each attendant", as a NEW table).
+--
+-- WHY NOT the existing `attendance` table. That one is an HR register: keyed on
+-- (user_id, date, shift_number), covering every role, filled in by hand on the
+-- Attendance screen, with a `status` a manager types. It has no link to a shift,
+-- so "was he here?" can never be joined to "did his meter move?".
+--
+-- This table is the opposite kind of record. It is written ONLY by the shift flow
+-- — starting an operator stamps started_at, settling him stamps ended_at — and it
+-- is keyed on the SHIFT, so every row joins straight to his nozzle assignment and
+-- therefore to the litres that passed through it. A photograph is attached at each
+-- end, which is what makes it evidence rather than an assertion.
+--
+-- Keeping the two apart is deliberate, not drift: one table is what somebody says
+-- happened, the other is what the system observed. They answer different questions
+-- and must not be allowed to overwrite each other.
+CREATE TABLE IF NOT EXISTS public.shift_attendance (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id) ON DELETE CASCADE,
+  shift_id      uuid NOT NULL REFERENCES public.shifts(id)   ON DELETE CASCADE,
+  attendant_id  uuid NOT NULL REFERENCES public.users(id),
+  -- The shift's OWN date and slot, copied at write time. A night shift opened at
+  -- 22:00 on the 1st and closed at 06:00 on the 2nd books both ends against the
+  -- 1st; denormalised so a month's register needs no join to shifts.
+  shift_date    date NOT NULL,
+  shift_number  integer NOT NULL,
+  started_at    timestamptz,
+  ended_at      timestamptz,
+  start_photo_id uuid REFERENCES public.station_artifacts(id),
+  end_photo_id   uuid REFERENCES public.station_artifacts(id),
+  notes         text,
+  recorded_by   uuid REFERENCES public.users(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- One row per man per shift. Re-assigning him to a second nozzle in the same shift
+-- must refresh his row, never open a second stretch of attendance.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_shift_attendance_shift_attendant
+  ON public.shift_attendance(shift_id, attendant_id);
+
+CREATE INDEX IF NOT EXISTS idx_shift_attendance_station_date
+  ON public.shift_attendance(station_id, shift_date DESC);
+CREATE INDEX IF NOT EXISTS idx_shift_attendance_attendant
+  ON public.shift_attendance(attendant_id, shift_date DESC);
+
+-- 🔴 RLS ships in the SAME block as the table. New tables get RLS enabled
+-- automatically on this project, and RLS-on-with-no-policy denies everything —
+-- silently returning zero rows on SELECT while INSERT raises. Same shape as every
+-- other station-scoped table here.
+ALTER TABLE public.shift_attendance ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='shift_attendance'
+                   AND policyname='shift_attendance_station_isolation') THEN
+    CREATE POLICY shift_attendance_station_isolation ON public.shift_attendance
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.shift_attendance TO app_authenticated;
+
+-- Carry across anything the shift flow already stamped on the OLD attendance table
+-- during the 01-Aug staging run, so no test data is lost, then retire the three
+-- columns that were added there for this purpose. They only ever existed on
+-- staging (production never received that DDL — verified before writing this), and
+-- leaving them would be a second home for the same fact. Idempotent both ways.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='attendance' AND column_name='shift_id') THEN
+
+    INSERT INTO public.shift_attendance
+      (station_id, shift_id, attendant_id, shift_date, shift_number,
+       started_at, ended_at, start_photo_id, end_photo_id, notes)
+    SELECT a.station_id, a.shift_id, a.user_id, a.date, a.shift_number,
+           a.check_in, a.check_out,
+           a.check_in_artifact_id, a.check_out_artifact_id, a.notes
+      FROM public.attendance a
+     WHERE a.shift_id IS NOT NULL
+    ON CONFLICT (shift_id, attendant_id) DO NOTHING;
+
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS shift_id;
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS check_in_artifact_id;
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS check_out_artifact_id;
+  END IF;
+END $$;
