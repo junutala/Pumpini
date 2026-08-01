@@ -2366,7 +2366,14 @@
     "confirmRemovePump": "Retire this pump? A pump that has ever been used is kept in history with today’s date, so every past meter reading still points at the machine it was taken on.",
     "retireNeedsEmpty": "Move or delete its nozzles first — a pump is not retired out from under live meters.",
     "pumpsLoadFailed": "Could not load pumps just now. If the app was updated in the last few minutes, give it a moment and try again.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "slipHint2": "Optional. We read the serial and model off the photo — check them below before saving.",
+    "readingSlip": "Reading the slip…",
+    "gotSerial": "serial",
+    "gotModel": "model",
+    "readOk": "Read the {x} off the slip — check them against the paper.",
+    "readNothing": "Could not find a serial on that slip — type it from the paper.",
+    "readFailed": "Could not read that slip — type the serial and model from it."
   },
   "sstart": {
     "dashboard": "Dashboard",

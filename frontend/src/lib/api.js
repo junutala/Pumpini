@@ -146,6 +146,10 @@ export const getPumps   = (sid)        => api.get(`/stations/${sid}/pumps`);
 // Longer timeout: the create carries the sample-slip photograph, and the server
 // stores it as the pump's artifact in the same call (artifacts are written by the
 // flow that produced them — there is no separate upload endpoint).
+// Read a sample slip during SETUP to identify the machine. Same parser as the
+// shift-time scan, but no shift exists yet — a pump is being defined before it has
+// ever run one. Generous timeout: vision plus a Railway cold start.
+export const parsePumpSlip = (sid, data) => api.post(`/stations/${sid}/parse-pump-slip`, data, { timeout: 90000 });
 export const createPump = (sid, data)  => api.post(`/stations/${sid}/pumps`, data, { timeout: 90000 });
 export const updatePump = (sid, id, d) => api.patch(`/stations/${sid}/pumps/${id}`, d);
 // Refuses with 409 while the pump still has nozzles — surface that message; the
