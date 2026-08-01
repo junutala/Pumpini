@@ -29,6 +29,7 @@ import ArtifactImage from '../../components/shared/ArtifactImage';
 import api, { parseGaugeScreen } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
+import { matchGaugeRows } from '../../lib/gaugeMatch';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -314,53 +315,11 @@ export default function ShiftEndPage() {
       const artId = res.artifact_id || null;
       setGaugeArtifact(artId || '');
       const rows = Array.isArray(res.tanks) ? res.tanks : [];
-      // MATCH ON TANK NUMBER, GUARDED BY FUEL.
-      // The owner keeps the console's tank numbering aligned with Pumpini's, so the
-      // number is an exact, deterministic key — better than any heuristic, and it
-      // separates two tanks of the SAME fuel, which fuel or capacity cannot.
-      //
-      // But nothing in the DB enforces that alignment: add a tank in Settings and
-      // number it 2 while the console calls it 3, and a number match would put a
-      // DIESEL reading into the PETROL tank. That already happened once on staging
-      // (console 1=HSD, 3=MS, 4=Power vs our 1=petrol, 2=diesel). So the number
-      // decides WHICH tank, and fuel is the check that the numbering is still sane:
-      // if they disagree we fill NOTHING for that row and say so — a visible
-      // misconfiguration beats a silently wrong closing stock.
-      const norm = v => String(v || '').toLowerCase();
-
-      const usable   = rows.filter(r => r.net_volume_ltrs != null);
-      const dropped  = rows.filter(r => r.net_volume_ltrs == null).map(r => r.tank_label ?? '?');
-      const claimed  = new Set();
-      const pairs    = [];   // [tank, row]
-      const unplaced = [];   // console labels with no tank here
-      const mismatch = [];   // number matched but the FUEL disagrees — misconfiguration
-
-      usable.forEach(r => {
-        const byNumber = dipTanks.find(t => String(t.tank_number) === String(r.tank_label));
-        if (byNumber) {
-          if (norm(byNumber.fuel_type) !== norm(r.product)) {
-            mismatch.push(`${r.tank_label} (${r.product_raw || r.product})`);
-            return;                                   // never fill across products
-          }
-          // Capacity as a CHECK, never a matcher. Number+fuel cannot catch a swap
-          // between two tanks of the SAME fuel with crossed numbering — but if their
-          // capacities differ, this catches it. Skipped when either side lacks a
-          // capacity, so an unmaintained Settings figure can't block a good reading.
-          const rc = parseFloat(r.capacity_ltrs), tcap = parseFloat(byNumber.capacity_ltrs);
-          if (Number.isFinite(rc) && rc > 0 && Number.isFinite(tcap) && tcap > 0
-              && Math.abs(tcap - rc) > rc * 0.01) {
-            mismatch.push(`${r.tank_label} (${Math.round(rc)}L vs ${Math.round(tcap)}L)`);
-            return;
-          }
-          if (claimed.has(byNumber.id)) return;        // one row per tank, no overwrite
-          claimed.add(byNumber.id); pairs.push([byNumber, r]);
-          return;
-        }
-        // No such number here — fall back to fuel only when it is unambiguous.
-        const sameFuel = dipTanks.filter(t => norm(t.fuel_type) === norm(r.product) && !claimed.has(t.id));
-        if (sameFuel.length === 1) { claimed.add(sameFuel[0].id); pairs.push([sameFuel[0], r]); }
-        else unplaced.push(r.tank_label ?? '?');
-      });
+      // FUEL DECIDES WHICH TANK; THE TANK NUMBER ONLY VERIFIES. The rule lives in
+      // lib/gaugeMatch so this cannot drift from shift open — read the note at the
+      // top of that file for why it is this way round.
+      const { pairs, dropped, unplaced, ambiguous, renumbered, capacityOff } =
+        matchGaugeRows(rows, dipTanks);
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
@@ -371,13 +330,17 @@ export default function ShiftEndPage() {
         setDipArtifact(p => ({ ...p, [tank.id]: artId }));
       });
 
-      const skipped = [...unplaced, ...dropped];
+      const skipped = [...unplaced, ...ambiguous, ...dropped];
       setGaugeMsg(
         (pairs.length === 0
           ? tc('send.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
           : tc('send.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
-        + (skipped.length  ? ' ' + tc('send.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
-        + (mismatch.length ? ' ' + tc('send.gaugeMismatch','Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering.').replace('{list}', mismatch.join(', ')) : '')
+        + (skipped.length ? ' ' + tc('send.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
+        // Advisory only — these rows ARE filled.
+        + (renumbered.length ? ' ' + tc('send.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
+            .replace('{list}', renumbered.map(x => `${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
+        + (capacityOff.length ? ' ' + tc('send.gaugeCapacity','Capacity differs for {list} — filled anyway, check the tank capacity in Settings.')
+            .replace('{list}', capacityOff.map(x => `Tank ${x.tank} (${x.readCap}L vs ${x.ourCap}L)`).join(', ')) : '')
       );
     } catch (e) {
       setErr(e.error || e.response?.data?.error || tc('send.gaugeFail','Could not read the screen — enter the readings manually.'));
