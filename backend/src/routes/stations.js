@@ -5,6 +5,24 @@ const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const pumpService = require('../services/pumpService');
 const slipParser  = require('../services/slipParser');
+
+// Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
+// deploys first, so pump_id / slip_nozzle_no are named only once present. A catalog
+// probe, never a failing INSERT — inside a transaction that would abort the caller.
+// Cached only once TRUE, so the first save after the migration picks them up with
+// no restart.
+let _hasSlipMapping = false;
+async function hasSlipMapping() {
+  if (_hasSlipMapping) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='nozzles'
+          AND column_name='pump_id' LIMIT 1`);
+    _hasSlipMapping = rows.length > 0;
+  } catch { _hasSlipMapping = false; }
+  return _hasSlipMapping;
+}
 // Outbound integration: push the outlet to VAWE on create/update. Fire-and-forget
 // so a VAWE outage can never break an outlet save.
 const { queueOutletSync } = require('../services/vaweService');
