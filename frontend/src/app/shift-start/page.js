@@ -81,6 +81,11 @@ export default function ShiftStartPage() {
   const [dips, setDips]       = useState({});       // tank_id -> entered mark-ordinal
   const [dipVol, setDipVol]   = useState({});       // tank_id -> manual volume (no-chart fallback)
   const [savedDips, setSavedDips] = useState({});   // tank_id -> true
+  // tank_id -> the opening dip row the server carried from the last close. Present
+  // means the manager has nothing to do for that tank (owner rule, 01-Aug: the
+  // close IS the next open, so there can be no gap between two shifts to hide a
+  // loss in). Absent means no prior close exists and a reading is genuinely needed.
+  const [carriedDips, setCarriedDips] = useState({});
   const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> gauge photo it was read off
   const [dipWarn, setDipWarn] = useState(null);     // [tank numbers] with no opening reading at all
 
@@ -206,7 +211,13 @@ export default function ShiftStartPage() {
   const [opAttendant, setOpAttendant] = useState('');
   const [opPhoto, setOpPhoto] = useState(null);     // { base64, media_type } | null
   const [nozPick, setNozPick] = useState({});       // nozzle_id -> { selected, opening }
-  const [openings, setOpenings] = useState({});     // nozzle_id -> suggested opening (prior close)
+  const [openings, setOpenings] = useState({});     // nozzle_id -> the prior close
+  // nozzle_id -> 'carried' | 'entered'. THE OPENING IS THE LAST CLOSE (owner rule,
+  // 01-Aug): where one exists the server uses it whatever this screen sends, so the
+  // box is shown READ-ONLY rather than as an editable field whose value is ignored.
+  // 'entered' means no prior close anywhere — a newly commissioned nozzle or the
+  // very first shift — and only then is a figure actually needed from the manager.
+  const [openSrc, setOpenSrc] = useState({});
   const [scanning, setScanning] = useState('');
   // PhotoCapture holds its own preview; remounting it is the only way to clear that
   // preview after a successful Start, so the next attendant never inherits a face.
@@ -219,8 +230,24 @@ export default function ShiftStartPage() {
     const d = await api.get(`/shifts/${id}`);
     setShift(d); setAttendants(d?.attendants || []);
     const ops = await api.get(`/shifts/${id}/nozzle-openings`).catch(()=>[]);
-    const map = {}; (Array.isArray(ops)?ops:[]).forEach(o => { if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening; });
-    setOpenings(map);
+    const map = {}; const src = {};
+    (Array.isArray(ops)?ops:[]).forEach(o => {
+      if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening;
+      src[o.nozzle_id] = o.source || (o.suggested_opening != null ? 'carried' : 'entered');
+    });
+    setOpenings(map); setOpenSrc(src);
+
+    // The opening dips the SERVER carried forward from the last close when this
+    // shift was opened. A tank that has one needs nothing from the manager — the
+    // figure is already the previous closing stock, which is the whole point of
+    // the rule. Only a tank with no prior close anywhere is left to be entered.
+    const dr = await api.get('/dipstick', { params:{ station_id: stationId, shift_id: id } }).catch(()=>[]);
+    const carried = {};
+    (Array.isArray(dr)?dr:[]).forEach(x => {
+      if (x.reading_type === 'opening') carried[x.tank_id] = x;
+    });
+    setCarriedDips(carried);
+    setSavedDips(p => { const n = { ...p }; Object.keys(carried).forEach(k => { n[k] = true; }); return n; });
   };
 
   useEffect(() => {
@@ -406,17 +433,32 @@ export default function ShiftStartPage() {
     try {
       const b64 = await readB64(file);
       const r = await api.post('/reconcile/parse-slip', { shift_id: shift.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
-      let matched = 0; const miss = [];
+      let matched = 0; const miss = []; const locked = [];
       (r.nozzles || []).forEach(n => {
         if (n.cumulative_volume == null) return;
         const noz = nozzles.find(x => String(x.nozzle_number) === n.label);
-        if (noz) { pickNoz(noz.id, { selected:true, opening: n.cumulative_volume }); matched++; }
-        else if (n.label) miss.push(n.label);
+        if (!noz) { if (n.label) miss.push(n.label); return; }
+        // A nozzle whose opening is carried from the last close is TICKED but its
+        // figure is left alone. Writing the slip's number into a box the server
+        // will overwrite would tell the manager his reading was accepted when it
+        // was not. If the slip and the last close genuinely disagree that is a
+        // discrepancy to investigate, not an opening to adjust.
+        if (openSrc[noz.id] !== 'entered' && openings[noz.id] != null) {
+          pickNoz(noz.id, { selected: true });
+          if (Math.abs(Number(n.cumulative_volume) - Number(openings[noz.id])) > 1) {
+            locked.push(`${n.label} (${tc('sstart.slipSays','slip')} ${n.cumulative_volume} vs ${openings[noz.id]})`);
+          }
+          matched++;
+          return;
+        }
+        pickNoz(noz.id, { selected: true, opening: n.cumulative_volume });
+        matched++;
       });
       if (!matched) setErr(tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
       else {
-        let msg = tc('sstart.slipFilled','Filled {n} opening reading(s) from the slip.').replace('{n}', matched);
+        let msg = tc('sstart.slipTicked','Ticked {n} nozzle(s) from the slip.').replace('{n}', matched);
         if (miss.length)  msg += ' ' + tc('sstart.slipNoMatchSome','No app nozzle for: {x}.').replace('{x}', miss.join(', '));
+        if (locked.length) msg += ' ' + tc('sstart.slipDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
         if (!r.legible)   msg += ' ' + tc('sstart.slipVerify','⚠ Some digits unclear — verify.');
         setErr(msg);
       }
@@ -550,7 +592,7 @@ export default function ShiftStartPage() {
       {step===0 && (
         <div className="card" style={{maxWidth:640}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','For each tank enter EITHER the dip (a physical check) OR the litres shown on the ATG/HPCL system — we compute the other. This is the opening stock; the reconciliation shows any variance.')}</div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelpCarried','The opening stock is whatever the last shift closed at — it is carried across automatically so no litre can go missing between two shifts. You only enter a reading for a tank that has no previous close.')}</div>
 
           {/* The photograph is the headline action now: one picture fills every tank
               below. Outlets with no console (e.g. IOCL) simply take a physical dip
@@ -574,6 +616,20 @@ export default function ShiftStartPage() {
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
             const vol = tankVol(tk);
+            // Carried from the last close by the server. Nothing to do, nothing to
+            // type — showing entry boxes here would invite a manager to "correct"
+            // the very figure the rule exists to keep fixed.
+            const cd = carriedDips[tk.id];
+            if (cd) return (
+              <div key={tk.id} style={{marginBottom:10,paddingBottom:10,borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
+                <div style={{fontSize:14,fontWeight:800,color:'#0f172a'}}>{fmtL(cd.volume_ltrs)} L</div>
+                {cd.dip_cm != null && <div style={{fontSize:12,color:'#64748b'}}>{tc('sstart.dipLabel','dip')} {cd.dip_cm} cm</div>}
+                <span style={{fontSize:11.5,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'3px 10px',fontWeight:700}}>
+                  🔒 {tc('sstart.carriedFromLastClose','Carried from last close')}
+                </span>
+              </div>
+            );
             return (
               <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
@@ -650,8 +706,9 @@ export default function ShiftStartPage() {
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
                   const sug = openings[n.id];
-                  const cur = pick?.opening ?? (sug ?? '');
-                  const drift = sel && cur!=='' && sug!=null && Math.abs(Number(cur)-Number(sug))>1;
+                  // Carried = the last close, and the server will use it regardless.
+                  const carried = openSrc[n.id] !== 'entered' && sug != null;
+                  const cur = carried ? sug : (pick?.opening ?? '');
                   return (
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
@@ -660,15 +717,31 @@ export default function ShiftStartPage() {
                       </label>
                       {sel && (
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
-                          <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('sstart.openingMeter','Opening meter')}
-                            value={cur} onChange={e=>pickNoz(n.id,{opening:e.target.value})}/>
-                          <label title={tc('sstart.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:16}}>
-                            {scanning===n.id?'…':'📷'}
-                            <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
-                          </label>
+                          <input style={{...inp,flex:1,...(carried?{background:'#f1f5f9',color:'#0f172a',fontWeight:700}:{})}}
+                            type="number" step="0.001" readOnly={carried}
+                            placeholder={tc('sstart.openingMeter','Opening meter')}
+                            value={cur} onChange={e=>{ if(!carried) pickNoz(n.id,{opening:e.target.value}); }}/>
+                          {/* The totalizer scan is offered only where there is no close
+                              to carry. Elsewhere it could only produce a figure that is
+                              then discarded, which reads as the app losing the reading. */}
+                          {!carried && (
+                            <label title={tc('sstart.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:16}}>
+                              {scanning===n.id?'…':'📷'}
+                              <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+                            </label>
+                          )}
                         </div>
                       )}
-                      {drift && <div style={{fontSize:11,color:'#b45309',marginTop:4}}>⚠ {tc('sstart.driftWarn','differs from last close ({sug}) — verify handover').replace('{sug}', sug)}</div>}
+                      {sel && carried && (
+                        <div style={{fontSize:11,color:'#475569',marginTop:4}}>
+                          🔒 {tc('sstart.carriedFromClose','Carried from the last close — the opening must equal it, so there is no gap between shifts.')}
+                        </div>
+                      )}
+                      {sel && !carried && (
+                        <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
+                          ⚠ {tc('sstart.noPriorClose','No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.')}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

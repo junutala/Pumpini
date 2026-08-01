@@ -2441,7 +2441,14 @@
     "gaugeSkipped": "Not matched: {list}.",
     "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
     "gaugeFail": "Could not read the screen — enter the readings manually.",
-    "gaugeMismatch": "Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering."
+    "gaugeMismatch": "Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering.",
+    "carriedFromClose": "Carried from the last close — the opening must equal it, so there is no gap between shifts.",
+    "carriedFromLastClose": "Carried from last close",
+    "dipHelpCarried": "The opening stock is whatever the last shift closed at — it is carried across automatically so no litre can go missing between two shifts. You only enter a reading for a tank that has no previous close.",
+    "noPriorClose": "No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.",
+    "slipDisagrees": "⚠ The slip disagrees with the last close for {x}. The last close stands — report this.",
+    "slipSays": "slip",
+    "slipTicked": "Ticked {n} nozzle(s) from the slip."
   },
   "streco": {
     "title": "Stock Reconciliation",
@@ -2713,6 +2720,10 @@
     "none": "No coupons captured yet.",
     "invoiced": "Invoiced",
     "yes": "Invoiced",
-    "pending": "Pending"
+    "pending": "Pending",
+    "image": "Coupon",
+    "imageStored": "Coupon image stored.",
+    "willStore": "This photo will be stored with the sale as proof.",
+    "dropImage": "Do not store"
   }
 }
