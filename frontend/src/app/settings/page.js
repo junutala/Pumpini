@@ -694,6 +694,7 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
   const [pumps,   setPumps]   = useState([]);
+  const [loose,   setLoose]   = useState(null);   // server's unassigned list; null → not answered
   const [pumpsUp, setPumpsUp] = useState(true);   // false → endpoint/table not there yet
   const [booting, setBooting] = useState(true);
   const [open,    setOpen]    = useState({});     // pump id → explicit expand/collapse
@@ -703,13 +704,17 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
   const loadPumps = async () => {
     if (!stationId) { setBooting(false); return; }
     try {
-      const p = await getPumps(stationId);
-      setPumps(Array.isArray(p) ? p : []);
+      // The endpoint answers { pumps, unassigned } — the loose nozzles ride along in
+      // the same payload precisely so this screen can show them at the top without a
+      // second call. A bare array is tolerated in case that shape is ever flattened.
+      const r = await getPumps(stationId);
+      setPumps(Array.isArray(r) ? r : (Array.isArray(r?.pumps) ? r.pumps : []));
+      setLoose(Array.isArray(r?.unassigned) ? r.unassigned : null);
       setPumpsUp(true);
     } catch {
       // 404/500 before the DDL runs. Not an error the owner can act on — show the
       // empty state and keep the nozzles below editable.
-      setPumps([]); setPumpsUp(false);
+      setPumps([]); setLoose(null); setPumpsUp(false);
     } finally { setBooting(false); }
   };
 
@@ -718,9 +723,22 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
   const refresh = async () => { await loadPumps(); reload(); };
 
   const livePumps = pumps.filter(p => !p.end_date);
-  const nozzlesOf = (pumpId) => nozzles.filter(n => n.pump_id === pumpId);
-  const unassigned = nozzles.filter(n => !n.pump_id);
-  const isOpen = (p) => (open[p.id] !== undefined ? open[p.id] : nozzlesOf(p.id).length === 0);
+  // The server nests each pump's LIVE nozzles, so that list is the authority on what
+  // hangs off a machine — not a client-side filter that would also have to know about
+  // end-dating.
+  const nozzlesOf = (p) => (Array.isArray(p.nozzles) ? p.nozzles : []);
+
+  // Membership comes from the server's `unassigned`, but the rows are re-joined to the
+  // full nozzle list so the inline editor has every column (the summary rows carry
+  // only id/number/fuel/tank). When the pumps read failed there is nothing to join
+  // to, so fall back to deriving it — which before the DDL correctly reads as
+  // "nothing is on a pump yet".
+  const byId = new Map(nozzles.map(n => [n.id, n]));
+  const unassigned = (loose !== null)
+    ? loose.map(n => byId.get(n.id) || n)
+    : nozzles.filter(n => !n.pump_id && !n.end_date && n.is_active !== false);
+
+  const isOpen = (p) => (open[p.id] !== undefined ? open[p.id] : nozzlesOf(p).length === 0);
 
   // Pull an existing loose nozzle onto this pump. Assignment is driven FROM the
   // pump, which is what lets the unassigned banner count down without ever asking
@@ -738,22 +756,21 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
     async () => { try { await api.delete(`/stations/${stationId}/nozzles/${n.id}`); } catch { /* already gone */ } refresh(); }
   );
 
-  const delPump = (p) => askConfirm(
-    tc('setp.confirmDeletePump', 'Delete this pump? Only possible while it has no nozzles.'),
-    async () => {
-      try { await deletePump(stationId, p.id); showToast(tc('setp.toastPumpDeleted', 'Pump deleted')); refresh(); }
-      catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }   // 409 message lands here
-    }
-  );
-
-  const retirePump = (p) => askConfirm(
-    tc('setp.confirmRetirePump', 'Retire this pump? It stays in history with today’s date, so every past meter reading still points at the machine it was taken on.'),
+  // ONE action, because the server owns the decision: a pump that never carried a
+  // nozzle is deleted outright, one that has history is end-dated instead, and one
+  // that still has LIVE nozzles is refused with a 409 telling the owner to move them
+  // first. Splitting that into a "delete" and a "retire" button on this side would be
+  // the screen second-guessing the writer — and the retire path would sail straight
+  // past the guard that protects the meter history.
+  const removePump = (p) => askConfirm(
+    tc('setp.confirmRemovePump', 'Retire this pump? A pump that has ever been used is kept in history with today’s date, so every past meter reading still points at the machine it was taken on.'),
     async () => {
       try {
-        await updatePump(stationId, p.id, { end_date: new Date().toLocaleString('sv-SE', { timeZone:'Asia/Kolkata' }).slice(0,10), is_active: false });
-        showToast(tc('setp.toastPumpRetired', 'Pump retired'));
+        const r = await deletePump(stationId, p.id);
+        showToast(r?.retired ? tc('setp.toastPumpRetired', 'Pump retired')
+                             : tc('setp.toastPumpDeleted', 'Pump deleted'));
         refresh();
-      } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+      } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }   // 409 message lands here
     }
   );
 
@@ -839,7 +856,7 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
       )}
 
       {livePumps.map(p => {
-        const mine = nozzlesOf(p.id);
+        const mine = nozzlesOf(p);
         const expanded = isOpen(p);
         return (
           <div key={p.id} className="card" style={{marginBottom:'1rem',padding:0,overflow:'hidden'}}>
@@ -942,19 +959,16 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
 
                 <div style={{marginTop:16,paddingTop:12,borderTop:'1px solid var(--border)',
                   display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {mine.length === 0 ? (
-                    <button type="button" onClick={()=>delPump(p)}
-                      style={{minHeight:44,padding:'0 16px',background:'#fff',border:'1px solid #fecaca',
-                        borderRadius:9,cursor:'pointer',color:'#b91c1c',fontWeight:700,fontSize:14,
-                        display:'inline-flex',alignItems:'center',gap:6}}>
-                      <Trash2 size={14}/>{tc('setp.deletePump', 'Delete pump')}
-                    </button>
-                  ) : (
-                    <button type="button" onClick={()=>retirePump(p)}
-                      style={{minHeight:44,padding:'0 16px',background:'#fff',border:'1px solid var(--border)',
-                        borderRadius:9,cursor:'pointer',color:'var(--text-2)',fontWeight:700,fontSize:14}}>
-                      {tc('setp.retirePump', 'Retire pump')}
-                    </button>
+                  <button type="button" onClick={()=>removePump(p)}
+                    style={{minHeight:44,padding:'0 16px',background:'#fff',border:'1px solid #fecaca',
+                      borderRadius:9,cursor:'pointer',color:'#b91c1c',fontWeight:700,fontSize:14,
+                      display:'inline-flex',alignItems:'center',gap:6}}>
+                    <Trash2 size={14}/>{tc('setp.retirePump', 'Retire pump')}
+                  </button>
+                  {mine.length > 0 && (
+                    <div style={{fontSize:11.5,color:'var(--text-3)',alignSelf:'center',flex:1,minWidth:180}}>
+                      {tc('setp.retireNeedsEmpty', 'Move or delete its nozzles first — a pump is not retired out from under live meters.')}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1224,8 +1238,16 @@ function AddPumpForm({ stationId, tc, onAdded }) {
     setBusy(true);
     try {
       // The photograph travels WITH the create, the way every other artifact in
-      // Pumpini is written — by the flow that produced it, in one call. There is no
+      // Pumpini is written — by the flow that produced it, in one call; there is no
       // separate upload endpoint to hold it against.
+      //
+      // ⚠ NOT YET STORED. services/pumpService.createPump takes a `slip_artifact_id`
+      // but nothing turns bytes into one, so these two fields are destructured away
+      // server-side today and the pump lands with slip_artifact_id = null. They are
+      // sent anyway so the day the writer stores the artifact, this screen already
+      // feeds it — and until then the capture still earns its place: it is how the
+      // owner reads the serial off the slip while typing it in. The "Slip on file"
+      // pill keys off slip_artifact_id, so it stays honest either way.
       await createPump(stationId, {
         pump_number: f.pump_number.trim(),
         serial:      f.serial.trim() || null,
@@ -1251,7 +1273,7 @@ function AddPumpForm({ stationId, tc, onAdded }) {
         <PhotoCapture
           label={tc('setp.photographSlip', 'Photograph a slip from this pump')}
           retakeLabel={tc('setp.retakePhoto', 'Retake')}
-          hint={tc('setp.slipHint', 'Optional. Kept as evidence of this pump’s serial and print format.')}
+          hint={tc('setp.slipHint', 'Optional. The serial is printed on the slip — photograph it, then read it off below.')}
           onCapture={setSlip}
           disabled={busy}/>
       </div>
