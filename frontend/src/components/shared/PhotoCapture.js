@@ -10,12 +10,20 @@
 // resistance, which is the point: a photograph of a photograph proves nothing.
 // The server's own received-at timestamp is the real anchor, not the file's.
 //
+// NO RED X ON THE THUMBNAIL. It used to carry a small red circled cross, which was
+// wrong three ways: red is the colour this app uses for danger and money going
+// missing, so an alarm badge sat permanently on a photo that was perfectly fine;
+// it was 22px against the 44px minimum this app holds itself to; and it duplicated
+// Retake, which is what someone actually wants nine times in ten. Removing a photo
+// is now a plain labelled control beside Retake, in neutral grey — so red goes back
+// to meaning something is wrong.
+//
 // The image is downscaled before it leaves the phone. A modern handset shoots
 // 4000px originals at 4–8 MB; a face or a printed slip is entirely legible at
 // 1400px and lands under ~250 KB, which is the difference between a capture that
 // works on forecourt 4G and one that times out.
 import { useState, useRef, useEffect } from 'react';
-import { Camera, X, RefreshCw } from 'lucide-react';
+import { Camera, RefreshCw } from 'lucide-react';
 
 const MAX_EDGE = 1400;
 const QUALITY  = 0.85;
@@ -53,6 +61,7 @@ export default function PhotoCapture({
   size = 84,
   required = false,
   hint = '',
+  removeLabel = 'Remove',
 }) {
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
@@ -83,13 +92,9 @@ export default function PhotoCapture({
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {preview ? (
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{ flexShrink: 0 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={preview} alt="" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 10, border: '2px solid #16a34a' }} />
-            <button type="button" onClick={clear} disabled={disabled} aria-label="Remove photo"
-              style={{ position: 'absolute', top: -7, right: -7, width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#dc2626', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-              <X size={13} />
-            </button>
           </div>
         ) : (
           <div style={{ width: size, height: size, borderRadius: 10, border: '2px dashed ' + (required ? '#fca5a5' : '#e5e3de'), background: required ? '#fef2f2' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -98,7 +103,8 @@ export default function PhotoCapture({
         )}
 
         <div style={{ minWidth: 0 }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 13px', borderRadius: 8,
+          <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            minHeight: 44, padding: '0 16px', borderRadius: 8,
             background: disabled || busy ? '#94a3b8' : preview ? '#475569' : '#0f172a', color: '#fff',
             fontSize: 13, fontWeight: 700, cursor: disabled || busy ? 'default' : 'pointer' }}>
             {busy ? <RefreshCw size={14} /> : <Camera size={14} />}
@@ -107,6 +113,14 @@ export default function PhotoCapture({
               style={{ display: 'none' }}
               onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
+          {preview && (
+            <button type="button" onClick={clear} disabled={disabled || busy}
+              style={{ minHeight: 44, marginLeft: 8, padding: '0 12px', background: 'none', border: 'none',
+                color: 'var(--text-3, #64748b)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                textDecoration: 'underline' }}>
+              {removeLabel}
+            </button>
+          )}
           {hint && !err && <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 5 }}>{hint}</div>}
           {err && <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 5 }}>{err}</div>}
         </div>

@@ -725,7 +725,8 @@ export default function ShiftStartPage() {
                   label={tc('sstart.takeAttendantPhoto','Take his photo')}
                   hint={tc('sstart.attendantPhotoHint','Taken as he starts. In time this photo will identify him on its own.')}
                   disabled={busy}
-                  onCapture={setOpPhoto}/>
+                  onCapture={setOpPhoto}
+          removeLabel={tc('photo.remove', 'Remove')}/>
               </div>
 
               <div><label className="label">{tc('sstart.attendant','Attendant')}</label>

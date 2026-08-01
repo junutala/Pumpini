@@ -1316,7 +1316,8 @@ function AddPumpForm({ stationId, tc, onAdded }) {
           retakeLabel={tc('setp.retakePhoto', 'Retake')}
           hint={tc('setp.slipHint2', 'Optional. We read the serial and model off the photo — check them below before saving.')}
           onCapture={onSlip}
-          disabled={busy || reading}/>
+          disabled={busy || reading}
+          removeLabel={tc('photo.remove', 'Remove')}/>
         {reading && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
           {tc('setp.readingSlip', 'Reading the slip…')}
         </div>}
