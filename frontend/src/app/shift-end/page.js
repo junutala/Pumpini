@@ -217,12 +217,17 @@ export default function ShiftEndPage() {
       (r.nozzles || []).forEach(n => {
         if (n.cumulative_volume == null) return;
         let found = false;
+        // Prefer the nozzle the SERVER resolved: it accepts both "3.1" and plain
+        // "3" numbering, and deliberately resolves to nothing when several nozzles
+        // share a number rather than filling the wrong fuel's meter. The label
+        // comparison is only a fallback for a backend that has not deployed yet.
         attendants.forEach(a => (a.nozzles || []).forEach(nz => {
-          if (String(nz.nozzle_number) === n.label) { setCl(a.attendant_id, nz.nozzle_id, n.cumulative_volume); matched++; found = true; }
+          const hit = n.nozzle_id ? nz.nozzle_id === n.nozzle_id : String(nz.nozzle_number) === n.label;
+          if (hit) { setCl(a.attendant_id, nz.nozzle_id, n.cumulative_volume); matched++; found = true; }
         }));
-        if (!found && n.label) miss.push(n.label);
+        if (!found) miss.push(n.label || n.nozzle_no || '?');
       });
-      if (!matched) setErr(tc('send.slipNoMatch', 'Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
+      if (!matched) setErr(tc('send.slipNoMatch2', 'Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.').replace('{x}', (r.nozzles||[]).map(n=>n.nozzle_no).filter(Boolean).join(', ') || '—'));
       else {
         let msg = tc('send.slipFilled', 'Filled {n} closing reading(s) from the slip.').replace('{n}', matched);
         if (miss.length) msg += ' ' + tc('send.slipNoMatchSome', 'No operator nozzle for: {x}.').replace('{x}', miss.join(', '));

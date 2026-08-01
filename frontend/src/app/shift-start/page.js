@@ -457,7 +457,13 @@ export default function ShiftStartPage() {
       let matched = 0; const miss = []; const locked = [];
       (r.nozzles || []).forEach(n => {
         if (n.cumulative_volume == null) return;
-        const noz = nozzles.find(x => String(x.nozzle_number) === n.label);
+        // The server resolves the slip line to a real nozzle now — it accepts both
+        // "3.1" and plain "3" numbering, and returns nothing rather than guessing
+        // when several nozzles share a number. The label match is kept only as a
+        // fallback for a backend that has not deployed yet.
+        const noz = n.nozzle_id
+          ? nozzles.find(x => x.id === n.nozzle_id)
+          : nozzles.find(x => String(x.nozzle_number) === n.label);
         if (!noz) { if (n.label) miss.push(n.label); return; }
         // A nozzle whose opening is carried from the last close is TICKED but its
         // figure is left alone. Writing the slip's number into a box the server

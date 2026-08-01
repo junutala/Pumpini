@@ -849,10 +849,12 @@ Respond with ONLY a JSON object, nothing else:
 {
  "slip_type": "A" or "B",
  "pump_id": "<the FP. ID / FIP No. as a plain number string>",
- "nozzles": [ { "nozzle_no": "<1..N>", "cumulative_volume": <number>, "legible": <true|false> } ],
+ "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <number>, "legible": <true|false> } ],
  "legible": <true|false overall>,
  "notes": "<short note; mention any nozzle cut off the page or unclear>"
 }
+- READ nozzle_no OFF THE SLIP. It is the number printed next to that block — "Nozzle No1" -> "1", "Nozzle No. : 03" -> "3". DO NOT renumber the blocks by their position on the page. If the first block you can see is nozzle 3, report 3, NOT 1. A slip photographed in two parts must report the SAME numbers it prints in each part, or the second photo silently overwrites the first photo's readings against the wrong nozzles.
+- If a block's nozzle number is itself unreadable, return null for nozzle_no rather than inferring it from order.
 Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
 
 router.post('/parse-slip', authenticate,
@@ -885,25 +887,86 @@ router.post('/parse-slip', authenticate,
     if (!parsed || !Array.isArray(parsed.nozzles)) {
       return res.status(422).json({ error: 'Could not read the slip — enter the readings manually.' });
     }
-    // Normalise: keep numeric cumulative_volume, build the {pump}.{nozzle} label.
+    // Normalise, then RESOLVE each slip line to a real nozzle HERE rather than in
+    // the browser.
+    //
+    // This used to hand back only a `{pump}.{nozzle}` label and let each screen do
+    // `nozzles.find(x => x.nozzle_number === label)`. Two problems, both live:
+    //
+    //  1. THAT LABEL SHAPE IS NOT WHAT OUTLETS USE. Real numbering in prod is mixed
+    //     — Highway has 1, 2, 3.1, 3.2, 4.1, 4.2, 5, 6, 7, 8; Dilsukhnagar has plain
+    //     1, 2. A "1.1" matches none of them, so the slip scan silently found
+    //     nothing at three of four outlets and the manager just saw "no nozzle
+    //     matched". Accept BOTH shapes instead of dictating one.
+    //  2. `.find()` SILENTLY TAKES THE FIRST of several equal candidates. Kamala has
+    //     THREE active nozzles numbered "1" (petrol, diesel, CNG) and three numbered
+    //     "2", so a matched reading could land on the wrong fuel's nozzle — the same
+    //     class of fault the gauge matcher was hardened against after a diesel
+    //     reading went into a petrol tank. Ambiguity must REFUSE, not guess.
+    //
+    // Resolving server-side also means one implementation, not one per screen.
     const pump = String(parsed.pump_id ?? '').replace(/[^\d]/g, '') || null;
+
+    const { rows: known } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.fuel_type
+         FROM nozzles n
+        WHERE n.is_active
+          AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
+      [shift_id]
+    );
+    const byNumber = {};
+    for (const k of known) (byNumber[String(k.nozzle_number).trim()] ||= []).push(k);
+
     const nozzles = parsed.nozzles
       .map(n => {
         const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
         const vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        const label = pump && no ? `${pump}.${no}` : null;
+
+        // Try the qualified form first (it is the more specific), then the bare
+        // number. Never fall back to position.
+        let cands = (label && byNumber[label]) || [];
+        let matchedOn = cands.length ? 'pump.nozzle' : null;
+        if (!cands.length && no) { cands = byNumber[no] || []; matchedOn = cands.length ? 'nozzle' : null; }
+
+        const ambiguous = cands.length > 1;
         return {
           nozzle_no: no || null,
-          label: pump && no ? `${pump}.${no}` : null,   // matches our decimal nozzle_number
+          label,
           cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
           legible: n.legible === true && isFinite(vol) && vol > 0,
+          // Null when nothing matched OR when several nozzles share that number —
+          // the screen then leaves it for the manager instead of picking one.
+          nozzle_id: !ambiguous && cands.length === 1 ? cands[0].id : null,
+          matched_on: ambiguous ? 'ambiguous' : matchedOn,
+          candidates: ambiguous
+            ? cands.map(c => ({ id: c.id, nozzle_number: c.nozzle_number, fuel_type: c.fuel_type }))
+            : undefined,
         };
       })
       .filter(n => n.nozzle_no);
+
+    // Keep the SLIP ITSELF. It is the printed evidence behind every opening and
+    // closing meter on the shift, and until now it was read and thrown away — the
+    // fifth document Pumpini could read but did not keep. Best-effort, as ever.
+    const slipArtifact = await artifacts.save({
+      station_id: req.stationId,
+      entity_type: 'shift',
+      entity_id: shift_id,
+      kind: 'nozzle_slip',
+      file_base64: image_base64,
+      media_type,
+      ocr: { pump_id: pump, nozzles },
+      meta: { pump_id: pump, slip_type: parsed.slip_type ?? null },
+      uploaded_by: req.user.id,
+    });
 
     res.json({
       slip_type: parsed.slip_type === 'B' ? 'B' : (parsed.slip_type === 'A' ? 'A' : null),
       pump_id: pump,
       nozzles,
+      unmatched: nozzles.filter(n => !n.nozzle_id).length,
+      artifact_id: slipArtifact ? slipArtifact.id : null,
       legible: parsed.legible === true && nozzles.length > 0 && nozzles.every(n => n.legible),
       notes: notes || String(parsed.notes ?? ''),
     });

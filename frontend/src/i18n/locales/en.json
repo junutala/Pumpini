@@ -2163,7 +2163,8 @@
     "dipWarnWhy": "This is today’s closing stock and tomorrow’s opening. Closing the shift without it leaves a gap in the stock record.",
     "dipWarnBack": "Go back",
     "dipWarnSaveClose": "Save these & close",
-    "dipWarnCloseAnyway": "Close anyway"
+    "dipWarnCloseAnyway": "Close anyway",
+    "slipNoMatch2": "Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
