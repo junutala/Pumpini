@@ -116,7 +116,7 @@ export default function AddAttendantPage() {
                 hint={tc('addatt.photoHint', 'Kept as his reference photo — the one his shift-start pictures are checked against.')}
                 onCapture={setPhoto}
                 disabled={busy}
-              />
+          removeLabel={tc('photo.remove', 'Remove')}/>
             </div>
             <button type="submit" disabled={busy} style={{height:44,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:busy?'default':'pointer'}}>
               {busy ? tc('addatt.adding', 'Adding…') : tc('addatt.addAttendant', 'Add attendant')}

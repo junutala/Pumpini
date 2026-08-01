@@ -574,7 +574,8 @@ export default function ShiftEndPage() {
                   label={tc('send.photoOfOperator','Photo of the operator')}
                   hint={tc('send.photoOfOperatorHint','Taken as he hands over. Optional — a dead camera never blocks a settlement.')}
                   onCapture={p => setPhoto(p)}
-                  disabled={!!busy}/>
+                  disabled={!!busy}
+          removeLabel={tc('photo.remove', 'Remove')}/>
 
                 {/* 2 — WHO HE IS. A plain list of the operators still open on this
                     shift; a settled man disappears from it, so he cannot be settled

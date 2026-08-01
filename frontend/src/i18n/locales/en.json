@@ -2783,5 +2783,8 @@
     "imageStored": "Coupon image stored.",
     "willStore": "This photo will be stored with the sale as proof.",
     "dropImage": "Do not store"
+  },
+  "photo": {
+    "remove": "Remove"
   }
 }
