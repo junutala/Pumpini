@@ -10,6 +10,22 @@ const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 const artifacts  = require('../services/artifactService');
 const attendance = require('../services/attendanceService');
+
+// Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
+// deploys first; cached only once TRUE so the first scan after the migration
+// picks them up without an app restart.
+let _hasSlipMapping = false;
+async function hasSlipMapping() {
+  if (_hasSlipMapping) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='nozzles'
+          AND column_name='pump_serial' LIMIT 1`);
+    _hasSlipMapping = rows.length > 0;
+  } catch { _hasSlipMapping = false; }
+  return _hasSlipMapping;
+}
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
@@ -856,10 +872,12 @@ Respond with ONLY a JSON object, nothing else:
 {
  "slip_type": "A" or "B" or "C" or "other",
  "pump_id": "<the FP. ID / FIP No. as a plain number string, or null>",
+ "pump_serial": "<the PUMP SERIAL NUMBER exactly as printed, e.g. 15BC1412V, or null>",
  "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <litres>, "cumulative_amount": <rupees or null>, "legible": <true|false> } ],
  "legible": <true|false overall>,
  "notes": "<short note; mention any nozzle cut off the page or unclear>"
 }
+- pump_serial: copy the PUMP SERIAL NUMBER verbatim, letters and all. It is how we tell WHICH dispenser printed this slip when the slip carries no pump number, so it matters more than pump_id on those layouts. Do not strip characters and do not confuse it with MODEL.
 - pump_id: ONLY a genuine pump/FIP identifier — a small number like 1, 2 or 3. A PUMP SERIAL NUMBER ("17CH2653V"), a MODEL ("1224/2224") and a phone number are NOT pump ids: return null instead. A wrong pump id is worse than none, because it is used to match the slip to our nozzles.
 - READ nozzle_no OFF THE SLIP. It is the number printed next to that block — "Nozzle No1" -> "1", "Nozzle No. : 03" -> "3". DO NOT renumber the blocks by their position on the page. If the first block you can see is nozzle 3, report 3, NOT 1. A slip photographed in two parts must report the SAME numbers it prints in each part, or the second photo silently overwrites the first photo's readings against the wrong nozzles.
 - If a block's nozzle number is itself unreadable, return null for nozzle_no rather than inferring it from order.
@@ -922,8 +940,12 @@ router.post('/parse-slip', authenticate,
     const pumpRaw = String(parsed.pump_id ?? '').replace(/[^\d]/g, '');
     const pump = pumpRaw && pumpRaw.length <= 2 ? pumpRaw : null;
 
+    // pump_serial / slip_nozzle_no arrive with owner-run DDL, so they are named
+    // only once present. Probed, never discovered by a failing SELECT.
+    const slipCols = await hasSlipMapping();
+    const extraCols = slipCols ? ', n.pump_serial, n.slip_nozzle_no' : '';
     const { rows: known } = await pool.query(
-      `SELECT n.id, n.nozzle_number, n.fuel_type
+      `SELECT n.id, n.nozzle_number, n.fuel_type${extraCols}
          FROM nozzles n
         WHERE n.is_active
           AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
@@ -931,6 +953,22 @@ router.post('/parse-slip', authenticate,
     );
     const byNumber = {};
     for (const k of known) (byNumber[String(k.nozzle_number).trim()] ||= []).push(k);
+
+    // THE SERIAL IS THE DISPENSER'S IDENTITY. A slip that prints no pump number
+    // — the HPCL ETOT-MAIN layout does not — leaves "NOZZLE : 1" ambiguous across
+    // every dispenser at the outlet, and no amount of renaming our nozzles can
+    // resolve it, because the ambiguity is on the slip's side. The serial is
+    // stamped on the unit, never changes, and is printed on every slip it emits.
+    // Once mapped in Settings this is an exact lookup with nothing inferred.
+    const serialRaw = String(parsed.pump_serial ?? '').trim().toUpperCase();
+    const bySerial = {};
+    if (slipCols) {
+      for (const k of known) {
+        if (!k.pump_serial || !k.slip_nozzle_no) continue;
+        const key = `${String(k.pump_serial).trim().toUpperCase()}|${String(k.slip_nozzle_no).trim()}`;
+        (bySerial[key] ||= []).push(k);
+      }
+    }
 
     const nozzles = parsed.nozzles
       .map(n => {
@@ -948,11 +986,17 @@ router.post('/parse-slip', authenticate,
         let swapped = false;
         if (isFinite(vol) && isFinite(amt) && amt > 0 && vol > amt) { swapped = true; vol = amt; }
 
-        // Try the qualified form first (it is the more specific), then the bare
-        // number. Never fall back to position.
-        let cands = (label && byNumber[label]) || [];
-        let matchedOn = cands.length ? 'pump.nozzle' : null;
-        if (!cands.length && no) { cands = byNumber[no] || []; matchedOn = cands.length ? 'nozzle' : null; }
+        // Most specific first: the serial identifies the machine outright, so it
+        // beats any numbering convention. Then the qualified pump.nozzle form,
+        // then the bare number. Never fall back to position.
+        let cands = [];
+        let matchedOn = null;
+        if (serialRaw && no) {
+          cands = bySerial[`${serialRaw}|${no}`] || [];
+          matchedOn = cands.length ? 'pump_serial' : null;
+        }
+        if (!cands.length && label) { cands = byNumber[label] || []; matchedOn = cands.length ? 'pump.nozzle' : null; }
+        if (!cands.length && no)    { cands = byNumber[no] || [];    matchedOn = cands.length ? 'nozzle' : null; }
 
         const ambiguous = cands.length > 1;
         return {
@@ -993,6 +1037,11 @@ router.post('/parse-slip', authenticate,
     res.json({
       slip_type: parsed.slip_type === 'B' ? 'B' : (parsed.slip_type === 'A' ? 'A' : null),
       pump_id: pump,
+      // Echoed so the screen can tell the manager exactly which serial to map in
+      // Settings when nothing matched — otherwise "no nozzle matched" is a dead
+      // end and he has no idea what to do about it.
+      pump_serial: serialRaw || null,
+      serial_mapped: !!(serialRaw && Object.keys(bySerial).some(k => k.startsWith(`${serialRaw}|`))),
       nozzles,
       unmatched: nozzles.filter(n => !n.nozzle_id).length,
       artifact_id: slipArtifact ? slipArtifact.id : null,

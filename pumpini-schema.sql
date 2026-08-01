@@ -978,3 +978,42 @@ ALTER TABLE public.attendance
   ADD COLUMN IF NOT EXISTS check_out_artifact_id uuid REFERENCES public.station_artifacts(id);
 
 CREATE INDEX IF NOT EXISTS idx_attendance_shift ON public.attendance(shift_id);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PUMP SERIAL ON THE NOZZLE (2026-08-01) — the last thing stopping a slip scan
+--
+-- A dispenser slip identifies itself by SERIAL NUMBER, not by a pump number:
+--
+--     PUMP SERIAL NUMBER : 15BC1412V
+--     ---: ETOT-MAIN :---
+--     NOZZLE : 1     NOZZLE : 2
+--
+-- So "NOZZLE : 1" alone is ambiguous the moment an outlet has more than one
+-- dispenser — at Kamala it could be nozzle 1.1, 2.1, 3.1 or 4.1. Renumbering the
+-- nozzles cannot fix that, because the ambiguity is on the SLIP's side: it never
+-- says which machine printed it. Only the serial does, and the serial is stamped
+-- on the unit and never changes.
+--
+-- Recording it against the nozzle turns the match into a lookup:
+--     (pump_serial, nozzle number as printed) -> exactly one nozzle
+-- with no inference, no numbering convention to agree on, and no dependence on
+-- our nozzle names matching the machine's.
+--
+-- Nullable and additive: an outlet that has not filled it in keeps the existing
+-- number-based matching, so nothing regresses before it is populated.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS pump_serial character varying(40);
+
+-- The number the SLIP prints for this nozzle, which need not equal ours. Kept as
+-- its own field rather than parsed out of nozzle_number: an outlet must be free
+-- to call its nozzles whatever its staff call them, and a machine is free to
+-- number its own the way its firmware does. Tying the two together is what forced
+-- a rename in the first place.
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS slip_nozzle_no character varying(8);
+
+-- One physical nozzle per (serial, printed number). A partial index so the many
+-- rows with no serial yet do not collide with each other.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_serial_slip_no
+  ON public.nozzles(station_id, pump_serial, slip_nozzle_no)
+  WHERE pump_serial IS NOT NULL AND slip_nozzle_no IS NOT NULL;

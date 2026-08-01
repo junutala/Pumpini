@@ -123,10 +123,19 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
 // POST /api/stations/:id/nozzles
 router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    const { nozzle_number, fuel_type, tank_id } = req.body;
+    const { nozzle_number, fuel_type, tank_id, pump_serial, slip_nozzle_no } = req.body;
+    // pump_serial / slip_nozzle_no map this nozzle to the line its dispenser
+    // prints on a totalizer slip, so a scan resolves without inference. Named
+    // only once the DDL has run (owner-run, so code deploys first).
+    const cols = ['station_id','nozzle_number','fuel_type','tank_id'];
+    const vals = [req.params.id, nozzle_number, fuel_type, tank_id||null];
+    if (await hasSlipMapping()) {
+      cols.push('pump_serial','slip_nozzle_no');
+      vals.push(pump_serial || null, slip_nozzle_no || null);
+    }
     const { rows } = await pool.query(
-      `INSERT INTO nozzles(station_id,nozzle_number,fuel_type,tank_id) VALUES($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, nozzle_number, fuel_type, tank_id||null]
+      `INSERT INTO nozzles(${cols.join(',')}) VALUES(${cols.map((_,i)=>`$${i+1}`).join(',')}) RETURNING *`,
+      vals
     );
     res.status(201).json(rows[0]);
   } catch(err) { next(err); }
@@ -135,15 +144,28 @@ router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('s
 // PATCH /api/stations/:id/nozzles/:nozzle_id
 router.patch('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    const { nozzle_number, fuel_type, tank_id, is_active } = req.body;
+    const { nozzle_number, fuel_type, tank_id, is_active, pump_serial, slip_nozzle_no } = req.body;
+    const sets = [
+      'nozzle_number=COALESCE($1,nozzle_number)',
+      'fuel_type=COALESCE($2,fuel_type)',
+      'tank_id=COALESCE($3,tank_id)',
+      'is_active=COALESCE($4,is_active)',
+    ];
+    const vals = [nozzle_number, fuel_type, tank_id||null, is_active];
+    // Blank CLEARS the mapping here rather than being ignored — an owner who
+    // mistyped a serial must be able to remove it, and COALESCE would silently
+    // keep the wrong one.
+    if (await hasSlipMapping()) {
+      vals.push(pump_serial === undefined ? null : (pump_serial || null));
+      sets.push(`pump_serial=$${vals.length}`);
+      vals.push(slip_nozzle_no === undefined ? null : (slip_nozzle_no || null));
+      sets.push(`slip_nozzle_no=$${vals.length}`);
+    }
+    vals.push(req.params.nozzle_id, req.params.id);
     const { rows } = await pool.query(
-      `UPDATE nozzles SET
-         nozzle_number=COALESCE($1,nozzle_number),
-         fuel_type=COALESCE($2,fuel_type),
-         tank_id=COALESCE($3,tank_id),
-         is_active=COALESCE($4,is_active)
-       WHERE id=$5 AND station_id=$6 RETURNING *`,
-      [nozzle_number, fuel_type, tank_id||null, is_active, req.params.nozzle_id, req.params.id]
+      `UPDATE nozzles SET ${sets.join(', ')}
+       WHERE id=$${vals.length-1} AND station_id=$${vals.length} RETURNING *`,
+      vals
     );
     res.json(rows[0]);
   } catch(err) { next(err); }
