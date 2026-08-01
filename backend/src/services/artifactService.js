@@ -156,8 +156,66 @@ async function getImage(id, client = pool) {
   }
 }
 
+// The NEWEST artifact of one kind for each of many parents, as { entity_id: row }.
+// A list screen showing a face against fifty names must not fire fifty requests,
+// and listFor() answers for exactly one parent. DISTINCT ON is the cheap way to
+// say "latest per entity" in one round trip.
+async function latestForMany({ entity_type, entity_ids, kind = null }, client = pool) {
+  const ids = (Array.isArray(entity_ids) ? entity_ids : []).filter(Boolean);
+  if (!ids.length || !(await hasTable(client))) return {};
+  try {
+    const params = [entity_type, ids];
+    let kindSql = '';
+    if (kind) { params.push(kind); kindSql = ` AND kind = $${params.length}`; }
+    const { rows } = await client.query(
+      `SELECT DISTINCT ON (entity_id)
+              id, station_id, entity_type, entity_id, kind, media_type, meta, captured_at
+         FROM station_artifacts
+        WHERE entity_type = $1 AND entity_id = ANY($2::uuid[])${kindSql}
+          AND (file_base64 IS NOT NULL OR storage_path IS NOT NULL)
+        ORDER BY entity_id, captured_at DESC`,
+      params
+    );
+    const out = {};
+    for (const r of rows) out[r.entity_id] = r;
+    return out;
+  } catch (e) {
+    log('error', `artifact: latest lookup failed — ${e.message || e}`);
+    return {};
+  }
+}
+
+// THE one writer for a member of staff's REFERENCE photograph — the picture his
+// shift-start captures are checked against, and the one the matcher will use when
+// it eventually replaces the operator picker altogether. Enrolment at Add
+// Attendant and a later re-shoot are the SAME concept, so they go through the
+// same function rather than two hand-copied artifacts.save() blocks that can
+// drift on kind, entity_type or meta.
+//
+// A re-shoot is an INSERT, not an update: the old photograph is left in place and
+// the newest simply wins. Faces change, and a record of what someone looked like
+// when a given shift was worked is worth more than the disk it costs.
+async function saveAttendantPhoto(
+  { station_id, user_id, name = null, phase = 'enrolment', file_base64, media_type, uploaded_by },
+  client = pool
+) {
+  return save({
+    station_id,
+    entity_type: 'user',
+    entity_id: user_id,
+    kind: 'attendant_photo',
+    file_base64: file_base64 || null,
+    media_type: media_type || null,
+    meta: { phase, name },
+    uploaded_by,
+  }, client);
+}
+
 function log(level, msg) {
   try { require('../utils/logger')[level](msg); } catch { /* logger optional */ }
 }
 
-module.exports = { save, listFor, getImage, hasTable, KINDS, ENTITY_TYPES };
+module.exports = {
+  save, listFor, latestForMany, getImage, hasTable,
+  saveAttendantPhoto, KINDS, ENTITY_TYPES,
+};

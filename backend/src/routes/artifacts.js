@@ -40,6 +40,32 @@ router.get('/', authenticate, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/artifacts/latest?entity_type=user&entity_ids=<uuid>,<uuid>&kind=attendant_photo
+// The newest artifact per parent, as { entity_id: {id, …} }. For a list screen
+// that shows a face beside every name: one request instead of one per row.
+//
+// Declared BEFORE /:id/image or Express would read "latest" as an artifact id.
+// Station-scoped per row like the list above, so an id guessed from elsewhere
+// returns nothing rather than a photograph. Never 404s — an outlet with no
+// photographs yet gets {} and the screen renders placeholders.
+router.get('/latest', authenticate, async (req, res, next) => {
+  try {
+    const { entity_type, entity_ids, kind } = req.query;
+    if (!entity_type || !entity_ids) {
+      return res.status(400).json({ error: 'entity_type and entity_ids are required' });
+    }
+    const ids = String(entity_ids).split(',').map(s => s.trim()).filter(Boolean);
+    // A page cannot ask about the whole table in one go.
+    if (ids.length > 200) return res.status(400).json({ error: 'Too many ids in one request (max 200).' });
+    const map = await artifacts.latestForMany({ entity_type, entity_ids: ids, kind: kind || null });
+    const out = {};
+    for (const [entityId, row] of Object.entries(map)) {
+      if (await canAccessStation(req.user.id, row.station_id)) out[entityId] = row;
+    }
+    res.json(out);
+  } catch (err) { next(err); }
+});
+
 // GET /api/artifacts/:id/image
 router.get('/:id/image', authenticate, async (req, res, next) => {
   try {

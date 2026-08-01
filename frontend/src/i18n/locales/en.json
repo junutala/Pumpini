@@ -1079,7 +1079,15 @@
     "labelPhoto": "Photo",
     "photoOptional": "(optional)",
     "takePhoto": "Take photo",
-    "photoHint": "Kept as his reference photo — the one his shift-start pictures are checked against."
+    "photoHint": "Kept as his reference photo — the one his shift-start pictures are checked against.",
+    "addPhoto": "Add photo",
+    "retakePhoto": "Retake photo",
+    "retakeHint": "Saved as soon as you take it. The previous photo is kept.",
+    "refPhotoLabel": "Reference photo",
+    "savedPhoto": "{name}'s photo updated.",
+    "errPhoto": "Could not save that photo",
+    "savingPhoto": "Saving…",
+    "cancel": "Cancel"
   },
   "adminp": {
     "superadminConsole": "SuperAdmin Console",
