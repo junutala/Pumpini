@@ -1,23 +1,48 @@
 'use client';
-// End Shift — per-operator settlement (manpower-shortage: an operator can man
-// several nozzles). Select shift → every operator listed → for each: his nozzles'
-// closing meters + Cash/Card/UPI/Credit/Petty cash → live tally → close that
-// operator (POST /reconcile/manager). Then closing dip (stock) → close shift.
-import { useState, useEffect } from 'react';
+// End Shift — TWO screens, mirroring the two at Start Shift.
+//
+//   1. SETTLE ATTENDANTS — for one operator at a time: his photograph, then who he
+//      is, then his nozzles' closing meters, then the settlement breakup, then
+//      close him. Come back to the same working area for the next operator until
+//      every open operator is out.
+//   2. CLOSING GAUGE & DIP — photograph the gauge screen / dip each tank, then
+//      close the shift.
+//
+// It used to be three screens, the first of which only asked "which shift?" — a
+// whole step for a question that has exactly one answer at nearly every outlet.
+// That shift choice now lives inline at the top of screen 1 and is made for the
+// manager when only one shift is open.
+//
+// WHY THE PHOTO COMES BEFORE THE PICKER (owner, 01-Aug-2026): the photograph is
+// PHASE 0 OF FACIAL RECOGNITION. Today it is evidence and the list below it is how
+// the operator is identified. Once the model is mature the picture IDENTIFIES him
+// and the list becomes the FALLBACK for when the match is unsure — so the camera
+// is already first in the order of work, and the manager's habit will not have to
+// change when matching lands. No matching is done here yet.
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock, Droplets } from 'lucide-react';
+import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock, Droplets, ScanLine } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import api from '../../lib/api';
+import PhotoCapture from '../../components/shared/PhotoCapture';
+import ArtifactImage from '../../components/shared/ArtifactImage';
+import api, { parseGaugeScreen } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '';
+// Day-and-time, always en-IN / Asia/Kolkata: a shift clock read as MM/DD would put
+// a night shift on the wrong day. hour12 keeps it readable on the forecourt.
+const fmtWhen = (ts) => ts ? new Date(ts).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true }) : '';
 const fmtL = n => Number(n||0).toFixed(2);
 const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
-const STEPS = ['Select', 'Operators', 'Close'];
+// Two chips, not three — the shift choice is no longer a step of its own.
+const STEPS = [
+  { key:'Settle',     label:'Settle' },
+  { key:'ClosingDip', label:'Closing dip' },
+];
 const hoursSince = (t) => t ? (Date.now() - new Date(t).getTime())/3.6e6 : 0;
 const openedLabel = (t) => { const h = hoursSince(t); return h < 1 ? `${Math.round(h*60)}m ago` : h < 24 ? `${h.toFixed(1)}h ago` : `${Math.floor(h/24)}d ${Math.round(h%24)}h ago`; };
 const readB64 = (file) => new Promise((resolve, reject) => {
@@ -39,30 +64,54 @@ export default function ShiftEndPage() {
   const [shift, setShift] = useState(null);
   const [prices, setPrices] = useState({});       // fuel_type -> price
   const [forms, setForms] = useState({});         // attendant_id -> { closings:{nozzle_id:val}, cash, card, upi, credit, petty }
-  const [closed, setClosed] = useState({});       // attendant_id -> { variance, total_sales }
+  const [closed, setClosed] = useState({});       // attendant_id -> { variance, total_sales, at }
+  const [sel, setSel]     = useState('');         // attendant_id in the working area
+  const [photo, setPhoto] = useState(null);       // { base64, media_type } for the operator being closed
+  const [photoSlot, setPhotoSlot] = useState(0);  // bumps to remount PhotoCapture between operators
   const [scanning, setScanning] = useState('');   // nozzle_id being OCR'd
   const [tanks, setTanks] = useState([]);
-  const [dips, setDips]   = useState({});
-  const [dipVol, setDipVol] = useState({});
+  const [dips, setDips]   = useState({});         // tank_id -> entered mark-ordinal (a physical dip)
+  const [dipVol, setDipVol] = useState({});       // tank_id -> litres (a system/ATG reading)
   const [savedDips, setSavedDips] = useState({});
+  const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> artifact_id of the gauge photo that filled it
+  const [gaugeBusy, setGaugeBusy] = useState(false);
+  const [gaugeMsg, setGaugeMsg]   = useState('');
+  const [gaugeArtifact, setGaugeArtifact] = useState('');
+  const [dipWarn, setDipWarn] = useState(null);   // { dirty:[tank], missing:[tank] } | null
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
   const [done, setDone]   = useState(false);
 
+  // Auto-pick fires once per mount only — a manager who deliberately switched to
+  // another open shift must not have the list yank him back.
+  const autoPicked = useRef(false);
+
   useEffect(() => {
     if (!stationId) return;
     api.get('/shifts', { params:{ station_id: stationId, status:'open' } })
-      .then(r => setOpen(Array.isArray(r)?r:[])).catch(()=>setOpen([]));
-  }, [stationId]);
+      .then(r => {
+        const list = Array.isArray(r) ? r : [];
+        setOpen(list);
+        // ONE open shift is the normal case at a single-outlet station, so choose
+        // it for him. Several open shifts is a real choice — the chips below stay.
+        if (list.length === 1 && !autoPicked.current) { autoPicked.current = true; pickShift(list[0]); }
+      })
+      .catch(()=>setOpen([]));
+  }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickShift = async (s) => {
     setBusy('pick'); setErr('');
     try {
-      const [d, tk, pr, reco] = await Promise.all([
+      const [d, tk, pr, reco, dr] = await Promise.all([
         api.get(`/shifts/${s.id}`),
         api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
         api.get(`/prices/${stationId}/current`).catch(()=>[]),
         api.get(`/reconcile/${s.id}`).catch(()=>[]),   // already-settled operators
+        // Tanks that ALREADY have a closing dip stored for this shift. Without this
+        // the hard-stop below fires for readings that are safely in the database —
+        // and a blocking warning that cries wolf is how managers learn to click
+        // past the real one.
+        api.get('/dipstick', { params:{ station_id: stationId, shift_id: s.id } }).catch(()=>[]),
       ]);
       setShift(d);
       setActiveShift({ id:d.id, shift_number:d.shift_number, start_time:d.start_time, station_id:d.station_id });
@@ -82,12 +131,18 @@ export default function ShiftEndPage() {
             upi:    r.upi_total    != null ? String(r.upi_total)    : '',
             credit: r.credit_total != null ? String(r.credit_total) : '',
             petty:  r.petty_cash   != null ? String(r.petty_cash)   : '' };
-          closedSeed[a.attendant_id] = { variance: num(r.cash_actual) - num(r.cash_expected), total_sales: num(r.total_sales) };
+          closedSeed[a.attendant_id] = { variance: num(r.cash_actual) - num(r.cash_expected), total_sales: num(r.total_sales), at: r.reconciled_at || null };
         } else {
           seed[a.attendant_id] = { closings:{}, cash:'', card:'', upi:'', credit:'', petty:'' };
         }
       });
-      setForms(seed); setClosed(closedSeed); setStep(1);
+      setForms(seed); setClosed(closedSeed);
+      // Dip state belongs to the shift being closed — switching shift must not
+      // carry a half-typed reading across.
+      setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
+      setShiftDips(new Set((Array.isArray(dr)?dr:[])
+        .filter(x => x.reading_type === 'closing').map(x => x.tank_id)));
+      setStep(0);
     } catch(e){ setErr(e.response?.data?.error||e.error||tc('send.couldNotLoadShift', 'Could not load shift')); }
     setBusy('');
   };
@@ -95,6 +150,16 @@ export default function ShiftEndPage() {
   const attendants = shift?.attendants || [];
   const setF  = (aid, k, v) => setForms(p => ({ ...p, [aid]: { ...p[aid], [k]: v } }));
   const setCl = (aid, nid, v) => setForms(p => ({ ...p, [aid]: { ...p[aid], closings: { ...(p[aid]?.closings||{}), [nid]: v } } }));
+
+  // The working area always holds ONE operator. When he is settled (or the shift
+  // is reloaded) it moves on to the next one still open, so the manager never has
+  // to hunt for where to carry on.
+  useEffect(() => {
+    const list = shift?.attendants || [];
+    if (sel && !closed[sel] && list.some(a => a.attendant_id === sel)) return;
+    const next = list.find(a => !closed[a.attendant_id]);
+    setSel(next ? next.attendant_id : '');
+  }, [shift, closed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live tally for one operator
   const opSales = (a) => {
@@ -129,7 +194,9 @@ export default function ShiftEndPage() {
   };
 
   // Scan the whole printed pump slip (Slip A/B) — fills the CLOSING meter for
-  // every nozzle on it across all operators, matched by label "{pump}.{nozzle}".
+  // every nozzle on it across ALL operators, matched by label "{pump}.{nozzle}".
+  // It stays a shift-wide action (not per-operator) because the slip itself is
+  // shift-wide: one print-out covers every nozzle on the pump.
   const scanSlip = async (file) => {
     if (!file || !shift) return;
     setScanning('slip'); setErr('');
@@ -165,54 +232,221 @@ export default function ShiftEndPage() {
     if (fm.cash === '' || fm.cash == null) return setErr(tc('send.enterCountedCash', 'Enter counted cash for {name} (0 if none).').replace('{name}', a.attendant_name));
     setBusy('op'+a.attendant_id); setErr('');
     try {
-      const r = await api.post('/reconcile/manager', {
+      // The photograph rides on the settlement call itself — the backend stores it
+      // and stamps check_out in the SAME transaction, so the money and the man's
+      // clock can never disagree. It is optional: a dead camera must never stop an
+      // operator being settled and released.
+      const body = {
         shift_id: shift.id, attendant_id: a.attendant_id, closings,
         card_total: num(fm.card), upi_total: num(fm.upi), cash_actual: num(fm.cash),
         credit_total: num(fm.credit), petty_cash: num(fm.petty),
-      });
-      setClosed(p => ({ ...p, [a.attendant_id]: { variance: num(r.variance), total_sales: num(r.total_sales) } }));
+      };
+      if (photo?.base64) { body.photo_base64 = photo.base64; body.photo_media_type = photo.media_type; }
+      const r = await api.post('/reconcile/manager', body);
+      setClosed(p => ({ ...p, [a.attendant_id]: { variance: num(r.variance), total_sales: num(r.total_sales), at: new Date().toISOString() } }));
+      setPhoto(null); setPhotoSlot(n => n + 1);   // fresh camera for the next operator
+      // Pull the shift back so the settled list can show his stored photo and the
+      // close time the server actually recorded. Best-effort: a failed refresh is
+      // cosmetic, the settlement is already banked.
+      api.get(`/shifts/${shift.id}`).then(d => { if (d) setShift(d); }).catch(()=>{});
     } catch(e){ setErr(e.response?.data?.error||e.error||tc('send.couldNotCloseOperator', 'Could not close operator')); }
     setBusy('');
   };
 
-  const allClosed = attendants.length > 0 && attendants.every(a => closed[a.attendant_id]);
+  const unsettled = attendants.filter(a => !closed[a.attendant_id]);
+  const settled   = attendants.filter(a =>  closed[a.attendant_id]);
+  const selA      = attendants.find(a => a.attendant_id === sel) || null;
+  const allClosed = attendants.length > 0 && unsettled.length === 0;
   // An empty shift (opened by mistake, no operators) has nothing to reconcile —
   // allow closing it directly so it doesn't sit open as an eyesore.
   const emptyShift = !!shift && attendants.length === 0;
 
-  // Closing dipstick (stock continuity)
+  // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
+  const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
+
+  // ── Gauge-screen scan (ATG / Pinelabs console photo) ──────────────────
+  // The closing half of what shift-start already does for the opening stock. It
+  // fills the LITRES box only, never the dip. That is deliberate: saveDip below
+  // treats "dip entered" as a physical check and "litres only" as a system (ATG)
+  // reading, keeping dip_cm null — which is exactly what a console reading is.
+  // Nothing is saved by scanning; the manager still presses Save per tank.
+  //
+  // The image is downscaled here rather than through PhotoCapture: a console
+  // screen full of small digits needs far more pixels (2600px) than a face does,
+  // and PhotoCapture's 1400px bound would cost readings.
+  const handleGaugeScan = async (file) => {
+    if (!file || !shift) return;
+    setGaugeBusy(true); setGaugeMsg(''); setErr('');
+    try {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      const { base64, media_type } = await new Promise((resolve, reject) => {
+        img.onload = () => {
+          const max = 2600, scale = Math.min(1, max / Math.max(img.width, img.height));
+          const cw = Math.round(img.width*scale), ch = Math.round(img.height*scale);
+          const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+          c.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          URL.revokeObjectURL(url);
+          resolve({ base64: c.toDataURL('image/jpeg', 0.92).split(',')[1], media_type: 'image/jpeg' });
+        };
+        img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+        img.src = url;
+      });
+      // reading_type + shift_id file the stored screen under THIS shift's close, so
+      // the closing stock figure can always be traced back to the picture it came
+      // from. artifact_id may be null on a database where the DDL has not run yet.
+      const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type,
+        shift_id: shift.id, reading_type: 'closing' });
+      const artId = res.artifact_id || null;
+      setGaugeArtifact(artId || '');
+      const rows = Array.isArray(res.tanks) ? res.tanks : [];
+      // MATCH ON TANK NUMBER, GUARDED BY FUEL.
+      // The owner keeps the console's tank numbering aligned with Pumpini's, so the
+      // number is an exact, deterministic key — better than any heuristic, and it
+      // separates two tanks of the SAME fuel, which fuel or capacity cannot.
+      //
+      // But nothing in the DB enforces that alignment: add a tank in Settings and
+      // number it 2 while the console calls it 3, and a number match would put a
+      // DIESEL reading into the PETROL tank. That already happened once on staging
+      // (console 1=HSD, 3=MS, 4=Power vs our 1=petrol, 2=diesel). So the number
+      // decides WHICH tank, and fuel is the check that the numbering is still sane:
+      // if they disagree we fill NOTHING for that row and say so — a visible
+      // misconfiguration beats a silently wrong closing stock.
+      const norm = v => String(v || '').toLowerCase();
+
+      const usable   = rows.filter(r => r.net_volume_ltrs != null);
+      const dropped  = rows.filter(r => r.net_volume_ltrs == null).map(r => r.tank_label ?? '?');
+      const claimed  = new Set();
+      const pairs    = [];   // [tank, row]
+      const unplaced = [];   // console labels with no tank here
+      const mismatch = [];   // number matched but the FUEL disagrees — misconfiguration
+
+      usable.forEach(r => {
+        const byNumber = dipTanks.find(t => String(t.tank_number) === String(r.tank_label));
+        if (byNumber) {
+          if (norm(byNumber.fuel_type) !== norm(r.product)) {
+            mismatch.push(`${r.tank_label} (${r.product_raw || r.product})`);
+            return;                                   // never fill across products
+          }
+          // Capacity as a CHECK, never a matcher. Number+fuel cannot catch a swap
+          // between two tanks of the SAME fuel with crossed numbering — but if their
+          // capacities differ, this catches it. Skipped when either side lacks a
+          // capacity, so an unmaintained Settings figure can't block a good reading.
+          const rc = parseFloat(r.capacity_ltrs), tcap = parseFloat(byNumber.capacity_ltrs);
+          if (Number.isFinite(rc) && rc > 0 && Number.isFinite(tcap) && tcap > 0
+              && Math.abs(tcap - rc) > rc * 0.01) {
+            mismatch.push(`${r.tank_label} (${Math.round(rc)}L vs ${Math.round(tcap)}L)`);
+            return;
+          }
+          if (claimed.has(byNumber.id)) return;        // one row per tank, no overwrite
+          claimed.add(byNumber.id); pairs.push([byNumber, r]);
+          return;
+        }
+        // No such number here — fall back to fuel only when it is unambiguous.
+        const sameFuel = dipTanks.filter(t => norm(t.fuel_type) === norm(r.product) && !claimed.has(t.id));
+        if (sameFuel.length === 1) { claimed.add(sameFuel[0].id); pairs.push([sameFuel[0], r]); }
+        else unplaced.push(r.tank_label ?? '?');
+      });
+
+      pairs.forEach(([tank, r]) => {
+        setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
+        setDips(p => ({ ...p, [tank.id]: '' }));
+        setSavedDips(p => ({ ...p, [tank.id]: false }));
+        // Remember WHICH photograph produced this figure, so the Save below can
+        // point the stored reading back at it. Only the tanks this scan filled.
+        setDipArtifact(p => ({ ...p, [tank.id]: artId }));
+      });
+
+      const skipped = [...unplaced, ...dropped];
+      setGaugeMsg(
+        (pairs.length === 0
+          ? tc('send.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
+          : tc('send.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
+        + (skipped.length  ? ' ' + tc('send.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
+        + (mismatch.length ? ' ' + tc('send.gaugeMismatch','Left blank — console tank {list} is a different fuel from the tank of that number here. Check the tank numbering.').replace('{list}', mismatch.join(', ')) : '')
+      );
+    } catch (e) {
+      setErr(e.error || e.response?.data?.error || tc('send.gaugeFail','Could not read the screen — enter the readings manually.'));
+    } finally { setGaugeBusy(false); }
+  };
+
+  // ── Closing dip ───────────────────────────────────────────────────────
+  // Volume for a tank — from the DIP (a physical check) if a dip was entered, else
+  // straight from the LITRES field (a reading typed off, or scanned from, the
+  // ATG/HPCL system). Same distinction as shift-start, deliberately: a tank WITH a
+  // calibration chart must still be saveable from litres alone, or a gauge scan
+  // could not be recorded on a chart-configured tank at all.
   const tankVol = (tk) => {
-    const entered = dips[tk.id];
-    if (entered === '' || entered == null) return null;
-    if (tk.diameter_cm && tk.length_cm) return dipToVolume(tk.diameter_cm, tk.length_cm, markToTrueDip(entered));
-    return dipVol[tk.id] !== '' && dipVol[tk.id] != null ? num(dipVol[tk.id]) : null;
+    const dip = dips[tk.id], litres = dipVol[tk.id];
+    const hasChart = tk.diameter_cm && tk.length_cm;
+    if (dip !== '' && dip != null) {
+      if (hasChart) return dipToVolume(tk.diameter_cm, tk.length_cm, markToTrueDip(dip));
+      return litres !== '' && litres != null ? parseFloat(litres) : null;   // no chart → needs manual litres
+    }
+    return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres only (system reading)
   };
   const saveDip = async (tk) => {
-    const entered = dips[tk.id];
-    if (entered === '' || entered == null) return;
+    const dip = dips[tk.id], litres = dipVol[tk.id];
+    const hasDip    = dip !== '' && dip != null;
+    const hasLitres = litres !== '' && litres != null;
+    if (!hasDip && !hasLitres) return false;
     const hasChart = tk.diameter_cm && tk.length_cm;
     const vol = tankVol(tk);
-    if (vol == null) return setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number));
+    if (vol == null || !Number.isFinite(vol)) { setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number)); return false; }
+    // Dip entered → physical reading (store dip_cm). Litres only → system (ATG)
+    // reading: dip_cm stays null, which is how we tell the two apart downstream.
+    const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
     setBusy('dip'+tk.id); setErr('');
     try {
       await api.post('/dipstick', { station_id: stationId, tank_id: tk.id, shift_id: shift.id,
-        reading_type: 'closing', dip_cm: hasChart ? markToTrueDip(entered) : entered, volume_ltrs: vol });
+        reading_type: 'closing', dip_cm, volume_ltrs: vol,
+        // Optional, and ignored by a backend whose column isn't there yet.
+        artifact_id: dipArtifact[tk.id] || undefined });
       setSavedDips(p => ({ ...p, [tk.id]: true }));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
-      setTanks(ts => ts.map(t => t.id === tk.id
-        ? { ...t, last_dip_cm: (hasChart ? markToTrueDip(entered) : entered), last_reading: vol,
+      setTanks(ts => ts.map(x => x.id === tk.id
+        ? { ...x, last_dip_cm: dip_cm, last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'closing' }
-        : t));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.couldNotSaveDip', 'Could not save dip')); }
-    setBusy('');
+        : x));
+      setBusy('');
+      return true;
+    } catch (e) {
+      setErr(e.response?.data?.error || e.error || tc('send.couldNotSaveDip', 'Could not save dip'));
+      setBusy('');
+      return false;
+    }
   };
 
-  // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
-  const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
-  const fmtWhen = (ts) => new Date(ts).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
+  // A tank the manager has typed into (or a scan has filled) but not yet Saved.
+  // Closing the shift over one of these would silently bin today's closing stock —
+  // which is tomorrow's opening — so Close Shift stops and asks first.
+  const isDirty    = (tk) => {
+    const d = dips[tk.id], l = dipVol[tk.id];
+    const typed = (d !== '' && d != null) || (l !== '' && l != null);
+    return typed && !savedDips[tk.id];
+  };
+  const hasReading = (tk) => !!savedDips[tk.id];
+
+  const requestCloseShift = () => {
+    const dirty   = dipTanks.filter(isDirty);
+    const missing = dipTanks.filter(tk => !isDirty(tk) && !hasReading(tk));
+    if (dirty.length || missing.length) { setDipWarn({ dirty, missing }); return; }
+    closeShift();
+  };
+  // Save everything still pending, then close. Stops on the first failure — the
+  // error banner explains, and closing over a failed save is exactly the loss the
+  // warning exists to prevent.
+  const flushDips = async () => {
+    const pending = dipTanks.filter(isDirty);
+    for (const tk of pending) { const ok = await saveDip(tk); if (!ok) return false; }
+    return true;
+  };
+  const saveAndClose = async () => {
+    setDipWarn(null);
+    if (await flushDips()) await closeShift();
+  };
 
   const closeShift = async () => {
-    setBusy('close');
+    setBusy('close'); setDipWarn(null);
     try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
     catch(e){ setErr(e.response?.data?.error||e.error||tc('send.closeFailed', 'Close failed')); }
     setBusy('');
@@ -228,6 +462,8 @@ export default function ShiftEndPage() {
     );
   };
 
+  const staleShift = !!shift && hoursSince(shift.start_time) > 24;
+
   return (
     <AppShell>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem',flexWrap:'wrap'}}>
@@ -238,114 +474,209 @@ export default function ShiftEndPage() {
 
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if(!done && shift && i<=step) setStep(i); }} disabled={done || (!shift && i>0)}
+          <button key={s.key} onClick={()=>{ if(!done && shift && i<=step) setStep(i); }} disabled={done || !shift}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
               color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift&&i<=step?'pointer':'default'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
-            {tc('send.step'+s, s)}
+            {tc('send.step'+s.key, s.label)}
           </button>
         ))}
       </div>
 
       {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
 
-      {/* STEP 0 — Select shift */}
+      {/* SCREEN 1 — Settle attendants */}
       {step===0 && (
-        <div className="card" style={{maxWidth:620}}>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('send.pickShiftToClose','Pick the shift to close')}</div>
-          {open.length===0 ? <div style={{color:'#aaa',fontSize:13}}>{tc('send.noOpenShifts','No open shifts.')}</div>
-            : open.map(s=>{ const stale = hoursSince(s.start_time) > 24; return (
-              <button key={s.id} onClick={()=>pickShift(s)} disabled={busy==='pick'}
-                style={{width:'100%',textAlign:'left',display:'flex',justifyContent:'space-between',alignItems:'center',
-                  background:stale?'#fef2f2':'#f8fafc',border:'1.5px solid '+(stale?'#fca5a5':'#eef0f2'),borderRadius:10,padding:'10px 12px',marginBottom:8,cursor:'pointer'}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:14}}>{tc('send.shiftLabel','Shift')} {s.shift_number} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {fmtDate(s.date)} · {s.attendant_count} {s.attendant_count===1?tc('send.operator','operator'):tc('send.operators','operators')}</span></div>
-                  <div style={{fontSize:12,color:stale?'#dc2626':'#888',display:'flex',alignItems:'center',gap:4,marginTop:2}}>
-                    <Clock size={12}/> {tc('send.opened','opened')} {openedLabel(s.start_time)} {stale && <span style={{fontWeight:700}}>· {tc('send.openOver24h','OPEN >24h')}</span>}
-                  </div>
+        <div style={{maxWidth:700}}>
+          {/* Which shift — inline, not a step. Kept visible even when there is only
+              one so the manager can see WHAT he is closing, and so the >24h warning
+              still has somewhere to live. */}
+          <div className="card" style={{marginBottom:'0.85rem',padding:'10px 12px'}}>
+            <div style={{fontSize:11,fontWeight:800,color:'var(--text-3)',textTransform:'uppercase',letterSpacing:'.04em',marginBottom:6}}>
+              {tc('send.shiftBeingClosed','Shift being closed')}
+            </div>
+            {open.length===0
+              ? <div style={{color:'#aaa',fontSize:13}}>{tc('send.noOpenShifts','No open shifts.')}</div>
+              : (<>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {open.map(s=>{
+                    const stale = hoursSince(s.start_time) > 24;
+                    const on = shift?.id === s.id;
+                    return (
+                      <button key={s.id} onClick={()=>{ if(!on) pickShift(s); }} disabled={busy==='pick'}
+                        style={{textAlign:'left',borderRadius:10,padding:'8px 12px',cursor:on?'default':'pointer',
+                          border:'1.5px solid '+(on?'#FF6B00':stale?'#fca5a5':'#eef0f2'),
+                          background:on?'#fff7ed':stale?'#fef2f2':'#f8fafc'}}>
+                        <div style={{fontWeight:700,fontSize:13.5}}>
+                          {tc('send.shiftLabel','Shift')} {s.shift_number}
+                          <span style={{fontWeight:400,color:'#888',fontSize:12}}> · {fmtDate(s.date)} · {s.attendant_count} {s.attendant_count===1?tc('send.operator','operator'):tc('send.operators','operators')}</span>
+                        </div>
+                        <div style={{fontSize:11.5,color:stale?'#dc2626':'#888',display:'flex',alignItems:'center',gap:4,marginTop:2}}>
+                          <Clock size={12}/> {tc('send.opened','opened')} {openedLabel(s.start_time)}
+                          {stale && <span style={{fontWeight:800}}>· {tc('send.openOver24h','OPEN >24h')}</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <ChevronRight size={18} color="#bbb"/>
-              </button>
-            ); })}
-        </div>
-      )}
+                {!shift && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>{tc('send.pickShiftToClose','Pick the shift to close')}</div>}
+                {staleShift && <div style={{fontSize:12.5,color:'#dc2626',fontWeight:700,marginTop:8}}>⚠ {tc('send.openOver24hWarn','This shift has been open more than 24 hours — check the readings before settling.')}</div>}
+              </>)}
+          </div>
 
-      {/* STEP 1 — Per-operator settlement */}
-      {step===1 && shift && (
-        <div style={{maxWidth:680}}>
-          {attendants.length>0 && (
+          {shift && attendants.length===0 && (
+            <div className="card" style={{color:'#aaa',fontSize:13,marginBottom:'0.85rem'}}>{tc('send.noOperatorsOnShift','No operators on this shift.')}</div>
+          )}
+
+          {shift && attendants.length>0 && (<>
+            {/* One slip covers every nozzle on the pump, so this stays shift-wide. */}
             <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:12,padding:'9px 14px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
               📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
               <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
             </label>
-          )}
-          {attendants.length===0 && <div className="card" style={{color:'#aaa',fontSize:13}}>{tc('send.noOperatorsOnShift','No operators on this shift.')}</div>}
-          {attendants.map(a=>{
-            const c = closed[a.attendant_id]; const fm = forms[a.attendant_id]||{};
-            const sales = opSales(a), expected = opExpected(a), variance = opVariance(a);
-            return (
-              <div key={a.attendant_id} className="card" style={{marginBottom:'0.85rem',background:c?'#f0fdf4':undefined}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:c?0:10}}>
-                  <div style={{fontWeight:700,fontSize:14}}>{a.attendant_name} <span style={{fontWeight:400,color:'#888',fontSize:12}}>· {tc('send.float','float')} {fmt(a.opening_cash)}</span></div>
-                  {c
-                    ? <span style={{color:'#16a34a',fontSize:12.5,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><CheckCircle size={15}/>{tc('send.closed','Closed')} · {vBadge(c.variance)}</span>
-                    : <span style={{fontSize:12,color:'#888'}}>{(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}</span>}
+
+            {/* THE WORKING CARD — one operator at a time. */}
+            {unsettled.length>0 ? (
+              <div className="card" style={{marginBottom:'0.85rem'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{tc('send.settleAnOperator','Settle an operator')}</div>
+                  <span style={{fontSize:12,fontWeight:700,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'2px 10px'}}>
+                    {tc('send.stillOpenCount','{n} still open').replace('{n}', unsettled.length)}
+                  </span>
                 </div>
 
-                {!c && (<>
-                  {/* Nozzle closings */}
-                  {(a.nozzles||[]).length===0
-                    ? <div style={{fontSize:12.5,color:'#b45309',marginBottom:8}}>{tc('send.noNozzlesAssigned','No nozzles assigned to this operator — fix at shift start.')}</div>
-                    : (a.nozzles||[]).map(nz=>(
-                      <div key={nz.nozzle_id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                        <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
-                        <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
-                          value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
-                        <label title={tc('send.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===nz.nozzle_id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===nz.nozzle_id?'default':'pointer',fontSize:15}}>
-                          {scanning===nz.nozzle_id?'…':'📷'}
-                          <input type="file" accept="image/*" capture="environment" disabled={scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
-                        </label>
+                {/* 1 — HIS PHOTOGRAPH FIRST. Phase 0 of facial recognition: today it
+                    is proof of who was released and when; later the picture will
+                    fetch the operator and the picker below becomes the fallback.
+                    Keyed on photoSlot so it clears between operators — but NOT on
+                    the selection, or picking the man after taking his photo (the
+                    intended order) would wipe the photo. */}
+                <PhotoCapture key={`op-photo-${photoSlot}`}
+                  label={tc('send.photoOfOperator','Photo of the operator')}
+                  hint={tc('send.photoOfOperatorHint','Taken as he hands over. Optional — a dead camera never blocks a settlement.')}
+                  onCapture={p => setPhoto(p)}
+                  disabled={!!busy}/>
+
+                {/* 2 — WHO HE IS. A plain list of the operators still open on this
+                    shift; a settled man disappears from it, so he cannot be settled
+                    twice by mistake. */}
+                <div style={{marginTop:12}}>
+                  <label className="label">{tc('send.operator','Operator')}</label>
+                  <select style={inp} value={sel} onChange={e=>setSel(e.target.value)}>
+                    <option value="">{tc('send.selectOperator','Select…')}</option>
+                    {unsettled.map(a => <option key={a.attendant_id} value={a.attendant_id}>{a.attendant_name}</option>)}
+                  </select>
+                </div>
+
+                {selA && (()=>{
+                  const a = selA; const fm = forms[a.attendant_id]||{};
+                  const sales = opSales(a), expected = opExpected(a), variance = opVariance(a);
+                  return (
+                    <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                        <div style={{fontSize:12.5,color:'#555'}}>
+                          {tc('send.float','float')} <b>{fmt(a.opening_cash)}</b>
+                          {' · '}{(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}
+                        </div>
+                        {/* The span he is being released from. started_at is null
+                            until the attendance DDL has run — say so rather than
+                            print a blank. */}
+                        <div style={{fontSize:12,color:'#888',display:'flex',alignItems:'center',gap:4}}>
+                          <Clock size={12}/>
+                          {a.started_at
+                            ? tc('send.onShiftSince','on shift since {t}').replace('{t}', fmtWhen(a.started_at))
+                            : tc('send.startTimeNotRecorded','start time not recorded')}
+                        </div>
                       </div>
-                    ))}
 
-                  {/* 5 buckets */}
-                  <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginTop:10}}>
-                    <div><label className="label">{tc('send.cash','Cash')} ₹</label><input style={inp} type="number" step="0.01" value={fm.cash||''} onChange={e=>setF(a.attendant_id,'cash',e.target.value)}/></div>
-                    <div><label className="label">{tc('send.card','Card')} ₹</label><input style={inp} type="number" step="0.01" value={fm.card||''} onChange={e=>setF(a.attendant_id,'card',e.target.value)}/></div>
-                    <div><label className="label">UPI ₹</label><input style={inp} type="number" step="0.01" value={fm.upi||''} onChange={e=>setF(a.attendant_id,'upi',e.target.value)}/></div>
-                    <div><label className="label">{tc('send.credit','Credit')} ₹</label><input style={inp} type="number" step="0.01" value={fm.credit||''} onChange={e=>setF(a.attendant_id,'credit',e.target.value)}/></div>
-                    <div><label className="label">{tc('send.pettySkim','Petty/Skim')} ₹</label><input style={inp} type="number" step="0.01" value={fm.petty||''} onChange={e=>setF(a.attendant_id,'petty',e.target.value)}/></div>
-                  </div>
+                      {/* 3 — his nozzles' closing meters */}
+                      {(a.nozzles||[]).length===0
+                        ? <div style={{fontSize:12.5,color:'#b45309',marginBottom:8}}>{tc('send.noNozzlesAssigned','No nozzles assigned to this operator — fix at shift start.')}</div>
+                        : (a.nozzles||[]).map(nz=>(
+                          <div key={nz.nozzle_id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                            <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
+                            <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
+                              value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
+                            <label title={tc('send.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===nz.nozzle_id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===nz.nozzle_id?'default':'pointer',fontSize:15}}>
+                              {scanning===nz.nozzle_id?'…':'📷'}
+                              <input type="file" accept="image/*" capture="environment" disabled={scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
+                            </label>
+                          </div>
+                        ))}
 
-                  {/* Live tally */}
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:10,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
-                    <div style={{fontSize:12,color:'#555'}}>{tc('send.sales','Sales')} <b>{fmt(sales)}</b> · {tc('send.expectedCash','Expected cash')} <b>{fmt(expected)}</b> → {vBadge(variance)}</div>
-                    <button onClick={()=>closeOperator(a)} disabled={busy==='op'+a.attendant_id}
-                      style={{height:38,padding:'0 16px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>
-                      {busy==='op'+a.attendant_id?tc('send.closingEllipsis','Closing…'):tc('send.closeOperator','Close operator')}
-                    </button>
-                  </div>
-                </>)}
+                      {/* 4 — the settlement breakup */}
+                      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginTop:10}}>
+                        <div><label className="label">{tc('send.cash','Cash')} ₹</label><input style={inp} type="number" step="0.01" value={fm.cash||''} onChange={e=>setF(a.attendant_id,'cash',e.target.value)}/></div>
+                        <div><label className="label">{tc('send.card','Card')} ₹</label><input style={inp} type="number" step="0.01" value={fm.card||''} onChange={e=>setF(a.attendant_id,'card',e.target.value)}/></div>
+                        <div><label className="label">UPI ₹</label><input style={inp} type="number" step="0.01" value={fm.upi||''} onChange={e=>setF(a.attendant_id,'upi',e.target.value)}/></div>
+                        <div><label className="label">{tc('send.credit','Credit')} ₹</label><input style={inp} type="number" step="0.01" value={fm.credit||''} onChange={e=>setF(a.attendant_id,'credit',e.target.value)}/></div>
+                        <div><label className="label">{tc('send.pettySkim','Petty/Skim')} ₹</label><input style={inp} type="number" step="0.01" value={fm.petty||''} onChange={e=>setF(a.attendant_id,'petty',e.target.value)}/></div>
+                      </div>
+
+                      {/* 5 — live tally, 6 — close him */}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:10,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
+                        <div style={{fontSize:12,color:'#555'}}>{tc('send.sales','Sales')} <b>{fmt(sales)}</b> · {tc('send.expectedCash','Expected cash')} <b>{fmt(expected)}</b> → {vBadge(variance)}</div>
+                        <button onClick={()=>closeOperator(a)} disabled={busy==='op'+a.attendant_id}
+                          style={{height:38,padding:'0 16px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>
+                          {busy==='op'+a.attendant_id?tc('send.closingEllipsis','Closing…'):tc('send.closeOperator','Close operator')}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            );
-          })}
+            ) : (
+              <div className="card" style={{marginBottom:'0.85rem',background:'#f0fdf4',display:'flex',alignItems:'center',gap:8}}>
+                <CheckCircle size={18} color="#16a34a"/>
+                <span style={{fontSize:13.5,fontWeight:700,color:'#166534'}}>{tc('send.allOperatorsSettled','Every operator on this shift is settled.')}</span>
+              </div>
+            )}
+
+            {/* Settled so far — the running record, with the man's start and close
+                photographs side by side. Both artifact ids may be null on a
+                database where the DDL has not run; ArtifactImage draws a
+                placeholder rather than an error. */}
+            {settled.length>0 && (
+              <div className="card" style={{marginBottom:'0.85rem'}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>
+                  {tc('send.settledSoFar','Settled')} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {settled.length}/{attendants.length}</span>
+                </div>
+                {settled.map(a=>{
+                  const c = closed[a.attendant_id] || {};
+                  const when = a.ended_at || c.at;
+                  return (
+                    <div key={a.attendant_id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderTop:'1px solid #f1f5f9'}}>
+                      <ArtifactImage artifactId={a.photo_start_artifact_id} size={34} label={`${a.attendant_name} — ${tc('send.atStart','at start')}`}/>
+                      <ArtifactImage artifactId={a.photo_close_artifact_id} size={34} label={`${a.attendant_name} — ${tc('send.atClose','at close')}`}/>
+                      <div style={{minWidth:0,flex:1}}>
+                        <div style={{fontWeight:700,fontSize:13.5}}>{a.attendant_name}</div>
+                        <div style={{fontSize:11.5,color:'#888'}}>{tc('send.closed','Closed')}{when?` · ${fmtWhen(when)}`:''}</div>
+                      </div>
+                      {vBadge(num(c.variance))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>)}
+
           {emptyShift ? (
             <button onClick={closeShift} disabled={busy==='close'}
               style={{width:'100%',height:44,marginTop:'0.25rem',background:'#dc2626',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:busy==='close'?'default':'pointer'}}>
               {busy==='close'?tc('send.closingEllipsis','Closing…'):tc('send.closeEmptyShift','Close empty shift (nothing to reconcile)')}
             </button>
-          ) : (
-          <button onClick={()=>setStep(2)} disabled={!allClosed}
-            style={{width:'100%',height:44,marginTop:'0.25rem',background:allClosed?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:allClosed?'pointer':'not-allowed'}}>
-            {allClosed?tc('send.nextClosingDip','Next: Closing dip & close shift →'):tc('send.closeEveryOperatorFirst','Close every operator first')}
-          </button>
-          )}
+          ) : shift ? (
+            <button onClick={()=>setStep(1)} disabled={!allClosed}
+              style={{width:'100%',height:44,marginTop:'0.25rem',background:allClosed?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:allClosed?'pointer':'not-allowed'}}>
+              {allClosed?tc('send.nextClosingDip','Next: Closing dip & close shift →'):tc('send.closeEveryOperatorFirst','Close every operator first')}
+            </button>
+          ) : null}
         </div>
       )}
 
-      {/* STEP 2 — Closing dip + close shift */}
-      {step===2 && shift && (
+      {/* SCREEN 2 — Closing gauge & dip, then close the shift */}
+      {step===1 && shift && (
         <div className="card" style={{maxWidth:620}}>
           {done ? (
             <div style={{textAlign:'center'}}>
@@ -357,19 +688,47 @@ export default function ShiftEndPage() {
           ) : (<>
             <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('send.closingDipReadings','Closing dip readings')}</div>
             <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('send.closingDipDesc','Each tank’s closing dip (4 marks/cm). This is today’s closing stock — and tomorrow’s opening.')}</div>
+
+            {/* Photograph the gauge screen. Optional shortcut for outlets with an
+                automation console; outlets that take a physical dip (e.g. IOCL)
+                simply never use it and the boxes below are unchanged. */}
+            {dipTanks.length>0 && (
+              <div style={{marginBottom:'1rem'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 12px',borderRadius:8,
+                    border:'1px solid #cbd5e1',background:'#f8fafc',fontSize:12.5,fontWeight:600,
+                    cursor:gaugeBusy?'wait':'pointer',color:'#334155'}}>
+                    <ScanLine size={15}/>
+                    {gaugeBusy ? tc('send.gaugeReading','Reading screen…') : tc('send.gaugeScan','Scan gauge screen')}
+                    <input type="file" accept="image/*" capture="environment" style={{display:'none'}} disabled={gaugeBusy}
+                      onChange={e=>{ handleGaugeScan(e.target.files?.[0]); e.target.value=''; }}/>
+                  </label>
+                  {gaugeArtifact && <ArtifactImage artifactId={gaugeArtifact} size={38} label={tc('send.gaugeScreen','Closing gauge screen')}/>}
+                </div>
+                {gaugeMsg && <div style={{fontSize:12,color:'#b45309',marginTop:6}}>{gaugeMsg}</div>}
+              </div>
+            )}
+
             {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('send.noDipTanks','No dip-measured tanks configured.')}</div>}
             {dipTanks.map(tk => {
-              const hasChart = tk.diameter_cm && tk.length_cm; const vol = tankVol(tk);
+              const hasChart = tk.diameter_cm && tk.length_cm;
+              const vol = tankVol(tk);
+              // A dip on a charted tank OWNS the litres box — the figure is computed,
+              // not typed. Otherwise the box is live, which is what lets a scanned
+              // (or typed) system reading be saved on a charted tank with dip_cm null.
+              const dipOwnsLitres = dips[tk.id]!=='' && dips[tk.id]!=null && hasChart;
               return (
                 <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                   <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                     <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('send.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                    <input style={{...inp,width:120}} type="number" step="0.1" placeholder={hasChart?tc('send.dipExample','dip e.g. 58.3'):tc('send.dipCm','dip cm')}
+                    <input style={{...inp,width:110}} type="number" step="0.1" placeholder={hasChart?tc('send.dipExample','dip e.g. 58.3'):tc('send.dipCm','dip cm')}
                       value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                    {hasChart
-                      ? <div style={{minWidth:110,fontSize:13,fontWeight:600,color:'#0369a1'}}>{vol!=null?`${fmtL(vol)} L`:'—'}</div>
-                      : <input style={{...inp,width:120}} type="number" step="0.01" placeholder={tc('send.volumeL','volume L')}
-                          value={dipVol[tk.id]||''} onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>}
+                    <span style={{fontSize:12,color:'#94a3b8'}}>{tc('send.orWord','or')}</span>
+                    <input style={{...inp,width:130,...(dipOwnsLitres?{background:'#f1f5f9',color:'#0369a1',fontWeight:600}:{})}}
+                      type="number" step="0.01" placeholder={tc('send.litresSystem','litres (system)')}
+                      readOnly={dipOwnsLitres}
+                      value={dipOwnsLitres ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
+                      onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                     <button onClick={()=>saveDip(tk)} disabled={busy==='dip'+tk.id||savedDips[tk.id]}
                       style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
                         background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
@@ -392,16 +751,55 @@ export default function ShiftEndPage() {
               <div style={{fontSize:12.5,fontWeight:700,color:'#555',marginBottom:6}}>{tc('send.operatorsSettled','Operators settled')}</div>
               {attendants.map(a=>(
                 <div key={a.attendant_id} style={{display:'flex',justifyContent:'space-between',fontSize:12.5,padding:'3px 0'}}>
-                  <span>{a.attendant_name}</span>{closed[a.attendant_id] ? vBadge(closed[a.attendant_id].variance) : <span style={{color:'#aaa'}}>—</span>}
+                  <span>{a.attendant_name}</span>{closed[a.attendant_id] ? vBadge(num(closed[a.attendant_id].variance)) : <span style={{color:'#aaa'}}>—</span>}
                 </div>
               ))}
             </div>
 
-            <button onClick={closeShift} disabled={busy==='close' || !allClosed}
+            <button onClick={requestCloseShift} disabled={busy==='close' || !allClosed}
               style={{width:'100%',height:48,marginTop:'1rem',background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>
               {busy==='close'?tc('send.closingEllipsis','Closing…'):tc('send.closeShift','Close Shift')}
             </button>
           </>)}
+        </div>
+      )}
+
+      {/* Unsaved / missing closing dip — the last thing between a typed reading and
+          losing it. Closing over an unsaved figure would bin today's closing stock,
+          which is also tomorrow's opening, so it is worth stopping for. */}
+      {dipWarn && (
+        <div role="presentation" onClick={()=>setDipWarn(null)}
+          style={{position:'fixed',inset:0,background:'rgba(15,23,42,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div role="presentation" onClick={e=>e.stopPropagation()} className="card" style={{maxWidth:430,width:'100%'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+              <AlertTriangle size={18} color="#b45309"/>
+              <span style={{fontWeight:800,fontSize:15}}>{tc('send.dipWarnTitle','Closing dip not saved')}</span>
+            </div>
+            {dipWarn.dirty.length>0 && (
+              <div style={{fontSize:13,color:'#555',marginBottom:8}}>
+                {tc('send.dipWarnUnsaved','Typed but not saved: {list}.').replace('{list}', dipWarn.dirty.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
+              </div>
+            )}
+            {dipWarn.missing.length>0 && (
+              <div style={{fontSize:13,color:'#555',marginBottom:8}}>
+                {tc('send.dipWarnMissing','No closing reading yet: {list}.').replace('{list}', dipWarn.missing.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
+              </div>
+            )}
+            <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:12}}>{tc('send.dipWarnWhy','This is today’s closing stock and tomorrow’s opening. Closing the shift without it leaves a gap in the stock record.')}</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>setDipWarn(null)} style={{flex:1,minWidth:110,height:40,background:'#fff',border:'1.5px solid #e5e3de',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                {tc('send.dipWarnBack','Go back')}
+              </button>
+              {dipWarn.dirty.length>0 && (
+                <button onClick={saveAndClose} style={{flex:1,minWidth:130,height:40,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                  {tc('send.dipWarnSaveClose','Save these & close')}
+                </button>
+              )}
+              <button onClick={closeShift} style={{flex:1,minWidth:110,height:40,background:'#dc2626',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                {tc('send.dipWarnCloseAnyway','Close anyway')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </AppShell>
