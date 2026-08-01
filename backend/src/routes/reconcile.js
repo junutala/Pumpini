@@ -945,7 +945,7 @@ router.post('/parse-slip', authenticate,
     const slipCols = await hasSlipMapping();
     // The serial comes from the PUMP now, joined in, rather than repeated on every
     // nozzle. Same lookup, one home for the fact.
-    const extraCols = slipCols ? ', p.serial AS pump_serial, n.slip_nozzle_no' : '';
+    const extraCols = slipCols ? ', p.serial AS pump_serial, p.pump_number, n.slip_nozzle_no' : '';
     const extraJoin = slipCols ? 'LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL' : '';
     const { rows: known } = await pool.query(
       `SELECT n.id, n.nozzle_number, n.fuel_type${extraCols}
@@ -965,6 +965,23 @@ router.post('/parse-slip', authenticate,
     // stamped on the unit, never changes, and is printed on every slip it emits.
     // Once mapped in Settings this is an exact lookup with nothing inferred.
     const serialRaw = String(parsed.pump_serial ?? '').trim().toUpperCase();
+
+    // SERIAL -> PUMP NUMBER. That is the whole trick, and it needs no extra data:
+    // outlets name nozzles pump.nozzle, so once the serial tells us WHICH pump
+    // printed the slip, its number plus the nozzle number the slip prints IS the
+    // nozzle's name. Pump 1 + "NOZZLE : 1" -> "1.1". Nothing to map, nothing to
+    // type, nothing to keep in step.
+    const pumpNumberBySerial = {};
+    if (slipCols) {
+      for (const k of known) {
+        if (!k.pump_serial || !k.pump_number) continue;
+        pumpNumberBySerial[String(k.pump_serial).trim().toUpperCase()] = String(k.pump_number).trim();
+      }
+    }
+
+    // Kept as an OVERRIDE only, for a machine that numbers its own nozzles
+    // differently from the outlet's convention. Nobody fills it in the ordinary
+    // case, because the concatenation above already answers it.
     const bySerial = {};
     if (slipCols) {
       for (const k of known) {
@@ -995,9 +1012,15 @@ router.post('/parse-slip', authenticate,
         // then the bare number. Never fall back to position.
         let cands = [];
         let matchedOn = null;
-        if (serialRaw && no) {
-          cands = bySerial[`${serialRaw}|${no}`] || [];
+        // 1. Serial -> pump number -> "<pump>.<nozzle>". The plain path.
+        if (serialRaw && no && pumpNumberBySerial[serialRaw]) {
+          cands = byNumber[`${pumpNumberBySerial[serialRaw]}.${no}`] || [];
           matchedOn = cands.length ? 'pump_serial' : null;
+        }
+        // 2. Explicit override, for a machine whose own numbering differs.
+        if (!cands.length && serialRaw && no) {
+          cands = bySerial[`${serialRaw}|${no}`] || [];
+          matchedOn = cands.length ? 'pump_serial_mapped' : null;
         }
         if (!cands.length && label) { cands = byNumber[label] || []; matchedOn = cands.length ? 'pump.nozzle' : null; }
         if (!cands.length && no)    { cands = byNumber[no] || [];    matchedOn = cands.length ? 'nozzle' : null; }

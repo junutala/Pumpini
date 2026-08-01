@@ -2340,8 +2340,6 @@
     "noNozzlesOnPump": "No nozzles on this pump yet.",
     "addNozzleHere": "Add nozzle",
     "moveHere": "Move a nozzle here:",
-    "slipNo": "Slip no.",
-    "egSlipNo": "e.g. 1",
     "deleteNozzle": "Delete nozzle",
     "nozzleNumberRequired": "Enter a nozzle number",
     "pumpNumber": "Pump number",

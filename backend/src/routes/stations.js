@@ -152,7 +152,9 @@ router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('s
     const vals = [req.params.id, nozzle_number, fuel_type, tank_id||null];
     if (await hasSlipMapping()) {
       cols.push('pump_id','slip_nozzle_no');
-      vals.push(pump_id || null, slip_nozzle_no || null);
+      // Derived from the nozzle's own name when not given — see pumpService.
+      vals.push(pump_id || null,
+                slip_nozzle_no || (pump_id ? pumpService.defaultSlipNo(nozzle_number) : null));
     }
     const { rows } = await pool.query(
       `INSERT INTO nozzles(${cols.join(',')}) VALUES(${cols.map((_,i)=>`$${i+1}`).join(',')}) RETURNING *`,
@@ -251,8 +253,11 @@ router.patch('/:id/nozzles/:nozzle_id', authenticate, requireStationId('id'), re
     if (await hasSlipMapping()) {
       vals.push(pump_id === undefined ? null : (pump_id || null));
       sets.push(`pump_id=$${vals.length}`);
-      vals.push(slip_nozzle_no === undefined ? null : (slip_nozzle_no || null));
-      sets.push(`slip_nozzle_no=$${vals.length}`);
+      // undefined = caller said nothing, so derive; '' = caller cleared it on purpose.
+      vals.push(slip_nozzle_no === undefined
+        ? pumpService.defaultSlipNo(nozzle_number)
+        : (slip_nozzle_no || null));
+      sets.push(`slip_nozzle_no=COALESCE($${vals.length}, slip_nozzle_no)`);
     }
     vals.push(req.params.nozzle_id, req.params.id);
     const { rows } = await pool.query(
