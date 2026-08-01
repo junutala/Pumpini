@@ -1243,6 +1243,14 @@ function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
 function AddPumpForm({ stationId, tc, onAdded }) {
   const [f, setF] = useState({ pump_number:'', serial:'', model:'' });
   const [slip, setSlip] = useState(null);   // { base64, media_type }
+  // Bumped after a successful save so PhotoCapture REMOUNTS. Clearing `slip` alone
+  // leaves the previous pump's thumbnail on screen, which reads as "not saved yet"
+  // and invites a second press.
+  const [slipSlot, setSlipSlot] = useState(0);
+  // A pump with genuinely no printout — CNG dispensers do not print one, and Kamala
+  // has one. Requiring a photo outright would make that pump undefinable, so the
+  // gate is "photograph it OR say it has none", never "photograph it".
+  const [noSlip, setNoSlip] = useState(false);
   const [reading, setReading] = useState(false);
   const [readMsg, setReadMsg] = useState('');
 
@@ -1274,6 +1282,9 @@ function AddPumpForm({ stationId, tc, onAdded }) {
   };
   const [busy, setBusy] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  // A pump needs a number, and evidence of which machine it is — a slip photo, or
+  // an explicit statement that it prints none.
+  const canSave = !!f.pump_number.trim() && (!!slip || noSlip);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -1297,7 +1308,8 @@ function AddPumpForm({ stationId, tc, onAdded }) {
         media_type:   slip?.media_type || undefined,
       });
       setF({ pump_number:'', serial:'', model:'' });
-      setSlip(null);
+      setSlip(null); setNoSlip(false); setReadMsg('');
+      setSlipSlot(n => n + 1);   // remount, so the thumbnail actually disappears
       onAdded();
     } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
     finally { setBusy(false); }
@@ -1312,12 +1324,19 @@ function AddPumpForm({ stationId, tc, onAdded }) {
 
       <div style={{marginBottom:14}}>
         <PhotoCapture
+          key={slipSlot}
           label={tc('setp.photographSlip', 'Photograph a slip from this pump')}
           retakeLabel={tc('setp.retakePhoto', 'Retake')}
           hint={tc('setp.slipHint2', 'Optional. We read the serial and model off the photo — check them below before saving.')}
           onCapture={onSlip}
-          disabled={busy || reading}
+          disabled={busy || reading || noSlip}
           removeLabel={tc('photo.remove', 'Remove')}/>
+        <label style={{display:'inline-flex',alignItems:'center',gap:8,minHeight:44,
+          fontSize:13,color:'var(--text-2)',cursor:'pointer',marginTop:4}}>
+          <input type="checkbox" checked={noSlip} disabled={busy || reading}
+            onChange={e=>{ setNoSlip(e.target.checked); if (e.target.checked) { setSlip(null); setReadMsg(''); setSlipSlot(n=>n+1); } }}/>
+          {tc('setp.noSlipPrinted', 'This pump prints no slip (CNG)')}
+        </label>
         {reading && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
           {tc('setp.readingSlip', 'Reading the slip…')}
         </div>}
@@ -1345,11 +1364,23 @@ function AddPumpForm({ stationId, tc, onAdded }) {
         </div>
       </div>
 
-      <button type="submit" disabled={busy}
-        style={{minHeight:48,padding:'0 26px',background:'#FF6B00',color:'#fff',border:'none',
-          borderRadius:10,cursor:busy?'wait':'pointer',fontWeight:700,fontSize:15}}>
+      {/* GATED ON EVIDENCE, with one honest exception. The slip is what identifies
+          the machine, so saving a pump without one produces a record that can never
+          match a scan — better to stop it here than to leave a dead pump in the
+          list. But a CNG dispenser prints nothing at all, so the gate is
+          "photograph it OR declare it has none", never "photograph it". */}
+      <button type="submit" disabled={busy || reading || !canSave}
+        title={canSave ? undefined : tc('setp.needSlipTitle', 'Photograph a slip, or tick "prints no slip"')}
+        style={{minHeight:48,padding:'0 26px',
+          background:(busy||reading||!canSave)?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',
+          borderRadius:10,cursor:(busy||reading||!canSave)?'not-allowed':'pointer',fontWeight:700,fontSize:15}}>
         {busy ? tc('setp.saving', 'Saving...') : tc('setp.addPumpBtn', 'Add Pump')}
       </button>
+      {!canSave && !busy && !reading && (
+        <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
+          {tc('setp.needSlipHint', 'Photograph a slip from this pump, or tick "prints no slip" above.')}
+        </div>
+      )}
     </form>
   );
 }

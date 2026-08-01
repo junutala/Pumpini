@@ -2373,7 +2373,10 @@
     "gotModel": "model",
     "readOk": "Read the {x} off the slip — check them against the paper.",
     "readNothing": "Could not find a serial on that slip — type it from the paper.",
-    "readFailed": "Could not read that slip — type the serial and model from it."
+    "readFailed": "Could not read that slip — type the serial and model from it.",
+    "noSlipPrinted": "This pump prints no slip (CNG)",
+    "needSlipTitle": "Photograph a slip, or tick \"prints no slip\"",
+    "needSlipHint": "Photograph a slip from this pump, or tick \"prints no slip\" above."
   },
   "sstart": {
     "dashboard": "Dashboard",
