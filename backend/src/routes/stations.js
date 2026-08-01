@@ -162,7 +162,8 @@ router.get('/:id/pumps', authenticate, requireStationId('id'), async (req, res, 
 
 router.post('/:id/pumps', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    res.status(201).json(await pumpService.createPump({ ...req.body, station_id: req.params.id }));
+    res.status(201).json(await pumpService.createPump(
+      { ...req.body, station_id: req.params.id, uploaded_by: req.user.id }));
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);
@@ -171,7 +172,8 @@ router.post('/:id/pumps', authenticate, requireStationId('id'), requirePerm('set
 
 router.patch('/:id/pumps/:pump_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
-    res.json(await pumpService.updatePump(req.params.pump_id, req.params.id, req.body));
+    res.json(await pumpService.updatePump(
+      req.params.pump_id, req.params.id, { ...req.body, uploaded_by: req.user.id }));
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message });
     next(err);

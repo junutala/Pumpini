@@ -14,6 +14,7 @@
 // and its nozzles; a new pump is then defined. Deleting would orphan every meter
 // reading ever taken on it — and those readings are the outlet's sales history.
 const pool = require('../db/pool');
+const artifacts = require('./artifactService');
 
 const badRequest = (msg, extra = {}) => Object.assign(new Error(msg), { status: 400, ...extra });
 const conflict   = (msg, extra = {}) => Object.assign(new Error(msg), { status: 409, ...extra });
@@ -58,16 +59,18 @@ async function listPumps(station_id, client = pool) {
   return rows;
 }
 
-// Nozzles at this outlet that no pump owns yet. Surfaced at the TOP of the screen
+// Nozzles at this outlet that no pump owns yet. INACTIVE ones are included: an
+// inactive nozzle filtered out here would appear in neither the banner nor any pump
+// card, so it would simply vanish from the screen and reappear unassigned the day
+// someone reactivated it. Surfaced at the TOP of the screen
 // rather than hidden: existing outlets have a backlog of these until the owner
 // assigns them, and a visible countdown is what makes the migration finish.
 async function unassignedNozzles(station_id, client = pool) {
   if (!station_id || !(await hasPumps(client))) return [];
   const { rows } = await client.query(
-    `SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id
+    `SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id, n.is_active
        FROM nozzles n
-      WHERE n.station_id = $1 AND n.pump_id IS NULL
-        AND n.end_date IS NULL AND COALESCE(n.is_active, TRUE)
+      WHERE n.station_id = $1 AND n.pump_id IS NULL AND n.end_date IS NULL
       ORDER BY n.nozzle_number`,
     [station_id]
   );
@@ -79,8 +82,31 @@ function cleanSerial(v) {
   return s || null;
 }
 
+// Store the sample slip and hand back its artifact id. The pump form photographs a
+// slip to read the serial off it; keeping the picture is the whole point — the same
+// gap that left coupons and gauge screens unevidenced for months. Best-effort, as
+// everywhere: a pump must still be definable when the camera or the store fails,
+// and a CNG unit has no slip to photograph at all.
+async function storeSlip({ station_id, pump_id, image_base64, media_type, ocr, uploaded_by }, client = pool) {
+  if (!image_base64) return null;
+  const a = await artifacts.save({
+    station_id,
+    entity_type: 'pump',
+    entity_id: pump_id,
+    kind: 'nozzle_slip',
+    file_base64: image_base64,
+    media_type: media_type || 'image/jpeg',
+    ocr: ocr || null,
+    meta: { purpose: 'pump_identification' },
+    uploaded_by: uploaded_by || null,
+  }, client);
+  return a ? a.id : null;
+}
+
 async function createPump(input, client = pool) {
-  const { station_id, pump_number, serial, model, slip_artifact_id, notes } = input || {};
+  const { station_id, pump_number, serial, model, notes,
+          image_base64, media_type, ocr, uploaded_by } = input || {};
+  let { slip_artifact_id } = input || {};
   if (!station_id) throw badRequest('station_id is required.');
   if (!String(pump_number ?? '').trim()) {
     throw badRequest('Give the pump a number — whatever is painted on the unit.');
@@ -94,7 +120,20 @@ async function createPump(input, client = pool) {
       [station_id, String(pump_number).trim(), cleanSerial(serial),
        model ? String(model).trim() : null, slip_artifact_id || null, notes || null]
     );
-    return { ...rows[0], nozzles: [] };
+    const pump = rows[0];
+
+    // The artifact hangs off the pump, so it can only be written once the pump has
+    // an id — hence store-then-link rather than link-on-insert.
+    if (!slip_artifact_id && image_base64) {
+      slip_artifact_id = await storeSlip(
+        { station_id, pump_id: pump.id, image_base64, media_type, ocr, uploaded_by }, client);
+    }
+    if (slip_artifact_id) {
+      const { rows: up } = await client.query(
+        'UPDATE pumps SET slip_artifact_id=$2 WHERE id=$1 RETURNING *', [pump.id, slip_artifact_id]);
+      if (up.length) return { ...up[0], nozzles: [] };
+    }
+    return { ...pump, nozzles: [] };
   } catch (e) {
     // Translate the two partial unique indexes into something the owner can act on.
     if (e.code === '23505') {
@@ -112,7 +151,22 @@ async function createPump(input, client = pool) {
 
 async function updatePump(pump_id, station_id, patch, client = pool) {
   if (!(await hasPumps(client))) throw conflict('Pumps are not set up on this database yet.');
-  const { pump_number, serial, model, slip_artifact_id, notes, is_active, end_date } = patch || {};
+  const { pump_number, serial, model, notes, is_active, end_date,
+          image_base64, media_type, ocr, uploaded_by } = patch || {};
+  let { slip_artifact_id } = patch || {};
+
+  // Re-photographing a slip (a replaced board, or a first photo that was unreadable)
+  // stores the new one and repoints the pump. The old artifact is left in place —
+  // it is evidence of what the machine printed at the time, and superseding is not
+  // the same as never having happened.
+  if (!slip_artifact_id && image_base64) {
+    const { rows: own } = await client.query(
+      'SELECT station_id FROM pumps WHERE id=$1 AND station_id=$2', [pump_id, station_id]);
+    if (own.length) {
+      slip_artifact_id = await storeSlip(
+        { station_id, pump_id, image_base64, media_type, ocr, uploaded_by }, client);
+    }
+  }
 
   const sets = [];
   const vals = [];
