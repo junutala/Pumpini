@@ -850,3 +850,131 @@ END $$;
 -- ──────────────────────────────────────────────────────────────
 
 ALTER TABLE public.station_settings ADD COLUMN IF NOT EXISTS invoice_fy character varying(9);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- ONE ARTIFACT REPOSITORY — public.station_artifacts (2026-08-01)
+--
+-- Pumpini reads four documents from a photo (delivery invoice, settlement meter,
+-- credit coupon, ATG/Pinelabs gauge screen) but only KEPT two of them. The coupon
+-- and the gauge screen were parsed and thrown away, so the claim "we store the
+-- image as proof" was not true for either. This table closes that.
+--
+-- WHY ONE TABLE AND NOT A SECOND dispense_artifacts-SHAPED ONE. The obvious move
+-- was `dipstick_artifacts` next to `dispense_artifacts`. That is exactly the drift
+-- the one-writer rule exists to stop: two artifact tables today, four by the time
+-- deposit slips, credit receipts and petty-cash bills arrive, each with its own
+-- writer, its own RLS policy to forget, and its own idea of what a "kind" is.
+--
+-- Instead the parent is named rather than foreign-keyed: (entity_type, entity_id).
+-- A coupon hangs off a dispense_event, a gauge screen off a shift, an attendant
+-- photo off a shift_attendants row — one table, one writer, one policy.
+--
+-- The trade is real and worth stating: a soft parent reference gets NO referential
+-- integrity, so a deleted parent leaves an orphan artifact. That is the right way
+-- round here — an orphaned PROOF is harmless (it is evidence, and evidence
+-- outliving its record is not a corruption), whereas a cascade that silently
+-- destroys the photograph behind a money document is not.
+--
+-- dispense_artifacts is retired into this table below. It was created on 30-Jul
+-- and never wired to anything, so it holds ZERO rows in both prod and staging
+-- (verified 01-Aug before writing this). The copy is therefore a no-op today and
+-- the drop is free — which it will never be again once coupons start storing.
+--
+-- entity_type / kind are deliberately plain varchars with a CHECK on kind only.
+-- Every new document type is then a one-line change here plus a caller, and never
+-- a new table.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.station_artifacts (
+  id            uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id),
+  -- Soft parent pointer. entity_id is NULLABLE on purpose: a gauge screen can be
+  -- photographed for a plain dip-register entry that belongs to no shift.
+  entity_type   character varying(40) NOT NULL,
+  entity_id     uuid,
+  kind          character varying(30) NOT NULL,
+  -- storage_path is for the eventual move to Supabase Storage. Until then the
+  -- bytes live in file_base64, exactly as meter_photos has done in prod since
+  -- day one — same pattern, no new infrastructure needed to start storing.
+  storage_path  text,
+  file_base64   text,
+  media_type    character varying(40),
+  ocr           jsonb,
+  -- meta carries whatever the document type needs and nothing else does:
+  -- {"reading_type":"opening"} for a gauge screen, and — when facial matching
+  -- lands — {"match":{"verdict":"...","score":0.0}} for an attendant photo.
+  -- Reserved now so Phase 1 adds a verdict without a migration.
+  meta          jsonb,
+  captured_at   timestamp with time zone DEFAULT now(),
+  uploaded_by   uuid REFERENCES public.users(id),
+  CONSTRAINT station_artifacts_kind_chk CHECK (kind IN (
+    'coupon', 'gauge_screen', 'attendant_photo', 'nozzle_meter', 'nozzle_slip'
+  ))
+);
+
+CREATE INDEX IF NOT EXISTS idx_station_artifacts_parent
+  ON public.station_artifacts(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_station_artifacts_station
+  ON public.station_artifacts(station_id, kind, captured_at DESC);
+
+-- RLS IN THE SAME BLOCK AS THE CREATE — see CLAUDE.md. A new table on this
+-- Supabase project gets RLS enabled automatically, and RLS-on-with-no-policy
+-- denies everything: SELECT returns zero rows silently, INSERT raises.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='station_artifacts'
+                   AND policyname='station_artifacts_station_isolation') THEN
+    CREATE POLICY station_artifacts_station_isolation ON public.station_artifacts
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.station_artifacts TO app_authenticated;
+
+-- Retire dispense_artifacts. Copy first, then drop — so this stays correct even
+-- if it is ever run somewhere the table did acquire rows.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema='public' AND table_name='dispense_artifacts') THEN
+    INSERT INTO public.station_artifacts
+      (id, station_id, entity_type, entity_id, kind, storage_path, file_base64,
+       media_type, ocr, captured_at, uploaded_by)
+    SELECT id, station_id, 'dispense_event', dispense_event_id, kind, storage_path,
+           file_base64, media_type, ocr, captured_at, uploaded_by
+      FROM public.dispense_artifacts
+    ON CONFLICT (id) DO NOTHING;
+    DROP TABLE public.dispense_artifacts;
+  END IF;
+END $$;
+
+-- A dip row records WHICH gauge photo produced it, so a figure on the stock
+-- reconciliation can always be traced back to the screen it was read off.
+ALTER TABLE public.dipstick_readings
+  ADD COLUMN IF NOT EXISTS artifact_id uuid REFERENCES public.station_artifacts(id);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PER-ATTENDANT SHIFT CLOCK (2026-08-01)
+--
+-- Attendance already exists as a table and is already unique on
+-- (user_id, date, shift_number) — so this is NOT a new attendance concept, it is
+-- the existing one finally being written by the flow that actually knows the
+-- times. Starting an attendant stamps check_in; settling him stamps check_out.
+--
+-- shift_id ties the row to the shift it came from, which is what makes the record
+-- provable rather than merely typed: the same row now joins to his nozzle
+-- assignment and therefore to meter movement.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS shift_id uuid REFERENCES public.shifts(id) ON DELETE SET NULL;
+-- The photograph taken at start and at close. Nullable — an outlet with a broken
+-- camera must still be able to start a shift.
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS check_in_artifact_id  uuid REFERENCES public.station_artifacts(id);
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS check_out_artifact_id uuid REFERENCES public.station_artifacts(id);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_shift ON public.attendance(shift_id);

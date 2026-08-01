@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { X, ScanLine, AlertTriangle, CheckCircle, Ticket } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { parseCoupon, validateCoupon, captureCoupon, getCoupons } from '../../lib/api';
+import ArtifactImage from '../../components/shared/ArtifactImage';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
@@ -37,6 +38,14 @@ export default function CreditCouponsPage() {
   const [saved, setSaved]   = useState('');
   const [check, setCheck]   = useState(null);   // validate() preview
   const [scanNotes, setNotes] = useState('');
+  // The photographed coupon, held from the scan until the manager confirms, then
+  // saved WITH the sale. The coupon carries the customer's signature and seal and
+  // is what the outlet produces when a bill is disputed months later — the first
+  // cut of this screen read it and threw it away, leaving the invoice line with
+  // nothing behind it. Keeping the raw OCR beside it means a later dispute can see
+  // both what the machine read and what was committed, which is the only way to
+  // tell a mis-scan from a mis-key.
+  const [scanImg, setScanImg] = useState(null); // { base64, media_type, preview, ocr }
 
   const load = async () => {
     if (!stationId) return;
@@ -68,10 +77,11 @@ export default function CreditCouponsPage() {
 
   const onScan = async (file) => {
     if (!file) return;
-    setScan(true); setErr(''); setNotes(''); setCheck(null);
+    setScan(true); setErr(''); setNotes(''); setCheck(null); setScanImg(null);
     try {
       const { base64, media_type } = await toB64(file);
       const r = await parseCoupon({ station_id: stationId, file_base64: base64, media_type });
+      setScanImg({ base64, media_type, preview: `data:${media_type};base64,${base64}`, ocr: r });
       // Faithful reproduction: whatever the coupon says goes in the boxes. One product
       // per coupon in practice — take whichever line carries litres.
       const fuel = r.diesel_ltrs != null ? 'diesel' : (r.petrol_ltrs != null ? 'petrol' : null);
@@ -115,10 +125,19 @@ export default function CreditCouponsPage() {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setErr('');
     try {
-      const ev = await captureCoupon({ ...form, station_id: stationId });
+      // The image rides along in the same request as the sale, so both commit in
+      // one transaction — a stored coupon image always has a sale behind it.
+      const ev = await captureCoupon({
+        ...form,
+        station_id: stationId,
+        file_base64: scanImg?.base64 || null,
+        media_type:  scanImg?.media_type || null,
+        ocr:         scanImg?.ocr || null,
+      });
       setSaved(tc('coupon.savedMsg', 'Coupon {n} recorded — ₹{a}.')
-        .replace('{n}', form.coupon_no).replace('{a}', fmt(ev.amount)));
-      setForm(blank()); setCheck(null); setNotes('');
+        .replace('{n}', form.coupon_no).replace('{a}', fmt(ev.amount))
+        + (ev.artifact_id ? ' ' + tc('coupon.imageStored', 'Coupon image stored.') : ''));
+      setForm(blank()); setCheck(null); setNotes(''); setScanImg(null);
       load();
     } catch (e2) {
       setErr(e2.error || tc('coupon.saveFail', 'Could not record the coupon.'));
@@ -157,6 +176,23 @@ export default function CreditCouponsPage() {
         {scanNotes && (
           <div style={{ fontSize: 12, color: 'var(--warning)', marginBottom: 10, display: 'flex', gap: 6 }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />{scanNotes}
+          </div>
+        )}
+
+        {/* What will be filed against this sale. Shown so the manager can see the
+            coupon is legible BEFORE committing — a blurred photo is worth catching
+            now, not when a customer disputes the bill. */}
+        {scanImg && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={scanImg.preview} alt="" style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 6, border: '1px solid #86efac' }} />
+            <div style={{ fontSize: 12, color: '#166534', fontWeight: 600 }}>
+              {tc('coupon.willStore', 'This photo will be stored with the sale as proof.')}
+            </div>
+            <button type="button" onClick={() => setScanImg(null)}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#166534', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }}>
+              {tc('coupon.dropImage', 'Do not store')}
+            </button>
           </div>
         )}
 
@@ -259,6 +295,7 @@ export default function CreditCouponsPage() {
           <table className="dms-table">
             <thead>
               <tr>
+                <th>{tc('coupon.image', 'Coupon')}</th>
                 <th>{tc('coupon.no', 'Coupon no.')}</th>
                 <th>{tc('coupon.date', 'Coupon date')}</th>
                 <th>{tc('coupon.customer', 'Customer')}</th>
@@ -272,13 +309,17 @@ export default function CreditCouponsPage() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>
+                <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>
                   <Ticket size={28} style={{ margin: '0 auto 8px', opacity: .3 }} />
                   <div>{tc('coupon.none', 'No coupons captured yet.')}</div>
                 </td></tr>
               )}
               {rows.map(r => (
                 <tr key={r.id}>
+                  {/* Coupons captured before the image was stored show a placeholder —
+                      the sale is still perfectly valid, it just has no photo behind it. */}
+                  <td><ArtifactImage artifactId={r.artifact_id} size={38}
+                        label={`${tc('coupon.no', 'Coupon no.')} ${r.coupon_no}`} /></td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, fontSize: 12.5 }}>{r.coupon_no}</td>
                   <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{toIST(r.occurred_at)}</td>
                   <td style={{ fontSize: 12.5 }}>{r.company_name || '—'}</td>

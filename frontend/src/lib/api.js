@@ -79,9 +79,13 @@ export const markAttendance = (data)   => api.post('/attendance', data);
 // Dipstick
 export const getDipstick    = (params)    => api.get('/dipstick', { params });
 export const recordDipstick = (data)      => api.post('/dipstick', data);
-// Reads an ATG/Pinelabs tank-status screen photo into pre-fill rows. Saves nothing —
-// the manager still reviews and submits via recordDipstick. Generous timeout: vision
-// + a Railway cold start can outrun the default.
+// Reads an ATG/Pinelabs tank-status screen photo into pre-fill rows. No READING is
+// saved — the manager still reviews and submits via recordDipstick — but the screen
+// PHOTO is now kept, and the response carries its artifact_id. Pass that id to
+// recordDipstick for each tank it filled so every figure points at the picture it
+// came from. Send shift_id + reading_type ('opening'|'closing') so the image files
+// under the right shift. Generous timeout: vision + a Railway cold start can outrun
+// the default.
 export const parseGaugeScreen = (data)    => api.post('/dipstick/parse-gauge', data, { timeout: 90000 });
 export const getTankStock   = (stationId) => api.get(`/dipstick/tanks/${stationId}`);
 export const getDensityRegister = (params) => api.get('/dipstick/density-register', { params });
@@ -135,6 +139,24 @@ export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`
 
 // AI Chat — longer timeout: model latency + possible Railway cold start
 export const sendAiChat = (data) => api.post('/ai-chat', data, { timeout: 60000 });
+
+// ── Stored document images (station_artifacts) ────────────────────────
+// The proof behind a record: the credit coupon behind an invoice line, the gauge
+// screen behind a dip, the operator's photo at shift start and close. Artifacts are
+// WRITTEN by the flow that produced them (coupon capture, gauge scan, shift assign),
+// never uploaded separately — that is what keeps the image and its parent in one
+// transaction. These two are the read side only.
+export const getArtifacts = (entity_type, entity_id) =>
+  api.get('/artifacts', { params: { entity_type, entity_id } });
+
+// The image itself, as an object URL for an <img src>. It cannot be a plain URL:
+// the API authenticates on the Authorization header, which the browser does not
+// send for an <img> request — so the bytes are fetched through the same axios
+// instance and wrapped locally. Revoke the URL when the component unmounts.
+export const fetchArtifactImageUrl = async (id) => {
+  const blob = await api.get(`/artifacts/${id}/image`, { responseType: 'blob', timeout: 60000 });
+  return URL.createObjectURL(blob);
+};
 
 // VAWE "SO Instructions" — operational tasks pushed from VAWE. Manager acts;
 // owner observes read-only (the write calls 403 for non-managers server-side).

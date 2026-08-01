@@ -1,21 +1,39 @@
 'use client';
-// Start Shift — Open → Dipstick (opening stock, auto-volume) → Operators (each
-// operator + opening cash + the nozzle(s) he mans, with each nozzle's opening
-// meter). One operator can hold several nozzles (manpower shortage); the opening
-// meter auto-carries from the prior shift's closing and is editable/scannable.
-import { useState, useEffect } from 'react';
+// Start Shift — TWO screens, not three (owner, 01-Aug-2026).
+//
+//   1. GAUGE & OPENING DIP — photograph the gauge screen, the dip figures fill in
+//      (visible and editable), save them.
+//   2. ATTENDANT ASSIGNMENT — photo of the attendant, pick him, tick his nozzles,
+//      ONE Start button. Come back to the same screen for the next attendant until
+//      every nozzle is manned.
+//
+// The old separate "Open the shift" step is gone. It asked the manager to fill a
+// form that the app can work out for itself: the slot follows the clock and the
+// date is today, so both are shown inline on screen 1 and the shift row is created
+// LAZILY — on the first dip save or on Next. Visiting the page creates nothing,
+// which is what kept littering the table with empty shifts that then had to be
+// deleted by hand.
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
-import { Check, Plus, ChevronRight, ArrowLeft, Droplets, X, ScanLine } from 'lucide-react';
+import { Check, ChevronRight, ArrowLeft, Droplets, X, ScanLine, AlertTriangle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import api, { parseGaugeScreen } from '../../lib/api';
+import PhotoCapture from '../../components/shared/PhotoCapture';
+import ArtifactImage from '../../components/shared/ArtifactImage';
+import api, { parseGaugeScreen, recordDipstick } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const fmtL = n => Number(n||0).toFixed(2);
-const STEPS = ['Open', 'Dipstick', 'Operators'];
+const STEPS = ['Gauge', 'Attendants'];
+
+// India reads DD/MM and the outlet clock is IST — never the browser's locale, which
+// on a laptop bought abroad would print MM/DD against a money record.
+const fmtWhen = (ts) => new Date(ts).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
+const fmtClock = (ts) => new Date(ts).toLocaleTimeString('en-IN', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', hour12:true });
+const fmtDay = (d) => new Date(`${String(d).slice(0,10)}T00:00:00`).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
 
 const readB64 = (file) => new Promise((resolve, reject) => {
   const r = new FileReader();
@@ -23,6 +41,20 @@ const readB64 = (file) => new Promise((resolve, reject) => {
   r.onerror = () => reject(new Error('Could not read image'));
   r.readAsDataURL(file);
 });
+
+// Which slot is running right now, per the outlet's own shift_definitions. The
+// night slot wraps past midnight (22:00–06:00), so a plain range test is wrong for
+// it — hence the two-armed comparison. HH:MM strings compare correctly as text.
+const nowHHMM = () => new Date().toLocaleTimeString('en-GB', { timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit' });
+const slotForNow = (defs) => {
+  const now = nowHHMM();
+  const hit = (defs||[]).find(d => {
+    const s = String(d.start_time||'').slice(0,5), e = String(d.end_time||'').slice(0,5);
+    if (!s || !e) return false;
+    return s <= e ? (now >= s && now < e) : (now >= s || now < e);
+  });
+  return hit ? hit.shift_number : 1;
+};
 
 export default function ShiftStartPage() {
   const { t } = useTranslation();
@@ -38,19 +70,29 @@ export default function ShiftStartPage() {
   const [attendants, setAttendants] = useState([]);
   const [nozzles, setNozzles] = useState([]);
   const [openShifts, setOpenShifts] = useState([]);
-  const [open, setOpen]       = useState({ shift_number:1, date: today() });
+  const [slot, setSlot]       = useState({ shift_number:1, date: today() });
+  const [resumed, setResumed] = useState(false);   // header tells the manager we picked up an existing shift
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
   const [prices, setPrices]   = useState([]);   // current selling price per fuel — parallel-run reminder
 
-  // Dipstick step
+  // Screen 1 — gauge & dip
   const [tanks, setTanks]     = useState([]);
   const [dips, setDips]       = useState({});       // tank_id -> entered mark-ordinal
   const [dipVol, setDipVol]   = useState({});       // tank_id -> manual volume (no-chart fallback)
   const [savedDips, setSavedDips] = useState({});   // tank_id -> true
+  const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> gauge photo it was read off
+  const [dipWarn, setDipWarn] = useState(null);     // [tank numbers] with no opening reading at all
+
+  // The manager touching the slot picker must win over the clock-derived default,
+  // which otherwise re-asserts itself the moment defs/openShifts arrive.
+  const slotTouched = useRef(false);
+  // Holds the in-flight (or settled) create so a double-tap on Next cannot open two
+  // shifts for the same slot — React state alone is too slow to guard that.
+  const shiftRef = useRef(null);
 
   // ── Gauge-screen scan (ATG / Pinelabs console photo) ──────────────────
-  // Fills the LITRES box only, never the dip. That is deliberate: saveDip below
+  // Fills the LITRES box only, never the dip. That is deliberate: persistDip below
   // treats "dip entered" as a physical check and "litres only" as a system (ATG)
   // reading, keeping dip_cm null — which is exactly what a console reading is. So
   // the scan slots into the existing distinction instead of blurring it, and no
@@ -63,6 +105,12 @@ export default function ShiftStartPage() {
     if (!file) return;
     setGaugeBusy(true); setGaugeMsg(''); setErr('');
     try {
+      // The screen photo is filed against the shift, so create it first if this is
+      // the manager's opening move. A failure here must not lose the photograph, so
+      // the scan still runs unfiled rather than aborting.
+      let shiftId = shift?.id || null;
+      try { shiftId = (await ensureShift()).id; } catch { /* file it later; read the screen now */ }
+
       const img = new Image(); const url = URL.createObjectURL(file);
       const { base64, media_type } = await new Promise((resolve, reject) => {
         img.onload = () => {
@@ -76,7 +124,10 @@ export default function ShiftStartPage() {
         img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
         img.src = url;
       });
-      const res = await parseGaugeScreen({ station_id: stationId, file_base64: base64, media_type });
+      const res = await parseGaugeScreen({
+        station_id: stationId, file_base64: base64, media_type,
+        shift_id: shiftId, reading_type: 'opening',
+      });
       const rows = Array.isArray(res.tanks) ? res.tanks : [];
       // MATCH ON TANK NUMBER, GUARDED BY FUEL.
       // The owner keeps the console's tank numbering aligned with Pumpini's, so the
@@ -130,6 +181,12 @@ export default function ShiftStartPage() {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
         setDips(p => ({ ...p, [tank.id]: '' }));
         setSavedDips(p => ({ ...p, [tank.id]: false }));
+        // Remember which picture this tank's figure came off. persistDip sends it
+        // with the reading so the stock reconciliation can always be traced back to
+        // the screen it was read from. Kept even if the manager then corrects the
+        // number by hand — the photograph is still the source document, and losing
+        // the trail over a one-digit fix would be the worse trade.
+        if (res.artifact_id) setDipArtifact(p => ({ ...p, [tank.id]: res.artifact_id }));
       });
 
       const skipped = [...unplaced, ...dropped];
@@ -145,14 +202,26 @@ export default function ShiftStartPage() {
     } finally { setGaugeBusy(false); }
   };
 
-  // Operators step
-  const [asg, setAsg]         = useState({});       // { attendant_id, opening_cash }
+  // Screen 2 — attendant assignment
+  const [opAttendant, setOpAttendant] = useState('');
+  const [opPhoto, setOpPhoto] = useState(null);     // { base64, media_type } | null
   const [nozPick, setNozPick] = useState({});       // nozzle_id -> { selected, opening }
   const [openings, setOpenings] = useState({});     // nozzle_id -> suggested opening (prior close)
   const [scanning, setScanning] = useState('');
+  // PhotoCapture holds its own preview; remounting it is the only way to clear that
+  // preview after a successful Start, so the next attendant never inherits a face.
+  const [formKey, setFormKey] = useState(0);
 
   const refreshOpen = () => api.get('/shifts', { params:{ station_id: stationId, status:'open' } })
     .then(os => setOpenShifts(Array.isArray(os)?os:[])).catch(()=>{});
+
+  const refreshShift = async (id) => {
+    const d = await api.get(`/shifts/${id}`);
+    setShift(d); setAttendants(d?.attendants || []);
+    const ops = await api.get(`/shifts/${id}/nozzle-openings`).catch(()=>[]);
+    const map = {}; (Array.isArray(ops)?ops:[]).forEach(o => { if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening; });
+    setOpenings(map);
+  };
 
   useEffect(() => {
     if (!stationId) return;
@@ -164,55 +233,60 @@ export default function ShiftStartPage() {
       api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
       api.get(`/prices/${stationId}/current`).catch(()=>[]),
     ]).then(([d,u,n,os,tk,pr]) => {
-      setDefs(Array.isArray(d)?d:[]); setUsers((Array.isArray(u)?u:[]).filter(x=>x.is_active!==false));
+      const defList = Array.isArray(d)?d:[];
+      const openList = Array.isArray(os)?os:[];
+      setDefs(defList); setUsers((Array.isArray(u)?u:[]).filter(x=>x.is_active!==false));
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
-      setOpenShifts(Array.isArray(os)?os:[]);
+      setOpenShifts(openList);
       setTanks(Array.isArray(tk)?tk:[]);
       setPrices(Array.isArray(pr)?pr:[]);
+      if (!slotTouched.current) setSlot(p => ({ ...p, shift_number: slotForNow(defList) }));
+
+      // Resume silently when exactly ONE shift is open today: that is the shift he
+      // is working, and making him press Resume for it was pure ceremony. Two or
+      // more open is genuinely ambiguous, so the list below stays the way in.
+      const mine = openList.filter(s => String(s.date).slice(0,10) === today());
+      if (mine.length === 1) {
+        shiftRef.current = Promise.resolve(mine[0]);
+        setResumed(true);
+        refreshShift(mine[0].id).catch(()=>{ shiftRef.current = null; setResumed(false); });
+      }
     });
-  }, [stationId]);
+  }, [stationId]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const dateKey = d => String(d).slice(0,10);
-  const takenSlots = new Set(openShifts.filter(s => dateKey(s.date) === open.date).map(s => s.shift_number));
-  const slotTaken = takenSlots.has(open.shift_number);
-  const allTaken = [1,2,3].every(n => takenSlots.has(n));
-  useEffect(() => {
-    if (takenSlots.has(open.shift_number)) {
-      const free = [1,2,3].find(n => !takenSlots.has(n));
-      if (free) setOpen(p => ({ ...p, shift_number: free }));
-    }
-  }, [openShifts, open.date]); // eslint-disable-line react-hooks/exhaustive-deps
+  const takenSlots = new Set(openShifts.filter(s => dateKey(s.date) === slot.date).map(s => s.shift_number));
+  const slotTaken = !shift && takenSlots.has(slot.shift_number);
 
   const label = n => { const def = defs.find(d=>d.shift_number===n); const sh = tc('sstart.shiftWord','Shift'); return def ? `${sh} ${n} — ${def.name} (${def.start_time}–${def.end_time})` : `${sh} ${n}`; };
 
-  const refreshShift = async (id) => {
-    const d = await api.get(`/shifts/${id}`);
-    setShift(d); setAttendants(d?.attendants || []);
-    const ops = await api.get(`/shifts/${id}/nozzle-openings`).catch(()=>[]);
-    const map = {}; (Array.isArray(ops)?ops:[]).forEach(o => { if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening; });
-    setOpenings(map);
-  };
-
-  const openShift = async () => {
-    setBusy(true); setErr('');
-    try {
-      const s = await api.post('/shifts', { ...open, station_id: stationId });
-      await refreshShift(s.id); refreshOpen();
-      setStep(1);
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errOpenShift','Could not open shift')); }
-    setBusy(false);
+  // Create the shift row only when the manager actually commits to something — the
+  // first dip save, the gauge photo, or Next. See the file header.
+  const ensureShift = async () => {
+    if (shift) return shift;
+    if (!shiftRef.current) {
+      shiftRef.current = api.post('/shifts', { station_id: stationId, shift_number: slot.shift_number, date: slot.date })
+        .then(async s => { await refreshShift(s.id); refreshOpen(); return s; })
+        .catch(e => { shiftRef.current = null; throw e; });
+    }
+    return shiftRef.current;
   };
 
   const resumeShift = async (s) => {
     setBusy(true); setErr('');
-    try { await refreshShift(s.id); setStep(1); }
-    catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errLoadShift','Could not load that shift')); }
+    try {
+      shiftRef.current = Promise.resolve(s);
+      await refreshShift(s.id);
+      setResumed(true);
+      setSlot({ shift_number: s.shift_number, date: dateKey(s.date) });
+    }
+    catch (e) { shiftRef.current = null; setErr(e.response?.data?.error || e.error || tc('sstart.errLoadShift','Could not load that shift')); }
     setBusy(false);
   };
 
   // An orphan (opened by mistake) can be deleted only when it has NO operators AND
   // another shift the same day DOES have operators — never the real working shift.
-  const canDelete = (s) => (s.attendant_count||0) === 0 &&
+  const canDelete = (s) => (s.attendant_count||0) === 0 && s.id !== shift?.id &&
     openShifts.some(o => o.id !== s.id && dateKey(o.date) === dateKey(s.date) && (o.attendant_count||0) > 0);
   const deleteShift = async (s) => {
     if (!window.confirm(tc('sstart.confirmDeleteShift','Delete this empty shift opened by mistake? This cannot be undone.'))) return;
@@ -224,7 +298,8 @@ export default function ShiftStartPage() {
 
   // ── Dipstick ──────────────────────────────────────────────────────
   // Volume for a tank — from the DIP (a physical check) if a dip was entered, else
-  // straight from the LITRES field (a reading typed off the ATG/HPCL system).
+  // straight from the LITRES field (a reading typed off, or scanned from, the
+  // ATG/HPCL system).
   const tankVol = (tank) => {
     const dip = dips[tank.id], litres = dipVol[tank.id];
     const hasChart = tank.diameter_cm && tank.length_cm;
@@ -234,22 +309,28 @@ export default function ShiftStartPage() {
     }
     return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres entered directly (system)
   };
-  const saveDip = async (tank) => {
+  const hasReading = (tank) => {
     const dip = dips[tank.id], litres = dipVol[tank.id];
+    return (dip !== '' && dip != null) || (litres !== '' && litres != null);
+  };
+  const isDirty = (tank) => hasReading(tank) && !savedDips[tank.id];
+
+  const persistDip = async (tank, shiftId) => {
+    if (!hasReading(tank)) return true;
+    const dip = dips[tank.id];
     const hasDip = dip !== '' && dip != null;
-    const hasLitres = litres !== '' && litres != null;
-    if (!hasDip && !hasLitres) return;
     const hasChart = tank.diameter_cm && tank.length_cm;
     const vol = tankVol(tank);
-    if (vol == null) return setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number));
+    if (vol == null) { setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number)); return false; }
     // Dip entered → physical reading (store dip_cm). Litres only → system (ATG/HPCL)
     // reading: dip_cm stays null, which is how we tell the two apart.
     const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
-    setBusy(true); setErr('');
     try {
-      await api.post('/dipstick', {
-        station_id: stationId, tank_id: tank.id, shift_id: shift.id,
+      const sid = shiftId || (await ensureShift()).id;
+      await recordDipstick({
+        station_id: stationId, tank_id: tank.id, shift_id: sid,
         reading_type: 'opening', dip_cm, volume_ltrs: vol,
+        artifact_id: dipArtifact[tank.id] || null,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
@@ -257,22 +338,50 @@ export default function ShiftStartPage() {
         ? { ...t, last_dip_cm: dip_cm, last_reading: vol,
             last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
         : t));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); }
-    setBusy(false);
+      return true;
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); return false; }
+  };
+
+  const saveOne = async (tank) => { setBusy(true); setErr(''); await persistDip(tank); setBusy(false); };
+
+  // Save whatever is typed but not yet saved before leaving the screen — a figure
+  // sitting in a box the manager thought he had entered is the same as no opening
+  // stock at all, and he only finds out at reconciliation.
+  const flushDips = async (shiftId) => {
+    for (const tk of dipTanks) {
+      if (!isDirty(tk)) continue;
+      const ok = await persistDip(tk, shiftId);
+      if (!ok) return false;
+    }
+    return true;
   };
 
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
   const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
-  const fmtWhen = (ts) => new Date(ts).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:true });
 
-  // ── Operators ─────────────────────────────────────────────────────
-  const assignedIds   = new Set(attendants.map(a => a.attendant_id));
-  const assignedNozzles = new Set(attendants.flatMap(a => (a.nozzles||[]).map(nz => nz.nozzle_id)));
-  const availNozzles  = nozzles.filter(n => !assignedNozzles.has(n.id));
+  const goToAttendants = async () => {
+    setBusy(true); setErr('');
+    try {
+      const s = await ensureShift();
+      if (!await flushDips(s.id)) return;
+      // A tank with nothing entered anywhere. Blocking rather than a toast: the
+      // opening stock is what the whole day's wet-stock variance is measured from.
+      const missing = dipTanks.filter(tk => !savedDips[tk.id] && !hasReading(tk)).map(tk => tk.tank_number);
+      if (missing.length) { setDipWarn(missing); return; }
+      setStep(1);
+    } catch (e) {
+      setErr(e.response?.data?.error || e.error || tc('sstart.errOpenShift','Could not open shift'));
+    } finally { setBusy(false); }
+  };
+
+  // ── Attendant assignment ──────────────────────────────────────────
+  const assignedIds      = new Set(attendants.map(a => a.attendant_id));
+  const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[]).map(nz => nz.nozzle_id)));
+  const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
 
   const scanMeter = async (nozzle, file) => {
-    if (!file) return;
+    if (!file || !shift) return;
     setScanning(nozzle.id); setErr('');
     try {
       const b64 = await readB64(file);
@@ -309,32 +418,38 @@ export default function ShiftStartPage() {
     setScanning('');
   };
 
-  const addOperator = async () => {
-    if (!asg.attendant_id) { setErr(tc('sstart.errPickOperator','Pick an operator')); return false; }
-    if (asg.opening_cash === undefined || asg.opening_cash === '') { setErr(tc('sstart.errOpeningCash','Enter opening cash (0 if no float)')); return false; }
+  // ONE button on this screen. It photographs, assigns and clocks the attendant in
+  // in a single press, then clears itself for the next man — the manager comes back
+  // here as each attendant arrives, until every nozzle is manned.
+  const startAttendant = async () => {
+    if (!opAttendant) { setErr(tc('sstart.errPickAttendant','Pick the attendant')); return; }
     const chosen = nozzles.filter(n => nozPick[n.id]?.selected).map(n => {
       const v = nozPick[n.id].opening;
       const opening = v !== '' && v != null ? parseFloat(v) : (openings[n.id] != null ? Number(openings[n.id]) : 0);
       return { nozzle_id: n.id, opening_reading: opening };
     });
+    if (!chosen.length) { setErr(tc('sstart.errPickNozzle','Tick at least one nozzle for this attendant')); return; }
     setBusy(true); setErr('');
     try {
-      await api.post(`/shifts/${shift.id}/assign`, { attendant_id: asg.attendant_id, opening_cash: asg.opening_cash, nozzles: chosen });
-      setAsg({}); setNozPick({}); await refreshShift(shift.id); refreshOpen();
-      return true;
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errAddOperator','Could not add operator')); return false; }
-    finally { setBusy(false); }
-  };
-
-  // An operator is "ready" once picked with at least one nozzle ticked. The Start
-  // CTA below goes live the moment ONE operator's readings are in — if the form
-  // holds an un-added operator, we add him first (he goes live immediately), then
-  // finish. No need to wait for the rest of the operators.
-  const formReady = !!asg.attendant_id && nozzles.some(n => nozPick[n.id]?.selected);
-  const startShift = async () => {
-    if (formReady) { const ok = await addOperator(); if (!ok) return; }
-    else if (attendants.length === 0) { setErr(tc('sstart.errNeedOperatorToStart','Add an operator with their nozzle readings to start.')); return; }
-    router.push('/dashboard');
+      const s = await ensureShift();
+      await api.post(`/shifts/${s.id}/assign`, {
+        attendant_id: opAttendant,
+        nozzles: chosen,
+        // OPENING FLOAT IS ALWAYS ZERO (owner, 01-Aug-2026): no outlet hands the
+        // attendant a float, so the field was pure typing — and a mistyped float
+        // shows up that evening as a phantom overage against the blind drop. The
+        // input is HIDDEN rather than the field deleted: the API still requires the
+        // key, and the day an outlet does give a float it comes back as a UI change
+        // with no migration behind it.
+        opening_cash: 0,
+        photo_base64: opPhoto?.base64 || null,
+        photo_media_type: opPhoto?.media_type || null,
+      });
+      setOpAttendant(''); setOpPhoto(null); setNozPick({}); setFormKey(k => k + 1);
+      await refreshShift(s.id); refreshOpen();
+    } catch (e) {
+      setErr(e.response?.data?.error || e.error || tc('sstart.errStartAttendant','Could not start this attendant'));
+    } finally { setBusy(false); }
   };
 
   return (
@@ -360,92 +475,95 @@ export default function ShiftStartPage() {
         </div>
       )}
 
-      {/* Stepper */}
+      {/* Stepper — TWO steps. Moving forward goes through goToAttendants so the dips
+          are saved and checked on the way, exactly as the Next button does. */}
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if(shift) setStep(i); }} disabled={!shift && i>0}
+          <button key={s} onClick={()=>{ if (i===0) setStep(0); else if (!busy) goToAttendants(); }} disabled={busy}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
-              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:shift?'pointer':'default'}}>
+              color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:busy?'default':'pointer'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
-            {tc('sstart.step'+s, s)}
+            {tc('sstart.step'+s, s === 'Gauge' ? 'Gauge & dip' : 'Attendants')}
           </button>
         ))}
       </div>
 
       {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
 
-      {/* STEP 0 — Open */}
-      {step===0 && (
-        <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'440px 1fr',gap:'1.25rem',alignItems:'start'}}>
-          <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'1rem'}}>{tc('sstart.openANewShift','Open a new shift')}</div>
-            <div style={{marginBottom:'1rem'}}>
-              <label className="label">{tc('sstart.shiftSlot','Shift slot')}</label>
-              <select style={inp} value={open.shift_number} onChange={e=>setOpen(p=>({...p,shift_number:parseInt(e.target.value)}))}>
+      {/* Which shift are we working on — one compact strip instead of a whole step. */}
+      <div style={{background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:'1rem'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+          {shift ? (
+            <>
+              <span style={{fontWeight:700,fontSize:13.5}}>{label(shift.shift_number)}</span>
+              <span style={{fontSize:12.5,color:'var(--text-3)'}}>{fmtDay(shift.date)}</span>
+              <span style={{fontSize:11.5,fontWeight:700,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'2px 9px'}}>
+                {resumed ? tc('sstart.resumedShift','Continuing the shift already open') : tc('sstart.shiftOpened','Shift opened')}
+              </span>
+            </>
+          ) : (
+            <>
+              <select style={{...inp,width:'auto',minWidth:230,padding:'6px 9px',fontSize:13}} value={slot.shift_number}
+                onChange={e=>{ slotTouched.current = true; setSlot(p=>({...p,shift_number:parseInt(e.target.value)})); }}>
                 {[1,2,3].map(n=><option key={n} value={n} disabled={takenSlots.has(n)}>{label(n)}{takenSlots.has(n)?tc('sstart.alreadyOpenSuffix',' — already open'):''}</option>)}
               </select>
-            </div>
-            <div style={{marginBottom:'1.25rem'}}>
-              <label className="label">{tc('sstart.date','Date')}</label>
-              <input style={inp} type="date" value={open.date} onChange={e=>setOpen(p=>({...p,date:e.target.value}))}/>
-            </div>
-            <button onClick={openShift} disabled={busy||slotTaken||allTaken} style={{width:'100%',height:46,background:(slotTaken||allTaken)?'#e5e3de':'#FF6B00',color:(slotTaken||allTaken)?'#888':'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:(busy||slotTaken||allTaken)?'default':'pointer'}}>
-              {busy?tc('sstart.opening','Opening…'):allTaken?tc('sstart.allSlotsOpen','All slots open'):slotTaken?tc('sstart.thisSlotAlreadyOpen','This slot is already open'):tc('sstart.openShiftBtn','Open Shift →')}
-            </button>
-            {(slotTaken||allTaken) && <div style={{fontSize:12,color:'var(--text-3)',marginTop:8}}>{allTaken?tc('sstart.everySlotOpenHint','Every slot for this date is already open — resume one on the right.'):tc('sstart.slotOpenHint','That slot is open already — pick another or resume on the right.')}</div>}
-          </div>
-
-          <div className="card">
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.5rem'}}>
-              <div style={{fontWeight:700,fontSize:15}}>{tc('sstart.currentlyOpenShifts','Currently open shifts')}</div>
-              {openShifts.length>0 && <span style={{fontSize:12,fontWeight:700,color:'#16a34a',background:'#dcfce7',borderRadius:99,padding:'2px 10px'}}>{tc('sstart.nOpen','{n} open').replace('{n}', openShifts.length)}</span>}
-            </div>
-            {openShifts.length===0
-              ? <div style={{color:'var(--text-3)',fontSize:13,padding:'8px 0'}}>{tc('sstart.noShiftsOpen','No shifts are open right now.')}</div>
-              : openShifts.map(s=>(
-                <div key={s.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:8}}>
-                  <div style={{minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:14}}>{label(s.shift_number)}</div>
-                    <div style={{fontSize:12,color:'var(--text-3)',marginTop:2}}>{dateKey(s.date)} · {tc('sstart.nOperators','{n} operators').replace('{n}', s.attendant_count||0)}</div>
-                  </div>
-                  <div style={{display:'flex',gap:8,flexShrink:0}}>
-                    {canDelete(s) && (
-                      <button onClick={()=>deleteShift(s)} disabled={busy} title={tc('sstart.deleteEmptyShift','Delete this empty shift (opened by mistake)')}
-                        style={{padding:'8px 10px',background:'#fef2f2',color:'#b91c1c',border:'1.5px solid #fecaca',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
-                        <X size={13}/>{tc('sstart.delete','Delete')}
-                      </button>
-                    )}
-                    <button onClick={()=>resumeShift(s)} disabled={busy} style={{padding:'8px 12px',background:'#fff7ed',color:'#9a3412',border:'1.5px solid #fed7aa',borderRadius:8,fontSize:12.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
-                  </div>
-                </div>
-              ))}
-          </div>
+              <input style={{...inp,width:'auto',padding:'6px 9px',fontSize:13}} type="date" value={slot.date}
+                onChange={e=>{ slotTouched.current = true; setSlot(p=>({...p,date:e.target.value})); }}/>
+              <span style={{fontSize:11.5,color:'var(--text-3)'}}>{tc('sstart.lazyShiftHint','The shift opens when you save the first reading — nothing is created by just looking.')}</span>
+            </>
+          )}
+          {slotTaken && <span style={{fontSize:11.5,color:'#b45309'}}>{tc('sstart.slotOpenHint2','That slot is already open — resume it below or pick another.')}</span>}
         </div>
-      )}
 
-      {/* STEP 1 — Dipstick (opening stock) */}
-      {step===1 && shift && (
-        <div className="card" style={{maxWidth:620}}>
+        {/* Currently open shifts — the resume/delete affordance, kept but compact. */}
+        {openShifts.length>0 && (
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:8,paddingTop:8,borderTop:'1px dashed #e5e3de'}}>
+            <span style={{fontSize:11.5,fontWeight:700,color:'var(--text-3)',alignSelf:'center'}}>{tc('sstart.currentlyOpenShifts','Currently open shifts')}</span>
+            {openShifts.map(s=>(
+              <span key={s.id} style={{display:'inline-flex',alignItems:'center',gap:6,background:s.id===shift?.id?'#fff7ed':'#fff',border:'1px solid '+(s.id===shift?.id?'#fed7aa':'#e5e3de'),borderRadius:99,padding:'3px 6px 3px 11px',fontSize:12}}>
+                <span style={{fontWeight:700}}>{tc('sstart.shiftWord','Shift')} {s.shift_number}</span>
+                <span style={{color:'var(--text-3)'}}>{fmtDay(s.date)} · {tc('sstart.nOperators','{n} operators').replace('{n}', s.attendant_count||0)}</span>
+                {s.id!==shift?.id && (
+                  <button onClick={()=>resumeShift(s)} disabled={busy} style={{padding:'3px 9px',background:'#fff7ed',color:'#9a3412',border:'1px solid #fed7aa',borderRadius:99,fontSize:11.5,fontWeight:700,cursor:'pointer'}}>{tc('sstart.resumeBtn','Resume →')}</button>
+                )}
+                {canDelete(s) && (
+                  <button onClick={()=>deleteShift(s)} disabled={busy} title={tc('sstart.deleteEmptyShift','Delete this empty shift (opened by mistake)')}
+                    style={{padding:'3px 7px',background:'#fef2f2',color:'#b91c1c',border:'1px solid #fecaca',borderRadius:99,fontSize:11.5,fontWeight:700,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:3}}>
+                    <X size={11}/>{tc('sstart.delete','Delete')}
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── SCREEN 1 — Gauge & opening dip ───────────────────────────── */}
+      {step===0 && (
+        <div className="card" style={{maxWidth:640}}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
           <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelp','For each tank enter EITHER the dip (a physical check) OR the litres shown on the ATG/HPCL system — we compute the other. This is the opening stock; the reconciliation shows any variance.')}</div>
-          {/* Optional shortcut for outlets with an automation console. Outlets that take
-              a physical dip (e.g. IOCL) simply never use it — the boxes below are
-              unchanged and remain the primary way in. */}
+
+          {/* The photograph is the headline action now: one picture fills every tank
+              below. Outlets with no console (e.g. IOCL) simply take a physical dip
+              and type it — the boxes underneath are unchanged and still primary. */}
           {dipTanks.length>0 && (
-            <div style={{marginBottom:'1rem'}}>
-              <label style={{display:'inline-flex',alignItems:'center',gap:6,padding:'7px 12px',borderRadius:8,
-                border:'1px solid #cbd5e1',background:'#f8fafc',fontSize:12.5,fontWeight:600,
-                cursor:gaugeBusy?'wait':'pointer',color:'#334155'}}>
-                <ScanLine size={15}/>
-                {gaugeBusy ? tc('sstart.gaugeReading','Reading screen…') : tc('sstart.gaugeScan','Scan gauge screen')}
+            <div style={{marginBottom:'1rem',background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10,padding:'12px'}}>
+              <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'11px 16px',borderRadius:9,
+                border:'none',background:gaugeBusy?'#94a3b8':'#0369a1',fontSize:14,fontWeight:800,
+                cursor:gaugeBusy?'wait':'pointer',color:'#fff'}}>
+                <ScanLine size={17}/>
+                {gaugeBusy ? tc('sstart.gaugeReading','Reading screen…') : tc('sstart.gaugeScanCta','Take a photo of the gauge screen')}
                 <input type="file" accept="image/*" capture="environment" style={{display:'none'}} disabled={gaugeBusy}
                   onChange={e=>{ handleGaugeScan(e.target.files?.[0]); e.target.value=''; }}/>
               </label>
+              <div style={{fontSize:11.5,color:'#0c4a6e',marginTop:7}}>{tc('sstart.gaugeScanHint','The readings fill in below. Check every figure — they stay editable.')}</div>
               {gaugeMsg && <div style={{fontSize:12,color:'#b45309',marginTop:6}}>{gaugeMsg}</div>}
             </div>
           )}
+
           {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
@@ -462,11 +580,12 @@ export default function ShiftStartPage() {
                     readOnly={dips[tk.id]!=='' && dips[tk.id]!=null && hasChart}
                     value={(dips[tk.id]!=='' && dips[tk.id]!=null && hasChart) ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
                     onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  <button onClick={()=>saveDip(tk)} disabled={busy||savedDips[tk.id]}
+                  <button onClick={()=>saveOne(tk)} disabled={busy||savedDips[tk.id]}
                     style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
                       background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
                     {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
                   </button>
+                  {dipArtifact[tk.id] && <ArtifactImage artifactId={dipArtifact[tk.id]} size={34} label={tc('sstart.gaugePhotoLabel','Gauge screen this figure came from')}/>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
@@ -479,25 +598,41 @@ export default function ShiftStartPage() {
               </div>
             );
           })}
-          <button onClick={()=>setStep(2)} style={{width:'100%',height:46,marginTop:12,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
-            {tc('sstart.nextOperators','Next: Operators →')}
+          <button onClick={goToAttendants} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
+            {busy ? tc('sstart.savingReadings','Saving…') : tc('sstart.nextAttendants','Next: Attendant assignment →')}
           </button>
         </div>
       )}
 
-      {/* STEP 2 — Operators (+ their nozzles + opening meters) */}
-      {step===2 && shift && (
+      {/* ── SCREEN 2 — Attendant assignment ──────────────────────────── */}
+      {step===1 && (
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.25rem',alignItems:'start'}}>
           <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.addAnOperator','Add an operator')}</div>
-            <div style={{display:'grid',gap:10}}>
-              <div><label className="label">{tc('sstart.operator','Operator')}</label>
-                <select style={inp} value={asg.attendant_id||''} onChange={e=>setAsg(p=>({...p,attendant_id:e.target.value}))}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.attendantAssignment','Attendant assignment')}</div>
+            <div style={{display:'grid',gap:12}}>
+
+              {/* PHOTO FIRST — this is phase 0 of facial recognition, not a snapshot
+                  for the file. Once the model is mature the picture FETCHES the
+                  attendant and the picker below becomes the fallback for the days it
+                  cannot (bad light, new face). Ordering it first now is what makes
+                  that swap a deletion rather than a redesign. No matching is done
+                  today; the photo is stored against the assignment. */}
+              <div>
+                <label className="label">{tc('sstart.attendantPhoto','Photo of the attendant')}</label>
+                <PhotoCapture key={formKey}
+                  label={tc('sstart.takeAttendantPhoto','Take his photo')}
+                  hint={tc('sstart.attendantPhotoHint','Taken as he starts. In time this photo will identify him on its own.')}
+                  disabled={busy}
+                  onCapture={setOpPhoto}/>
+              </div>
+
+              <div><label className="label">{tc('sstart.attendant','Attendant')}</label>
+                <select style={inp} value={opAttendant} onChange={e=>setOpAttendant(e.target.value)}>
                   <option value="">{tc('sstart.selectPlaceholder','Select…')}</option>
                   {users.filter(u=>!assignedIds.has(u.id)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
                 </select></div>
-              <div><label className="label">{tc('sstart.openingCash','Opening cash (₹)')}</label>
-                <input style={inp} type="number" step="0.01" placeholder={tc('sstart.floatPlaceholder','Float handed over (0 if none)')} value={asg.opening_cash||''} onChange={e=>setAsg(p=>({...p,opening_cash:e.target.value}))}/></div>
+
+              {/* Opening float is deliberately absent — see startAttendant(). */}
 
               <div>
                 <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint','(tick each; opening auto-carries from last close)')}</span></label>
@@ -533,35 +668,91 @@ export default function ShiftStartPage() {
                 })}
               </div>
 
-              <button onClick={addOperator} disabled={busy} style={{height:42,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer'}}><Plus size={15} style={{verticalAlign:'middle'}}/> {tc('sstart.addOperatorBtn','Add operator')}</button>
+              {/* THE only button on this screen. */}
+              <button onClick={startAttendant} disabled={busy}
+                style={{height:50,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
+                {busy ? tc('sstart.starting','Starting…') : tc('sstart.startAttendant','Start shift for this attendant')}
+              </button>
             </div>
           </div>
 
           <div className="card">
-            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.operatorsCount','Operators ({n})').replace('{n}', attendants.length)}</div>
-            {attendants.length===0 ? <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noOperatorsYet','No operators added yet.')}</div>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.startedCount','Started ({n})').replace('{n}', attendants.length)}</div>
+            {attendants.length===0 ? <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noneStartedYet','Nobody has started yet.')}</div>
               : attendants.map(a=>(
-                <div key={a.id} style={{background:'#f8fafc',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <div style={{fontWeight:700,fontSize:13.5}}>{a.attendant_name}</div>
-                    <div style={{fontSize:12,color:'#888'}}>{tc('sstart.float','float')} ₹{Number(a.opening_cash||0).toLocaleString('en-IN')}</div>
+                <div key={a.id} style={{display:'flex',gap:10,background:'#f8fafc',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
+                  {/* Renders a placeholder when there is no photo — an attendant
+                      started before the camera existed (or with it broken) still
+                      shows up in full. */}
+                  <ArtifactImage artifactId={a.photo_start_artifact_id} size={44} label={a.attendant_name}/>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                      <div style={{fontWeight:700,fontSize:13.5}}>{a.attendant_name}</div>
+                      {a.started_at && <div style={{fontSize:11.5,color:'#166534',fontWeight:700}}>{tc('sstart.startedAt','from')} {fmtClock(a.started_at)}</div>}
+                    </div>
+                    {(a.nozzles||[]).length>0
+                      ? <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
+                          {a.nozzles.map(nz=>(
+                            <span key={nz.nozzle_id} style={{fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 8px'}}>
+                              N{nz.nozzle_number} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
+                            </span>
+                          ))}
+                        </div>
+                      : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                   </div>
-                  {(a.nozzles||[]).length>0
-                    ? <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
-                        {a.nozzles.map(nz=>(
-                          <span key={nz.nozzle_id} style={{fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 8px'}}>
-                            N{nz.nozzle_number} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
-                          </span>
-                        ))}
-                      </div>
-                    : <div style={{fontSize:11.5,color:'#b45309',marginTop:4}}>{tc('sstart.noNozzlesAssigned','No nozzles assigned')}</div>}
                 </div>
               ))}
-            <div style={{fontSize:12,color:'var(--text-3)',marginTop:12,marginBottom:6}}>{tc('sstart.staggerHint','Add each operator as they arrive — each goes live immediately. Stay here to add the next; click Done when you’re finished.')}</div>
-            <button onClick={startShift} disabled={busy || (attendants.length===0 && !formReady)}
-              style={{width:'100%',height:46,background:(attendants.length||formReady)?'#FF6B00':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:(attendants.length||formReady)?'pointer':'not-allowed'}}>
+
+            {/* The flow ends when every nozzle has a man on it — so say what is left. */}
+            {availNozzles.length===0 ? (
+              <div style={{background:'#dcfce7',border:'1px solid #86efac',color:'#166534',borderRadius:8,padding:'10px 12px',fontSize:12.5,fontWeight:700,marginTop:12}}>
+                ✓ {tc('sstart.allNozzlesManned','All nozzles are assigned — the shift is fully manned.')}
+              </div>
+            ) : (
+              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'10px 12px',marginTop:12}}>
+                <div style={{fontSize:12.5,fontWeight:700,color:'#92400e'}}>{tc('sstart.nozzlesUnmanned','{n} nozzle(s) still unmanned').replace('{n}', availNozzles.length)}</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
+                  {availNozzles.map(n=>(
+                    <span key={n.id} style={{fontSize:11.5,background:'#fff',border:'1px solid #fde68a',color:'#92400e',borderRadius:99,padding:'2px 8px'}}>
+                      N{n.nozzle_number} · {n.fuel_type}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Attendants arrive at different times, so leaving with nozzles still
+                unmanned is normal — the manager comes back to this screen. */}
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:12,marginBottom:6}}>{tc('sstart.staggerHint2','Each attendant goes live the moment you press Start. Stay here for the next one, or leave and come back as they arrive.')}</div>
+            <button onClick={()=>router.push('/dashboard')} disabled={busy}
+              style={{width:'100%',height:46,background:'#0f172a',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:'pointer'}}>
               {tc('sstart.doneToDashboard','Done — go to dashboard')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Missing opening dip — blocking, because the day's wet-stock variance is
+          measured from this figure and a tank with no opening reading makes it
+          meaningless. Not a hard stop: an outlet mid-changeover may genuinely have
+          to come back to it. */}
+      {dipWarn && (
+        <div style={{position:'fixed',inset:0,background:'rgba(15,23,42,.6)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:12,padding:'18px 20px',maxWidth:440,width:'100%'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,fontWeight:800,fontSize:15,marginBottom:8}}>
+              <AlertTriangle size={18} color="#b45309"/>{tc('sstart.dipMissingTitle','Some tanks have no opening reading')}
+            </div>
+            <div style={{fontSize:13,color:'#475569',marginBottom:16}}>
+              {tc('sstart.dipMissingBody','Tank {list} has no opening dip. Without it, today’s stock variance for that tank cannot be trusted.').replace('{list}', dipWarn.join(', '))}
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'flex-end',flexWrap:'wrap'}}>
+              <button onClick={()=>setDipWarn(null)} style={{padding:'10px 14px',background:'#FF6B00',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                {tc('sstart.dipMissingBack','Enter the readings')}
+              </button>
+              <button onClick={()=>{ setDipWarn(null); setStep(1); }} style={{padding:'10px 14px',background:'#fff',color:'#475569',border:'1.5px solid #e5e3de',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                {tc('sstart.dipMissingGo','Continue anyway')}
+              </button>
+            </div>
           </div>
         </div>
       )}

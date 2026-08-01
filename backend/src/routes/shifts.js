@@ -5,6 +5,8 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
+const artifacts  = require('../services/artifactService');
+const attendance = require('../services/attendanceService');
 
 // GET /api/shifts
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -92,6 +94,35 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
     const nozBy = {};
     for (const r of sanRows) (nozBy[r.attendant_id] ||= []).push(r);
     attendants.forEach(a => { a.nozzles = nozBy[a.attendant_id] || []; });
+
+    // Each operator's start/close photographs and his shift clock. Both are
+    // guarded on the migration having run — this is the screen that starts and
+    // ends shifts, so a missing table must leave it working without the photos
+    // rather than 500 the whole page.
+    if (attendants.length && await artifacts.hasTable()) {
+      const saIds = attendants.map(a => a.id);
+      const { rows: photos } = await pool.query(
+        `SELECT id, entity_id, kind, meta, captured_at FROM station_artifacts
+          WHERE entity_type='shift_attendant' AND kind='attendant_photo'
+            AND entity_id = ANY($1::uuid[])
+          ORDER BY captured_at`, [saIds]);
+      const byAssignment = {};
+      for (const p of photos) {
+        const slot = (byAssignment[p.entity_id] ||= { start: null, close: null });
+        slot[p.meta?.phase === 'close' ? 'close' : 'start'] = p.id;
+      }
+      attendants.forEach(a => {
+        a.photo_start_artifact_id = byAssignment[a.id]?.start || null;
+        a.photo_close_artifact_id = byAssignment[a.id]?.close || null;
+      });
+    }
+    const clocks = await attendance.forShift(req.params.id);
+    const clockBy = {};
+    for (const c of clocks) clockBy[c.user_id] = c;
+    attendants.forEach(a => {
+      a.started_at = clockBy[a.attendant_id]?.check_in  || null;
+      a.ended_at   = clockBy[a.attendant_id]?.check_out || null;
+    });
 
     // Blind drop: hide per-attendant sales while the shift is open (non-owners)
     const isOwner = req.user.role === 'owner';
@@ -181,6 +212,12 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       attendant_id, rfid_tag_id, nozzle_id,
       bank_account, upi_vpa, opening_reading, opening_cash,
       nozzles,   // NEW: [{ nozzle_id, opening_reading }] — one operator, many nozzles
+      // The photograph taken of the operator as he starts. Optional — a broken
+      // camera must never stop a shift starting — and stored as an artifact
+      // against his assignment. Today it is evidence; the intended end state is
+      // that the picture IDENTIFIES him and the picker becomes the fallback, so
+      // it is captured against the assignment now rather than bolted on later.
+      photo_base64, photo_media_type,
     } = req.body;
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
@@ -281,7 +318,34 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
         [req.params.id, attendant_id, nz.nozzle_id, nz.opening_reading != null ? nz.opening_reading : 0]);
     }
 
-    res.json({ ...rows[0], nozzles: nozzleList });
+    // Store the operator's photograph against this assignment, then stamp his
+    // shift clock. Both are best-effort by design (see attendanceService): the
+    // assignment above is what lets fuel be sold, and neither a failed upload nor
+    // a missing attendance row may undo it. `meta.match` is left for the facial
+    // verdict once matching lands — the record shape does not change then.
+    // requireStationVia resolved the shift's station and put it here.
+    const photo = await artifacts.save({
+      station_id: req.stationId,
+      entity_type: 'shift_attendant',
+      entity_id: rows[0].id,
+      kind: 'attendant_photo',
+      file_base64: photo_base64 || null,
+      media_type: photo_media_type || null,
+      meta: { phase: 'start', attendant_id, shift_id: req.params.id },
+      uploaded_by: req.user.id,
+    });
+    const clock = await attendance.clockIn({
+      shift_id: req.params.id,
+      attendant_id,
+      artifact_id: photo ? photo.id : null,
+    });
+
+    res.json({
+      ...rows[0],
+      nozzles: nozzleList,
+      photo_artifact_id: photo ? photo.id : null,
+      started_at: clock ? clock.check_in : null,
+    });
   } catch (err) { next(err); }
 });
 

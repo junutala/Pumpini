@@ -8,6 +8,8 @@ const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
+const artifacts  = require('../services/artifactService');
+const attendance = require('../services/attendanceService');
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
@@ -212,6 +214,9 @@ router.post('/manager', authenticate,
       test_ltrs = 0, card_total = 0, upi_total = 0, cash_actual = 0,
       credit_total = 0, petty_cash = 0,
       resolution, resolution_amount = 0, operator_ack = false, remarks, denomination,
+      // Photograph of the operator being released, mirroring the one taken when he
+      // started. Optional — never a reason a settlement cannot be recorded.
+      photo_base64, photo_media_type,
     } = req.body;
     if (!shift_id || !attendant_id) return res.status(400).json({ error: 'shift_id and attendant_id are required' });
 
@@ -376,6 +381,24 @@ router.post('/manager', authenticate,
          upiVal, creditVal, cardVal, remarks||null, req.user.id,
          resType, resAmt, operator_ack === true || operator_ack === 'true', totalTest, legs[0]?.price || 0, pettyVal]);
 
+      // Close the operator's shift clock and keep his end-of-shift photograph, in
+      // the SAME transaction as the settlement — the two describe one event. Both
+      // are best-effort internally (artifactService uses a SAVEPOINT, the clock
+      // swallows its own errors), so neither can roll back a settled operator.
+      const closePhoto = await artifacts.save({
+        station_id: sa.station_id,
+        entity_type: 'shift_attendant',
+        entity_id: sa.id,
+        kind: 'attendant_photo',
+        file_base64: photo_base64 || null,
+        media_type: photo_media_type || null,
+        meta: { phase: 'close', attendant_id, shift_id },
+        uploaded_by: req.user.id,
+      }, client);
+      await attendance.clockOut({
+        shift_id, attendant_id,
+        artifact_id: closePhoto ? closePhoto.id : null,
+      }, client);
 
       await client.query('COMMIT');
 
