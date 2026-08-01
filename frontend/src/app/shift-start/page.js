@@ -265,9 +265,15 @@ export default function ShiftStartPage() {
   const ensureShift = async () => {
     if (shift) return shift;
     if (!shiftRef.current) {
-      shiftRef.current = api.post('/shifts', { station_id: stationId, shift_number: slot.shift_number, date: slot.date })
-        .then(async s => { await refreshShift(s.id); refreshOpen(); return s; })
-        .catch(e => { shiftRef.current = null; throw e; });
+      // The chosen slot may already be open (two managers, or a browser left on the
+      // page overnight). Joining it is always what was meant — POSTing would only
+      // 409 and dead-end him on a screen with no way forward.
+      const already = openShifts.find(s => dateKey(s.date) === slot.date && s.shift_number === slot.shift_number);
+      shiftRef.current = (already
+        ? Promise.resolve(already).then(async s => { await refreshShift(s.id); setResumed(true); return s; })
+        : api.post('/shifts', { station_id: stationId, shift_number: slot.shift_number, date: slot.date })
+            .then(async s => { await refreshShift(s.id); refreshOpen(); return s; })
+      ).catch(e => { shiftRef.current = null; throw e; });
     }
     return shiftRef.current;
   };
