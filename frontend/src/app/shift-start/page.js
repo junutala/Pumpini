@@ -147,8 +147,16 @@ export default function ShiftStartPage() {
       // FUEL DECIDES WHICH TANK; THE TANK NUMBER ONLY VERIFIES. The rule lives in
       // lib/gaugeMatch so shift close cannot drift from shift open — read the note
       // at the top of that file for why it is this way round.
+      //
+      // A CARRIED TANK IS NOT A CANDIDATE. Its opening is the last close and the row
+      // is rendered locked, so letting a photo write to it would quietly overturn
+      // the one control that stops a shift boundary drifting — and the manager would
+      // see a locked green row while it happened. Offer only the tanks he can
+      // actually enter, and tell him the rest were left alone.
+      const openTanks  = dipTanks.filter(t => !carriedDips[t.id]);
+      const heldByRule = dipTanks.filter(t =>  carriedDips[t.id]).map(t => t.tank_number);
       const { pairs, dropped, unplaced, ambiguous, renumbered, capacityOff } =
-        matchGaugeRows(rows, dipTanks);
+        matchGaugeRows(rows, openTanks);
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
@@ -168,6 +176,9 @@ export default function ShiftStartPage() {
           ? tc('sstart.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
           : tc('sstart.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
         + (skipped.length ? ' ' + tc('sstart.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
+        // Not an error and not a failure to match — the rule holds these.
+        + (heldByRule.length ? ' ' + tc('sstart.gaugeCarriedHeld','Tank {list} kept its carried opening from the last close — a photo cannot change it.')
+            .replace('{list}', heldByRule.join(', ')) : '')
         // Advisory only — these rows ARE filled. The note tells the manager the
         // Settings numbering has slipped, without standing between him and the shift.
         + (renumbered.length ? ' ' + tc('sstart.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
@@ -368,6 +379,11 @@ export default function ShiftStartPage() {
   // stock at all, and he only finds out at reconciliation.
   const flushDips = async (shiftId) => {
     for (const tk of dipTanks) {
+      // A tank carried from the last close is NOT writable here, whatever ended up
+      // in state. The screen renders it locked, so anything that got in did so
+      // without the manager seeing it — which is precisely the drift the
+      // carry-forward rule exists to stop. Belt and braces with the scan filter.
+      if (carriedDips[tk.id]) continue;
       if (!isDirty(tk)) continue;
       const ok = await persistDip(tk, shiftId);
       if (!ok) return false;
