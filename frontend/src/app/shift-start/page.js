@@ -109,7 +109,9 @@ export default function ShiftStartPage() {
   // reading, keeping dip_cm null — which is exactly what a console reading is. So
   // the scan slots into the existing distinction instead of blurring it, and no
   // mm→cm conversion is needed on this screen at all.
-  // Nothing is saved by scanning; the manager still presses Save per tank.
+  // Nothing is saved by scanning — Next commits whatever is on screen (flushDips),
+  // so the manager reviews the filled figures and moves on. There is no per-tank
+  // Save button any more; one photo fills every tank and one button commits them.
   const [gaugeBusy, setGaugeBusy] = useState(false);
   const [gaugeMsg,  setGaugeMsg]  = useState('');
 
@@ -396,7 +398,6 @@ export default function ShiftStartPage() {
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); return false; }
   };
 
-  const saveOne = async (tank) => { setBusy(true); setErr(''); await persistDip(tank); setBusy(false); };
 
   // Save whatever is typed but not yet saved before leaving the screen — a figure
   // sitting in a box the manager thought he had entered is the same as no opening
@@ -658,32 +659,44 @@ export default function ShiftStartPage() {
               </div>
             );
             return (
-              <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
-                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-                  <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
-                  <input style={{...inp,width:110}} type="number" step="0.1" placeholder={hasChart?tc('sstart.dipEg','dip e.g. 64.2'):tc('sstart.dipCm','dip cm')}
+              <div key={tk.id} style={{padding:'10px 0',borderBottom:'1px solid #f1f5f9'}}>
+                {/* ONE ROW PER TANK: name, dip, litres. The per-tank Save button is
+                    gone — the gauge photo fills every tank at once and Next commits
+                    whatever is on screen (flushDips), so asking for a line-level
+                    commit as well was ceremony that made a three-tank screen look
+                    like eighteen controls. The row now says what it is and takes
+                    two numbers, which is all it ever did. */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 104px 116px',gap:8,alignItems:'center'}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:13.5,fontWeight:700,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                      {tc('sstart.tank','Tank')} {tk.tank_number}
+                    </div>
+                    <div style={{fontSize:11.5,color:'var(--text-3)',textTransform:'capitalize'}}>
+                      {String(tk.fuel_type||'').replace('_',' ')}
+                    </div>
+                  </div>
+                  <input style={{...inp,padding:'9px 10px'}} type="number" step="0.1" inputMode="decimal"
+                    placeholder={hasChart?tc('sstart.dipShort','Dip'):tc('sstart.dipCm','dip cm')}
                     value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  <span style={{fontSize:12,color:'#94a3b8'}}>{tc('sstart.orWord','or')}</span>
-                  <input style={{...inp,width:130,...((dips[tk.id]!=='' && dips[tk.id]!=null && hasChart)?{background:'#f1f5f9',color:'#0369a1',fontWeight:600}:{})}}
-                    type="number" step="0.01" placeholder={tc('sstart.litresSystem','litres (system)')}
+                  <input style={{...inp,padding:'9px 10px',...((dips[tk.id]!=='' && dips[tk.id]!=null && hasChart)?{background:'#f1f5f9',color:'#0369a1',fontWeight:700}:{})}}
+                    type="number" step="0.01" inputMode="decimal"
+                    placeholder={tc('sstart.litresShort','Litres')}
                     readOnly={dips[tk.id]!=='' && dips[tk.id]!=null && hasChart}
                     value={(dips[tk.id]!=='' && dips[tk.id]!=null && hasChart) ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
                     onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  <button onClick={()=>saveOne(tk)} disabled={busy||savedDips[tk.id]}
-                    style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
-                      background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
-                    {savedDips[tk.id]?tc('sstart.saved','✓ Saved'):tc('sstart.save','Save')}
-                  </button>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,minHeight:20}}>
+                  {savedDips[tk.id] && <span style={{fontSize:11.5,fontWeight:700,color:'#166534'}}>{tc('sstart.saved','✓ Saved')}</span>}
                   {dipArtifact[tk.id] && <ArtifactImage artifactId={dipArtifact[tk.id]} size={34} label={tc('sstart.gaugePhotoLabel','Gauge screen this figure came from')}/>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
                 {tk.last_reading_at
-                  ? <div style={{fontSize:11.5,color:'#475569',marginTop:5,marginLeft:130}}>
+                  ? <div style={{fontSize:11.5,color:'#475569',marginTop:4}}>
                       <span style={{color:'#16a34a',fontWeight:700}}>● {tc('sstart.lastSaved','Last saved')}</span>{' '}
                       {tk.last_reading_type ? `${tk.last_reading_type} ` : ''}{tc('sstart.dipLabel','dip')} {tk.last_dip_cm!=null?`${tk.last_dip_cm} cm`:'—'}
                       {tk.last_reading!=null?` → ${fmtL(tk.last_reading)} L`:''} · {fmtWhen(tk.last_reading_at)}
                     </div>
-                  : <div style={{fontSize:11.5,color:'#94a3b8',marginTop:5,marginLeft:130}}>{tc('sstart.noReadingYet','No reading saved yet for this tank.')}</div>}
+                  : <div style={{fontSize:11.5,color:'#94a3b8',marginTop:4}}>{tc('sstart.noReadingYet','No reading saved yet for this tank.')}</div>}
               </div>
             );
           })}
