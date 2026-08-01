@@ -70,31 +70,6 @@ function haversineM(lat1, lon1, lat2, lon2) {
 }
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Store a meter reading in its source column (manager vs POS), recompute the
-// canonical value (manager wins, else POS) used by reconciliation, and report a
-// cross-source conflict when the two sources disagree for the same nozzle/phase.
-async function writeSourceMeter(client, { shift_id, nozzle_id, phase, source, reading, recorded_by }) {
-  const col = `${phase}_${source}`;   // opening_mgr | opening_pos | closing_mgr | closing_pos (controlled inputs)
-  await client.query(
-    `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
-     VALUES($1,$2,$3,$4)
-     ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
-    [shift_id, nozzle_id, reading, recorded_by]);
-  const { rows } = await client.query(
-    `UPDATE shift_nozzle_readings
-       SET opening_reading = COALESCE(opening_mgr, opening_pos),
-           closing_reading = COALESCE(closing_mgr, closing_pos)
-     WHERE shift_id=$1 AND nozzle_id=$2
-     RETURNING opening_mgr, opening_pos, closing_mgr, closing_pos`,
-    [shift_id, nozzle_id]);
-  const r = rows[0] || {};
-  const mgr = r[`${phase}_mgr`], pos = r[`${phase}_pos`];
-  if (mgr != null && pos != null && Math.abs(Number(mgr) - Number(pos)) > 0.5) {
-    return { manager: Number(mgr), attendant: Number(pos), delta: +(Number(pos) - Number(mgr)).toFixed(3) };
-  }
-  return null;
-}
-
 // POST /api/reconcile/denomination  — save denomination count (attendant)
 router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
   try {
@@ -241,28 +216,32 @@ router.post('/manager', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id
+        SELECT sa.id, sa.opening_cash, s.station_id
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Attendant not assigned to this shift' }); }
       const sa = saRows[0];
 
-      // The operator's nozzles (child table); fall back to the legacy single nozzle.
-      const { rows: nozRows } = await client.query(`
+      // The operator's nozzles. ONE source — shift_attendant_nozzles. The legacy
+      // single-nozzle fallback on shift_attendants is retired (01-Aug-2026): it read
+      // a column the settlement never trusted, and every row that would have used it
+      // is an unsettled test shift from before multi-nozzle existed.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles assigned to this operator.' }); }
 
-      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the single form.
+      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the
+      // single form. The single form used to name the nozzle from the retired
+      // sa.nozzle_id column; it now takes the operator's own nozzle, and only when he
+      // has exactly one — with two, a bare closing_reading names nothing and the
+      // caller must send `closings`.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -333,14 +312,16 @@ router.post('/manager', authenticate,
         }
       }
 
-      // Persist each nozzle's closing; mirror the last onto sa for legacy reads.
+      // Persist each nozzle's closing. The mirror onto shift_attendants.closing_reading
+      // is gone — writing "the last leg's closing" onto a single column was where the
+      // impossible figures came from: an operator on four nozzles left one number
+      // standing for four meters, and nothing read it back except a carry-forward
+      // fallback that has now been retired with it.
       for (const leg of legs) {
         await client.query(
           `UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`,
           [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`,
-        [legs[legs.length - 1].closing, shift_id, attendant_id]);
 
       // Petty cash/skimming → one top-up into the station petty-cash fund per
       // operator (idempotent on the operator's settlement row).
@@ -463,11 +444,9 @@ router.post('/self-settle', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id, s.status, s.date AS trade_date
+        SELECT sa.id, sa.opening_cash, s.station_id, s.status, s.date AS trade_date
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
       const sa = saRows[0];
@@ -488,17 +467,20 @@ router.post('/self-settle', authenticate,
         if (!onSite) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You must be at the outlet to settle — location check failed.' }); }
       }
 
-      const { rows: nozRows } = await client.query(`
+      // ONE source for the operator's nozzles — see the manager path above for why
+      // the legacy shift_attendants fallback is retired.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles are assigned to you.' }); }
 
+      // Single form names the operator's own nozzle, and only when he has exactly
+      // one — same as the manager path, and for the same reason.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -564,11 +546,11 @@ router.post('/self-settle', authenticate,
         }
       }
 
-      // Persist each nozzle's closing (mirror the manager close).
+      // Persist each nozzle's closing. No mirror onto shift_attendants — see the
+      // manager path above.
       for (const leg of legs) {
         await client.query(`UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`, [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`, [legs[legs.length-1].closing, shift_id, attendant_id]);
 
       // Petty → station petty-cash fund (idempotent per operator settlement).
       await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
@@ -735,8 +717,9 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
 // See docs/drift-audit.md.
 
 // POST /api/reconcile/pos-meter — attendant captures a nozzle's totalizer from
-// the POS. OCR via Claude, store the image, and record it as the OPENING (if none
-// yet for this shift+nozzle) or the CLOSING, flagging a handover mismatch on open.
+// the POS. OCR via Claude, store the image, hand the number back. It does NOT
+// write a meter reading: the settlement is the single writer into
+// shift_attendant_nozzles, and this feeds it.
 // Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
 // gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
 router.post('/pos-meter', authenticate,
@@ -748,9 +731,8 @@ router.post('/pos-meter', authenticate,
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: sh } = await client.query('SELECT start_time FROM shifts WHERE id=$1', [shift_id]);
+    const { rows: sh } = await client.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
     if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
-    const startTime = sh[0].start_time;
 
     // OCR the totalizer
     let reading = '', legible = false, notes = '';
@@ -770,23 +752,30 @@ router.post('/pos-meter', authenticate,
       notes   = String(parsed.notes ?? '');
     } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
 
-    let phase = 'opening', mismatch = null, source_conflict = null;
+    // THIS ROUTE NO LONGER WRITES A METER READING. It reads the totalizer off a
+    // photograph and hands the number back; the settlement form submits it, and the
+    // settlement is the one writer into shift_attendant_nozzles. It used to write a
+    // second, parallel record into shift_nozzle_readings — a whole extra table whose
+    // only job was to disagree with the first one and report the disagreement. That
+    // is the drift, not a safeguard against it.
+    //
+    // The phase is gone with it. Under the carry-forward rule an opening is never
+    // captured — it IS the last close — so every scan an operator takes is a closing
+    // candidate. There is nothing left to decide.
+    let opening_reading = null, below_opening = false;
     if (reading) {
       const num = Number(reading);
-      // Phase from the POS's OWN prior capture, so the attendant's first scan is
-      // their opening even if the manager already recorded one.
-      const { rows: ex } = await client.query(
-        'SELECT opening_pos FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
-      phase = (ex.length && ex[0].opening_pos != null) ? 'closing' : 'opening';
-      source_conflict = await writeSourceMeter(client, { shift_id, nozzle_id, phase, source:'pos', reading: num, recorded_by: req.user.id });
-      if (phase === 'opening') {
-        const { rows: prev } = await client.query(
-          `SELECT snr.closing_reading FROM shift_nozzle_readings snr
-           JOIN shifts s ON s.id = snr.shift_id
-           WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3 AND snr.closing_reading IS NOT NULL
-           ORDER BY s.start_time DESC LIMIT 1`, [nozzle_id, shift_id, startTime]);
-        const pc = prev.length ? Number(prev[0].closing_reading) : null;
-        if (pc != null && Math.abs(num - pc) > 0.5) mismatch = { prior_closing: pc, delta: +(num - pc).toFixed(3) };
+      // The check worth keeping: a totalizer cannot run backwards. If the scan is
+      // below the opening this nozzle was carried in at, either the photo was
+      // misread or it is the wrong nozzle — and the operator should see that before
+      // he settles against it, not after.
+      const { rows: op } = await client.query(
+        `SELECT opening_reading FROM shift_attendant_nozzles
+          WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL LIMIT 1`,
+        [shift_id, nozzle_id]);
+      if (op.length) {
+        opening_reading = Number(op[0].opening_reading);
+        below_opening = num < opening_reading;
       }
     }
     await client.query('COMMIT');
@@ -796,7 +785,7 @@ router.post('/pos-meter', authenticate,
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* store failed — OCR + reading already saved and returned */ }
-    res.json({ reading, legible, notes, phase, mismatch, source_conflict });
+    res.json({ reading, legible, notes, opening_reading, below_opening });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });

@@ -1213,3 +1213,40 @@ BEGIN
     ALTER TABLE public.attendance DROP COLUMN IF EXISTS check_out_artifact_id;
   END IF;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RETIRE THE SPARE METER STORES (owner-set, 01-Aug-2026: "retire the spare tires,
+-- they are heavy").
+--
+-- Pumpini grew THREE places to keep a nozzle's opening and closing meter:
+--
+--   shift_attendant_nozzles   one row per operator per nozzle. THE one. Every
+--                             rupee the settlement has ever computed came from
+--                             here, and it is clean: 876 rows, not one negative
+--                             and not one impossible movement.
+--   shift_attendants          .opening_reading / .closing_reading — a single pair
+--                             on the OPERATOR row, mirroring "the first nozzle" on
+--                             assign and "the last leg" on close. For a man on four
+--                             nozzles that is not a summary, it is a wrong number.
+--                             It held 70 negative and 150 impossible readings.
+--   shift_nozzle_readings     a per-nozzle store holding manager-vs-POS captures so
+--                             the two could be compared. 3 rows, all abandoned test
+--                             data from one Dilsukhnagar shift on 20-Jun-2026.
+--
+-- The settlement never read the last two — it validates closing >= opening per
+-- nozzle and refuses otherwise, so the bad figures could never become money. But
+-- the CARRY-FORWARD read all three, COALESCE'd in order. A nozzle missing its good
+-- row would have carried one of those figures straight into a live opening, and the
+-- shift would have been measured against it. That is why they go.
+--
+-- Verified before dropping: every row that would have used a fallback belongs to
+-- Dilsukhnagar or the unnamed test outlet — NONE at Kamala, Adhoc Highway or
+-- Highway — and every one has closing_reading NULL, i.e. never settled.
+--
+-- ORDER MATTERS: the code that stopped reading and writing these ships FIRST
+-- (Railway auto-deploys on merge); this DDL is run afterwards. Dropping before the
+-- deploy would 500 the settle path.
+DROP TABLE IF EXISTS public.shift_nozzle_readings;
+
+ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS opening_reading;
+ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS closing_reading;

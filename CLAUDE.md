@@ -120,10 +120,50 @@ money/access risk. The standing rule now:
 The living inventory + fix checklist is `docs/drift-audit.md`. Fix drift in small,
 reversible, one-concept-per-PR slices.
 
+## 🔴 ONE meter store — the spare tires are retired (owner-set 2026-08-01)
+
+There is exactly **one** place a nozzle's opening and closing meter lives:
+**`shift_attendant_nozzles`**, one row per operator per nozzle. Do not add a second.
+
+Two others existed and are now dropped: `shift_attendants.opening_reading` /
+`.closing_reading` (a single pair on the OPERATOR row, mirroring "the first nozzle"
+on assign and "the last leg" on close — for a man on four nozzles that is not a
+summary, it is a wrong number) and `shift_nozzle_readings` (a manager-vs-POS
+comparison store). The good table is clean: 876 rows, not one negative and not one
+impossible movement. The retired pair held **70 negative and 150 impossible**
+readings.
+
+**Why this was dangerous even though the money was always right.** The settlement
+validates `closing >= opening` per nozzle and refuses otherwise, so the bad figures
+could never become money — but the **carry-forward** read all three tables in a
+`COALESCE`. A nozzle missing its good row would have carried a garbage figure
+straight into a live opening, and the shift would have been measured against it.
+**A fallback onto a table the money does not trust is not resilience; it is a quiet
+path from bad data into the one number a shift is judged by.**
+
+`/reconcile/pos-meter` no longer writes a meter at all — it OCRs the photograph and
+hands the number back, and the settlement writes it. One writer.
+
+## 🗓️ Next session — agreed agenda (owner, 2026-08-01 evening)
+
+1. **Rewire the attendant self-settlement form** onto `shift_attendant_nozzles`
+   properly. The path is deliberate and stays; it just has to drink from the one
+   table. (Backend already points there; check the form end to end.)
+2. **One more sanity sweep for multiple sources of truth.** The meter store was one;
+   `docs/drift-audit.md` lists the rest. Find any other concept with two homes.
+3. **Peel the test outlets off PRODUCTION.** Only **Kamala**, **Adhoc Highway** and
+   **Highway** are real. Dilsukhnagar Bunk, VAWE-1, the unnamed outlet and their
+   data are test fixtures that now live in staging, and every analysis run against
+   prod has to filter them out by hand — which is how a wrong conclusion gets drawn.
+   Precondition the owner set: **VAWE live and staging at parity with production**,
+   then demos run on staging and prod holds only real outlets.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
   timestamp. India is DD/MM — never MM/DD.
+- **Real outlets in production: Kamala, Adhoc Highway, Highway.** Everything else in
+  prod is a test fixture — exclude it before drawing any conclusion from prod data.
 - i18n: user-facing strings go through `tc('key', 'English fallback')`; add Telugu (`te.json`)
   for manager-facing text.
 - Attendants = `users` with `role='attendant'` linked via `station_users`; `is_active` +
