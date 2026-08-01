@@ -19,6 +19,11 @@
 //   4. handover_mismatch    — a tank's prior-shift CLOSING dip vs the next-shift
 //                             OPENING dip differ beyond a small litre tolerance
 //                             (a wet-stock red flag). Advisory only.
+//   5. unverified_meter_entry — a nozzle whose closing meters are ALWAYS whole
+//                             litres, i.e. typed rather than read off the pump
+//                             slip (which prints 3 decimals). The guardrail behind
+//                             the slip scanner: without it, a manager who scans
+//                             and one who invents his figures look identical.
 //
 // House model verified against pumpini-schema.snapshot.sql + routes/dipstick.js:
 //   - dipstick_readings.reading_type ∈ ('opening','mid_shift','closing'), tied to
@@ -39,6 +44,13 @@ const THRESHOLDS = {
   open_shift_days:          posInt(process.env.DATA_HEALTH_OPEN_SHIFT_DAYS, 1),
   late_close_days:          posInt(process.env.DATA_HEALTH_LATE_CLOSE_DAYS, 2),
   handover_tolerance_ltrs:  posNum(process.env.DATA_HEALTH_HANDOVER_TOLERANCE_LTRS, 50),
+  // Unverified meter entry (flag 5). A totalizer prints 3 decimals, so a genuine
+  // reading is whole about 1 time in 1000. 80% sits in the empty gap measured on
+  // production: honest outlets peaked at 17% (39% on two slow premium nozzles),
+  // the outlet entering by hand was at 100%. Min readings keeps a nozzle that has
+  // only run a handful of shifts out of it.
+  entry_whole_pct:          posNum(process.env.DATA_HEALTH_ENTRY_WHOLE_PCT, 80),
+  entry_min_readings:       posInt(process.env.DATA_HEALTH_ENTRY_MIN_READINGS, 10),
   // Shifts/handovers older than this window are ignored — the tripwire is about
   // recent, actionable data-entry drift, and this keeps the queries bounded.
   lookback_days:            posInt(process.env.DATA_HEALTH_LOOKBACK_DAYS, 30),
@@ -203,6 +215,70 @@ async function computeDataHealth(stationIds, today = istToday()) {
       shift_number: r.shift_number,
       prev_date: r.prev_date,
       prev_shift_number: r.prev_shift_number,
+    });
+  }
+
+  // ── Flag 5: unverified meter entry (readings typed, not read off the slip) ─
+  //
+  // THE GUARDRAIL BEHIND THE SCANNER. Pumpini can read a pump slip, but nothing
+  // ever checked whether anyone USED it — so a manager who scans and a manager who
+  // invents his numbers looked identical in the data. The scanner is a
+  // convenience; this is the control.
+  //
+  // The tell is the DECIMAL. A dispenser totalizer prints three decimal places
+  // (a real slip reads V:1654101.290), so a genuine reading lands exactly on a
+  // whole litre about once in a thousand. A nozzle whose readings are ALWAYS whole
+  // was not read off the printout — it was typed from memory or estimate.
+  //
+  // Verified against production before the threshold was chosen (01-Aug-2026):
+  // one outlet's six petrol/diesel nozzles were 100% whole across 41 readings
+  // EACH — 246 consecutive — while that same outlet's own CNG nozzles sat at 2%
+  // and 5%. Same manager, same screen, so it is the entry path that differs, not
+  // the habit. Every other outlet peaked at 17%, with two low-throughput premium
+  // nozzles at 39%. The default 80% therefore sits in a wide empty gap rather
+  // than being a guess.
+  //
+  // WHAT THIS IS NOT: it is not proof of dishonesty, and it must never be worded
+  // as one. It says the number has no evidence behind it — which is exactly what
+  // an owner needs to know, and exactly what he could not see before.
+  //
+  // Deliberately statistical: it needs NO new column and works on history already
+  // in the database, so it reports what has ALREADY been happening instead of
+  // waiting a month to collect provenance.
+  let entryRows = [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.station_id, n.nozzle_number, n.fuel_type,
+              COUNT(*)::int AS readings,
+              COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))::int AS whole_readings,
+              ROUND(100.0 * COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))
+                    / NULLIF(COUNT(*), 0), 0) AS pct_whole,
+              MAX(s.date)::text AS last_date
+         FROM shift_attendant_nozzles san
+         JOIN shifts s  ON s.id = san.shift_id
+         JOIN nozzles n ON n.id = san.nozzle_id
+        WHERE s.station_id = ANY($1::uuid[])
+          AND san.closing_reading IS NOT NULL
+          AND s.date >= ($2::date - $3::int)
+        GROUP BY s.station_id, n.id, n.nozzle_number, n.fuel_type
+       HAVING COUNT(*) >= $4::int
+          AND 100.0 * COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))
+              / NULLIF(COUNT(*), 0) >= $5::numeric
+        ORDER BY pct_whole DESC, n.nozzle_number`,
+      [ids, today, T.lookback_days, T.entry_min_readings, T.entry_whole_pct]
+    );
+    entryRows = rows;
+  } catch (e) { /* best-effort */ }
+
+  for (const r of entryRows) {
+    push(r.station_id, {
+      type: 'unverified_meter_entry',
+      nozzle_number: r.nozzle_number,
+      fuel_type: r.fuel_type,
+      readings: Number(r.readings),
+      whole_readings: Number(r.whole_readings),
+      pct_whole: r.pct_whole == null ? null : Number(r.pct_whole),
+      last_date: r.last_date,
     });
   }
 

@@ -23,7 +23,7 @@ const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--bor
 const IST = { timeZone: 'Asia/Kolkata' };
 const fmtDay = (d) => { try { return new Date((d && d.length <= 10 ? d + 'T00:00:00' : d)).toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short' }); } catch { return d || ''; } };
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const ICON = { missing_dip: Droplets, overdue_physical_dip: Gauge, stale_open_shift: Clock, late_close: Clock, handover_mismatch: AlertTriangle };
+const ICON = { missing_dip: Droplets, overdue_physical_dip: Gauge, stale_open_shift: Clock, late_close: Clock, handover_mismatch: AlertTriangle, unverified_meter_entry: AlertTriangle };
 
 // Human-readable line for a single flag. tc = translate helper (key, fallback).
 function flagText(f, tc) {
@@ -49,6 +49,17 @@ function flagText(f, tc) {
         .replace('{v}', f.diff_ltrs != null ? (f.diff_ltrs > 0 ? '+' : '') + f.diff_ltrs : '?')
         .replace('{from}', fmtDay(f.prev_date))
         .replace('{to}', fmtDay(f.date));
+    // Worded as an OBSERVATION, never an accusation. What the system actually
+    // knows is that the figure has no evidence behind it — a broken camera and a
+    // dishonest entry produce the same flag, and only the owner can tell which by
+    // asking. Saying more than we know would burn the owner's trust the first
+    // time it was a faulty scanner.
+    case 'unverified_meter_entry':
+      return tc('dh.unverifiedMeter', 'Nozzle {n} · {fuel} — {p}% of {c} closing meters entered as whole litres; the pump slip prints decimals, so these were typed, not scanned')
+        .replace('{n}', f.nozzle_number)
+        .replace('{fuel}', cap(f.fuel_type || ''))
+        .replace('{p}', f.pct_whole != null ? f.pct_whole : '?')
+        .replace('{c}', f.readings);
     default:
       return f.type;
   }

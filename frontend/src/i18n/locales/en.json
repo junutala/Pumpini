@@ -2645,7 +2645,8 @@
     "staleOpen1": "1 shift still open past its day (since {d})",
     "staleOpenN": "{n} shifts still open past their day",
     "lateClose": "{n} shift(s) closed late — batch entry",
-    "handover": "{t} — handover gap {v} L ({from} → {to})"
+    "handover": "{t} — handover gap {v} L ({from} → {to})",
+    "unverifiedMeter": "Nozzle {n} · {fuel} — {p}% of {c} closing meters entered as whole litres; the pump slip prints decimals, so these were typed, not scanned"
   },
   "slipbook": {
     "title": "Coupon Books",
