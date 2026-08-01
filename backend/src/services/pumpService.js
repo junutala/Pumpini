@@ -77,6 +77,21 @@ async function unassignedNozzles(station_id, client = pool) {
   return rows;
 }
 
+// The number the SLIP prints for a nozzle, defaulted from our own name for it.
+//
+// Outlets name nozzles pump.nozzle — "1.1" is pump 1, nozzle 1 (the convention PR
+// #68 introduced). So the suffix ALREADY IS the machine's nozzle number, and asking
+// the owner to retype it was asking for something the name already carries. It is
+// still a separate COLUMN, because a machine is free to number its own nozzles
+// differently from the outlet's convention — but it is now a default he overrides
+// on the rare unit that does, not a field he fills on every ordinary one.
+function defaultSlipNo(nozzle_number) {
+  const s = String(nozzle_number ?? '').trim();
+  const m = s.match(/^\d+\.(\d+)$/);      // "1.1" -> "1"
+  if (m) return m[1];
+  return /^\d+$/.test(s) ? s : null;      // bare "1" -> "1"; anything else, no guess
+}
+
 function cleanSerial(v) {
   const s = String(v ?? '').trim().toUpperCase();
   return s || null;
@@ -229,6 +244,6 @@ async function retirePump(pump_id, station_id, client = pool) {
 }
 
 module.exports = {
-  hasPumps, listPumps, unassignedNozzles, createPump, updatePump, retirePump,
+  hasPumps, defaultSlipNo, listPumps, unassignedNozzles, createPump, updatePump, retirePump,
   badRequest, conflict,
 };

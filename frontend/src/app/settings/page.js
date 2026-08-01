@@ -780,7 +780,7 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
           to be a stylesheet, not an inline style: inline styles cannot carry a media
           query, and this row MUST NOT overflow sideways on a forecourt handset. */}
       <style>{`
-        .pn-row { display:grid; grid-template-columns:96px minmax(0,1.1fr) minmax(0,1.1fr) 96px 104px 48px;
+        .pn-row { display:grid; grid-template-columns:96px minmax(0,1.1fr) minmax(0,1.1fr) 104px 48px;
                   gap:10px; align-items:end; padding:10px 0; border-top:1px solid var(--border); }
         @media (max-width: 600px) {
           .pn-row { grid-template-columns:1fr; align-items:stretch; gap:8px;
@@ -1061,10 +1061,9 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
       nozzle_number:  nozzle.nozzle_number || '',
       fuel_type:      nozzle.fuel_type || 'petrol',
       tank_id:        nozzle.tank_id || '',
-      slip_nozzle_no: nozzle.slip_nozzle_no || '',
       is_active:      nozzle.is_active !== false,
     });
-  }, [nozzle.id, nozzle.nozzle_number, nozzle.fuel_type, nozzle.tank_id, nozzle.slip_nozzle_no, nozzle.is_active]);
+  }, [nozzle.id, nozzle.nozzle_number, nozzle.fuel_type, nozzle.tank_id, nozzle.is_active]);
 
   const save = async (patch) => {
     const next = { ...d, ...patch };
@@ -1075,7 +1074,6 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
         nozzle_number:  next.nozzle_number,
         fuel_type:      next.fuel_type,
         tank_id:        next.tank_id || null,
-        slip_nozzle_no: next.slip_nozzle_no || null,
         is_active:      next.is_active,
       });
       onChanged();
@@ -1118,16 +1116,11 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
           ))}
         </select>
       </div>
-      <div>
-        <label style={MICRO_LABEL}>{tc('setp.slipNo', 'Slip no.')}</label>
-        {/* What the MACHINE prints for this nozzle, which need not equal ours. Kept
-            separate from nozzle_number so an outlet can name its nozzles freely. */}
-        <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8} disabled={busy}
-          placeholder={tc('setp.egSlipNo', 'e.g. 1')}
-          value={d.slip_nozzle_no || ''}
-          onChange={e=>setD(p=>({...p,slip_nozzle_no:e.target.value}))}
-          onBlur={()=>{ if ((d.slip_nozzle_no||'') !== (nozzle.slip_nozzle_no||'')) save({}); }}/>
-      </div>
+      {/* NO "slip no." FIELD. The slip does not print one — it prints the pump's
+          serial and a plain nozzle number, and the pump's number is already here.
+          So the slip's nozzle name is derived: pump number + printed nozzle number
+          ("1" on pump 2 IS nozzle 2.1), done server-side in pumpService. Asking the
+          manager to re-key what we can concatenate was a field with no answer. */}
       <div>
         <label style={MICRO_LABEL}>{tc('setp.thStatus', 'Status')}</label>
         <button type="button" disabled={busy} onClick={()=>save({ is_active: !d.is_active })}
@@ -1155,7 +1148,7 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
 // The add-a-nozzle row. Same shape as an existing row so the eye does not have to
 // re-learn it, and deliberately WITHOUT a pump field — the caller supplies it.
 function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
-  const [d, setD] = useState({ nozzle_number:'', fuel_type:'petrol', tank_id:'', slip_nozzle_no:'' });
+  const [d, setD] = useState({ nozzle_number:'', fuel_type:'petrol', tank_id:'' });
   const [busy, setBusy] = useState(false);
   const f = (k,v) => setD(p=>({...p,[k]:v}));
   const tankOpts = tanks.filter(t => t.fuel_type === d.fuel_type);
@@ -1168,7 +1161,6 @@ function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
         nozzle_number:  String(d.nozzle_number).trim(),
         fuel_type:      d.fuel_type,
         tank_id:        d.tank_id || null,
-        slip_nozzle_no: d.slip_nozzle_no || null,
         pump_id:        pump.id,
       });
       onAdded();
@@ -1201,12 +1193,6 @@ function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label style={MICRO_LABEL}>{tc('setp.slipNo', 'Slip no.')}</label>
-          <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8}
-            placeholder={tc('setp.egSlipNo', 'e.g. 1')}
-            value={d.slip_nozzle_no} onChange={e=>f('slip_nozzle_no', e.target.value)}/>
         </div>
       </div>
       {tankOpts.length === 0 && (
