@@ -1241,13 +1241,11 @@ function AddPumpForm({ stationId, tc, onAdded }) {
       // Pumpini is written — by the flow that produced it, in one call; there is no
       // separate upload endpoint to hold it against.
       //
-      // ⚠ NOT YET STORED. services/pumpService.createPump takes a `slip_artifact_id`
-      // but nothing turns bytes into one, so these two fields are destructured away
-      // server-side today and the pump lands with slip_artifact_id = null. They are
-      // sent anyway so the day the writer stores the artifact, this screen already
-      // feeds it — and until then the capture still earns its place: it is how the
-      // owner reads the serial off the slip while typing it in. The "Slip on file"
-      // pill keys off slip_artifact_id, so it stays honest either way.
+      // pumpService stores it against the pump and links slip_artifact_id back, so
+      // the picture that identified the machine is kept as evidence rather than
+      // being read once and thrown away — the same gap that left coupons and gauge
+      // screens unevidenced for months. Best-effort server-side: a pump still saves
+      // when the camera or the store fails, and a CNG unit has no slip at all.
       await createPump(stationId, {
         pump_number: f.pump_number.trim(),
         serial:      f.serial.trim() || null,
