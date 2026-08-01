@@ -93,9 +93,18 @@ export default function ShiftEndPage() {
       .then(r => {
         const list = Array.isArray(r) ? r : [];
         setOpen(list);
+        if (autoPicked.current) return;
+        // ?shift=<id> — the Shifts screen's "End Shift" button has always sent this
+        // and nothing ever read it, so a manager who named a shift there still had
+        // to pick it again here. Honoured now; an unknown or already-closed id just
+        // falls through to the rules below.
+        const wanted = typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('shift') : null;
+        const named = wanted && list.find(s => s.id === wanted);
+        if (named) { autoPicked.current = true; pickShift(named); return; }
         // ONE open shift is the normal case at a single-outlet station, so choose
         // it for him. Several open shifts is a real choice — the chips below stay.
-        if (list.length === 1 && !autoPicked.current) { autoPicked.current = true; pickShift(list[0]); }
+        if (list.length === 1) { autoPicked.current = true; pickShift(list[0]); }
       })
       .catch(()=>setOpen([]));
   }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -580,8 +589,16 @@ export default function ShiftEndPage() {
                     <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
                         <div style={{fontSize:12.5,color:'#555'}}>
-                          {tc('send.float','float')} <b>{fmt(a.opening_cash)}</b>
-                          {' · '}{(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}
+                          {/* Shown only when there IS a float. Outlets do not give one,
+                              so shift start no longer asks and every new shift reads
+                              ₹0.00 — a line that always says zero is noise the eye
+                              learns to skip. Older shifts and any outlet that does hand
+                              a float still show it, because it is real money and the
+                              expected-cash maths below depends on it. */}
+                          {Number(a.opening_cash||0) !== 0 && (
+                            <>{tc('send.float','float')} <b>{fmt(a.opening_cash)}</b>{' · '}</>
+                          )}
+                          {(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}
                         </div>
                         {/* The span he is being released from. started_at is null
                             until the attendance DDL has run — say so rather than

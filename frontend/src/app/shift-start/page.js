@@ -60,6 +60,13 @@ export default function ShiftStartPage() {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const router = useRouter();
+  // Set when the Shifts screen sends us at a named shift (see the resume block below).
+  // Read off window.location rather than useSearchParams(): on a statically routed
+  // page Next 14 demands a Suspense boundary around that hook and fails the BUILD
+  // without one. This is a client component that only reads the value inside an
+  // effect, so there is nothing to gain from the hook and a deployment to lose.
+  const wantShift = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('shift') : null;
   const { station } = useAuth();
   const stationId = typeof station === 'object' ? station?.id : station;
 
@@ -268,6 +275,20 @@ export default function ShiftStartPage() {
       setTanks(Array.isArray(tk)?tk:[]);
       setPrices(Array.isArray(pr)?pr:[]);
       if (!slotTouched.current) setSlot(p => ({ ...p, shift_number: slotForNow(defList) }));
+
+      // ?shift=<id> — the Shifts screen sends "Add Attendant" here rather than
+      // carrying its own assign form (retired 01-Aug). The shift is already named,
+      // so resume THAT one and go straight to the attendant screen: the dips of a
+      // running shift are settled and re-presenting them would be busywork.
+      const wanted = openList.find(s => s.id === wantShift);
+      if (wanted) {
+        shiftRef.current = Promise.resolve(wanted);
+        setResumed(true);
+        refreshShift(wanted.id)
+          .then(() => setStep(1))
+          .catch(()=>{ shiftRef.current = null; setResumed(false); });
+        return;
+      }
 
       // Resume silently when exactly ONE shift is open today: that is the shift he
       // is working, and making him press Resume for it was pure ceremony. Two or
