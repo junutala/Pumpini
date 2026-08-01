@@ -8,7 +8,7 @@ import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
 import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts,
-  getPumps, createPump, updatePump, deletePump } from '../../lib/api';
+  getPumps, createPump, updatePump, deletePump, parsePumpSlip } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
@@ -1243,6 +1243,35 @@ function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
 function AddPumpForm({ stationId, tc, onAdded }) {
   const [f, setF] = useState({ pump_number:'', serial:'', model:'' });
   const [slip, setSlip] = useState(null);   // { base64, media_type }
+  const [reading, setReading] = useState(false);
+  const [readMsg, setReadMsg] = useState('');
+
+  // Photographing the slip READS it. Typing a serial off a thermal printout is the
+  // step most likely to be got wrong, and a mistyped serial breaks every future scan
+  // on that machine silently — the match just never fires and nobody knows why.
+  // Prefilled, never auto-committed: the owner still sees and confirms both fields,
+  // because the label varies by make ("PUMP SERIAL NUMBER" on one, "Pump SNo" on
+  // another) and a mis-read is worth catching here rather than months later.
+  const onSlip = async (img) => {
+    setSlip(img); setReadMsg('');
+    if (!img?.base64) return;
+    setReading(true);
+    try {
+      const r = await parsePumpSlip(stationId, { file_base64: img.base64, media_type: img.media_type });
+      const got = [];
+      if (r?.pump_serial) { set('serial', r.pump_serial); got.push(tc('setp.gotSerial', 'serial')); }
+      if (r?.model)       { set('model',  r.model);       got.push(tc('setp.gotModel', 'model')); }
+      // Some layouts print the pump's own number (FP. ID / FIP No.). Offered as a
+      // default only — the outlet calls its pumps whatever is painted on them, and
+      // that is the name the staff use.
+      if (r?.pump_id && !f.pump_number) set('pump_number', r.pump_id);
+      setReadMsg(got.length
+        ? tc('setp.readOk', 'Read the {x} off the slip — check them against the paper.').replace('{x}', got.join(' and '))
+        : tc('setp.readNothing', 'Could not find a serial on that slip — type it from the paper.'));
+    } catch (e) {
+      setReadMsg(e?.error || tc('setp.readFailed', 'Could not read that slip — type the serial and model from it.'));
+    } finally { setReading(false); }
+  };
   const [busy, setBusy] = useState(false);
   const set = (k,v) => setF(p=>({...p,[k]:v}));
 
@@ -1285,9 +1314,13 @@ function AddPumpForm({ stationId, tc, onAdded }) {
         <PhotoCapture
           label={tc('setp.photographSlip', 'Photograph a slip from this pump')}
           retakeLabel={tc('setp.retakePhoto', 'Retake')}
-          hint={tc('setp.slipHint', 'Optional. The serial is printed on the slip — photograph it, then read it off below.')}
-          onCapture={setSlip}
-          disabled={busy}/>
+          hint={tc('setp.slipHint2', 'Optional. We read the serial and model off the photo — check them below before saving.')}
+          onCapture={onSlip}
+          disabled={busy || reading}/>
+        {reading && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
+          {tc('setp.readingSlip', 'Reading the slip…')}
+        </div>}
+        {!reading && readMsg && <div style={{fontSize:12.5,color:'#b45309',marginTop:8}}>{readMsg}</div>}
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>

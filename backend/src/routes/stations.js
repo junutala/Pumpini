@@ -4,6 +4,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const pumpService = require('../services/pumpService');
+const slipParser  = require('../services/slipParser');
 // Outbound integration: push the outlet to VAWE on create/update. Fire-and-forget
 // so a VAWE outage can never break an outlet save.
 const { queueOutletSync } = require('../services/vaweService');
@@ -158,6 +159,31 @@ router.get('/:id/pumps', authenticate, requireStationId('id'), async (req, res, 
       pumpService.unassignedNozzles(req.params.id),
     ]);
     res.json({ pumps, unassigned });
+  } catch (err) { next(err); }
+});
+
+// POST /api/stations/:id/parse-pump-slip — read a sample slip during SETUP.
+// Same parser as the shift-time scan (services/slipParser), different guard: this
+// one has no shift, because a pump is being identified before it has ever run one.
+// Returns identity only; the form prefills it and the owner confirms, because a
+// mis-read serial would silently break every future scan on that machine.
+router.post('/:id/parse-pump-slip', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
+  try {
+    const { file_base64, media_type } = req.body;
+    if (!file_base64) return res.status(400).json({ error: 'Photograph the slip first.' });
+    const parsed = await slipParser.parseSlip({ file_base64, media_type });
+    if (!parsed) {
+      return res.status(422).json({ error: 'Could not read that slip — type the serial and model from it instead.' });
+    }
+    res.json({
+      pump_serial: parsed.pump_serial,
+      model: parsed.model,
+      pump_id: parsed.pump_id,          // FP. ID / FIP No. when the layout prints one
+      slip_type: parsed.slip_type,
+      nozzle_numbers: parsed.nozzles.map(n => n.nozzle_no).filter(Boolean),
+      legible: parsed.legible,
+      notes: parsed.notes,
+    });
   } catch (err) { next(err); }
 });
 
