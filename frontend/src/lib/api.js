@@ -123,6 +123,12 @@ export const acknowledgeAlert = (id)     => api.patch(`/alerts/${id}/acknowledge
 export const getUsers  = (params) => api.get('/users', { params });
 export const updateUser = (id, d) => api.patch(`/users/${id}`, d);
 export const addAttendant = (data) => api.post('/users/attendant', data);
+// Reference photograph for someone ALREADY on the books. Same concept as the
+// enrolment shot on Add Attendant, same backend writer — a re-shoot, not an edit.
+export const setAttendantPhoto = (id, data) => api.post(`/users/${id}/photo`, data);
+// Newest artifact per parent, { entity_id: {...} }. One call for a whole list.
+export const getLatestArtifacts = (entity_type, ids, kind) =>
+  api.get('/artifacts/latest', { params: { entity_type, entity_ids: (ids||[]).join(','), kind } });
 
 // RFID
 export const getRfidTags  = (stationId) => api.get(`/rfid?station_id=${stationId}`);
