@@ -2498,6 +2498,7 @@
     "gaugeSkipped": "Not matched: {list}.",
     "gaugeNone": "Could not match any tank on that screen — enter the readings manually.",
     "gaugeFail": "Could not read the screen — enter the readings manually.",
+    "gaugeCarriedHeld": "Tank {list} kept its carried opening from the last close — a photo cannot change it.",
     "gaugeRenumbered": "Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.",
     "gaugeCapacity": "Capacity differs for {list} — filled anyway, check the tank capacity in Settings.",
     "carriedFromClose": "Carried from the last close — the opening must equal it, so there is no gap between shifts.",
