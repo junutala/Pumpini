@@ -77,6 +77,7 @@ export default function ShiftEndPage() {
   const [gaugeBusy, setGaugeBusy] = useState(false);
   const [gaugeMsg, setGaugeMsg]   = useState('');
   const [gaugeArtifact, setGaugeArtifact] = useState('');
+  const [shiftDips, setShiftDips] = useState(new Set());  // tank_ids with a closing reading ALREADY stored for this shift
   const [dipWarn, setDipWarn] = useState(null);   // { dirty:[tank], missing:[tank] } | null
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
@@ -424,7 +425,10 @@ export default function ShiftEndPage() {
     const typed = (d !== '' && d != null) || (l !== '' && l != null);
     return typed && !savedDips[tk.id];
   };
-  const hasReading = (tk) => !!savedDips[tk.id];
+  // "Has a closing reading" means saved in THIS sitting or already in the database
+  // for this shift — a manager who dipped, walked away and came back must not be
+  // told his tanks are unread.
+  const hasReading = (tk) => !!savedDips[tk.id] || shiftDips.has(tk.id);
 
   const requestCloseShift = () => {
     const dirty   = dipTanks.filter(isDirty);
