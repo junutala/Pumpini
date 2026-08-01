@@ -839,20 +839,28 @@ router.post('/ocr-meter', authenticate,
 // too long for one photo, so the client may call this per photo and merge.
 const SLIP_PROMPT = `This image is a printed fuel-dispenser "Electronic Totalizer" / pump report slip. It belongs to ONE pump and lists that pump's nozzles, each with a CUMULATIVE volume totalizer (total litres dispensed over the pump's life).
 
-Two layouts exist — detect which:
+Known layouts — detect which, and if it is NONE of them still apply the rules below:
 - Layout A: header has "FP. ID"; each "Nozzle No1 / No2 …" block has Shif/ShDay/ShMTH lines and a "CumVolume:" (litres) plus "CumSale:" (rupees). Use CumVolume as the nozzle's cumulative volume.
 - Layout B: header has "FIP No."; an "Electronic Totalizer" block lists each "Nozzle No. : 0X" with "Ecal Factor", "Atot" (rupees) and "Vtot" (litres). Use Vtot as the nozzle's cumulative volume.
+- Layout C (HPCL "ETOT-MAIN"): header carries PUMP SERIAL NUMBER and MODEL, then "---: ETOT-MAIN :---" and one block per nozzle reading "NOZZLE : 1" followed by "A:<number>", "V:<number>" and "TOT SALES:<number>". Here **V is the VOLUME in litres and is the figure we want**; A is the cumulative AMOUNT in rupees and TOT SALES is a COUNT of transactions. Use V.
+
+🔴 THE SINGLE MOST IMPORTANT RULE: RETURN LITRES, NEVER RUPEES.
+Every layout prints a money total beside the volume total, and the money total is the BIGGER number — roughly 100x the litres, because fuel sells at about ₹100 per litre. Whatever the labels look like:
+- "V", "Vtot", "CumVolume", "VOLUME", "Ltr" -> LITRES -> this is cumulative_volume.
+- "A", "Atot", "CumSale", "AMOUNT", "Rs", "₹" -> RUPEES -> this is cumulative_amount, NOT the volume.
+If a block shows 146566859.519 next to 1506431.450, the volume is 1506431.450 — the SMALLER one. Putting the rupee figure in cumulative_volume overstates a nozzle's meter by a hundredfold and destroys the shift's sales calculation, so when the labels are ambiguous prefer the SMALLER of the two totals and say so in notes.
 
 Extract the CUMULATIVE VOLUME for EVERY nozzle visible. Read digits exactly; drop leading zeros and separators but KEEP the decimal point.
 
 Respond with ONLY a JSON object, nothing else:
 {
- "slip_type": "A" or "B",
- "pump_id": "<the FP. ID / FIP No. as a plain number string>",
- "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <number>, "legible": <true|false> } ],
+ "slip_type": "A" or "B" or "C" or "other",
+ "pump_id": "<the FP. ID / FIP No. as a plain number string, or null>",
+ "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <litres>, "cumulative_amount": <rupees or null>, "legible": <true|false> } ],
  "legible": <true|false overall>,
  "notes": "<short note; mention any nozzle cut off the page or unclear>"
 }
+- pump_id: ONLY a genuine pump/FIP identifier — a small number like 1, 2 or 3. A PUMP SERIAL NUMBER ("17CH2653V"), a MODEL ("1224/2224") and a phone number are NOT pump ids: return null instead. A wrong pump id is worse than none, because it is used to match the slip to our nozzles.
 - READ nozzle_no OFF THE SLIP. It is the number printed next to that block — "Nozzle No1" -> "1", "Nozzle No. : 03" -> "3". DO NOT renumber the blocks by their position on the page. If the first block you can see is nozzle 3, report 3, NOT 1. A slip photographed in two parts must report the SAME numbers it prints in each part, or the second photo silently overwrites the first photo's readings against the wrong nozzles.
 - If a block's nozzle number is itself unreadable, return null for nozzle_no rather than inferring it from order.
 Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
@@ -905,7 +913,14 @@ router.post('/parse-slip', authenticate,
     //     reading went into a petrol tank. Ambiguity must REFUSE, not guess.
     //
     // Resolving server-side also means one implementation, not one per screen.
-    const pump = String(parsed.pump_id ?? '').replace(/[^\d]/g, '') || null;
+    // A real pump/FIP id is a small number (1, 2, 3…). This used to strip the
+    // non-digits off whatever came back, which turned a PUMP SERIAL NUMBER like
+    // "17CH2653V" into "172653" and a MODEL "1224/2224" into "12242224" — then
+    // built the label "172653.1", which matches no nozzle anywhere. A slip that
+    // prints no pump id (the HPCL ETOT-MAIN layout does not) must yield null, so
+    // the bare nozzle number is used instead.
+    const pumpRaw = String(parsed.pump_id ?? '').replace(/[^\d]/g, '');
+    const pump = pumpRaw && pumpRaw.length <= 2 ? pumpRaw : null;
 
     const { rows: known } = await pool.query(
       `SELECT n.id, n.nozzle_number, n.fuel_type
@@ -920,8 +935,18 @@ router.post('/parse-slip', authenticate,
     const nozzles = parsed.nozzles
       .map(n => {
         const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
-        const vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        let vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        const amt = Number(String(n.cumulative_amount ?? '').toString().replace(/[^\d.]/g, ''));
         const label = pump && no ? `${pump}.${no}` : null;
+
+        // ARITHMETIC CROSS-CHECK — the rupee/litre swap, caught in code as well as
+        // in the prompt. Every slip prints a money total beside the volume total,
+        // and at ~Rs 100/L the money figure is ~100x the litres. If what came back
+        // as the "volume" is the LARGER of the two, it is the amount: reject it
+        // rather than record a meter a hundredfold too high, which would show as a
+        // colossal phantom sale on the shift.
+        let swapped = false;
+        if (isFinite(vol) && isFinite(amt) && amt > 0 && vol > amt) { swapped = true; vol = amt; }
 
         // Try the qualified form first (it is the more specific), then the bare
         // number. Never fall back to position.
@@ -934,7 +959,11 @@ router.post('/parse-slip', authenticate,
           nozzle_no: no || null,
           label,
           cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
-          legible: n.legible === true && isFinite(vol) && vol > 0,
+          cumulative_amount: isFinite(amt) && amt > 0 ? amt : null,
+          // A swap the code had to correct means the labels were read wrongly, so
+          // the figure is shown for confirmation rather than quietly trusted.
+          swapped_amount_for_volume: swapped || undefined,
+          legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped,
           // Null when nothing matched OR when several nozzles share that number —
           // the screen then leaves it for the manager instead of picking one.
           nozzle_id: !ambiguous && cands.length === 1 ? cands[0].id : null,
