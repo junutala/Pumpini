@@ -2,9 +2,13 @@
 import ConfirmDialog from '../../components/shared/ConfirmDialog';
 import { useState, useEffect } from 'react';
 import { Save, Plus, X, Building2, IndianRupee, Wifi,
-  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
+  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin,
+  ChevronDown, ChevronRight } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts } from '../../lib/api';
+import PhotoCapture from '../../components/shared/PhotoCapture';
+import ArtifactImage from '../../components/shared/ArtifactImage';
+import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts,
+  getPumps, createPump, updatePump, deletePump } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
@@ -20,6 +24,19 @@ const FUEL_TYPES = [
 ];
 const OIL_COS = ['HPCL','BPCL','IOC','Essar','Shell','Reliance','Nayara'];
 const nowIST  = () => new Date().toLocaleString('sv-SE',{timeZone:'Asia/Kolkata'}).slice(0,16);
+const fuelLabel = (v) => FUEL_TYPES.find(f=>f.value===v)?.label || v;
+
+// Touch-target + font floor for the Pumps & Nozzles controls. The global `.input`
+// is 38px tall at 14px, which is below the 44px target and below the 16px at which
+// mobile browsers stop zooming the page on focus — so these screens size their own
+// controls rather than inheriting.
+const CTRL = {
+  width:'100%', height:44, padding:'0 10px', fontSize:16,
+  fontFamily:'var(--font-body)', color:'var(--text-1)',
+  background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8,
+};
+const CTRL_NUM = { ...CTRL, fontVariantNumeric:'tabular-nums' };
+const MICRO_LABEL = { fontSize:11, color:'var(--text-3)', display:'block', marginBottom:3 };
 
 
 
@@ -215,7 +232,7 @@ export default function SettingsPage() {
   const TABS = [
     {id:'station', label:tc('setp.tabStation', '1. Station Details'), icon:<Building2 size={14}/>},
     {id:'tanks',   label:tc('setp.tabTanks', '2. Tanks'),            icon:<Gauge size={14}/>},
-    {id:'nozzles', label:tc('setp.tabNozzles', '3. Nozzles'),        icon:null},
+    {id:'pumps',   label:tc('setp.tabPumps', '3. Pumps & Nozzles'),  icon:null},
     {id:'prices',  label:tc('setp.tabPrices', '4. Fuel Prices'),     icon:<IndianRupee size={14}/>},
     {id:'rfid',    label:tc('setp.tabRfid', '5. RFID Tags'),         icon:<Wifi size={14}/>},
     {id:'shifts',  label:tc('setp.tabShifts', '6. Shift Timings'),   icon:<RefreshCw size={14}/>},
@@ -342,9 +359,9 @@ export default function SettingsPage() {
         <TanksTab stationId={stationId} tanks={tanks}
           reload={()=>{ load(); showToast(tc('setp.toastTanksUpdated', 'Tanks updated!')); }} askConfirm={askConfirm}/>
       )}
-      {tab==='nozzles' && (
-        <NozzlesTab stationId={stationId} nozzles={nozzles} tanks={tanks}
-          reload={()=>{ load(); showToast(tc('setp.toastNozzlesUpdated', 'Nozzles updated!')); }} askConfirm={askConfirm}/>
+      {tab==='pumps' && (
+        <PumpsTab stationId={stationId} nozzles={nozzles} tanks={tanks}
+          reload={load} showToast={showToast} askConfirm={askConfirm}/>
       )}
       {tab==='prices' && (
         <PricesTab stationId={stationId} prices={prices}
@@ -649,7 +666,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
           </div>
         )}
         <div style={{fontSize:11,color:'var(--text-3)',marginTop:'0.75rem'}}>
-          💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabNozzles', '3. Nozzles')}</strong> {tc('setp.nextNozzlesPost', 'tab to link each nozzle to a tank')}
+          💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabPumps', '3. Pumps & Nozzles')}</strong> {tc('setp.nextPumpsPost', 'tab to define each pump and link its nozzles to a tank')}
         </div>
       </div>
     </div>

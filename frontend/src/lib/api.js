@@ -133,6 +133,25 @@ export const resetRfidTag = (id)        => api.patch(`/rfid/${id}/reset`);
 export const getStations  = ()     => api.get('/stations');
 export const getNozzles   = (sid)  => api.get(`/stations/${sid}/nozzles`);
 
+// ── Pumps ─────────────────────────────────────────────────────────────
+// The dispenser MACHINE the nozzles hang off: a number, a serial, a model and the
+// sample slip it prints. A pump has NO fuel and NO tank — one unit routinely
+// dispenses several grades from several tanks, so fuel and tank stay on the NOZZLE.
+// The list read returns each pump's nozzles nested.
+//
+// These ride owner-run DDL (`pumps` table, `nozzles.pump_id`), so the endpoints can
+// 404/500 until the migration is applied. EVERY caller must treat a failure as
+// "no pumps yet" rather than letting Settings blank out.
+export const getPumps   = (sid)        => api.get(`/stations/${sid}/pumps`);
+// Longer timeout: the create carries the sample-slip photograph, and the server
+// stores it as the pump's artifact in the same call (artifacts are written by the
+// flow that produced them — there is no separate upload endpoint).
+export const createPump = (sid, data)  => api.post(`/stations/${sid}/pumps`, data, { timeout: 90000 });
+export const updatePump = (sid, id, d) => api.patch(`/stations/${sid}/pumps/${id}`, d);
+// Refuses with 409 while the pump still has nozzles — surface that message; the
+// doctrine path for a live pump is to RETIRE it (PATCH end_date), never delete.
+export const deletePump = (sid, id)    => api.delete(`/stations/${sid}/pumps/${id}`);
+
 // Reconcile (denomination)
 export const submitDenomination = (data) => api.post('/reconcile/denomination', data);
 export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`, {});
