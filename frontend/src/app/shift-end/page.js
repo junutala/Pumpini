@@ -26,7 +26,8 @@ import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock, Drop
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen } from '../../lib/api';
+import api, { parseGaugeScreen, getLatestArtifacts } from '../../lib/api';
+import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
@@ -69,6 +70,62 @@ export default function ShiftEndPage() {
   const [sel, setSel]     = useState('');         // attendant_id in the working area
   const [photo, setPhoto] = useState(null);       // { base64, media_type } for the operator being closed
   const [photoSlot, setPhotoSlot] = useState(0);  // bumps to remount PhotoCapture between operators
+  // PHASE 1 OF FACIAL RECOGNITION, close side. Same contract as shift start:
+  // the picture PROPOSES which operator is handing over and the list confirms.
+  // Candidates here are only the men still unsettled on THIS shift, so it cannot
+  // propose somebody who was never on it.
+  const [faceRefs, setFaceRefs] = useState({});
+  const [faceMsg, setFaceMsg]   = useState('');
+  const [faceVerdict, setFaceVerdict] = useState(null);
+
+  // Warm the weights as the close screen opens, so the handover photo does not wait.
+  useEffect(() => { preloadFace(); }, []);
+
+  const loadFaceRefs = async (people) => {
+    const ids = (people||[]).map(a => a.attendant_id).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const m = await getLatestArtifacts('user', ids, 'attendant_photo');
+      const refs = {};
+      Object.entries(m||{}).forEach(([uid,row]) => {
+        const d = row?.meta?.descriptor;
+        if (Array.isArray(d) && d.length === 128) refs[uid] = d;
+      });
+      setFaceRefs(refs);
+    } catch { /* the list is right there; a missing suggestion costs nothing */ }
+  };
+
+  const onFacePhoto = async (shot) => {
+    setPhoto(shot);
+    setFaceMsg(''); setFaceVerdict(null);
+    if (!shot?.base64) return;
+    const candidates = (shift?.attendants || [])
+      .filter(a => !closed[a.attendant_id] && faceRefs[a.attendant_id])
+      .map(a => ({ user_id: a.attendant_id, name: a.attendant_name, descriptor: faceRefs[a.attendant_id] }));
+    if (!candidates.length) return;          // nobody enrolled — stay silent, this is the close screen
+    setFaceMsg(tc('send.faceReading','Reading the face…'));
+    const { descriptor, error } = await describeFace(
+      `data:${shot.media_type || 'image/jpeg'};base64,${shot.base64}`);
+    if (error || !descriptor) {
+      setFaceMsg(error === 'many-faces'
+        ? tc('send.faceMany','More than one face in frame — pick him from the list.')
+        : tc('send.faceUnread','Could not read the face — pick him from the list.'));
+      return;
+    }
+    const m = bestMatch(descriptor, candidates);
+    if (!m) { setFaceMsg(''); return; }
+    setFaceVerdict(m);
+    if (m.verdict === 'strong' || m.verdict === 'likely') {
+      setSel(m.user_id);
+      setFaceMsg((m.verdict === 'strong'
+        ? tc('send.faceStrong','This looks like {name} — selected below. Check it before you settle him.')
+        : tc('send.faceLikely','This is probably {name} — selected below. Worth a second look.')
+      ).replace('{name}', m.name));
+    } else {
+      setFaceMsg(tc('send.faceUnsure','Not sure who this is — closest is {name}. Pick him from the list.')
+        .replace('{name}', m.name));
+    }
+  };
   const [scanning, setScanning] = useState('');   // nozzle_id being OCR'd
   const [tanks, setTanks] = useState([]);
   const [dips, setDips]   = useState({});         // tank_id -> entered mark-ordinal (a physical dip)
@@ -125,6 +182,7 @@ export default function ShiftEndPage() {
         api.get('/dipstick', { params:{ station_id: stationId, shift_id: s.id } }).catch(()=>[]),
       ]);
       setShift(d);
+      loadFaceRefs(d?.attendants || []);
       setActiveShift({ id:d.id, shift_number:d.shift_number, start_time:d.start_time, station_id:d.station_id });
       setTanks(Array.isArray(tk)?tk:[]);
       const pm = {}; (Array.isArray(pr)?pr:[]).forEach(p => { pm[p.fuel_type] = num(p.price); }); setPrices(pm);
@@ -257,7 +315,7 @@ export default function ShiftEndPage() {
         card_total: num(fm.card), upi_total: num(fm.upi), cash_actual: num(fm.cash),
         credit_total: num(fm.credit), petty_cash: num(fm.petty),
       };
-      if (photo?.base64) { body.photo_base64 = photo.base64; body.photo_media_type = photo.media_type; }
+      if (photo?.base64) { body.photo_base64 = photo.base64; body.photo_media_type = photo.media_type; body.face_match = faceVerdict; }
       const r = await api.post('/reconcile/manager', body);
       setClosed(p => ({ ...p, [a.attendant_id]: { variance: num(r.variance), total_sales: num(r.total_sales), at: new Date().toISOString() } }));
       setPhoto(null); setPhotoSlot(n => n + 1);   // fresh camera for the next operator
@@ -536,9 +594,18 @@ export default function ShiftEndPage() {
                 <PhotoCapture key={`op-photo-${photoSlot}`}
                   label={tc('send.photoOfOperator','Photo of the operator')}
                   hint={tc('send.photoOfOperatorHint','Taken as he hands over. Optional — a dead camera never blocks a settlement.')}
-                  onCapture={p => setPhoto(p)}
+                  onCapture={onFacePhoto}
                   disabled={!!busy}
           removeLabel={tc('photo.remove', 'Remove')}/>
+                {faceMsg && (
+                  <div style={{marginTop:6,fontSize:12.5,lineHeight:1.45,padding:'7px 10px',borderRadius:8,
+                    background: faceVerdict?.verdict === 'strong' ? '#ecfdf5'
+                              : faceVerdict?.verdict === 'likely' ? '#fff7ed' : '#f8fafc',
+                    color:     faceVerdict?.verdict === 'strong' ? '#065f46'
+                              : faceVerdict?.verdict === 'likely' ? '#9a3412' : 'var(--text-3)'}}>
+                    {faceMsg}
+                  </div>
+                )}
 
                 {/* 2 — WHO HE IS. A plain list of the operators still open on this
                     shift; a settled man disappears from it, so he cannot be settled

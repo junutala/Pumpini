@@ -9,8 +9,14 @@ import { UserPlus, ChevronRight, ArrowLeft, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api, { addAttendant, getUsers, setAttendantPhoto, getLatestArtifacts } from '../../lib/api';
 import PhotoCapture from '../../components/shared/PhotoCapture';
+import { describe, preload as preloadFace } from '../../lib/face';
 import ArtifactImage from '../../components/shared/ArtifactImage';
 import { useAuth } from '../../lib/auth';
+
+// PhotoCapture hands back raw base64 + its media type; the face reader needs a
+// src an <img> can load.
+const dataUrl = (shot) =>
+  shot?.base64 ? `data:${shot.media_type || 'image/jpeg'};base64,${shot.base64}` : null;
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 
@@ -60,6 +66,10 @@ export default function AddAttendantPage() {
     } finally { setLoaded(true); }
   };
   useEffect(() => { load(); }, [stationId]);
+  // Fetch the face weights in the background the moment this page opens. Enrolment
+  // is where a photo is certain to be taken, so by the time one is, the model is
+  // usually already in memory. Failure here is silent — describe() re-tries.
+  useEffect(() => { preloadFace(); }, []);
 
   // Re-shoot an existing man's reference photo. Saves the moment the picture is
   // taken — there is nothing else on the panel to fill in, so a second "Save" tap
@@ -68,10 +78,16 @@ export default function AddAttendantPage() {
     if (!shot?.base64) return;
     setShotBusy(true); setErr(''); setSaved('');
     try {
+      // Read the face here, at enrolment, so the reference and its 128 numbers are
+      // written in one go and can never drift apart. Best-effort by design: a photo
+      // the model cannot read is still stored and still shown — it simply cannot be
+      // matched against until it is re-taken.
+      const { descriptor } = await describe(dataUrl(shot));
       await setAttendantPhoto(a.id, {
         station_id: stationId,
         photo_base64: shot.base64,
         photo_media_type: shot.media_type,
+        face_descriptor: descriptor || null,
       });
       setSaved(tc('addatt.savedPhoto', "{name}'s photo updated.").replace('{name}', a.name));
       setShooting(null);
@@ -94,11 +110,13 @@ export default function AddAttendantPage() {
     if (!form.name.trim() || !form.phone.trim()) return setErr(tc('addatt.errEnterNamePhone', 'Enter the name and phone.'));
     setBusy(true);
     try {
+      const { descriptor } = photo ? await describe(dataUrl(photo)) : {};
       await addAttendant({
         ...form,
         station_id: stationId,
         photo_base64: photo?.base64 || null,
         photo_media_type: photo?.media_type || null,
+        face_descriptor: descriptor || null,
       });
       setSaved(tc('addatt.savedAdded', '{name} added — available for shift assignment.').replace('{name}', form.name));
       setForm({ name:'', phone:'' });
