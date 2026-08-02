@@ -76,6 +76,34 @@ applied, and break.** When a change needs schema:
 
 ---
 
+## ✅ `main` ↔ `staging` divergence is INTENTIONAL — do not raise it as a problem
+
+**Owner-set 02-Aug-2026. Read this before reporting the branch gap as a finding.**
+
+`staging` and `main` have diverged a long way (as of 02-Aug: staging ~156 commits ahead,
+main ~31 ahead, merge base 08-Jul-2026, ~28 files that conflict on merge). **This is
+deliberate and the owner already knows.** It is the direct consequence of the VAWE
+integration work, which ships to `staging` only under the 08-Jul rule that froze Pumpini
+production while VAWE was built out. Staging ran ahead on purpose.
+
+**Therefore:**
+
+- Do **not** open a session by flagging the divergence, the commit counts, or the
+  conflict count as a discovered risk. It is a known, accepted state.
+- Do **not** propose "reconcile the branches" as a prerequisite to shipping something.
+  Features are promoted to production **as scoped slices**, not by merging the whole of
+  `staging` into `main`.
+- A file present on one branch and absent on the other is normal drift, not a
+  regression. Check whether it was *added on one side* or *deleted on the other* before
+  saying anything about it — git shows both as a one-sided diff and only the second is a
+  real loss. (Assistant note 02-Aug: this exact mistake was made — PostHog analytics was
+  reported as "would be deleted from production" when it had simply been added on `main`
+  after the merge base and staging never touched it. A three-way merge keeps it.)
+- What IS worth reporting: a genuine **schema dependency missing from production**, or a
+  **deploy-ordering hazard**. Those are the real risks. The branch geometry is not.
+
+---
+
 ## 🔴 Change-management rules (owner-set) — how EVERY change ships
 
 There is now a full **staging** mirror (`staging` branch → staging Railway →
