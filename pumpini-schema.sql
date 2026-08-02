@@ -850,3 +850,403 @@ END $$;
 -- ──────────────────────────────────────────────────────────────
 
 ALTER TABLE public.station_settings ADD COLUMN IF NOT EXISTS invoice_fy character varying(9);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- ONE ARTIFACT REPOSITORY — public.station_artifacts (2026-08-01)
+--
+-- Pumpini reads four documents from a photo (delivery invoice, settlement meter,
+-- credit coupon, ATG/Pinelabs gauge screen) but only KEPT two of them. The coupon
+-- and the gauge screen were parsed and thrown away, so the claim "we store the
+-- image as proof" was not true for either. This table closes that.
+--
+-- WHY ONE TABLE AND NOT A SECOND dispense_artifacts-SHAPED ONE. The obvious move
+-- was `dipstick_artifacts` next to `dispense_artifacts`. That is exactly the drift
+-- the one-writer rule exists to stop: two artifact tables today, four by the time
+-- deposit slips, credit receipts and petty-cash bills arrive, each with its own
+-- writer, its own RLS policy to forget, and its own idea of what a "kind" is.
+--
+-- Instead the parent is named rather than foreign-keyed: (entity_type, entity_id).
+-- A coupon hangs off a dispense_event, a gauge screen off a shift, an attendant
+-- photo off a shift_attendants row — one table, one writer, one policy.
+--
+-- The trade is real and worth stating: a soft parent reference gets NO referential
+-- integrity, so a deleted parent leaves an orphan artifact. That is the right way
+-- round here — an orphaned PROOF is harmless (it is evidence, and evidence
+-- outliving its record is not a corruption), whereas a cascade that silently
+-- destroys the photograph behind a money document is not.
+--
+-- dispense_artifacts is retired into this table below. It was created on 30-Jul
+-- and never wired to anything, so it holds ZERO rows in both prod and staging
+-- (verified 01-Aug before writing this). The copy is therefore a no-op today and
+-- the drop is free — which it will never be again once coupons start storing.
+--
+-- entity_type / kind are deliberately plain varchars with a CHECK on kind only.
+-- Every new document type is then a one-line change here plus a caller, and never
+-- a new table.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.station_artifacts (
+  id            uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id),
+  -- Soft parent pointer. entity_id is NULLABLE on purpose: a gauge screen can be
+  -- photographed for a plain dip-register entry that belongs to no shift.
+  entity_type   character varying(40) NOT NULL,
+  entity_id     uuid,
+  kind          character varying(30) NOT NULL,
+  -- storage_path is for the eventual move to Supabase Storage. Until then the
+  -- bytes live in file_base64, exactly as meter_photos has done in prod since
+  -- day one — same pattern, no new infrastructure needed to start storing.
+  storage_path  text,
+  file_base64   text,
+  media_type    character varying(40),
+  ocr           jsonb,
+  -- meta carries whatever the document type needs and nothing else does:
+  -- {"reading_type":"opening"} for a gauge screen, and — when facial matching
+  -- lands — {"match":{"verdict":"...","score":0.0}} for an attendant photo.
+  -- Reserved now so Phase 1 adds a verdict without a migration.
+  meta          jsonb,
+  captured_at   timestamp with time zone DEFAULT now(),
+  uploaded_by   uuid REFERENCES public.users(id),
+  CONSTRAINT station_artifacts_kind_chk CHECK (kind IN (
+    'coupon', 'gauge_screen', 'attendant_photo', 'nozzle_meter', 'nozzle_slip'
+  ))
+);
+
+CREATE INDEX IF NOT EXISTS idx_station_artifacts_parent
+  ON public.station_artifacts(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_station_artifacts_station
+  ON public.station_artifacts(station_id, kind, captured_at DESC);
+
+-- RLS IN THE SAME BLOCK AS THE CREATE — see CLAUDE.md. A new table on this
+-- Supabase project gets RLS enabled automatically, and RLS-on-with-no-policy
+-- denies everything: SELECT returns zero rows silently, INSERT raises.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='station_artifacts'
+                   AND policyname='station_artifacts_station_isolation') THEN
+    CREATE POLICY station_artifacts_station_isolation ON public.station_artifacts
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.station_artifacts TO app_authenticated;
+
+-- Retire dispense_artifacts. Copy first, then drop — so this stays correct even
+-- if it is ever run somewhere the table did acquire rows.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema='public' AND table_name='dispense_artifacts') THEN
+    INSERT INTO public.station_artifacts
+      (id, station_id, entity_type, entity_id, kind, storage_path, file_base64,
+       media_type, ocr, captured_at, uploaded_by)
+    SELECT id, station_id, 'dispense_event', dispense_event_id, kind, storage_path,
+           file_base64, media_type, ocr, captured_at, uploaded_by
+      FROM public.dispense_artifacts
+    ON CONFLICT (id) DO NOTHING;
+    DROP TABLE public.dispense_artifacts;
+  END IF;
+END $$;
+
+-- A dip row records WHICH gauge photo produced it, so a figure on the stock
+-- reconciliation can always be traced back to the screen it was read off.
+ALTER TABLE public.dipstick_readings
+  ADD COLUMN IF NOT EXISTS artifact_id uuid REFERENCES public.station_artifacts(id);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PER-ATTENDANT SHIFT CLOCK (2026-08-01)
+--
+-- Attendance already exists as a table and is already unique on
+-- (user_id, date, shift_number) — so this is NOT a new attendance concept, it is
+-- the existing one finally being written by the flow that actually knows the
+-- times. Starting an attendant stamps check_in; settling him stamps check_out.
+--
+-- shift_id ties the row to the shift it came from, which is what makes the record
+-- provable rather than merely typed: the same row now joins to his nozzle
+-- assignment and therefore to meter movement.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS shift_id uuid REFERENCES public.shifts(id) ON DELETE SET NULL;
+-- The photograph taken at start and at close. Nullable — an outlet with a broken
+-- camera must still be able to start a shift.
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS check_in_artifact_id  uuid REFERENCES public.station_artifacts(id);
+ALTER TABLE public.attendance
+  ADD COLUMN IF NOT EXISTS check_out_artifact_id uuid REFERENCES public.station_artifacts(id);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_shift ON public.attendance(shift_id);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PUMP SERIAL ON THE NOZZLE (2026-08-01) — the last thing stopping a slip scan
+--
+-- A dispenser slip identifies itself by SERIAL NUMBER, not by a pump number:
+--
+--     PUMP SERIAL NUMBER : 15BC1412V
+--     ---: ETOT-MAIN :---
+--     NOZZLE : 1     NOZZLE : 2
+--
+-- So "NOZZLE : 1" alone is ambiguous the moment an outlet has more than one
+-- dispenser — at Kamala it could be nozzle 1.1, 2.1, 3.1 or 4.1. Renumbering the
+-- nozzles cannot fix that, because the ambiguity is on the SLIP's side: it never
+-- says which machine printed it. Only the serial does, and the serial is stamped
+-- on the unit and never changes.
+--
+-- Recording it against the nozzle turns the match into a lookup:
+--     (pump_serial, nozzle number as printed) -> exactly one nozzle
+-- with no inference, no numbering convention to agree on, and no dependence on
+-- our nozzle names matching the machine's.
+--
+-- Nullable and additive: an outlet that has not filled it in keeps the existing
+-- number-based matching, so nothing regresses before it is populated.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS pump_serial character varying(40);
+
+-- The number the SLIP prints for this nozzle, which need not equal ours. Kept as
+-- its own field rather than parsed out of nozzle_number: an outlet must be free
+-- to call its nozzles whatever its staff call them, and a machine is free to
+-- number its own the way its firmware does. Tying the two together is what forced
+-- a rename in the first place.
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS slip_nozzle_no character varying(8);
+
+-- One physical nozzle per (serial, printed number). A partial index so the many
+-- rows with no serial yet do not collide with each other.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_serial_slip_no
+  ON public.nozzles(station_id, pump_serial, slip_nozzle_no)
+  WHERE pump_serial IS NOT NULL AND slip_nozzle_no IS NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PUMPS — the machine the nozzles hang off (2026-08-01)
+--
+-- Deferred once already. PR #68 (24-Jun) asked the same question and answered it
+-- with a naming convention: "Instead of building a pump-hierarchy table, label the
+-- nozzles 5.1 / 5.2 / 5.3 / 5.4". Everything since has paid for that shortcut —
+-- pump identity living in a display string that outlets number inconsistently,
+-- nozzle_number carrying no unique constraint (one outlet had THREE nozzles called
+-- "1"), and nowhere to record the serial a slip identifies itself by. Building it
+-- properly now.
+--
+-- A PUMP HAS NO FUEL AND NO TANK (owner, 01-Aug). It is a machine: a number, a
+-- serial, a model, and the slip it prints. One unit routinely dispenses several
+-- grades from several tanks — 2 HSD + 1 MS + 1 Super off three tanks is ordinary.
+-- Fuel and tank stay on the NOZZLE, where they already are. Attaching either here
+-- would force an outlet to split one physical unit into four fictional ones.
+--
+-- serial is NULLABLE: a CNG dispenser prints no slip at all (gas is sold on
+-- commission, the outlet never owns the stock), so it must still be definable.
+--
+-- END-DATED, NEVER DELETED. A defective pump is replaced by end-dating it and its
+-- nozzles and defining new ones — deleting would orphan every meter reading ever
+-- taken on it. is_active is a switch; end_date is the fact, and only a date can
+-- answer "which pump was this reading taken on".
+-- ══════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.pumps (
+  id                uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id        uuid NOT NULL REFERENCES public.stations(id),
+  -- What is painted on the unit. Outlets number pumps 1, 2, 3 and speak that
+  -- language; the serial is what the machine calls itself and nobody remembers.
+  pump_number       character varying(16) NOT NULL,
+  serial            character varying(40),
+  model             character varying(60),
+  -- The sample slip this pump's identity was read off, kept as evidence and as the
+  -- reference for its print format.
+  slip_artifact_id  uuid REFERENCES public.station_artifacts(id),
+  notes             text,
+  is_active         boolean DEFAULT true,
+  end_date          date,
+  created_at        timestamp with time zone DEFAULT now()
+);
+
+-- Unique among LIVE pumps only, so an end-dated Pump 1 does not block its
+-- replacement from also being called Pump 1 — which is exactly what happens when a
+-- unit is swapped and the new one takes its place on the forecourt.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pumps_station_number
+  ON public.pumps(station_id, pump_number) WHERE end_date IS NULL;
+
+-- Serial unique PER OUTLET, not globally. A serial does identify one machine in the
+-- world, but enforcing that across tenants would (a) block an outlet from finishing
+-- setup over a typo or a rebuilt board reusing a serial, with an error only we
+-- could resolve, and (b) let one outlet learn about another's equipment from a
+-- constraint violation. Duplicates across outlets are worth FLAGGING, never
+-- worth BLOCKING.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pumps_station_serial
+  ON public.pumps(station_id, upper(serial)) WHERE serial IS NOT NULL AND end_date IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_pumps_station ON public.pumps(station_id) WHERE end_date IS NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='pumps'
+                   AND policyname='pumps_station_isolation') THEN
+    CREATE POLICY pumps_station_isolation ON public.pumps
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.pumps TO app_authenticated;
+
+-- Every nozzle hangs off exactly one pump. Nullable during migration only: existing
+-- nozzles have none until the owner assigns them, and the Settings screen shows
+-- those loudly at the top rather than hiding the gap.
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS pump_id  uuid REFERENCES public.pumps(id);
+ALTER TABLE public.nozzles ADD COLUMN IF NOT EXISTS end_date date;
+CREATE INDEX IF NOT EXISTS idx_nozzles_pump ON public.nozzles(pump_id) WHERE end_date IS NULL;
+
+-- The serial now lives on the PUMP, which is the thing that has one. Carrying it on
+-- every nozzle too would be the same denormalisation this table exists to undo, so
+-- the column added on 01-Aug is folded in and dropped. It holds 0 rows in staging
+-- and prod (verified before writing this) — it never got past being wired up.
+-- slip_nozzle_no STAYS on the nozzle: that genuinely is per-nozzle, and keeping it
+-- separate from nozzle_number is what lets an outlet name its nozzles freely while
+-- the machine keeps its own numbering.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='nozzles' AND column_name='pump_serial') THEN
+    ALTER TABLE public.nozzles DROP COLUMN pump_serial;
+  END IF;
+END $$;
+
+-- The old (station, pump_serial, slip_nozzle_no) index goes with that column; the
+-- replacement is scoped to the pump, which is now where the serial lives.
+DROP INDEX IF EXISTS public.uq_nozzles_pump_serial_slip_no;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nozzles_pump_slip_no
+  ON public.nozzles(pump_id, slip_nozzle_no)
+  WHERE pump_id IS NOT NULL AND slip_nozzle_no IS NOT NULL AND end_date IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- SHIFT ATTENDANCE — the attendant's own start and end, per shift (owner-set,
+-- 01-Aug-2026: "get the attendance and log the start and end date & time for
+-- each attendant", as a NEW table).
+--
+-- WHY NOT the existing `attendance` table. That one is an HR register: keyed on
+-- (user_id, date, shift_number), covering every role, filled in by hand on the
+-- Attendance screen, with a `status` a manager types. It has no link to a shift,
+-- so "was he here?" can never be joined to "did his meter move?".
+--
+-- This table is the opposite kind of record. It is written ONLY by the shift flow
+-- — starting an operator stamps started_at, settling him stamps ended_at — and it
+-- is keyed on the SHIFT, so every row joins straight to his nozzle assignment and
+-- therefore to the litres that passed through it. A photograph is attached at each
+-- end, which is what makes it evidence rather than an assertion.
+--
+-- Keeping the two apart is deliberate, not drift: one table is what somebody says
+-- happened, the other is what the system observed. They answer different questions
+-- and must not be allowed to overwrite each other.
+CREATE TABLE IF NOT EXISTS public.shift_attendance (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id) ON DELETE CASCADE,
+  shift_id      uuid NOT NULL REFERENCES public.shifts(id)   ON DELETE CASCADE,
+  attendant_id  uuid NOT NULL REFERENCES public.users(id),
+  -- The shift's OWN date and slot, copied at write time. A night shift opened at
+  -- 22:00 on the 1st and closed at 06:00 on the 2nd books both ends against the
+  -- 1st; denormalised so a month's register needs no join to shifts.
+  shift_date    date NOT NULL,
+  shift_number  integer NOT NULL,
+  started_at    timestamptz,
+  ended_at      timestamptz,
+  start_photo_id uuid REFERENCES public.station_artifacts(id),
+  end_photo_id   uuid REFERENCES public.station_artifacts(id),
+  notes         text,
+  recorded_by   uuid REFERENCES public.users(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- One row per man per shift. Re-assigning him to a second nozzle in the same shift
+-- must refresh his row, never open a second stretch of attendance.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_shift_attendance_shift_attendant
+  ON public.shift_attendance(shift_id, attendant_id);
+
+CREATE INDEX IF NOT EXISTS idx_shift_attendance_station_date
+  ON public.shift_attendance(station_id, shift_date DESC);
+CREATE INDEX IF NOT EXISTS idx_shift_attendance_attendant
+  ON public.shift_attendance(attendant_id, shift_date DESC);
+
+-- 🔴 RLS ships in the SAME block as the table. New tables get RLS enabled
+-- automatically on this project, and RLS-on-with-no-policy denies everything —
+-- silently returning zero rows on SELECT while INSERT raises. Same shape as every
+-- other station-scoped table here.
+ALTER TABLE public.shift_attendance ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='shift_attendance'
+                   AND policyname='shift_attendance_station_isolation') THEN
+    CREATE POLICY shift_attendance_station_isolation ON public.shift_attendance
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.shift_attendance TO app_authenticated;
+
+-- Carry across anything the shift flow already stamped on the OLD attendance table
+-- during the 01-Aug staging run, so no test data is lost, then retire the three
+-- columns that were added there for this purpose. They only ever existed on
+-- staging (production never received that DDL — verified before writing this), and
+-- leaving them would be a second home for the same fact. Idempotent both ways.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='attendance' AND column_name='shift_id') THEN
+
+    INSERT INTO public.shift_attendance
+      (station_id, shift_id, attendant_id, shift_date, shift_number,
+       started_at, ended_at, start_photo_id, end_photo_id, notes)
+    SELECT a.station_id, a.shift_id, a.user_id, a.date, a.shift_number,
+           a.check_in, a.check_out,
+           a.check_in_artifact_id, a.check_out_artifact_id, a.notes
+      FROM public.attendance a
+     WHERE a.shift_id IS NOT NULL
+    ON CONFLICT (shift_id, attendant_id) DO NOTHING;
+
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS shift_id;
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS check_in_artifact_id;
+    ALTER TABLE public.attendance DROP COLUMN IF EXISTS check_out_artifact_id;
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RETIRE THE SPARE METER STORES (owner-set, 01-Aug-2026: "retire the spare tires,
+-- they are heavy").
+--
+-- Pumpini grew THREE places to keep a nozzle's opening and closing meter:
+--
+--   shift_attendant_nozzles   one row per operator per nozzle. THE one. Every
+--                             rupee the settlement has ever computed came from
+--                             here, and it is clean: 876 rows, not one negative
+--                             and not one impossible movement.
+--   shift_attendants          .opening_reading / .closing_reading — a single pair
+--                             on the OPERATOR row, mirroring "the first nozzle" on
+--                             assign and "the last leg" on close. For a man on four
+--                             nozzles that is not a summary, it is a wrong number.
+--                             It held 70 negative and 150 impossible readings.
+--   shift_nozzle_readings     a per-nozzle store holding manager-vs-POS captures so
+--                             the two could be compared. 3 rows, all abandoned test
+--                             data from one Dilsukhnagar shift on 20-Jun-2026.
+--
+-- The settlement never read the last two — it validates closing >= opening per
+-- nozzle and refuses otherwise, so the bad figures could never become money. But
+-- the CARRY-FORWARD read all three, COALESCE'd in order. A nozzle missing its good
+-- row would have carried one of those figures straight into a live opening, and the
+-- shift would have been measured against it. That is why they go.
+--
+-- Verified before dropping: every row that would have used a fallback belongs to
+-- Dilsukhnagar or the unnamed test outlet — NONE at Kamala, Adhoc Highway or
+-- Highway — and every one has closing_reading NULL, i.e. never settled.
+--
+-- ORDER MATTERS: the code that stopped reading and writing these ships FIRST
+-- (Railway auto-deploys on merge); this DDL is run afterwards. Dropping before the
+-- deploy would 500 the settle path.
+DROP TABLE IF EXISTS public.shift_nozzle_readings;
+
+ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS opening_reading;
+ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS closing_reading;

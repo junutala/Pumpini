@@ -5,6 +5,9 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
+const artifacts  = require('../services/artifactService');
+const attendance = require('../services/attendanceService');
+const openings   = require('../services/openingService');
 
 // GET /api/shifts
 router.get('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -93,6 +96,39 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
     for (const r of sanRows) (nozBy[r.attendant_id] ||= []).push(r);
     attendants.forEach(a => { a.nozzles = nozBy[a.attendant_id] || []; });
 
+    // Each operator's start/close photographs and his shift clock. Both are
+    // guarded on the migration having run — this is the screen that starts and
+    // ends shifts, so a missing table must leave it working without the photos
+    // rather than 500 the whole page.
+    if (attendants.length && await artifacts.hasTable()) {
+      const saIds = attendants.map(a => a.id);
+      const { rows: photos } = await pool.query(
+        `SELECT id, entity_id, kind, meta, captured_at FROM station_artifacts
+          WHERE entity_type='shift_attendant' AND kind='attendant_photo'
+            AND entity_id = ANY($1::uuid[])
+          ORDER BY captured_at`, [saIds]);
+      const byAssignment = {};
+      for (const p of photos) {
+        const slot = (byAssignment[p.entity_id] ||= { start: null, close: null });
+        slot[p.meta?.phase === 'close' ? 'close' : 'start'] = p.id;
+      }
+      attendants.forEach(a => {
+        a.photo_start_artifact_id = byAssignment[a.id]?.start || null;
+        a.photo_close_artifact_id = byAssignment[a.id]?.close || null;
+      });
+    }
+    // The shift clock now lives in its own table (shift_attendance), keyed on the
+    // shift rather than on (user, date, slot) — so these read started_at/ended_at
+    // off the attendant, not check_in/check_out off an HR register row.
+    const clocks = await attendance.forShift(req.params.id);
+    const clockBy = {};
+    for (const c of clocks) clockBy[c.attendant_id] = c;
+    attendants.forEach(a => {
+      a.started_at   = clockBy[a.attendant_id]?.started_at || null;
+      a.ended_at     = clockBy[a.attendant_id]?.ended_at   || null;
+      a.hours_worked = clockBy[a.attendant_id]?.hours      || null;
+    });
+
     // Blind drop: hide per-attendant sales while the shift is open (non-owners)
     const isOwner = req.user.role === 'owner';
     const hide = !isOwner && rows[0].status === 'open';
@@ -120,8 +156,16 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
        VALUES($1,$2,$3,NOW(),$4,'open') RETURNING *`,
       [station_id, shift_number, date, req.user.id]
     );
+
+    // The previous close IS this shift's open. Seed the opening dips from each
+    // tank's last closing dip before anyone can type one, so no litre can go
+    // missing in a gap between two shifts. Best-effort: a tank with no prior close
+    // is left for the shift-start screen to ask about, and a failure here never
+    // stops a shift opening. See services/openingService.
+    const seeded = await openings.seedOpeningDips(rows[0].id, req.user.id);
+
     req.io.to(`station:${station_id}`).emit('shift:opened', rows[0]);
-    res.status(201).json(rows[0]);
+    res.status(201).json({ ...rows[0], opening_dips_carried: seeded.length });
   } catch (err) { next(err); }
 });
 
@@ -181,6 +225,12 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       attendant_id, rfid_tag_id, nozzle_id,
       bank_account, upi_vpa, opening_reading, opening_cash,
       nozzles,   // NEW: [{ nozzle_id, opening_reading }] — one operator, many nozzles
+      // The photograph taken of the operator as he starts. Optional — a broken
+      // camera must never stop a shift starting — and stored as an artifact
+      // against his assignment. Today it is evidence; the intended end state is
+      // that the picture IDENTIFIES him and the picker becomes the fallback, so
+      // it is captured against the assignment now rather than bolted on later.
+      photo_base64, photo_media_type,
     } = req.body;
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
@@ -253,22 +303,45 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       await pool.query('UPDATE rfid_tags SET is_active=TRUE WHERE id=$1', [rfid_tag_id]);
     }
 
-    // Operator row stays one-per-operator (cash/identity). For back-compat with
-    // the single-nozzle settlement path, mirror the FIRST nozzle onto sa.nozzle_id
-    // / sa.opening_reading; the full set lives in shift_attendant_nozzles.
+    // THE OPENING METER IS THE LAST CLOSING METER — decided here, on the server,
+    // not pre-filled in the browser. A control the client can type over is not a
+    // control: allowing a shift to open a nozzle at a different figure from where
+    // the last one closed it leaves the litres in between on nobody's settlement.
+    // Where a prior close exists the client's number is IGNORED and only recorded
+    // as `requested`, so a manager reading something different off the slip shows
+    // up as a discrepancy to investigate rather than silently becoming the opening.
+    const openingMap = await openings.nozzleOpenings(req.params.id);
+    const resolved = nozzleList.map(nz => ({
+      nozzle_id: nz.nozzle_id,
+      ...openings.resolveNozzleOpening(openingMap[nz.nozzle_id], nz.opening_reading),
+    }));
+    const carryConflicts = resolved.filter(r => r.overridden).map(r => ({
+      nozzle_id: r.nozzle_id,
+      nozzle_number: openingMap[r.nozzle_id]?.nozzle_number,
+      carried: r.opening,
+      entered: r.requested,
+    }));
+    const openingFor = {};
+    for (const r of resolved) openingFor[r.nozzle_id] = r.opening;
+
+    // The operator row is now about the OPERATOR — who he is, his cash float, his
+    // bank details. It no longer carries a meter reading. It used to mirror the
+    // FIRST nozzle's opening onto sa.opening_reading for the single-nozzle
+    // settlement path; that path is retired, and the mirror was a lie whenever a
+    // man worked more than one nozzle. Meters live in shift_attendant_nozzles,
+    // one row per nozzle, and nowhere else.
     const first = nozzleList[0] || {};
     const { rows } = await pool.query(
       `INSERT INTO shift_attendants(
          shift_id, attendant_id, rfid_tag_id, nozzle_id,
-         bank_account, upi_vpa, opening_reading, opening_cash
-       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+         bank_account, upi_vpa, opening_cash
+       ) VALUES($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT(shift_id, attendant_id) DO UPDATE SET
          rfid_tag_id=$3, nozzle_id=$4, bank_account=$5,
-         upi_vpa=$6, opening_reading=$7, opening_cash=$8
+         upi_vpa=$6, opening_cash=$7
        RETURNING *`,
       [req.params.id, attendant_id, rfid_tag_id||null, first.nozzle_id||null,
-       bank_account||null, upi_vpa||null,
-       first.opening_reading||0, opening_cash||0]
+       bank_account||null, upi_vpa||null, opening_cash||0]
     );
 
     // Replace this operator's nozzle set (clean re-assign on edit).
@@ -278,37 +351,66 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       await pool.query(
         `INSERT INTO shift_attendant_nozzles(shift_id, attendant_id, nozzle_id, opening_reading)
          VALUES($1,$2,$3,$4)`,
-        [req.params.id, attendant_id, nz.nozzle_id, nz.opening_reading != null ? nz.opening_reading : 0]);
+        [req.params.id, attendant_id, nz.nozzle_id, openingFor[nz.nozzle_id] ?? 0]);
     }
 
-    res.json({ ...rows[0], nozzles: nozzleList });
+    // Store the operator's photograph against this assignment, then stamp his
+    // shift clock. Both are best-effort by design (see attendanceService): the
+    // assignment above is what lets fuel be sold, and neither a failed upload nor
+    // a missing attendance row may undo it. `meta.match` is left for the facial
+    // verdict once matching lands — the record shape does not change then.
+    // requireStationVia resolved the shift's station and put it here.
+    const photo = await artifacts.save({
+      station_id: req.stationId,
+      entity_type: 'shift_attendant',
+      entity_id: rows[0].id,
+      kind: 'attendant_photo',
+      file_base64: photo_base64 || null,
+      media_type: photo_media_type || null,
+      meta: { phase: 'start', attendant_id, shift_id: req.params.id },
+      uploaded_by: req.user.id,
+    });
+    const clock = await attendance.clockIn({
+      shift_id: req.params.id,
+      attendant_id,
+      artifact_id: photo ? photo.id : null,
+      recorded_by: req.user.id,
+    });
+
+    res.json({
+      ...rows[0],
+      nozzles: resolved.map(r => ({ nozzle_id: r.nozzle_id, opening_reading: r.opening, source: r.source })),
+      // Non-empty when what the manager entered differed from the carried close.
+      // The assignment still succeeded on the carried figure — this is for the
+      // screen to surface, and for the owner to look into.
+      carry_conflicts: carryConflicts,
+      photo_artifact_id: photo ? photo.id : null,
+      started_at: clock ? clock.check_in : null,
+    });
   } catch (err) { next(err); }
 });
 
-// GET /api/shifts/:id/nozzle-openings — suggested opening per nozzle = the most
-// recent prior closing (across the child table, the per-nozzle meter store, or the
-// legacy single-nozzle column). Lets the UI auto-carry the opening at shift start.
+// GET /api/shifts/:id/nozzle-openings — the opening per nozzle. NOT a suggestion:
+// where a prior close exists this is the figure the assignment will use, whatever
+// the screen sends (see services/openingService and POST /:id/assign). The screen
+// reads it to show the manager the number and where it came from.
+//
+// `suggested_opening` is kept in the payload under its old name because other
+// callers read it; `source` is what tells the screen whether the box is fixed
+// ('carried') or genuinely needs a figure ('entered' — no prior close anywhere,
+// i.e. a newly commissioned nozzle or the first shift ever run).
 router.get('/:id/nozzle-openings', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
   async (req, res, next) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
-        COALESCE(
-          (SELECT san.closing_reading FROM shift_attendant_nozzles san JOIN shifts s2 ON s2.id=san.shift_id
-            WHERE san.nozzle_id=n.id AND san.shift_id<>$1 AND san.closing_reading IS NOT NULL
-            ORDER BY s2.start_time DESC LIMIT 1),
-          (SELECT snr.closing_reading FROM shift_nozzle_readings snr JOIN shifts s3 ON s3.id=snr.shift_id
-            WHERE snr.nozzle_id=n.id AND snr.shift_id<>$1 AND snr.closing_reading IS NOT NULL
-            ORDER BY s3.start_time DESC LIMIT 1),
-          (SELECT sa.closing_reading FROM shift_attendants sa JOIN shifts s4 ON s4.id=sa.shift_id
-            WHERE sa.nozzle_id=n.id AND sa.shift_id<>$1 AND sa.closing_reading IS NOT NULL
-            ORDER BY s4.start_time DESC LIMIT 1)
-        ) AS suggested_opening
-      FROM nozzles n
-      WHERE n.station_id = (SELECT station_id FROM shifts WHERE id=$1) AND n.is_active
-      ORDER BY n.nozzle_number`, [req.params.id]);
-    res.json(rows);
+    const map = await openings.nozzleOpenings(req.params.id);
+    res.json(Object.values(map).map(o => ({
+      nozzle_id: o.nozzle_id,
+      nozzle_number: o.nozzle_number,
+      fuel_type: o.fuel_type,
+      suggested_opening: o.carried_opening,
+      source: o.source,
+    })));
   } catch (err) { next(err); }
 });
 

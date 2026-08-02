@@ -14,8 +14,23 @@
 const pool = require('../db/pool');
 const dispense = require('./dispenseService');
 const books = require('./creditSlipBookService');
+const artifacts = require('./artifactService');
 
 const badRequest = dispense.badRequest;
+
+// Do the coupon columns exist on dispense_events yet? Cached only once TRUE, so the
+// first capture after the owner runs the DDL picks them up without an app restart.
+let _hasCouponCols = false;
+async function hasCouponCols(client = pool) {
+  if (_hasCouponCols) return true;
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='dispense_events'
+        AND column_name='coupon_book_id' LIMIT 1`
+  );
+  _hasCouponCols = rows.length > 0;
+  return _hasCouponCols;
+}
 
 // The effective selling rate for a fuel at an outlet as at a given date.
 //
@@ -107,8 +122,16 @@ async function validateCoupon({ station_id, coupon_no, coupon_date, fuel_type, c
 
   // 5. Already captured? The unique index is the real guarantee; this is the friendly
   //    message so a duplicate reads as "already recorded" rather than a DB error.
+  //
+  //    PROBED, NOT TRIED-AND-CAUGHT. This used to run the SELECT and swallow 42703
+  //    for the pre-migration case, which was safe only while captureCoupon ran
+  //    outside a transaction. It now owns one (so the coupon image and the sale
+  //    commit together), and inside a transaction a failed statement ABORTS it —
+  //    every statement after would die with "current transaction is aborted" and
+  //    the sale would fail. That is precisely what broke every credit invoice in
+  //    prod on 30-Jul. A catalog SELECT succeeds either way. See CLAUDE.md.
   let duplicate = null;
-  try {
+  if (await hasCouponCols(client)) {
     const { rows } = await client.query(
       `SELECT id, occurred_at, quantity_ltrs, is_invoiced
        FROM dispense_events
@@ -117,8 +140,6 @@ async function validateCoupon({ station_id, coupon_no, coupon_date, fuel_type, c
       [book.id, leaf]
     );
     duplicate = rows[0] || null;
-  } catch (e) {
-    if (e.code !== '42703') throw e;   // pre-migration: columns absent, nothing to check
   }
 
   // 6. Price as at the coupon date for THIS outlet.
@@ -136,10 +157,38 @@ async function validateCoupon({ station_id, coupon_no, coupon_date, fuel_type, c
 // Capture the coupon as a credit sale. Amount is frozen on the row via the generated
 // column (quantity x rate), so fetching this coupon later for invoicing has NO
 // dependency on the rate card — owner's explicit requirement.
+//
+// THE COUPON PHOTOGRAPH IS STORED WITH THE SALE. The coupon is the authority behind
+// the line — it carries the customer's signature and seal, and it is what the outlet
+// produces when a customer disputes a bill months later. The first cut of this flow
+// read the image and threw it away, which left the invoice line with nothing behind
+// it. It is now written in the SAME transaction as the sale, so a stored coupon
+// image always has a sale (an image without a sale would be evidence of a debt that
+// was never recorded).
+//
+// The image itself is still best-effort at the last step: artifactService runs its
+// insert inside a SAVEPOINT and returns null on failure, so a storage problem can
+// never be the reason a credit sale is refused.
 async function captureCoupon(input, client = pool) {
+  // Own the transaction when the caller hasn't got one, so the sale and its
+  // photograph commit together.
+  if (client === pool) {
+    const c = await pool.connect();
+    try {
+      await c.query('BEGIN');
+      const out = await captureCoupon(input, c);
+      await c.query('COMMIT');
+      return out;
+    } catch (e) {
+      await c.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { c.release(); }
+  }
+
   const {
     station_id, coupon_no, coupon_date, fuel_type, quantity_ltrs,
     vehicle_number, customer_hint, shift_id, attendant_id, notes,
+    file_base64, media_type, ocr, uploaded_by,
   } = input;
 
   const qty = dispense.assertQuantity(quantity_ltrs);
@@ -159,7 +208,7 @@ async function captureCoupon(input, client = pool) {
   );
 
   try {
-    return await dispense.insertDispense({
+    const event = await dispense.insertDispense({
       station_id,
       shift_id: shift_id || null,          // a batch-entered coupon has no open shift
       nozzle_id: null,                     // ...and no known nozzle. Both legitimate.
@@ -177,6 +226,24 @@ async function captureCoupon(input, client = pool) {
       occurred_at: `${coupon_date}T12:00:00+05:30`,
       source: 'coupon',
     }, client);
+
+    // The picture of the coupon, kept against the sale it created. `ocr` is the
+    // raw parse the manager was shown — storing it alongside means a later
+    // dispute can see BOTH what the machine read and what was committed, which
+    // is the only way to tell a mis-scan from a mis-key.
+    const artifact = await artifacts.save({
+      station_id,
+      entity_type: 'dispense_event',
+      entity_id: event.id,
+      kind: 'coupon',
+      file_base64: file_base64 || null,
+      media_type: media_type || null,
+      ocr: ocr || null,
+      meta: { coupon_no: Number(coupon_no), coupon_date, customer_hint: customer_hint || null },
+      uploaded_by: uploaded_by || null,
+    }, client);
+
+    return { ...event, artifact_id: artifact ? artifact.id : null };
   } catch (e) {
     // Race backstop: the unique index caught a duplicate the pre-check missed.
     if (e.code === '23505') throw badRequest(`Coupon ${coupon_no} is already recorded. Not saved again.`);

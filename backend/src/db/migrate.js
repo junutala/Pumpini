@@ -109,8 +109,9 @@ CREATE TABLE IF NOT EXISTS shift_attendants (
   nozzle_id       UUID REFERENCES nozzles(id),
   bank_account    VARCHAR(30),
   upi_vpa         VARCHAR(100),  -- linked UPI VPA for this attendant
-  opening_reading NUMERIC(12,3) DEFAULT 0,
-  closing_reading NUMERIC(12,3),
+  -- NO METER COLUMNS. Retired 01-Aug-2026 — meters live in shift_attendant_nozzles,
+  -- one row per nozzle. A single opening/closing pair on the operator row could not
+  -- represent a man on four nozzles, and the figures it held were unusable.
   assigned_at     TIMESTAMPTZ DEFAULT NOW()
 );
 

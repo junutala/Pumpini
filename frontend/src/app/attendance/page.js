@@ -3,7 +3,8 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getAttendance, markAttendance, getUsers } from '../../lib/api';
+import { getAttendance, markAttendance, getUsers, getShiftClock } from '../../lib/api';
+import ArtifactImage from '../../components/shared/ArtifactImage';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
@@ -25,6 +26,13 @@ const toIST = (ts) => {
 const todayIST = () => {
   return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 };
+const daysAgoIST = (n) =>
+  new Date(Date.now() - n*86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+// India reads DD/MM. A shift_date is a plain date string, so it is anchored at
+// midnight rather than parsed as UTC and shown as the day before.
+const fmtDay = (d) => d
+  ? new Date(`${String(d).slice(0,10)}T00:00:00`).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})
+  : '—';
 
 export default function AttendancePage() {
   const { t } = useTranslation();
@@ -42,6 +50,22 @@ export default function AttendancePage() {
   const [bulkStatus,setBulkStatus] = useState({});
   const [bulkCheckin,setBulkCheckin] = useState({});
   const [bulkCheckout,setBulkCheckout] = useState({});
+
+  // The shift clock, over a range rather than a single day: the question an owner
+  // asks is "who worked this week and for how long", not "who was here on Tuesday".
+  // Defaults to the last 7 days.
+  const [clock,setClock] = useState([]);
+  const [clockFrom,setClockFrom] = useState(daysAgoIST(6));
+  const [clockTo,setClockTo]     = useState(todayIST());
+
+  const loadClock = async () => {
+    if(!stationId) return;
+    try {
+      const rows = await getShiftClock({ station_id:stationId, from:clockFrom, to:clockTo });
+      setClock(Array.isArray(rows)?rows:[]);
+    } catch { setClock([]); }   // an empty clock reads as "nothing logged", which it is
+  };
+  useEffect(()=>{ loadClock(); },[stationId,clockFrom,clockTo]);
 
   const load = async() => {
     if(!stationId) return;
@@ -139,6 +163,74 @@ export default function AttendancePage() {
         ))}
         <div style={{marginLeft:'auto',fontSize:13,color:'var(--text-3)',alignSelf:'center'}}>
           {tc('attend.allTimesIST','All times in IST (GMT+5:30)')}
+        </div>
+      </div>
+
+      {/* ── SHIFT CLOCK ──────────────────────────────────────────────────────
+          The attendant's OWN start and end, stamped by Start Shift and Close
+          Shift and filed against the shift itself (shift_attendance). Kept
+          visibly apart from the register below because the two are different
+          kinds of record: this one is what the system observed, with a
+          photograph at each end; that one is what somebody typed. Showing them
+          in one grid would let a typed time borrow the authority of a stamped
+          one. */}
+      <div className="card" style={{marginBottom:'1.25rem'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',marginBottom:8}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:15}}>{tc('attend.shiftClock','Shift clock')}</div>
+            <div style={{fontSize:12,color:'var(--text-3)'}}>
+              {tc('attend.shiftClockHint','Start and end recorded automatically when each attendant is started and settled.')}
+            </div>
+          </div>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <input className="input" type="date" style={{width:150}} value={clockFrom} onChange={e=>setClockFrom(e.target.value)}/>
+            <span style={{color:'var(--text-3)',fontSize:12}}>{tc('attend.toWord','to')}</span>
+            <input className="input" type="date" style={{width:150}} value={clockTo} onChange={e=>setClockTo(e.target.value)}/>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="dms-table">
+            <thead>
+              <tr>
+                <th>{tc('attend.thAttendant','Attendant')}</th>
+                <th>{tc('attend.thDate','Date')}</th>
+                <th>{tc('attend.thShift','Shift')}</th>
+                <th>{tc('attend.thStarted','Started')}</th>
+                <th>{tc('attend.thEnded','Ended')}</th>
+                <th style={{textAlign:'right'}}>{tc('attend.thHours','Hours')}</th>
+                <th>{tc('attend.thProof','Proof')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clock.length === 0 ? (
+                <tr><td colSpan={7} style={{color:'var(--text-3)',fontSize:13,padding:'14px 8px'}}>
+                  {tc('attend.noClock','Nothing clocked in this period. Start an attendant from Start Shift and his start time appears here.')}
+                </td></tr>
+              ) : clock.map(c => (
+                <tr key={c.id}>
+                  <td style={{fontWeight:600}}>{c.attendant_name}</td>
+                  <td>{fmtDay(c.shift_date)}</td>
+                  <td>{c.shift_number}</td>
+                  <td style={{fontVariantNumeric:'tabular-nums'}}>{toIST(c.started_at)}</td>
+                  <td style={{fontVariantNumeric:'tabular-nums'}}>
+                    {c.open
+                      ? <span className="badge badge-warning">{tc('attend.stillOn','Still on shift')}</span>
+                      : toIST(c.ended_at)}
+                  </td>
+                  <td style={{textAlign:'right',fontVariantNumeric:'tabular-nums',fontWeight:700}}>
+                    {c.hours != null ? Number(c.hours).toFixed(2) : '—'}
+                  </td>
+                  <td>
+                    <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                      {c.start_photo_id && <ArtifactImage artifactId={c.start_photo_id} size={30} label={tc('attend.startPhoto','Photo at start')}/>}
+                      {c.end_photo_id   && <ArtifactImage artifactId={c.end_photo_id}   size={30} label={tc('attend.endPhoto','Photo at close')}/>}
+                      {!c.photo_backed && <span style={{fontSize:11.5,color:'var(--text-3)'}}>{tc('attend.noPhoto','—')}</span>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

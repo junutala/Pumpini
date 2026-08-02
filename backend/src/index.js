@@ -122,6 +122,9 @@ app.use('/api/tally', require('./routes/tally'));
 app.use('/api/credit-reports', require('./routes/creditReports'));
 app.use('/api/credit-slip-books', require('./routes/creditSlipBooks'));
 app.use('/api/coupons', require('./routes/coupons'));
+// Stored document images (coupon, gauge screen, attendant photo) — read-only;
+// every artifact is written by the flow that produced it. See routes/artifacts.js.
+app.use('/api/artifacts', require('./routes/artifacts'));
 // Read-only data-health tripwire (per-station + owner-group rollup)
 app.use('/api/data-health', require('./routes/dataHealth'));
 

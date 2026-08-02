@@ -75,13 +75,20 @@ export const getCorpStatement    = (id, m)    => api.get(`/corporate/${id}/state
 // Attendance
 export const getAttendance  = (params) => api.get('/attendance', { params });
 export const markAttendance = (data)   => api.post('/attendance', data);
+// The SHIFT clock — each attendant's start and end date & time, stamped by the
+// shift flow. A different record from markAttendance's by-hand HR register.
+export const getShiftClock  = (params) => api.get('/attendance/shifts', { params });
 
 // Dipstick
 export const getDipstick    = (params)    => api.get('/dipstick', { params });
 export const recordDipstick = (data)      => api.post('/dipstick', data);
-// Reads an ATG/Pinelabs tank-status screen photo into pre-fill rows. Saves nothing —
-// the manager still reviews and submits via recordDipstick. Generous timeout: vision
-// + a Railway cold start can outrun the default.
+// Reads an ATG/Pinelabs tank-status screen photo into pre-fill rows. No READING is
+// saved — the manager still reviews and submits via recordDipstick — but the screen
+// PHOTO is now kept, and the response carries its artifact_id. Pass that id to
+// recordDipstick for each tank it filled so every figure points at the picture it
+// came from. Send shift_id + reading_type ('opening'|'closing') so the image files
+// under the right shift. Generous timeout: vision + a Railway cold start can outrun
+// the default.
 export const parseGaugeScreen = (data)    => api.post('/dipstick/parse-gauge', data, { timeout: 90000 });
 export const getTankStock   = (stationId) => api.get(`/dipstick/tanks/${stationId}`);
 export const getDensityRegister = (params) => api.get('/dipstick/density-register', { params });
@@ -122,6 +129,12 @@ export const acknowledgeAlert = (id)     => api.patch(`/alerts/${id}/acknowledge
 export const getUsers  = (params) => api.get('/users', { params });
 export const updateUser = (id, d) => api.patch(`/users/${id}`, d);
 export const addAttendant = (data) => api.post('/users/attendant', data);
+// Reference photograph for someone ALREADY on the books. Same concept as the
+// enrolment shot on Add Attendant, same backend writer — a re-shoot, not an edit.
+export const setAttendantPhoto = (id, data) => api.post(`/users/${id}/photo`, data);
+// Newest artifact per parent, { entity_id: {...} }. One call for a whole list.
+export const getLatestArtifacts = (entity_type, ids, kind) =>
+  api.get('/artifacts/latest', { params: { entity_type, entity_ids: (ids||[]).join(','), kind } });
 
 // RFID
 export const getRfidTags  = (stationId) => api.get(`/rfid?station_id=${stationId}`);
@@ -132,9 +145,50 @@ export const resetRfidTag = (id)        => api.patch(`/rfid/${id}/reset`);
 export const getStations  = ()     => api.get('/stations');
 export const getNozzles   = (sid)  => api.get(`/stations/${sid}/nozzles`);
 
+// ── Pumps ─────────────────────────────────────────────────────────────
+// The dispenser MACHINE the nozzles hang off: a number, a serial, a model and the
+// sample slip it prints. A pump has NO fuel and NO tank — one unit routinely
+// dispenses several grades from several tanks, so fuel and tank stay on the NOZZLE.
+// The list read returns each pump's nozzles nested.
+//
+// These ride owner-run DDL (`pumps` table, `nozzles.pump_id`), so the endpoints can
+// 404/500 until the migration is applied. EVERY caller must treat a failure as
+// "no pumps yet" rather than letting Settings blank out.
+export const getPumps   = (sid)        => api.get(`/stations/${sid}/pumps`);
+// Longer timeout: the create carries the sample-slip photograph, and the server
+// stores it as the pump's artifact in the same call (artifacts are written by the
+// flow that produced them — there is no separate upload endpoint).
+// Read a sample slip during SETUP to identify the machine. Same parser as the
+// shift-time scan, but no shift exists yet — a pump is being defined before it has
+// ever run one. Generous timeout: vision plus a Railway cold start.
+export const parsePumpSlip = (sid, data) => api.post(`/stations/${sid}/parse-pump-slip`, data, { timeout: 90000 });
+export const createPump = (sid, data)  => api.post(`/stations/${sid}/pumps`, data, { timeout: 90000 });
+export const updatePump = (sid, id, d) => api.patch(`/stations/${sid}/pumps/${id}`, d);
+// Refuses with 409 while the pump still has nozzles — surface that message; the
+// doctrine path for a live pump is to RETIRE it (PATCH end_date), never delete.
+export const deletePump = (sid, id)    => api.delete(`/stations/${sid}/pumps/${id}`);
+
 // Reconcile (denomination)
 export const submitDenomination = (data) => api.post('/reconcile/denomination', data);
 export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`, {});
 
 // AI Chat — longer timeout: model latency + possible Railway cold start
 export const sendAiChat = (data) => api.post('/ai-chat', data, { timeout: 60000 });
+
+// ── Stored document images (station_artifacts) ────────────────────────
+// The proof behind a record: the credit coupon behind an invoice line, the gauge
+// screen behind a dip, the operator's photo at shift start and close. Artifacts are
+// WRITTEN by the flow that produced them (coupon capture, gauge scan, shift assign),
+// never uploaded separately — that is what keeps the image and its parent in one
+// transaction. These two are the read side only.
+export const getArtifacts = (entity_type, entity_id) =>
+  api.get('/artifacts', { params: { entity_type, entity_id } });
+
+// The image itself, as an object URL for an <img src>. It cannot be a plain URL:
+// the API authenticates on the Authorization header, which the browser does not
+// send for an <img> request — so the bytes are fetched through the same axios
+// instance and wrapped locally. Revoke the URL when the component unmounts.
+export const fetchArtifactImageUrl = async (id) => {
+  const blob = await api.get(`/artifacts/${id}/image`, { responseType: 'blob', timeout: 60000 });
+  return URL.createObjectURL(blob);
+};

@@ -1,4 +1,5 @@
 const router  = require('express').Router();
+const artifacts = require('../services/artifactService');
 const bcrypt  = require('bcryptjs');
 const pool    = require('../db/pool');
 const { authenticate, authorize, bumpTokenVersion } = require('../middleware/auth');
@@ -100,7 +101,7 @@ router.post('/:id/force-logout', authenticate, authorize('owner','manager'), asy
 // statement, so the owner's RLS identity can't satisfy the insert policy.
 router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
   try {
-    const { station_id } = req.body;
+    const { station_id, photo_base64, photo_media_type } = req.body;
     if (station_id && !(await canAccessStation(req.user.id, station_id))) {
       return res.status(403).json({ error: 'You do not have access to this station.' });
     }
@@ -120,7 +121,19 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
     let created;
     try { created = await run(); }
     catch (e) { if (pool.isRetryableConnError(e)) created = await run(); else throw e; }
-    res.status(201).json(created);
+    // FACE ENROLMENT. Stored against the USER, not a shift, because it is the
+    // reference photograph the shift-start pictures are compared against — first by
+    // eye, and later by the matcher that replaces the operator picker entirely
+    // (owner: "the picture has to fetch the attendant. This is the ultimate goal").
+    // Best-effort: a camera that will not co-operate must never stop an outlet
+    // adding a member of staff.
+    const enrolment = await artifacts.saveAttendantPhoto({
+      station_id, user_id: created.id, name: created.name, phase: 'enrolment',
+      file_base64: photo_base64, media_type: photo_media_type,
+      uploaded_by: req.user.id,
+    });
+
+    res.status(201).json({ ...created, photo_artifact_id: enrolment ? enrolment.id : null });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
@@ -133,7 +146,7 @@ router.post('/', authenticate, authorize('owner'), async (req, res, next) => {
 // transaction (a manager's RLS identity can't insert a not-yet-linked user).
 router.post('/attendant', authenticate, requireStationAccess({ required: true }), requirePerm('attendant.add'), async (req, res, next) => {
   try {
-    const { name, phone, language = 'en', station_id } = req.body;
+    const { name, phone, language = 'en', station_id, photo_base64, photo_media_type } = req.body;
 
     const insertAttendant = () => pool.als.run(undefined, async () => {
       const client = await pool.connect();   // no ALS store → raw bypass owner client
@@ -160,10 +173,61 @@ router.post('/attendant', authenticate, requireStationAccess({ required: true })
       if (pool.isRetryableConnError(e)) created = await insertAttendant();
       else throw e;
     }
-    res.status(201).json(created);
+    // FACE ENROLMENT. Stored against the USER, not a shift, because it is the
+    // reference photograph the shift-start pictures are compared against — first by
+    // eye, and later by the matcher that replaces the operator picker entirely
+    // (owner: "the picture has to fetch the attendant. This is the ultimate goal").
+    // Best-effort: a camera that will not co-operate must never stop an outlet
+    // adding a member of staff.
+    const enrolment = await artifacts.saveAttendantPhoto({
+      station_id, user_id: created.id, name: created.name, phase: 'enrolment',
+      file_base64: photo_base64, media_type: photo_media_type,
+      uploaded_by: req.user.id,
+    });
+
+    res.status(201).json({ ...created, photo_artifact_id: enrolment ? enrolment.id : null });
   } catch (e) {
     if (e.status) return res.status(e.status).json({ error: e.message });
     if (e.code === '23505') return res.status(409).json({ error: 'This phone number is already registered.' });
+    next(e);
+  }
+});
+
+// POST /api/users/:id/photo — take (or re-take) a member of staff's reference
+// photograph AFTER he was created. Everyone already on the books predates the
+// camera on the Add-Attendant form, so without this their faces could never be
+// enrolled at all and the matcher would start life blind to the existing staff.
+//
+// Same guard as adding one, and then some: the caller must have access to the
+// station AND the target must actually be posted there. Access alone is not
+// enough — it would let a manager attach a photograph to a user at another
+// outlet whose id he happened to know.
+router.post('/:id/photo', authenticate, requireStationAccess({ required: true }), requirePerm('attendant.add'), async (req, res, next) => {
+  try {
+    const { station_id, photo_base64, photo_media_type } = req.body;
+    if (!photo_base64) return res.status(400).json({ error: 'Take a photo first.' });
+
+    const { rows } = await pool.query(
+      `SELECT u.id, u.name
+         FROM users u
+         JOIN station_users su ON su.user_id = u.id AND su.station_id = $2
+        WHERE u.id = $1`,
+      [req.params.id, station_id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'That person is not on this outlet.' });
+
+    const saved = await artifacts.saveAttendantPhoto({
+      station_id, user_id: rows[0].id, name: rows[0].name, phase: 'update',
+      file_base64: photo_base64, media_type: photo_media_type,
+      uploaded_by: req.user.id,
+    });
+    // save() never throws — it returns null when the artifact table has not been
+    // migrated yet or the image was too big. Say so plainly instead of reporting
+    // a success that stored nothing.
+    if (!saved) return res.status(502).json({ error: 'Could not store that photo. Try a smaller/clearer picture.' });
+    res.status(201).json({ photo_artifact_id: saved.id });
+  } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
