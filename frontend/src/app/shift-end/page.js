@@ -286,11 +286,14 @@ export default function ShiftEndPage() {
         }));
         if (!found) miss.push(n.label || n.nozzle_no || '?');
       });
-      if (!matched) setErr(tc('send.slipNoMatch2', 'Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.').replace('{x}', (r.nozzles||[]).map(n=>n.nozzle_no).filter(Boolean).join(', ') || '—'));
+      if (!matched) setErr(r.hint || tc('send.slipNoMatch2', 'Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.').replace('{x}', (r.nozzles||[]).map(n=>n.nozzle_no).filter(Boolean).join(', ') || '—'));
       else {
         let msg = tc('send.slipFilled', 'Filled {n} closing reading(s) from the slip.').replace('{n}', matched);
         if (miss.length) msg += ' ' + tc('send.slipNoMatchSome', 'No operator nozzle for: {x}.').replace('{x}', miss.join(', '));
         if (!r.legible)  msg += ' ' + tc('send.slipVerify', '⚠ Some digits unclear — verify.');
+        // See shift-start: the server's warning about an untrusted match is shown
+        // verbatim on the close side too, where a wrong meter becomes money.
+        if (r.hint)      msg += ' ⚠ ' + r.hint;
         setErr(msg);
       }
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipFailed', 'Slip scan failed')); }
