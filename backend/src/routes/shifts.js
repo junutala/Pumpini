@@ -7,6 +7,7 @@ const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const artifacts  = require('../services/artifactService');
 const attendance = require('../services/attendanceService');
+
 const openings   = require('../services/openingService');
 
 // GET /api/shifts
@@ -230,7 +231,7 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       // against his assignment. Today it is evidence; the intended end state is
       // that the picture IDENTIFIES him and the picker becomes the fallback, so
       // it is captured against the assignment now rather than bolted on later.
-      photo_base64, photo_media_type,
+      photo_base64, photo_media_type, face_match,
     } = req.body;
 
     if (!attendant_id) return res.status(400).json({ error: 'Attendant is required' });
@@ -367,7 +368,13 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       kind: 'attendant_photo',
       file_base64: photo_base64 || null,
       media_type: photo_media_type || null,
-      meta: { phase: 'start', attendant_id, shift_id: req.params.id },
+      // The facial verdict, recorded as what the CAMERA thought — never as what
+      // happened. attendant_id above is the manager's decision and is the truth;
+      // this sits beside it so a later audit can ask how often the two agreed, and
+      // so a disagreement (the camera said one man, the manager chose another) is
+      // visible rather than lost. Sanitised, because it arrives from a phone.
+      meta: { phase: 'start', attendant_id, shift_id: req.params.id,
+              ...(artifacts.cleanMatch(face_match) ? { match: artifacts.cleanMatch(face_match) } : {}) },
       uploaded_by: req.user.id,
     });
     const clock = await attendance.clockIn({

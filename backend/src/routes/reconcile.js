@@ -389,7 +389,10 @@ router.post('/manager', authenticate,
         kind: 'attendant_photo',
         file_base64: photo_base64 || null,
         media_type: photo_media_type || null,
-        meta: { phase: 'close', attendant_id, shift_id },
+        // What the camera thought as he handed over, beside the manager's choice.
+        // Advisory: attendant_id is the decision, this is the second opinion.
+        meta: { phase: 'close', attendant_id, shift_id,
+                ...(artifacts.cleanMatch(req.body.face_match) ? { match: artifacts.cleanMatch(req.body.face_match) } : {}) },
         uploaded_by: req.user.id,
       }, client);
       await attendance.clockOut({
