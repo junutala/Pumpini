@@ -20,10 +20,11 @@ import { Check, ChevronRight, ArrowLeft, Droplets, X, ScanLine, AlertTriangle } 
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, recordDipstick } from '../../lib/api';
+import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
+import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
@@ -194,6 +195,71 @@ export default function ShiftStartPage() {
   // Screen 2 — attendant assignment
   const [opAttendant, setOpAttendant] = useState('');
   const [opPhoto, setOpPhoto] = useState(null);     // { base64, media_type } | null
+  // PHASE 1 OF FACIAL RECOGNITION. The enrolment descriptors for this outlet's
+  // attendants (user_id -> 128 numbers), and the verdict on the face just taken.
+  // Advisory ONLY, exactly like every other scan in Pumpini: it pre-selects the
+  // picker and says why, and the manager confirms or overrides. It never assigns.
+  const [faceRefs, setFaceRefs] = useState({});
+  const [faceMsg, setFaceMsg]   = useState('');
+  const [faceVerdict, setFaceVerdict] = useState(null);
+
+  // Pull each attendant's enrolment descriptor. latestForMany already returns meta
+  // and deliberately omits the image bytes, so this is ~1 kB a head, not a photo.
+  const loadFaceRefs = async (staff) => {
+    const ids = (staff||[]).map(x=>x.id).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const m = await getLatestArtifacts('user', ids, 'attendant_photo');
+      const refs = {};
+      Object.entries(m||{}).forEach(([uid,row]) => {
+        const d = row?.meta?.descriptor;
+        if (Array.isArray(d) && d.length === 128) refs[uid] = d;
+      });
+      setFaceRefs(refs);
+    } catch { /* no suggestion is a fine outcome; the picker is right there */ }
+  };
+
+  // The photograph is taken, so read it and PROPOSE a name. Everything about this
+  // is advisory: 'strong' and 'likely' pre-select the picker and say which it was,
+  // 'unsure' names the closest man WITHOUT selecting him, and every failure path
+  // (no model, no face, two faces, nobody enrolled) leaves the picker untouched.
+  // The manager is obliged to verify either way — same policy as every scan here.
+  const onFacePhoto = async (shot) => {
+    setOpPhoto(shot);
+    setFaceMsg(''); setFaceVerdict(null);
+    if (!shot?.base64) return;
+    const candidates = users
+      .filter(u => !assignedIds.has(u.id) && faceRefs[u.id])
+      .map(u => ({ user_id: u.id, name: u.name, descriptor: faceRefs[u.id] }));
+    if (!candidates.length) {
+      setFaceMsg(tc('sstart.faceNoRefs','No reference photos on file yet — add them under Add Attendant and the camera will start naming him.'));
+      return;
+    }
+    setFaceMsg(tc('sstart.faceReading','Reading the face…'));
+    const { descriptor, error } = await describeFace(
+      `data:${shot.media_type || 'image/jpeg'};base64,${shot.base64}`);
+    if (error || !descriptor) {
+      const why = {
+        'no-face':    tc('sstart.faceNone','No face found in that photo — pick him from the list.'),
+        'many-faces': tc('sstart.faceMany','More than one face in frame — pick him from the list.'),
+      }[error] || tc('sstart.faceUnread','Could not read the face — pick him from the list.');
+      setFaceMsg(why);
+      return;
+    }
+    const m = bestMatch(descriptor, candidates);
+    if (!m) { setFaceMsg(''); return; }
+    setFaceVerdict(m);
+    if (m.verdict === 'strong' || m.verdict === 'likely') {
+      setOpAttendant(m.user_id);
+      setFaceMsg((m.verdict === 'strong'
+        ? tc('sstart.faceStrong','This looks like {name} — selected below. Check it before you start him.')
+        : tc('sstart.faceLikely','This is probably {name} — selected below. Worth a second look.')
+      ).replace('{name}', m.name));
+    } else {
+      setFaceMsg(tc('sstart.faceUnsure','Not sure who this is — closest is {name}. Pick him from the list.')
+        .replace('{name}', m.name));
+    }
+  };
   const [nozPick, setNozPick] = useState({});       // nozzle_id -> { selected, opening }
   const [openings, setOpenings] = useState({});     // nozzle_id -> the prior close
   // nozzle_id -> 'carried' | 'entered'. THE OPENING IS THE LAST CLOSE (owner rule,
@@ -234,6 +300,10 @@ export default function ShiftStartPage() {
     setSavedDips(p => { const n = { ...p }; Object.keys(carried).forEach(k => { n[k] = true; }); return n; });
   };
 
+  // Fetch the face weights in the background as the screen opens, so the first
+  // photograph does not wait on 6.5 MB. Silent on failure — describe() re-tries.
+  useEffect(() => { preloadFace(); }, []);
+
   useEffect(() => {
     if (!stationId) return;
     Promise.all([
@@ -246,7 +316,14 @@ export default function ShiftStartPage() {
     ]).then(([d,u,n,os,tk,pr]) => {
       const defList = Array.isArray(d)?d:[];
       const openList = Array.isArray(os)?os:[];
-      setDefs(defList); setUsers((Array.isArray(u)?u:[]).filter(x=>x.is_active!==false));
+      setDefs(defList);
+      const staff = (Array.isArray(u)?u:[]).filter(x=>x.is_active!==false);
+      setUsers(staff);
+      // The reference faces, in ONE request, and deliberately AFTER the staff list
+      // rather than joined into it: /users?role=attendant also feeds this picker and
+      // must not grow a dependency on the artifact table. A failure here costs the
+      // suggestion, never the screen.
+      loadFaceRefs(staff);
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
       setOpenShifts(openList);
       setTanks(Array.isArray(tk)?tk:[]);
@@ -500,8 +577,10 @@ export default function ShiftStartPage() {
         opening_cash: 0,
         photo_base64: opPhoto?.base64 || null,
         photo_media_type: opPhoto?.media_type || null,
+        face_match: faceVerdict,
       });
       setOpAttendant(''); setOpPhoto(null); setNozPick({}); setFormKey(k => k + 1);
+      setFaceMsg(''); setFaceVerdict(null);
       await refreshShift(s.id); refreshOpen();
     } catch (e) {
       setErr(e.response?.data?.error || e.error || tc('sstart.errStartAttendant','Could not start this attendant'));
@@ -697,16 +776,30 @@ export default function ShiftStartPage() {
                   for the file. Once the model is mature the picture FETCHES the
                   attendant and the picker below becomes the fallback for the days it
                   cannot (bad light, new face). Ordering it first now is what makes
-                  that swap a deletion rather than a redesign. No matching is done
-                  today; the photo is stored against the assignment. */}
+                  that swap a deletion rather than a redesign. PHASE 1 IS NOW LIVE:
+                  the picture proposes the name below and the picker confirms or
+                  overrides it. Advisory only — it never assigns on its own. */}
               <div>
                 <label className="label">{tc('sstart.attendantPhoto','Photo of the attendant')}</label>
                 <PhotoCapture key={formKey}
                   label={tc('sstart.takeAttendantPhoto','Take his photo')}
                   hint={tc('sstart.attendantPhotoHint','Taken as he starts. In time this photo will identify him on its own.')}
                   disabled={busy}
-                  onCapture={setOpPhoto}
+                  onCapture={onFacePhoto}
           removeLabel={tc('photo.remove', 'Remove')}/>
+                {/* What the face said. Never a blocker and never an error banner —
+                    a suggestion the manager is expected to check. Green for a
+                    confident read, amber for a guess, grey for "I could not tell",
+                    so the three never read alike at a glance. */}
+                {faceMsg && (
+                  <div style={{marginTop:6,fontSize:12.5,lineHeight:1.45,padding:'7px 10px',borderRadius:8,
+                    background: faceVerdict?.verdict === 'strong' ? '#ecfdf5'
+                              : faceVerdict?.verdict === 'likely' ? '#fff7ed' : '#f8fafc',
+                    color:     faceVerdict?.verdict === 'strong' ? '#065f46'
+                              : faceVerdict?.verdict === 'likely' ? '#9a3412' : 'var(--text-3)'}}>
+                    {faceMsg}
+                  </div>
+                )}
               </div>
 
               <div><label className="label">{tc('sstart.attendant','Attendant')}</label>

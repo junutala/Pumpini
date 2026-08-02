@@ -196,7 +196,8 @@ async function latestForMany({ entity_type, entity_ids, kind = null }, client = 
 // the newest simply wins. Faces change, and a record of what someone looked like
 // when a given shift was worked is worth more than the disk it costs.
 async function saveAttendantPhoto(
-  { station_id, user_id, name = null, phase = 'enrolment', file_base64, media_type, uploaded_by },
+  { station_id, user_id, name = null, phase = 'enrolment', file_base64, media_type,
+    descriptor = null, uploaded_by },
   client = pool
 ) {
   return save({
@@ -206,9 +207,49 @@ async function saveAttendantPhoto(
     kind: 'attendant_photo',
     file_base64: file_base64 || null,
     media_type: media_type || null,
-    meta: { phase, name },
+    meta: { phase, name, ...(cleanDescriptor(descriptor) ? { descriptor: cleanDescriptor(descriptor) } : {}) },
     uploaded_by,
   }, client);
+}
+
+// The 128 numbers the browser read off the enrolment photograph — the reference
+// every shift-start face is measured against. Stored on the artifact's meta rather
+// than in a column of its own so this needed no DDL, and so a re-shoot carries its
+// own descriptor with it instead of the two drifting apart.
+//
+// VALIDATED, NEVER TRUSTED. It arrives from a phone, so anything that is not
+// exactly 128 finite numbers is dropped and the photograph is still stored — the
+// enrolment succeeds, it just cannot be matched against until it is re-taken.
+// Rounded to 6 places: the model's precision is nowhere near that, and it keeps a
+// row a few kB rather than tens.
+// The facial verdict, sanitised. Lives HERE and not in the two routes that record
+// it, because shift START and shift CLOSE both write it and a copy in each is
+// exactly the drift the one-writer rule exists to stop. Returns null for anything
+// unrecognised — the photograph is still stored, just without a verdict.
+function cleanMatch(m) {
+  if (!m || typeof m !== 'object') return null;
+  const verdict = ['strong', 'likely', 'unsure'].includes(m.verdict) ? m.verdict : null;
+  if (!verdict) return null;
+  const dist = Number(m.distance);
+  return {
+    verdict,
+    matched_user_id: typeof m.user_id === 'string' ? m.user_id.slice(0, 64) : null,
+    distance: Number.isFinite(dist) ? Math.round(dist * 1e4) / 1e4 : null,
+    // Naming the engine means a later change of model does not silently invalidate
+    // comparisons against rows written by this one.
+    engine: 'face-api/128d',
+  };
+}
+
+function cleanDescriptor(d) {
+  if (!Array.isArray(d) || d.length !== 128) return null;
+  const out = new Array(128);
+  for (let i = 0; i < 128; i++) {
+    const n = Number(d[i]);
+    if (!Number.isFinite(n)) return null;
+    out[i] = Math.round(n * 1e6) / 1e6;
+  }
+  return out;
 }
 
 function log(level, msg) {
@@ -216,6 +257,6 @@ function log(level, msg) {
 }
 
 module.exports = {
-  save, listFor, latestForMany, getImage, hasTable,
+  save, listFor, latestForMany, getImage, hasTable, cleanDescriptor, cleanMatch,
   saveAttendantPhoto, KINDS, ENTITY_TYPES,
 };
