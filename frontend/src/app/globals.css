@@ -182,6 +182,11 @@ table.dms-table td { padding: 10px 14px; color: var(--text-1); }
 .fuel-petrol  { background: #dbeafe; color: #1d4ed8; }
 .fuel-diesel  { background: #fef9c3; color: #854d0e; }
 .fuel-cng     { background: #d1fae5; color: #065f46; }
+/* Premium had no rule, so it alone rendered as bare text while every other fuel
+   got a chip — visible on the Nozzles list, where Premium Petrol sat unstyled
+   between two chipped rows. Amber, to read as the premium grade without being
+   mistaken for diesel's yellow. */
+.fuel-premium_petrol { background: #ffedd5; color: #9a3412; }
 .fuel-premium { background: #ede9fe; color: #5b21b6; }
 
 /* ── Live indicator ────────────────────── */

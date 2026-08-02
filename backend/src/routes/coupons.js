@@ -108,7 +108,15 @@ router.post('/validate', authenticate, requireStationAccess({ required: true }),
 // POST /api/coupons — capture the coupon as a credit sale.
 router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('dispense.entry'), async (req, res, next) => {
   try {
-    const event = await svc.captureCoupon({ ...req.body, attendant_id: req.body.attendant_id || req.user.id });
+    // file_base64 / media_type / ocr ride along in the body: the same photograph
+    // /parse read is now KEPT against the sale, so an invoice line always has the
+    // coupon behind it. Passing it here (rather than a second upload call) is what
+    // lets the image and the sale share one transaction.
+    const event = await svc.captureCoupon({
+      ...req.body,
+      attendant_id: req.body.attendant_id || req.user.id,
+      uploaded_by: req.user.id,
+    });
     res.status(201).json(event);
   } catch (err) {
     if (notMigrated(err)) return res.status(503).json({ error: NOT_MIGRATED });
@@ -128,12 +136,23 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
 router.get('/', authenticate, requireStationAccess({ required: true }), requirePerm('corporate.view'), async (req, res, next) => {
   try {
     const pool = require('../db/pool');
+    const artifacts = require('../services/artifactService');
     const { station_id, corporate_id, from, to, uninvoiced } = req.query;
     const p = [station_id];
+    // The stored-coupon column is added only once the artifact table exists.
+    // Probed, not tried-and-caught: this is the register screen's hot read, and a
+    // missing table must show the register WITHOUT the image column rather than
+    // failing the whole list to an empty page.
+    const withArtifact = await artifacts.hasTable();
+    const artifactCol = withArtifact
+      ? `, (SELECT sa.id FROM station_artifacts sa
+             WHERE sa.entity_type='dispense_event' AND sa.entity_id=de.id AND sa.kind='coupon'
+             ORDER BY sa.captured_at DESC LIMIT 1) AS artifact_id`
+      : `, NULL::uuid AS artifact_id`;
     let q = `
       SELECT de.id, de.coupon_no, de.occurred_at, de.fuel_type, de.quantity_ltrs,
              de.rate_per_ltr, de.amount, de.vehicle_number, de.is_invoiced, de.invoice_id,
-             ca.company_name, b.series_start, b.series_end
+             ca.company_name, b.series_start, b.series_end${artifactCol}
       FROM dispense_events de
       JOIN credit_slip_books b ON b.id = de.coupon_book_id
       LEFT JOIN corporate_accounts ca ON ca.id = de.corporate_id

@@ -122,7 +122,13 @@ export default function ManagerReconcileModal({ shift, onClose, onClosed }) {
                 </span>}
               </div>
               <div style={{ fontSize: 11.5, color: '#888', marginBottom: 8 }}>
-                {tc('rmodal.openingMeter', 'Opening meter')}: <strong>{Number(a.opening_reading || 0).toFixed(3)}</strong> · {tc('rmodal.openingCash', 'Opening cash')}: <strong>{fmt(a.opening_cash)}</strong>
+                {/* Opening cash appears only when there is one — shift start stopped
+                    asking for a float (no outlet gives one), so it is ₹0.00 on every
+                    new shift. Kept for older shifts, where it is real money. */}
+                {tc('rmodal.openingMeter', 'Opening meter')}: <strong>{Number(a.opening_reading || 0).toFixed(3)}</strong>
+                {Number(a.opening_cash || 0) !== 0 && (
+                  <> · {tc('rmodal.openingCash', 'Opening cash')}: <strong>{fmt(a.opening_cash)}</strong></>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginBottom: 8 }}>

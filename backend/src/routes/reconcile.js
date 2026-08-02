@@ -8,6 +8,24 @@ const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
+const artifacts  = require('../services/artifactService');
+const attendance = require('../services/attendanceService');
+
+// Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
+// deploys first; cached only once TRUE so the first scan after the migration
+// picks them up without an app restart.
+let _hasSlipMapping = false;
+async function hasSlipMapping() {
+  if (_hasSlipMapping) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='nozzles'
+          AND column_name='pump_id' LIMIT 1`);
+    _hasSlipMapping = rows.length > 0;
+  } catch { _hasSlipMapping = false; }
+  return _hasSlipMapping;
+}
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
@@ -51,31 +69,6 @@ function haversineM(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-// Store a meter reading in its source column (manager vs POS), recompute the
-// canonical value (manager wins, else POS) used by reconciliation, and report a
-// cross-source conflict when the two sources disagree for the same nozzle/phase.
-async function writeSourceMeter(client, { shift_id, nozzle_id, phase, source, reading, recorded_by }) {
-  const col = `${phase}_${source}`;   // opening_mgr | opening_pos | closing_mgr | closing_pos (controlled inputs)
-  await client.query(
-    `INSERT INTO shift_nozzle_readings(shift_id, nozzle_id, ${col}, recorded_by)
-     VALUES($1,$2,$3,$4)
-     ON CONFLICT(shift_id, nozzle_id) DO UPDATE SET ${col}=$3, recorded_by=$4`,
-    [shift_id, nozzle_id, reading, recorded_by]);
-  const { rows } = await client.query(
-    `UPDATE shift_nozzle_readings
-       SET opening_reading = COALESCE(opening_mgr, opening_pos),
-           closing_reading = COALESCE(closing_mgr, closing_pos)
-     WHERE shift_id=$1 AND nozzle_id=$2
-     RETURNING opening_mgr, opening_pos, closing_mgr, closing_pos`,
-    [shift_id, nozzle_id]);
-  const r = rows[0] || {};
-  const mgr = r[`${phase}_mgr`], pos = r[`${phase}_pos`];
-  if (mgr != null && pos != null && Math.abs(Number(mgr) - Number(pos)) > 0.5) {
-    return { manager: Number(mgr), attendant: Number(pos), delta: +(Number(pos) - Number(mgr)).toFixed(3) };
-  }
-  return null;
-}
 
 // POST /api/reconcile/denomination  — save denomination count (attendant)
 router.post('/denomination', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'), async (req, res, next) => {
@@ -212,6 +205,9 @@ router.post('/manager', authenticate,
       test_ltrs = 0, card_total = 0, upi_total = 0, cash_actual = 0,
       credit_total = 0, petty_cash = 0,
       resolution, resolution_amount = 0, operator_ack = false, remarks, denomination,
+      // Photograph of the operator being released, mirroring the one taken when he
+      // started. Optional — never a reason a settlement cannot be recorded.
+      photo_base64, photo_media_type,
     } = req.body;
     if (!shift_id || !attendant_id) return res.status(400).json({ error: 'shift_id and attendant_id are required' });
 
@@ -220,28 +216,32 @@ router.post('/manager', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id
+        SELECT sa.id, sa.opening_cash, s.station_id
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Attendant not assigned to this shift' }); }
       const sa = saRows[0];
 
-      // The operator's nozzles (child table); fall back to the legacy single nozzle.
-      const { rows: nozRows } = await client.query(`
+      // The operator's nozzles. ONE source — shift_attendant_nozzles. The legacy
+      // single-nozzle fallback on shift_attendants is retired (01-Aug-2026): it read
+      // a column the settlement never trusted, and every row that would have used it
+      // is an unsettled test shift from before multi-nozzle existed.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles assigned to this operator.' }); }
 
-      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the single form.
+      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the
+      // single form. The single form used to name the nozzle from the retired
+      // sa.nozzle_id column; it now takes the operator's own nozzle, and only when he
+      // has exactly one — with two, a bare closing_reading names nothing and the
+      // caller must send `closings`.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -312,14 +312,16 @@ router.post('/manager', authenticate,
         }
       }
 
-      // Persist each nozzle's closing; mirror the last onto sa for legacy reads.
+      // Persist each nozzle's closing. The mirror onto shift_attendants.closing_reading
+      // is gone — writing "the last leg's closing" onto a single column was where the
+      // impossible figures came from: an operator on four nozzles left one number
+      // standing for four meters, and nothing read it back except a carry-forward
+      // fallback that has now been retired with it.
       for (const leg of legs) {
         await client.query(
           `UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`,
           [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`,
-        [legs[legs.length - 1].closing, shift_id, attendant_id]);
 
       // Petty cash/skimming → one top-up into the station petty-cash fund per
       // operator (idempotent on the operator's settlement row).
@@ -376,6 +378,24 @@ router.post('/manager', authenticate,
          upiVal, creditVal, cardVal, remarks||null, req.user.id,
          resType, resAmt, operator_ack === true || operator_ack === 'true', totalTest, legs[0]?.price || 0, pettyVal]);
 
+      // Close the operator's shift clock and keep his end-of-shift photograph, in
+      // the SAME transaction as the settlement — the two describe one event. Both
+      // are best-effort internally (artifactService uses a SAVEPOINT, the clock
+      // swallows its own errors), so neither can roll back a settled operator.
+      const closePhoto = await artifacts.save({
+        station_id: sa.station_id,
+        entity_type: 'shift_attendant',
+        entity_id: sa.id,
+        kind: 'attendant_photo',
+        file_base64: photo_base64 || null,
+        media_type: photo_media_type || null,
+        meta: { phase: 'close', attendant_id, shift_id },
+        uploaded_by: req.user.id,
+      }, client);
+      await attendance.clockOut({
+        shift_id, attendant_id,
+        artifact_id: closePhoto ? closePhoto.id : null,
+      }, client);
 
       await client.query('COMMIT');
 
@@ -424,11 +444,9 @@ router.post('/self-settle', authenticate,
       await client.query('BEGIN');
 
       const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_reading, sa.opening_cash, sa.nozzle_id,
-               n.fuel_type, s.station_id, s.status, s.date AS trade_date
+        SELECT sa.id, sa.opening_cash, s.station_id, s.status, s.date AS trade_date
         FROM shift_attendants sa
         JOIN shifts s ON s.id = sa.shift_id
-        LEFT JOIN nozzles n ON n.id = sa.nozzle_id
         WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
       if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
       const sa = saRows[0];
@@ -449,17 +467,20 @@ router.post('/self-settle', authenticate,
         if (!onSite) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You must be at the outlet to settle — location check failed.' }); }
       }
 
-      const { rows: nozRows } = await client.query(`
+      // ONE source for the operator's nozzles — see the manager path above for why
+      // the legacy shift_attendants fallback is retired.
+      const { rows: opNozzles } = await client.query(`
         SELECT san.nozzle_id, san.opening_reading, n.fuel_type
         FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
         WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      let opNozzles = nozRows;
-      if (!opNozzles.length && sa.nozzle_id) opNozzles = [{ nozzle_id: sa.nozzle_id, opening_reading: sa.opening_reading, fuel_type: sa.fuel_type }];
       if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles are assigned to you.' }); }
 
+      // Single form names the operator's own nozzle, and only when he has exactly
+      // one — same as the manager path, and for the same reason.
       const closeArr = (Array.isArray(closings) && closings.length)
         ? closings
-        : (closing_reading != null ? [{ nozzle_id: sa.nozzle_id, closing_reading, test_ltrs }] : []);
+        : (closing_reading != null && opNozzles.length === 1
+            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
       const closeMap = {};
       for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
 
@@ -525,11 +546,11 @@ router.post('/self-settle', authenticate,
         }
       }
 
-      // Persist each nozzle's closing (mirror the manager close).
+      // Persist each nozzle's closing. No mirror onto shift_attendants — see the
+      // manager path above.
       for (const leg of legs) {
         await client.query(`UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`, [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
       }
-      await client.query(`UPDATE shift_attendants SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3`, [legs[legs.length-1].closing, shift_id, attendant_id]);
 
       // Petty → station petty-cash fund (idempotent per operator settlement).
       await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
@@ -696,8 +717,9 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
 // See docs/drift-audit.md.
 
 // POST /api/reconcile/pos-meter — attendant captures a nozzle's totalizer from
-// the POS. OCR via Claude, store the image, and record it as the OPENING (if none
-// yet for this shift+nozzle) or the CLOSING, flagging a handover mismatch on open.
+// the POS. OCR via Claude, store the image, hand the number back. It does NOT
+// write a meter reading: the settlement is the single writer into
+// shift_attendant_nozzles, and this feeds it.
 // Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
 // gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
 router.post('/pos-meter', authenticate,
@@ -709,9 +731,8 @@ router.post('/pos-meter', authenticate,
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: sh } = await client.query('SELECT start_time FROM shifts WHERE id=$1', [shift_id]);
+    const { rows: sh } = await client.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
     if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
-    const startTime = sh[0].start_time;
 
     // OCR the totalizer
     let reading = '', legible = false, notes = '';
@@ -731,23 +752,30 @@ router.post('/pos-meter', authenticate,
       notes   = String(parsed.notes ?? '');
     } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
 
-    let phase = 'opening', mismatch = null, source_conflict = null;
+    // THIS ROUTE NO LONGER WRITES A METER READING. It reads the totalizer off a
+    // photograph and hands the number back; the settlement form submits it, and the
+    // settlement is the one writer into shift_attendant_nozzles. It used to write a
+    // second, parallel record into shift_nozzle_readings — a whole extra table whose
+    // only job was to disagree with the first one and report the disagreement. That
+    // is the drift, not a safeguard against it.
+    //
+    // The phase is gone with it. Under the carry-forward rule an opening is never
+    // captured — it IS the last close — so every scan an operator takes is a closing
+    // candidate. There is nothing left to decide.
+    let opening_reading = null, below_opening = false;
     if (reading) {
       const num = Number(reading);
-      // Phase from the POS's OWN prior capture, so the attendant's first scan is
-      // their opening even if the manager already recorded one.
-      const { rows: ex } = await client.query(
-        'SELECT opening_pos FROM shift_nozzle_readings WHERE shift_id=$1 AND nozzle_id=$2', [shift_id, nozzle_id]);
-      phase = (ex.length && ex[0].opening_pos != null) ? 'closing' : 'opening';
-      source_conflict = await writeSourceMeter(client, { shift_id, nozzle_id, phase, source:'pos', reading: num, recorded_by: req.user.id });
-      if (phase === 'opening') {
-        const { rows: prev } = await client.query(
-          `SELECT snr.closing_reading FROM shift_nozzle_readings snr
-           JOIN shifts s ON s.id = snr.shift_id
-           WHERE snr.nozzle_id=$1 AND snr.shift_id <> $2 AND s.start_time < $3 AND snr.closing_reading IS NOT NULL
-           ORDER BY s.start_time DESC LIMIT 1`, [nozzle_id, shift_id, startTime]);
-        const pc = prev.length ? Number(prev[0].closing_reading) : null;
-        if (pc != null && Math.abs(num - pc) > 0.5) mismatch = { prior_closing: pc, delta: +(num - pc).toFixed(3) };
+      // The check worth keeping: a totalizer cannot run backwards. If the scan is
+      // below the opening this nozzle was carried in at, either the photo was
+      // misread or it is the wrong nozzle — and the operator should see that before
+      // he settles against it, not after.
+      const { rows: op } = await client.query(
+        `SELECT opening_reading FROM shift_attendant_nozzles
+          WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL LIMIT 1`,
+        [shift_id, nozzle_id]);
+      if (op.length) {
+        opening_reading = Number(op[0].opening_reading);
+        below_opening = num < opening_reading;
       }
     }
     await client.query('COMMIT');
@@ -757,7 +785,7 @@ router.post('/pos-meter', authenticate,
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* store failed — OCR + reading already saved and returned */ }
-    res.json({ reading, legible, notes, phase, mismatch, source_conflict });
+    res.json({ reading, legible, notes, opening_reading, below_opening });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });
@@ -816,20 +844,32 @@ router.post('/ocr-meter', authenticate,
 // too long for one photo, so the client may call this per photo and merge.
 const SLIP_PROMPT = `This image is a printed fuel-dispenser "Electronic Totalizer" / pump report slip. It belongs to ONE pump and lists that pump's nozzles, each with a CUMULATIVE volume totalizer (total litres dispensed over the pump's life).
 
-Two layouts exist — detect which:
+Known layouts — detect which, and if it is NONE of them still apply the rules below:
 - Layout A: header has "FP. ID"; each "Nozzle No1 / No2 …" block has Shif/ShDay/ShMTH lines and a "CumVolume:" (litres) plus "CumSale:" (rupees). Use CumVolume as the nozzle's cumulative volume.
 - Layout B: header has "FIP No."; an "Electronic Totalizer" block lists each "Nozzle No. : 0X" with "Ecal Factor", "Atot" (rupees) and "Vtot" (litres). Use Vtot as the nozzle's cumulative volume.
+- Layout C (HPCL "ETOT-MAIN"): header carries PUMP SERIAL NUMBER and MODEL, then "---: ETOT-MAIN :---" and one block per nozzle reading "NOZZLE : 1" followed by "A:<number>", "V:<number>" and "TOT SALES:<number>". Here **V is the VOLUME in litres and is the figure we want**; A is the cumulative AMOUNT in rupees and TOT SALES is a COUNT of transactions. Use V.
+
+🔴 THE SINGLE MOST IMPORTANT RULE: RETURN LITRES, NEVER RUPEES.
+Every layout prints a money total beside the volume total, and the money total is the BIGGER number — roughly 100x the litres, because fuel sells at about ₹100 per litre. Whatever the labels look like:
+- "V", "Vtot", "CumVolume", "VOLUME", "Ltr" -> LITRES -> this is cumulative_volume.
+- "A", "Atot", "CumSale", "AMOUNT", "Rs", "₹" -> RUPEES -> this is cumulative_amount, NOT the volume.
+If a block shows 146566859.519 next to 1506431.450, the volume is 1506431.450 — the SMALLER one. Putting the rupee figure in cumulative_volume overstates a nozzle's meter by a hundredfold and destroys the shift's sales calculation, so when the labels are ambiguous prefer the SMALLER of the two totals and say so in notes.
 
 Extract the CUMULATIVE VOLUME for EVERY nozzle visible. Read digits exactly; drop leading zeros and separators but KEEP the decimal point.
 
 Respond with ONLY a JSON object, nothing else:
 {
- "slip_type": "A" or "B",
- "pump_id": "<the FP. ID / FIP No. as a plain number string>",
- "nozzles": [ { "nozzle_no": "<1..N>", "cumulative_volume": <number>, "legible": <true|false> } ],
+ "slip_type": "A" or "B" or "C" or "other",
+ "pump_id": "<the FP. ID / FIP No. as a plain number string, or null>",
+ "pump_serial": "<the PUMP SERIAL NUMBER exactly as printed, e.g. 15BC1412V, or null>",
+ "nozzles": [ { "nozzle_no": "<the nozzle number AS PRINTED>", "cumulative_volume": <litres>, "cumulative_amount": <rupees or null>, "legible": <true|false> } ],
  "legible": <true|false overall>,
  "notes": "<short note; mention any nozzle cut off the page or unclear>"
 }
+- pump_serial: copy the PUMP SERIAL NUMBER verbatim, letters and all. It is how we tell WHICH dispenser printed this slip when the slip carries no pump number, so it matters more than pump_id on those layouts. Do not strip characters and do not confuse it with MODEL.
+- pump_id: ONLY a genuine pump/FIP identifier — a small number like 1, 2 or 3. A PUMP SERIAL NUMBER ("17CH2653V"), a MODEL ("1224/2224") and a phone number are NOT pump ids: return null instead. A wrong pump id is worse than none, because it is used to match the slip to our nozzles.
+- READ nozzle_no OFF THE SLIP. It is the number printed next to that block — "Nozzle No1" -> "1", "Nozzle No. : 03" -> "3". DO NOT renumber the blocks by their position on the page. If the first block you can see is nozzle 3, report 3, NOT 1. A slip photographed in two parts must report the SAME numbers it prints in each part, or the second photo silently overwrites the first photo's readings against the wrong nozzles.
+- If a block's nozzle number is itself unreadable, return null for nozzle_no rather than inferring it from order.
 Include ONLY nozzles actually visible in THIS image. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
 
 router.post('/parse-slip', authenticate,
@@ -862,25 +902,185 @@ router.post('/parse-slip', authenticate,
     if (!parsed || !Array.isArray(parsed.nozzles)) {
       return res.status(422).json({ error: 'Could not read the slip — enter the readings manually.' });
     }
-    // Normalise: keep numeric cumulative_volume, build the {pump}.{nozzle} label.
-    const pump = String(parsed.pump_id ?? '').replace(/[^\d]/g, '') || null;
+    // Normalise, then RESOLVE each slip line to a real nozzle HERE rather than in
+    // the browser.
+    //
+    // This used to hand back only a `{pump}.{nozzle}` label and let each screen do
+    // `nozzles.find(x => x.nozzle_number === label)`. Two problems, both live:
+    //
+    //  1. THAT LABEL SHAPE IS NOT WHAT OUTLETS USE. Real numbering in prod is mixed
+    //     — Highway has 1, 2, 3.1, 3.2, 4.1, 4.2, 5, 6, 7, 8; Dilsukhnagar has plain
+    //     1, 2. A "1.1" matches none of them, so the slip scan silently found
+    //     nothing at three of four outlets and the manager just saw "no nozzle
+    //     matched". Accept BOTH shapes instead of dictating one.
+    //  2. `.find()` SILENTLY TAKES THE FIRST of several equal candidates. Kamala has
+    //     THREE active nozzles numbered "1" (petrol, diesel, CNG) and three numbered
+    //     "2", so a matched reading could land on the wrong fuel's nozzle — the same
+    //     class of fault the gauge matcher was hardened against after a diesel
+    //     reading went into a petrol tank. Ambiguity must REFUSE, not guess.
+    //
+    // Resolving server-side also means one implementation, not one per screen.
+    // A real pump/FIP id is a small number (1, 2, 3…). This used to strip the
+    // non-digits off whatever came back, which turned a PUMP SERIAL NUMBER like
+    // "17CH2653V" into "172653" and a MODEL "1224/2224" into "12242224" — then
+    // built the label "172653.1", which matches no nozzle anywhere. A slip that
+    // prints no pump id (the HPCL ETOT-MAIN layout does not) must yield null, so
+    // the bare nozzle number is used instead.
+    const pumpRaw = String(parsed.pump_id ?? '').replace(/[^\d]/g, '');
+    const pump = pumpRaw && pumpRaw.length <= 2 ? pumpRaw : null;
+
+    // pump_serial / slip_nozzle_no arrive with owner-run DDL, so they are named
+    // only once present. Probed, never discovered by a failing SELECT.
+    const slipCols = await hasSlipMapping();
+    // The serial comes from the PUMP now, joined in, rather than repeated on every
+    // nozzle. Same lookup, one home for the fact.
+    const extraCols = slipCols ? ', p.serial AS pump_serial, p.pump_number, n.slip_nozzle_no' : '';
+    const extraJoin = slipCols ? 'LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL' : '';
+    const { rows: known } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.fuel_type${extraCols}
+         FROM nozzles n
+         ${extraJoin}
+        WHERE n.is_active
+          AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
+      [shift_id]
+    );
+    const byNumber = {};
+    for (const k of known) (byNumber[String(k.nozzle_number).trim()] ||= []).push(k);
+
+    // THE SERIAL IS THE DISPENSER'S IDENTITY. A slip that prints no pump number
+    // — the HPCL ETOT-MAIN layout does not — leaves "NOZZLE : 1" ambiguous across
+    // every dispenser at the outlet, and no amount of renaming our nozzles can
+    // resolve it, because the ambiguity is on the slip's side. The serial is
+    // stamped on the unit, never changes, and is printed on every slip it emits.
+    // Once mapped in Settings this is an exact lookup with nothing inferred.
+    const serialRaw = String(parsed.pump_serial ?? '').trim().toUpperCase();
+
+    // SERIAL -> PUMP NUMBER. That is the whole trick, and it needs no extra data:
+    // outlets name nozzles pump.nozzle, so once the serial tells us WHICH pump
+    // printed the slip, its number plus the nozzle number the slip prints IS the
+    // nozzle's name. Pump 1 + "NOZZLE : 1" -> "1.1". Nothing to map, nothing to
+    // type, nothing to keep in step.
+    const pumpNumberBySerial = {};
+    if (slipCols) {
+      for (const k of known) {
+        if (!k.pump_serial || !k.pump_number) continue;
+        pumpNumberBySerial[String(k.pump_serial).trim().toUpperCase()] = String(k.pump_number).trim();
+      }
+    }
+
+    // Kept as an OVERRIDE only, for a machine that numbers its own nozzles
+    // differently from the outlet's convention. Nobody fills it in the ordinary
+    // case, because the concatenation above already answers it.
+    const bySerial = {};
+    if (slipCols) {
+      for (const k of known) {
+        if (!k.pump_serial || !k.slip_nozzle_no) continue;
+        const key = `${String(k.pump_serial).trim().toUpperCase()}|${String(k.slip_nozzle_no).trim()}`;
+        (bySerial[key] ||= []).push(k);
+      }
+    }
+
     const nozzles = parsed.nozzles
       .map(n => {
         const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
-        const vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        let vol = Number(String(n.cumulative_volume ?? '').toString().replace(/[^\d.]/g, ''));
+        const amt = Number(String(n.cumulative_amount ?? '').toString().replace(/[^\d.]/g, ''));
+        const label = pump && no ? `${pump}.${no}` : null;
+
+        // ARITHMETIC CROSS-CHECK — the rupee/litre swap, caught in code as well as
+        // in the prompt. Every slip prints a money total beside the volume total,
+        // and at ~Rs 100/L the money figure is ~100x the litres. If what came back
+        // as the "volume" is the LARGER of the two, it is the amount: reject it
+        // rather than record a meter a hundredfold too high, which would show as a
+        // colossal phantom sale on the shift.
+        let swapped = false;
+        if (isFinite(vol) && isFinite(amt) && amt > 0 && vol > amt) { swapped = true; vol = amt; }
+
+        // Most specific first: the serial identifies the machine outright, so it
+        // beats any numbering convention. Then the qualified pump.nozzle form,
+        // then the bare number. Never fall back to position.
+        let cands = [];
+        let matchedOn = null;
+        // 1. Serial -> pump number -> "<pump>.<nozzle>". The plain path.
+        if (serialRaw && no && pumpNumberBySerial[serialRaw]) {
+          cands = byNumber[`${pumpNumberBySerial[serialRaw]}.${no}`] || [];
+          matchedOn = cands.length ? 'pump_serial' : null;
+        }
+        // 2. Explicit override, for a machine whose own numbering differs.
+        if (!cands.length && serialRaw && no) {
+          cands = bySerial[`${serialRaw}|${no}`] || [];
+          matchedOn = cands.length ? 'pump_serial_mapped' : null;
+        }
+        if (!cands.length && label) { cands = byNumber[label] || []; matchedOn = cands.length ? 'pump.nozzle' : null; }
+        if (!cands.length && no)    { cands = byNumber[no] || [];    matchedOn = cands.length ? 'nozzle' : null; }
+
+        const ambiguous = cands.length > 1;
         return {
           nozzle_no: no || null,
-          label: pump && no ? `${pump}.${no}` : null,   // matches our decimal nozzle_number
+          label,
           cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
-          legible: n.legible === true && isFinite(vol) && vol > 0,
+          cumulative_amount: isFinite(amt) && amt > 0 ? amt : null,
+          // A swap the code had to correct means the labels were read wrongly, so
+          // the figure is shown for confirmation rather than quietly trusted.
+          swapped_amount_for_volume: swapped || undefined,
+          legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped,
+          // Null when nothing matched OR when several nozzles share that number —
+          // the screen then leaves it for the manager instead of picking one.
+          nozzle_id: !ambiguous && cands.length === 1 ? cands[0].id : null,
+          matched_on: ambiguous ? 'ambiguous' : matchedOn,
+          candidates: ambiguous
+            ? cands.map(c => ({ id: c.id, nozzle_number: c.nozzle_number, fuel_type: c.fuel_type }))
+            : undefined,
         };
       })
       .filter(n => n.nozzle_no);
 
+    const serialKnown = !!(serialRaw && Object.keys(bySerial).some(k => k.startsWith(`${serialRaw}|`)));
+
+    // Keep the SLIP ITSELF. It is the printed evidence behind every opening and
+    // closing meter on the shift, and until now it was read and thrown away — the
+    // fifth document Pumpini could read but did not keep. Best-effort, as ever.
+    const slipArtifact = await artifacts.save({
+      station_id: req.stationId,
+      entity_type: 'shift',
+      entity_id: shift_id,
+      kind: 'nozzle_slip',
+      file_base64: image_base64,
+      media_type,
+      ocr: { pump_id: pump, nozzles },
+      meta: { pump_id: pump, slip_type: parsed.slip_type ?? null },
+      uploaded_by: req.user.id,
+    });
+
     res.json({
       slip_type: parsed.slip_type === 'B' ? 'B' : (parsed.slip_type === 'A' ? 'A' : null),
       pump_id: pump,
+      // Echoed so the screen can tell the manager exactly which serial to map in
+      // Settings when nothing matched — otherwise "no nozzle matched" is a dead
+      // end and he has no idea what to do about it.
+      pump_serial: serialRaw || null,
+      serial_mapped: serialKnown,
+      // ONE wording for the failure, decided here rather than in each screen. The
+      // old message was "Slip read, but no nozzle matched" — true, useless, and a
+      // dead end: it told the manager nothing he could act on. Naming the serial
+      // and the screen that fixes it turns it into an instruction.
+      hint: (() => {
+        if (nozzles.every(n => n.nozzle_id)) return null;
+        if (serialRaw && !serialKnown) {
+          return `This slip is from pump serial ${serialRaw}, which is not set up yet. `
+               + 'Add it under Settings → Pumps & Nozzles, or enter the readings by hand.';
+        }
+        const amb = nozzles.filter(n => n.matched_on === 'ambiguous');
+        if (amb.length) {
+          return 'More than one nozzle carries that number, so the reading was not filled in '
+               + 'automatically. Map this pump\'s serial under Settings → Pumps & Nozzles.';
+        }
+        return 'None of the nozzles on this slip match this outlet. Check the nozzle numbers '
+             + 'under Settings → Pumps & Nozzles, or enter the readings by hand.';
+      })(),
       nozzles,
+      unmatched: nozzles.filter(n => !n.nozzle_id).length,
+      artifact_id: slipArtifact ? slipArtifact.id : null,
       legible: parsed.legible === true && nozzles.length > 0 && nozzles.every(n => n.legible),
       notes: notes || String(parsed.notes ?? ''),
     });

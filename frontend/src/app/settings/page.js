@@ -2,9 +2,13 @@
 import ConfirmDialog from '../../components/shared/ConfirmDialog';
 import { useState, useEffect } from 'react';
 import { Save, Plus, X, Building2, IndianRupee, Wifi,
-  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin } from 'lucide-react';
+  Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin,
+  ChevronDown, ChevronRight } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts } from '../../lib/api';
+import PhotoCapture from '../../components/shared/PhotoCapture';
+import ArtifactImage from '../../components/shared/ArtifactImage';
+import { getCurrentPrices, setPrice, getNozzles, getRfidTags, addRfidTag, getCalibrationCharts,
+  getPumps, createPump, updatePump, deletePump, parsePumpSlip } from '../../lib/api';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
@@ -20,6 +24,19 @@ const FUEL_TYPES = [
 ];
 const OIL_COS = ['HPCL','BPCL','IOC','Essar','Shell','Reliance','Nayara'];
 const nowIST  = () => new Date().toLocaleString('sv-SE',{timeZone:'Asia/Kolkata'}).slice(0,16);
+const fuelLabel = (v) => FUEL_TYPES.find(f=>f.value===v)?.label || v;
+
+// Touch-target + font floor for the Pumps & Nozzles controls. The global `.input`
+// is 38px tall at 14px, which is below the 44px target and below the 16px at which
+// mobile browsers stop zooming the page on focus — so these screens size their own
+// controls rather than inheriting.
+const CTRL = {
+  width:'100%', height:44, padding:'0 10px', fontSize:16,
+  fontFamily:'var(--font-body)', color:'var(--text-1)',
+  background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8,
+};
+const CTRL_NUM = { ...CTRL, fontVariantNumeric:'tabular-nums' };
+const MICRO_LABEL = { fontSize:11, color:'var(--text-3)', display:'block', marginBottom:3 };
 
 
 
@@ -215,7 +232,7 @@ export default function SettingsPage() {
   const TABS = [
     {id:'station', label:tc('setp.tabStation', '1. Station Details'), icon:<Building2 size={14}/>},
     {id:'tanks',   label:tc('setp.tabTanks', '2. Tanks'),            icon:<Gauge size={14}/>},
-    {id:'nozzles', label:tc('setp.tabNozzles', '3. Nozzles'),        icon:null},
+    {id:'pumps',   label:tc('setp.tabPumps', '3. Pumps & Nozzles'),  icon:null},
     {id:'prices',  label:tc('setp.tabPrices', '4. Fuel Prices'),     icon:<IndianRupee size={14}/>},
     {id:'rfid',    label:tc('setp.tabRfid', '5. RFID Tags'),         icon:<Wifi size={14}/>},
     {id:'shifts',  label:tc('setp.tabShifts', '6. Shift Timings'),   icon:<RefreshCw size={14}/>},
@@ -342,9 +359,9 @@ export default function SettingsPage() {
         <TanksTab stationId={stationId} tanks={tanks}
           reload={()=>{ load(); showToast(tc('setp.toastTanksUpdated', 'Tanks updated!')); }} askConfirm={askConfirm}/>
       )}
-      {tab==='nozzles' && (
-        <NozzlesTab stationId={stationId} nozzles={nozzles} tanks={tanks}
-          reload={()=>{ load(); showToast(tc('setp.toastNozzlesUpdated', 'Nozzles updated!')); }} askConfirm={askConfirm}/>
+      {tab==='pumps' && (
+        <PumpsTab stationId={stationId} nozzles={nozzles} tanks={tanks}
+          reload={load} showToast={showToast} askConfirm={askConfirm}/>
       )}
       {tab==='prices' && (
         <PricesTab stationId={stationId} prices={prices}
@@ -649,134 +666,708 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
           </div>
         )}
         <div style={{fontSize:11,color:'var(--text-3)',marginTop:'0.75rem'}}>
-          💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabNozzles', '3. Nozzles')}</strong> {tc('setp.nextNozzlesPost', 'tab to link each nozzle to a tank')}
+          💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabPumps', '3. Pumps & Nozzles')}</strong> {tc('setp.nextPumpsPost', 'tab to define each pump and link its nozzles to a tank')}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Nozzles Tab ────────────────────────────────────────────
-function NozzlesTab({ stationId, nozzles, tanks, reload, askConfirm }) {
+// ── Pumps & Nozzles Tab ────────────────────────────────────
+// A PUMP IS A MACHINE: a number, a serial, a model and the slip it prints. It has
+// NO fuel and NO tank — one unit routinely dispenses several grades from several
+// tanks (2 HSD + 1 MS + 1 Super is ordinary), so fuel and tank belong to the
+// NOZZLE. Attaching either to the pump would force an outlet to split one physical
+// unit into four fictional ones.
+//
+// This tab replaces the old standalone Nozzles tab. The whole point of the merge is
+// that a nozzle is added FROM INSIDE its pump card, so there is no "which pump?"
+// dropdown to get wrong — the pump is the context. Do not reintroduce that field.
+//
+// Everything here rides owner-run DDL (`pumps`, `nozzles.pump_id`,
+// `nozzles.slip_nozzle_no`), which lands AFTER this code deploys. So: a failing
+// pumps read degrades to an empty state, and a nozzle with no `pump_id` simply
+// reads as unassigned — which is also exactly the state every existing nozzle is
+// in on the day the migration runs.
+function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
-  const empty = {fuel_type:'petrol',is_active:true};
-  const [form,setForm]     = useState(empty);
-  const [editNozzle,setEdit] = useState(null);
-  const [loading,setLoading] = useState(false);
-  const f = (k,v) => setForm(p=>({...p,[k]:v}));
 
-  const save = async(e) => {
-    e.preventDefault(); setLoading(true);
+  const [pumps,   setPumps]   = useState([]);
+  const [loose,   setLoose]   = useState(null);   // server's unassigned list; null → not answered
+  const [pumpsUp, setPumpsUp] = useState(true);   // false → endpoint/table not there yet
+  const [booting, setBooting] = useState(true);
+  const [open,    setOpen]    = useState({});     // pump id → explicit expand/collapse
+  const [addFor,  setAddFor]  = useState(null);   // pump id currently showing the new-nozzle row
+  const [showUnassigned, setShowUnassigned] = useState(false);
+
+  const loadPumps = async () => {
+    if (!stationId) { setBooting(false); return; }
     try {
-      if(editNozzle) {
-        await api.patch(`/stations/${stationId}/nozzles/${editNozzle.id}`,form);
-      } else {
-        await api.post(`/stations/${stationId}/nozzles`,form);
-      }
-      setForm(empty); setEdit(null); reload();
-    } catch(err){ alert(err.error||tc('setp.failed', 'Failed')); }
-    finally{ setLoading(false); }
+      // The endpoint answers { pumps, unassigned } — the loose nozzles ride along in
+      // the same payload precisely so this screen can show them at the top without a
+      // second call. A bare array is tolerated in case that shape is ever flattened.
+      const r = await getPumps(stationId);
+      setPumps(Array.isArray(r) ? r : (Array.isArray(r?.pumps) ? r.pumps : []));
+      setLoose(Array.isArray(r?.unassigned) ? r.unassigned : null);
+      setPumpsUp(true);
+    } catch {
+      // 404/500 before the DDL runs. Not an error the owner can act on — show the
+      // empty state and keep the nozzles below editable.
+      setPumps([]); setLoose(null); setPumpsUp(false);
+    } finally { setBooting(false); }
   };
 
-  const del = (id) => askConfirm(
+  useEffect(() => { loadPumps(); }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refresh = async () => { await loadPumps(); reload(); };
+
+  const livePumps = pumps.filter(p => !p.end_date);
+  // The server nests each pump's LIVE nozzles, so that list is the authority on what
+  // hangs off a machine — not a client-side filter that would also have to know about
+  // end-dating.
+  const nozzlesOf = (p) => (Array.isArray(p.nozzles) ? p.nozzles : []);
+
+  // Membership comes from the server's `unassigned`, but the rows are re-joined to the
+  // full nozzle list so the inline editor has every column (the summary rows carry
+  // only id/number/fuel/tank). When the pumps read failed there is nothing to join
+  // to, so fall back to deriving it — which before the DDL correctly reads as
+  // "nothing is on a pump yet".
+  const byId = new Map(nozzles.map(n => [n.id, n]));
+  const unassigned = (loose !== null)
+    ? loose.map(n => byId.get(n.id) || n)
+    : nozzles.filter(n => !n.pump_id && !n.end_date && n.is_active !== false);
+
+  const isOpen = (p) => (open[p.id] !== undefined ? open[p.id] : nozzlesOf(p).length === 0);
+
+  // Pull an existing loose nozzle onto this pump. Assignment is driven FROM the
+  // pump, which is what lets the unassigned banner count down without ever asking
+  // "which pump?" from the nozzle's side.
+  const assignTo = async (nozzle, pump) => {
+    try {
+      await api.patch(`/stations/${stationId}/nozzles/${nozzle.id}`, { pump_id: pump.id });
+      showToast(tc('setp.toastNozzleMoved', 'Nozzle moved to this pump'));
+      refresh();
+    } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+  };
+
+  const delNozzle = (n) => askConfirm(
     tc('setp.confirmDeleteNozzle', 'Delete this nozzle? Historical transaction data will be preserved.'),
-    async()=>{ await api.delete(`/stations/${stationId}/nozzles/${id}`).catch(()=>{}); reload(); }
+    async () => { try { await api.delete(`/stations/${stationId}/nozzles/${n.id}`); } catch { /* already gone */ } refresh(); }
   );
 
-  const startEdit = (n) => {
-    setEdit(n);
-    setForm({ nozzle_number:n.nozzle_number, fuel_type:n.fuel_type,
-      tank_id:n.tank_id||'', is_active:n.is_active });
-  };
-
-  const linkedTanks = tanks.filter(t=>t.fuel_type===form.fuel_type);
+  // ONE action, because the server owns the decision: a pump that never carried a
+  // nozzle is deleted outright, one that has history is end-dated instead, and one
+  // that still has LIVE nozzles is refused with a 409 telling the owner to move them
+  // first. Splitting that into a "delete" and a "retire" button on this side would be
+  // the screen second-guessing the writer — and the retire path would sail straight
+  // past the guard that protects the meter history.
+  const removePump = (p) => askConfirm(
+    tc('setp.confirmRemovePump', 'Retire this pump? A pump that has ever been used is kept in history with today’s date, so every past meter reading still points at the machine it was taken on.'),
+    async () => {
+      try {
+        const r = await deletePump(stationId, p.id);
+        showToast(r?.retired ? tc('setp.toastPumpRetired', 'Pump retired')
+                             : tc('setp.toastPumpDeleted', 'Pump deleted'));
+        refresh();
+      } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }   // 409 message lands here
+    }
+  );
 
   return (
-    <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:'1.5rem'}}>
-      <div className="card">
-        <div style={{fontWeight:600,marginBottom:'1rem'}}>{editNozzle?tc('setp.editNozzle', 'Edit Nozzle {n}').replace('{n}', editNozzle.nozzle_number):tc('setp.addNewNozzle', 'Add New Nozzle')}</div>
-        <form onSubmit={save}>
-          <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">{tc('setp.nozzleNumber', 'Nozzle Number *')}</label>
-            {/* Text, not number: lets a pump's nozzles be labelled 5.1, 5.2, 5.3, 5.4
-                (pump.nozzle) — the value is a free label, nothing does arithmetic on it. */}
-            <input className="input" type="text" required maxLength={8}
-              placeholder={tc('setp.egNozzle', 'e.g. 1 or 5.1')} value={form.nozzle_number||''}
-              onChange={e=>f('nozzle_number', e.target.value.trim())}/>
+    <div style={{maxWidth:1000}}>
+      {/* The inline nozzle row is a grid on a desktop and a stack on a phone. It has
+          to be a stylesheet, not an inline style: inline styles cannot carry a media
+          query, and this row MUST NOT overflow sideways on a forecourt handset. */}
+      <style>{`
+        .pn-row { display:grid; grid-template-columns:96px minmax(0,1.1fr) minmax(0,1.1fr) 104px 48px;
+                  gap:10px; align-items:end; padding:10px 0; border-top:1px solid var(--border); }
+        @media (max-width: 600px) {
+          .pn-row { grid-template-columns:1fr; align-items:stretch; gap:8px;
+                    border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px; }
+        }
+      `}</style>
+
+      {/* 1 ── Nozzles with no pump. A to-do list that counts down to zero, and it
+              disappears the moment it hits zero. Every nozzle that existed before
+              pumps did starts here. */}
+      {unassigned.length > 0 && (
+        <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:12,
+          padding:'1rem 1.15rem',marginBottom:'1.25rem'}}>
+          <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+            <AlertCircle size={18} color="var(--warning)" style={{marginTop:2,flexShrink:0}}/>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontWeight:800,fontSize:15,color:'#9a3412'}}>
+                {tc('setp.unassignedTitle', 'Not on a pump yet ({n})').replace('{n}', unassigned.length)}
+              </div>
+              <div style={{fontSize:13,color:'#9a3412',marginTop:3}}>
+                {tc('setp.unassignedDesc', 'Open a pump below and use “Move a nozzle here”. This list should end up empty.')}
+              </div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:10}}>
+                {unassigned.map(n => (
+                  <span key={n.id} style={{display:'inline-flex',alignItems:'center',gap:6,
+                    padding:'6px 11px',borderRadius:999,background:'#fff',border:'1px solid #fed7aa',
+                    fontSize:13,fontWeight:600,color:'#9a3412',fontVariantNumeric:'tabular-nums'}}>
+                    {n.nozzle_number} · {fuelLabel(n.fuel_type)}
+                  </span>
+                ))}
+              </div>
+              <button type="button" onClick={()=>setShowUnassigned(v=>!v)}
+                style={{marginTop:10,minHeight:44,padding:'0 14px',background:'#fff',
+                  border:'1px solid #fed7aa',borderRadius:8,cursor:'pointer',
+                  fontSize:14,fontWeight:700,color:'#9a3412'}}>
+                {showUnassigned ? tc('setp.hideDetails', 'Hide details')
+                                : tc('setp.editThese', 'Edit these nozzles')}
+              </button>
+            </div>
           </div>
-          <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">{tc('setp.fuelType', 'Fuel Type *')}</label>
-            <select className="input" value={form.fuel_type} onChange={e=>f('fuel_type',e.target.value)} required>
-              {FUEL_TYPES.map(ft=><option key={ft.value} value={ft.value}>{ft.label}</option>)}
-            </select>
-          </div>
-          <div style={{marginBottom:'0.75rem'}}>
-            <label className="label">{tc('setp.linkToTank', 'Link to Tank')}</label>
-            <select className="input" value={form.tank_id||''} onChange={e=>f('tank_id',e.target.value||null)}>
-              <option value="">{tc('setp.selectTank', 'Select tank...')}</option>
-              {linkedTanks.map(t=>(
-                <option key={t.id} value={t.id}>{tc('setp.tankLabel', 'Tank {n}').replace('{n}', t.tank_number)} — {t.fuel_type}</option>
+          {/* Kept editable so nothing is lost while the nozzles are still loose —
+              including on an outlet where the pumps endpoint is not live yet. */}
+          {showUnassigned && (
+            <div style={{marginTop:12,background:'#fff',borderRadius:10,border:'1px solid #fed7aa',padding:'4px 12px'}}>
+              {unassigned.map(n => (
+                <NozzleRow key={n.id} stationId={stationId} nozzle={n} tanks={tanks}
+                  tc={tc} onChanged={refresh} onDelete={()=>delNozzle(n)}/>
               ))}
-            </select>
-            {linkedTanks.length===0 && form.fuel_type && (
-              <div style={{fontSize:11,color:'var(--warning)',marginTop:3}}>
-                ⚠ {tc('setp.noFuelTank', 'No {fuel} tank found. Add a tank first.').replace('{fuel}', form.fuel_type)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2 ── The pumps */}
+      {booting && (
+        <div style={{color:'var(--text-3)',fontSize:14,padding:'1.5rem 0'}}>
+          {tc('setp.loadingPumps', 'Loading pumps…')}
+        </div>
+      )}
+
+      {/* The catch above cannot tell a not-yet-migrated database from a backend
+          that is still deploying or briefly down — both arrive as one rejected
+          promise. So say what is TRUE (we could not load them) and offer the
+          action that fixes the common case, instead of asserting a per-outlet
+          feature switch that does not exist. The first wording sent two people
+          hunting for a setting that was never there. */}
+      {!booting && !pumpsUp && (
+        <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:10,
+          padding:'0.85rem 1rem',marginBottom:'1.25rem',fontSize:13,color:'#92400e',
+          display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <span style={{flex:1,minWidth:220}}>
+            {tc('setp.pumpsLoadFailed', 'Could not load pumps just now. If the app was updated in the last few minutes, give it a moment and try again.')}
+          </span>
+          <button onClick={loadPumps}
+            style={{minHeight:44,padding:'0 18px',background:'#92400e',color:'#fff',border:'none',
+              borderRadius:9,fontWeight:700,fontSize:14,cursor:'pointer'}}>
+            {tc('setp.retry', 'Try again')}
+          </button>
+        </div>
+      )}
+
+      {!booting && pumpsUp && livePumps.length === 0 && (
+        <div style={{color:'var(--text-3)',fontSize:14,padding:'1.5rem',textAlign:'center',
+          border:'1px dashed var(--border)',borderRadius:12,marginBottom:'1.25rem'}}>
+          {tc('setp.noPumps', 'No pumps yet. Add your first pump below — then add its nozzles inside it.')}
+        </div>
+      )}
+
+      {livePumps.map(p => {
+        const mine = nozzlesOf(p);
+        const expanded = isOpen(p);
+        return (
+          <div key={p.id} className="card" style={{marginBottom:'1rem',padding:0,overflow:'hidden'}}>
+            {/* Collapsed summary — the resting state once a pump is configured. The
+                slip thumbnail sits OUTSIDE the toggle button: it opens its own
+                full-size overlay, and a control that expands the card on the way to
+                zooming an image is a control that does two things at once. */}
+            <div style={{display:'flex',alignItems:'center',gap:10,padding:'0 14px 0 0'}}>
+              <button type="button" onClick={()=>setOpen(o=>({...o,[p.id]:!expanded}))}
+                aria-expanded={expanded}
+                style={{flex:1,minWidth:0,minHeight:60,display:'flex',alignItems:'center',gap:12,
+                  padding:'12px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
+                {expanded ? <ChevronDown size={18} color="var(--text-3)"/> : <ChevronRight size={18} color="var(--text-3)"/>}
+                <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',
+                  minWidth:38,height:38,padding:'0 9px',borderRadius:9,background:'var(--brand-light)',
+                  color:'var(--brand-dark)',fontWeight:800,fontSize:16,fontVariantNumeric:'tabular-nums',flexShrink:0}}>
+                  {p.pump_number}
+                </span>
+                <span style={{minWidth:0,flex:1}}>
+                  <span style={{display:'block',fontWeight:700,fontSize:14,color:'var(--text-1)',
+                    fontVariantNumeric:'tabular-nums',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {[p.serial, p.model].filter(Boolean).join(' · ') || tc('setp.pumpNoSerial', 'No serial recorded')}
+                  </span>
+                  <span style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:5}}>
+                    {p.slip_artifact_id && (
+                      <span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,
+                        background:'#dcfce7',color:'#15803d'}}>{tc('setp.slipOnFile', 'Slip on file')}</span>
+                    )}
+                    <span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,
+                      background:mine.length?'var(--surface-2)':'#fee2e2',
+                      color:mine.length?'var(--text-2)':'#b91c1c',fontVariantNumeric:'tabular-nums'}}>
+                      {tc('setp.nNozzles', '{n} nozzles').replace('{n}', mine.length)}
+                    </span>
+                    {p.is_active === false && (
+                      <span style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,
+                        background:'var(--surface-2)',color:'var(--text-3)'}}>{tc('setp.inactive', 'Inactive')}</span>
+                    )}
+                  </span>
+                </span>
+              </button>
+              {p.slip_artifact_id && <ArtifactImage artifactId={p.slip_artifact_id} size={40}
+                label={tc('setp.slipOnFile', 'Slip on file')}/>}
+            </div>
+
+            {expanded && (
+              <div style={{padding:'0 14px 14px',borderTop:'1px solid var(--border)'}}>
+                <PumpDetails stationId={stationId} pump={p} tc={tc} onChanged={refresh}/>
+
+                {/* 3 ── Inline nozzle rows. Editing happens right here. */}
+                <div style={{fontWeight:700,fontSize:13,color:'var(--text-2)',margin:'14px 0 2px'}}>
+                  {tc('setp.nozzlesOnPump', 'Nozzles on this pump')}
+                </div>
+                {mine.length === 0 && (
+                  <div style={{color:'var(--text-3)',fontSize:13,padding:'12px 0'}}>
+                    {tc('setp.noNozzlesOnPump', 'No nozzles on this pump yet.')}
+                  </div>
+                )}
+                {mine.map(n => (
+                  <NozzleRow key={n.id} stationId={stationId} nozzle={n} tanks={tanks}
+                    tc={tc} onChanged={refresh} onDelete={()=>delNozzle(n)}/>
+                ))}
+
+                {/* 4 ── Add a nozzle INSIDE the pump. No "which pump?" field: the
+                        card you are in IS the answer. */}
+                {addFor === p.id ? (
+                  <NewNozzleRow stationId={stationId} pump={p} tanks={tanks} tc={tc}
+                    onCancel={()=>setAddFor(null)}
+                    onAdded={()=>{ setAddFor(null); showToast(tc('setp.toastNozzleAdded', 'Nozzle added')); refresh(); }}/>
+                ) : (
+                  <button type="button" onClick={()=>setAddFor(p.id)}
+                    style={{marginTop:10,minHeight:44,padding:'0 16px',width:'100%',
+                      background:'var(--brand-light)',border:'1.5px dashed var(--brand)',
+                      borderRadius:9,cursor:'pointer',color:'var(--brand-dark)',
+                      fontWeight:700,fontSize:14,display:'flex',alignItems:'center',
+                      justifyContent:'center',gap:6}}>
+                    <Plus size={15}/>{tc('setp.addNozzleHere', 'Add nozzle')}
+                  </button>
+                )}
+
+                {/* Loose nozzles can be pulled in from here — same principle, the
+                    pump is the context. */}
+                {unassigned.length > 0 && (
+                  <div style={{marginTop:14,paddingTop:12,borderTop:'1px dashed var(--border)'}}>
+                    <div style={{fontSize:12,color:'var(--text-3)',marginBottom:7}}>
+                      {tc('setp.moveHere', 'Move a nozzle here:')}
+                    </div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                      {unassigned.map(n => (
+                        <button key={n.id} type="button" onClick={()=>assignTo(n, p)}
+                          style={{minHeight:44,padding:'0 13px',borderRadius:999,cursor:'pointer',
+                            background:'#fff',border:'1px solid #fed7aa',color:'#9a3412',
+                            fontSize:14,fontWeight:700,fontVariantNumeric:'tabular-nums',
+                            display:'inline-flex',alignItems:'center',gap:6}}>
+                          <Plus size={14}/>{n.nozzle_number} · {fuelLabel(n.fuel_type)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{marginTop:16,paddingTop:12,borderTop:'1px solid var(--border)',
+                  display:'flex',gap:8,flexWrap:'wrap'}}>
+                  <button type="button" onClick={()=>removePump(p)}
+                    style={{minHeight:44,padding:'0 16px',background:'#fff',border:'1px solid #fecaca',
+                      borderRadius:9,cursor:'pointer',color:'#b91c1c',fontWeight:700,fontSize:14,
+                      display:'inline-flex',alignItems:'center',gap:6}}>
+                    <Trash2 size={14}/>{tc('setp.retirePump', 'Retire pump')}
+                  </button>
+                  {mine.length > 0 && (
+                    <div style={{fontSize:11.5,color:'var(--text-3)',alignSelf:'center',flex:1,minWidth:180}}>
+                      {tc('setp.retireNeedsEmpty', 'Move or delete its nozzles first — a pump is not retired out from under live meters.')}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
-          <div style={{marginBottom:'1.25rem',display:'flex',alignItems:'center',gap:8}}>
-            <input type="checkbox" id="active" checked={form.is_active||false}
-              onChange={e=>f('is_active',e.target.checked)}/>
-            <label htmlFor="active" style={{fontSize:13,cursor:'pointer'}}>{tc('setp.nozzleIsActive', 'Nozzle is active')}</label>
-          </div>
-          <div style={{display:'flex',gap:8}}>
-            <button className="btn btn-primary" type="submit" style={{flex:1,justifyContent:'center'}} disabled={loading}>
-              {loading?tc('setp.saving', 'Saving...'):(editNozzle?tc('setp.updateNozzle', 'Update Nozzle'):tc('setp.addNozzle', 'Add Nozzle'))}
-            </button>
-            {editNozzle && (
-              <button className="btn btn-secondary" type="button"
-                onClick={()=>{ setEdit(null); setForm(empty); }}>{tc('setp.cancel', 'Cancel')}</button>
-            )}
-          </div>
-        </form>
-      </div>
+        );
+      })}
 
-      <div className="card">
-        <div style={{fontWeight:600,marginBottom:'0.75rem'}}>{tc('setp.configuredNozzles', 'Configured Nozzles ({n})').replace('{n}', nozzles.length)}</div>
-        {nozzles.length===0 && (
-          <div style={{color:'var(--text-3)',fontSize:13,padding:'2rem',textAlign:'center'}}>
-            {tc('setp.noNozzles', 'No nozzles yet. Add tanks first, then add nozzles.')}
-          </div>
-        )}
-        {nozzles.length>0 && (
-          <div className="table-wrap">
-            <table className="dms-table">
-              <thead><tr><th>{tc('setp.thNozzleNum', 'Nozzle #')}</th><th>{tc('setp.thFuelType', 'Fuel Type')}</th><th>{tc('setp.thLinkedTank', 'Linked Tank')}</th><th>{tc('setp.thStatus', 'Status')}</th><th>{tc('setp.thActions', 'Actions')}</th></tr></thead>
-              <tbody>
-                {nozzles.map(n=>(
-                  <tr key={n.id}>
-                    <td><strong>{tc('setp.nozzleLabel', 'Nozzle {n}').replace('{n}', n.nozzle_number)}</strong></td>
-                    <td><span className={`fuel-chip fuel-${n.fuel_type}`}>{FUEL_TYPES.find(f=>f.value===n.fuel_type)?.label||n.fuel_type}</span></td>
-                    <td>{n.tank_id ? tc('setp.tankLabel', 'Tank {n}').replace('{n}', n.tank_number||'—') : <span style={{color:'var(--danger)',fontSize:12}}>⚠ {tc('setp.noTankLinked', 'No tank linked')}</span>}</td>
-                    <td><span className={`badge ${n.is_active?'badge-success':'badge-gray'}`}>{n.is_active?tc('setp.active', 'Active'):tc('setp.inactive', 'Inactive')}</span></td>
-                    <td>
-                      <div style={{display:'flex',gap:6}}>
-                        <button className="btn btn-secondary btn-sm" onClick={()=>startEdit(n)}><Edit2 size={12}/>{tc('setp.edit', 'Edit')}</button>
-                        <button className="btn btn-danger btn-sm" onClick={()=>del(n.id)}><Trash2 size={12}/></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div style={{fontSize:11,color:'var(--text-3)',marginTop:'0.75rem'}}>
-          💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabPrices', '4. Fuel Prices')}</strong> {tc('setp.nextPricesPost', 'to set current prices')}
-        </div>
+      {/* 5 ── Add a pump */}
+      <AddPumpForm stationId={stationId} tc={tc}
+        onAdded={()=>{ showToast(tc('setp.toastPumpAdded', 'Pump added!')); refresh(); }}/>
+
+      <div style={{fontSize:11,color:'var(--text-3)',marginTop:'0.75rem'}}>
+        💡 {tc('setp.nextNozzlesPre', 'Next: Go to')} <strong>{tc('setp.tabPrices', '4. Fuel Prices')}</strong> {tc('setp.nextPricesPost', 'to set current prices')}
       </div>
     </div>
+  );
+}
+
+// Pump identity, editable in place. Saved on blur so there is no second "save"
+// button competing with the card's own actions.
+function PumpDetails({ stationId, pump, tc, onChanged }) {
+  const [d, setD] = useState({ pump_number:'', serial:'', model:'' });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setD({ pump_number: pump.pump_number || '', serial: pump.serial || '', model: pump.model || '' });
+  }, [pump.id, pump.pump_number, pump.serial, pump.model]);
+
+  const commit = async (key) => {
+    const was = pump[key] || '';
+    const now = d[key] || '';
+    if (was === now) return;
+    if (key === 'pump_number' && !now.trim()) { setD(p=>({...p, pump_number: pump.pump_number || ''})); return; }
+    setBusy(true);
+    try { await updatePump(stationId, pump.id, { [key]: now.trim() || null }); onChanged(); }
+    catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); setD(p=>({...p,[key]:was})); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',
+      gap:10,paddingTop:12}}>
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.pumpNumber', 'Pump number')}</label>
+        <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={16} disabled={busy}
+          value={d.pump_number} onChange={e=>setD(p=>({...p,pump_number:e.target.value}))}
+          onBlur={()=>commit('pump_number')}/>
+      </div>
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.pumpSerial', 'Serial number')}</label>
+        <input style={CTRL_NUM} type="text" maxLength={40} disabled={busy}
+          placeholder={tc('setp.egSerial', 'e.g. 15BC1412V')}
+          value={d.serial} onChange={e=>setD(p=>({...p,serial:e.target.value.toUpperCase()}))}
+          onBlur={()=>commit('serial')}/>
+      </div>
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.pumpModel', 'Model')}</label>
+        <input style={CTRL} type="text" maxLength={60} disabled={busy}
+          placeholder={tc('setp.egModel', 'e.g. Gilbarco SK700')}
+          value={d.model} onChange={e=>setD(p=>({...p,model:e.target.value}))}
+          onBlur={()=>commit('model')}/>
+      </div>
+    </div>
+  );
+}
+
+// One nozzle, edited in place. Selects save on change; text fields save on blur —
+// so a serial typed a character at a time is not thirty PATCHes.
+function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
+  const [d, setD] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setD({
+      nozzle_number:  nozzle.nozzle_number || '',
+      fuel_type:      nozzle.fuel_type || 'petrol',
+      tank_id:        nozzle.tank_id || '',
+      is_active:      nozzle.is_active !== false,
+    });
+  }, [nozzle.id, nozzle.nozzle_number, nozzle.fuel_type, nozzle.tank_id, nozzle.is_active]);
+
+  const save = async (patch) => {
+    const next = { ...d, ...patch };
+    setD(next);
+    setBusy(true);
+    try {
+      await api.patch(`/stations/${stationId}/nozzles/${nozzle.id}`, {
+        nozzle_number:  next.nozzle_number,
+        fuel_type:      next.fuel_type,
+        tank_id:        next.tank_id || null,
+        is_active:      next.is_active,
+      });
+      onChanged();
+    } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+    finally { setBusy(false); }
+  };
+
+  // Only same-fuel tanks are offerable, but a tank already linked stays listed even
+  // if the fuel was changed — otherwise the row would silently show "no tank" for a
+  // nozzle that plainly has one.
+  const tankOpts = tanks.filter(t => t.fuel_type === d.fuel_type || t.id === d.tank_id);
+
+  return (
+    <div className="pn-row">
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.thNozzleNum', 'Nozzle #')}</label>
+        {/* Free text, not a number: a pump's nozzles are commonly labelled 5.1, 5.2,
+            5.3 (pump.nozzle) and nothing does arithmetic on the value. */}
+        <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8} disabled={busy}
+          value={d.nozzle_number || ''}
+          onChange={e=>setD(p=>({...p,nozzle_number:e.target.value}))}
+          onBlur={()=>{ if ((d.nozzle_number||'') !== (nozzle.nozzle_number||'')) save({}); }}/>
+      </div>
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.thFuelType', 'Fuel Type')}</label>
+        <select style={CTRL} disabled={busy} value={d.fuel_type || 'petrol'}
+          onChange={e=>save({ fuel_type:e.target.value })}>
+          {FUEL_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+        </select>
+      </div>
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.thLinkedTank', 'Linked Tank')}</label>
+        <select style={CTRL} disabled={busy} value={d.tank_id || ''}
+          onChange={e=>save({ tank_id:e.target.value })}>
+          <option value="">{tc('setp.selectTank', 'Select tank...')}</option>
+          {tankOpts.map(t => (
+            <option key={t.id} value={t.id}>
+              {tc('setp.tankLabel', 'Tank {n}').replace('{n}', t.tank_number)} — {fuelLabel(t.fuel_type)}
+            </option>
+          ))}
+        </select>
+      </div>
+      {/* NO "slip no." FIELD. The slip does not print one — it prints the pump's
+          serial and a plain nozzle number, and the pump's number is already here.
+          So the slip's nozzle name is derived: pump number + printed nozzle number
+          ("1" on pump 2 IS nozzle 2.1), done server-side in pumpService. Asking the
+          manager to re-key what we can concatenate was a field with no answer. */}
+      <div>
+        <label style={MICRO_LABEL}>{tc('setp.thStatus', 'Status')}</label>
+        <button type="button" disabled={busy} onClick={()=>save({ is_active: !d.is_active })}
+          style={{width:'100%',height:44,borderRadius:8,cursor:'pointer',fontSize:14,fontWeight:700,
+            border:'1px solid ' + (d.is_active ? '#bbf7d0' : 'var(--border)'),
+            background:  d.is_active ? '#dcfce7' : 'var(--surface-2)',
+            color:       d.is_active ? '#15803d' : 'var(--text-3)'}}>
+          {d.is_active ? tc('setp.active', 'Active') : tc('setp.inactive', 'Inactive')}
+        </button>
+      </div>
+      <div>
+        <button type="button" onClick={onDelete} disabled={busy}
+          aria-label={tc('setp.deleteNozzle', 'Delete nozzle')}
+          title={tc('setp.deleteNozzle', 'Delete nozzle')}
+          style={{width:'100%',minWidth:44,height:44,borderRadius:8,cursor:'pointer',
+            background:'#fff',border:'1px solid #fecaca',color:'#b91c1c',
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <Trash2 size={16}/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// The add-a-nozzle row. Same shape as an existing row so the eye does not have to
+// re-learn it, and deliberately WITHOUT a pump field — the caller supplies it.
+function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
+  const [d, setD] = useState({ nozzle_number:'', fuel_type:'petrol', tank_id:'' });
+  const [busy, setBusy] = useState(false);
+  const f = (k,v) => setD(p=>({...p,[k]:v}));
+  const tankOpts = tanks.filter(t => t.fuel_type === d.fuel_type);
+
+  const add = async () => {
+    if (!String(d.nozzle_number || '').trim()) return alert(tc('setp.nozzleNumberRequired', 'Enter a nozzle number'));
+    setBusy(true);
+    try {
+      await api.post(`/stations/${stationId}/nozzles`, {
+        nozzle_number:  String(d.nozzle_number).trim(),
+        fuel_type:      d.fuel_type,
+        tank_id:        d.tank_id || null,
+        pump_id:        pump.id,
+      });
+      onAdded();
+    } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{marginTop:10,background:'var(--surface-2)',borderRadius:10,padding:'4px 12px 12px'}}>
+      <div className="pn-row">
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.thNozzleNum', 'Nozzle #')}</label>
+          <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8} autoFocus
+            placeholder={tc('setp.egNozzle', 'e.g. 1 or 5.1')}
+            value={d.nozzle_number} onChange={e=>f('nozzle_number', e.target.value)}/>
+        </div>
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.thFuelType', 'Fuel Type')}</label>
+          <select style={CTRL} value={d.fuel_type} onChange={e=>setD(p=>({...p,fuel_type:e.target.value,tank_id:''}))}>
+            {FUEL_TYPES.map(ft => <option key={ft.value} value={ft.value}>{ft.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.thLinkedTank', 'Linked Tank')}</label>
+          <select style={CTRL} value={d.tank_id} onChange={e=>f('tank_id', e.target.value)}>
+            <option value="">{tc('setp.selectTank', 'Select tank...')}</option>
+            {tankOpts.map(t => (
+              <option key={t.id} value={t.id}>
+                {tc('setp.tankLabel', 'Tank {n}').replace('{n}', t.tank_number)} — {fuelLabel(t.fuel_type)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {tankOpts.length === 0 && (
+        <div style={{fontSize:12,color:'var(--warning)',marginTop:2}}>
+          ⚠ {tc('setp.noFuelTank', 'No {fuel} tank found. Add a tank first.').replace('{fuel}', fuelLabel(d.fuel_type))}
+        </div>
+      )}
+      {/* The buttons sit on their own line rather than in the row's last columns:
+          the confirm is this area's single primary and must not be clipped by a
+          44px-wide cell when the label is a long Telugu string. */}
+      <div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}>
+        <button type="button" onClick={add} disabled={busy}
+          style={{minHeight:44,padding:'0 22px',borderRadius:8,border:'none',
+            cursor:busy?'wait':'pointer',background:'#FF6B00',color:'#fff',
+            fontWeight:700,fontSize:15}}>
+          {busy ? tc('setp.saving', 'Saving...') : tc('setp.addNozzle', 'Add Nozzle')}
+        </button>
+        <button type="button" onClick={onCancel} disabled={busy}
+          style={{minHeight:44,padding:'0 18px',borderRadius:8,cursor:'pointer',
+            background:'#fff',border:'1px solid var(--border)',color:'var(--text-2)',
+            fontWeight:700,fontSize:15,display:'inline-flex',alignItems:'center',gap:6}}>
+          <X size={15}/>{tc('setp.cancel', 'Cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Add a pump. The slip photograph comes first because it is where the serial is
+// read from — but it is OPTIONAL, and so is the serial: a CNG dispenser prints no
+// slip at all and must still be definable. Serial and model are plain fields here;
+// there is no pump-slip parser to fill them in, so the photograph is kept as the
+// evidence and the two are typed.
+function AddPumpForm({ stationId, tc, onAdded }) {
+  const [f, setF] = useState({ pump_number:'', serial:'', model:'' });
+  const [slip, setSlip] = useState(null);   // { base64, media_type }
+  // Bumped after a successful save so PhotoCapture REMOUNTS. Clearing `slip` alone
+  // leaves the previous pump's thumbnail on screen, which reads as "not saved yet"
+  // and invites a second press.
+  const [slipSlot, setSlipSlot] = useState(0);
+  // A pump with genuinely no printout — CNG dispensers do not print one, and Kamala
+  // has one. Requiring a photo outright would make that pump undefinable, so the
+  // gate is "photograph it OR say it has none", never "photograph it".
+  const [noSlip, setNoSlip] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [readMsg, setReadMsg] = useState('');
+
+  // Photographing the slip READS it. Typing a serial off a thermal printout is the
+  // step most likely to be got wrong, and a mistyped serial breaks every future scan
+  // on that machine silently — the match just never fires and nobody knows why.
+  // Prefilled, never auto-committed: the owner still sees and confirms both fields,
+  // because the label varies by make ("PUMP SERIAL NUMBER" on one, "Pump SNo" on
+  // another) and a mis-read is worth catching here rather than months later.
+  const onSlip = async (img) => {
+    setSlip(img); setReadMsg('');
+    if (!img?.base64) return;
+    setReading(true);
+    try {
+      const r = await parsePumpSlip(stationId, { file_base64: img.base64, media_type: img.media_type });
+      const got = [];
+      if (r?.pump_serial) { set('serial', r.pump_serial); got.push(tc('setp.gotSerial', 'serial')); }
+      if (r?.model)       { set('model',  r.model);       got.push(tc('setp.gotModel', 'model')); }
+      // Some layouts print the pump's own number (FP. ID / FIP No.). Offered as a
+      // default only — the outlet calls its pumps whatever is painted on them, and
+      // that is the name the staff use.
+      if (r?.pump_id && !f.pump_number) set('pump_number', r.pump_id);
+      setReadMsg(got.length
+        ? tc('setp.readOk', 'Read the {x} off the slip — check them against the paper.').replace('{x}', got.join(' and '))
+        : tc('setp.readNothing', 'Could not find a serial on that slip — type it from the paper.'));
+    } catch (e) {
+      setReadMsg(e?.error || tc('setp.readFailed', 'Could not read that slip — type the serial and model from it.'));
+    } finally { setReading(false); }
+  };
+  const [busy, setBusy] = useState(false);
+  const set = (k,v) => setF(p=>({...p,[k]:v}));
+  // A pump needs a number, and evidence of which machine it is — a slip photo, or
+  // an explicit statement that it prints none.
+  const canSave = !!f.pump_number.trim() && (!!slip || noSlip);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!f.pump_number.trim()) return alert(tc('setp.pumpNumberRequired', 'Enter the pump number'));
+    setBusy(true);
+    try {
+      // The photograph travels WITH the create, the way every other artifact in
+      // Pumpini is written — by the flow that produced it, in one call; there is no
+      // separate upload endpoint to hold it against.
+      //
+      // pumpService stores it against the pump and links slip_artifact_id back, so
+      // the picture that identified the machine is kept as evidence rather than
+      // being read once and thrown away — the same gap that left coupons and gauge
+      // screens unevidenced for months. Best-effort server-side: a pump still saves
+      // when the camera or the store fails, and a CNG unit has no slip at all.
+      await createPump(stationId, {
+        pump_number: f.pump_number.trim(),
+        serial:      f.serial.trim() || null,
+        model:       f.model.trim()  || null,
+        image_base64: slip?.base64 || undefined,
+        media_type:   slip?.media_type || undefined,
+      });
+      setF({ pump_number:'', serial:'', model:'' });
+      setSlip(null); setNoSlip(false); setReadMsg('');
+      setSlipSlot(n => n + 1);   // remount, so the thumbnail actually disappears
+      onAdded();
+    } catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={submit} className="card" style={{marginTop:'0.5rem'}}>
+      <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{tc('setp.addPumpTitle', 'Add a pump')}</div>
+      <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:14}}>
+        {tc('setp.addPumpDesc', 'A pump is the machine. Its fuels and tanks belong to its nozzles, which you add inside the pump once it exists. Serial and slip are OPTIONAL — a CNG dispenser prints no slip and can still be added.')}
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <PhotoCapture
+          key={slipSlot}
+          label={tc('setp.photographSlip', 'Photograph a slip from this pump')}
+          retakeLabel={tc('setp.retakePhoto', 'Retake')}
+          hint={tc('setp.slipHint2', 'Optional. We read the serial and model off the photo — check them below before saving.')}
+          onCapture={onSlip}
+          disabled={busy || reading || noSlip}
+          removeLabel={tc('photo.remove', 'Remove')}/>
+        <label style={{display:'inline-flex',alignItems:'center',gap:8,minHeight:44,
+          fontSize:13,color:'var(--text-2)',cursor:'pointer',marginTop:4}}>
+          <input type="checkbox" checked={noSlip} disabled={busy || reading}
+            onChange={e=>{ setNoSlip(e.target.checked); if (e.target.checked) { setSlip(null); setReadMsg(''); setSlipSlot(n=>n+1); } }}/>
+          {tc('setp.noSlipPrinted', 'This pump prints no slip (CNG)')}
+        </label>
+        {reading && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
+          {tc('setp.readingSlip', 'Reading the slip…')}
+        </div>}
+        {!reading && readMsg && <div style={{fontSize:12.5,color:'#b45309',marginTop:8}}>{readMsg}</div>}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:14}}>
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.pumpNumberRequiredLabel', 'Pump number *')}</label>
+          <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={16} required
+            placeholder={tc('setp.egOne', 'e.g. 1')}
+            value={f.pump_number} onChange={e=>set('pump_number', e.target.value)}/>
+        </div>
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.pumpSerial', 'Serial number')}</label>
+          <input style={CTRL_NUM} type="text" maxLength={40}
+            placeholder={tc('setp.egSerial', 'e.g. 15BC1412V')}
+            value={f.serial} onChange={e=>set('serial', e.target.value.toUpperCase())}/>
+        </div>
+        <div>
+          <label style={MICRO_LABEL}>{tc('setp.pumpModel', 'Model')}</label>
+          <input style={CTRL} type="text" maxLength={60}
+            placeholder={tc('setp.egModel', 'e.g. Gilbarco SK700')}
+            value={f.model} onChange={e=>set('model', e.target.value)}/>
+        </div>
+      </div>
+
+      {/* GATED ON EVIDENCE, with one honest exception. The slip is what identifies
+          the machine, so saving a pump without one produces a record that can never
+          match a scan — better to stop it here than to leave a dead pump in the
+          list. But a CNG dispenser prints nothing at all, so the gate is
+          "photograph it OR declare it has none", never "photograph it". */}
+      <button type="submit" disabled={busy || reading || !canSave}
+        title={canSave ? undefined : tc('setp.needSlipTitle', 'Photograph a slip, or tick "prints no slip"')}
+        style={{minHeight:48,padding:'0 26px',
+          background:(busy||reading||!canSave)?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',
+          borderRadius:10,cursor:(busy||reading||!canSave)?'not-allowed':'pointer',fontWeight:700,fontSize:15}}>
+        {busy ? tc('setp.saving', 'Saving...') : tc('setp.addPumpBtn', 'Add Pump')}
+      </button>
+      {!canSave && !busy && !reading && (
+        <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>
+          {tc('setp.needSlipHint', 'Photograph a slip from this pump, or tick "prints no slip" above.')}
+        </div>
+      )}
+    </form>
   );
 }
 
