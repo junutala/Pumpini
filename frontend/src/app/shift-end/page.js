@@ -135,7 +135,15 @@ export default function ShiftEndPage() {
   const [gaugeBusy, setGaugeBusy] = useState(false);
   const [gaugeMsg, setGaugeMsg]   = useState('');
   const [gaugeArtifact, setGaugeArtifact] = useState('');
-  const [shiftDips, setShiftDips] = useState(new Set());  // tank_ids with a closing reading ALREADY stored for this shift
+  // tank_id -> the closing reading ALREADY stored for this shift. Holds the ROW, not
+  // just the id, because a stored reading is now DISPLAYED here rather than merely
+  // exempted from the nag: at a handover the next shift's start screen takes this
+  // measurement (one scan closes the running shift and becomes the next opening), so
+  // by the time the manager reaches Shift Close the figure is usually already in.
+  // Showing an empty box over a stored reading is what taught managers the second ask
+  // was optional — and it is exactly how Highway and Adhoc Highway went three days
+  // with opening dips and no closing ones at all.
+  const [shiftDips, setShiftDips] = useState({});
   const [dipWarn, setDipWarn] = useState(null);   // { dirty:[tank], missing:[tank] } | null
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
@@ -209,8 +217,9 @@ export default function ShiftEndPage() {
       // Dip state belongs to the shift being closed — switching shift must not
       // carry a half-typed reading across.
       setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
-      setShiftDips(new Set((Array.isArray(dr)?dr:[])
-        .filter(x => x.reading_type === 'closing').map(x => x.tank_id)));
+      const stored = {};
+      (Array.isArray(dr)?dr:[]).forEach(x => { if (x.reading_type === 'closing') stored[x.tank_id] = x; });
+      setShiftDips(stored);
       setStep(0);
     } catch(e){ setErr(e.response?.data?.error||e.error||tc('send.couldNotLoadShift', 'Could not load shift')); }
     setBusy('');
@@ -466,7 +475,7 @@ export default function ShiftEndPage() {
   // "Has a closing reading" means saved in THIS sitting or already in the database
   // for this shift — a manager who dipped, walked away and came back must not be
   // told his tanks are unread.
-  const hasReading = (tk) => !!savedDips[tk.id] || shiftDips.has(tk.id);
+  const hasReading = (tk) => !!savedDips[tk.id] || !!shiftDips[tk.id];
 
   const requestCloseShift = () => {
     const dirty   = dipTanks.filter(isDirty);
@@ -777,6 +786,22 @@ export default function ShiftEndPage() {
               // not typed. Otherwise the box is live, which is what lets a scanned
               // (or typed) system reading be saved on a charted tank with dip_cm null.
               const dipOwnsLitres = dips[tk.id]!=='' && dips[tk.id]!=null && hasChart;
+              // ALREADY READ — usually at the handover, where one scan closed this
+              // shift and became the next one's opening. Show the figure; do not ask
+              // for it a second time. (Not locked when he has just saved it in this
+              // sitting: that row already says "✓ Saved" and re-rendering it as a
+              // summary mid-entry would be disorienting.)
+              const st = !savedDips[tk.id] && shiftDips[tk.id];
+              if (st) return (
+                <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                  <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('send.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
+                  <div style={{fontSize:14,fontWeight:800,color:'#0f172a'}}>{fmtL(st.volume_ltrs)} L</div>
+                  {st.dip_cm != null && <div style={{fontSize:12,color:'#64748b'}}>{tc('send.dipLabel','dip')} {st.dip_cm} cm</div>}
+                  <span style={{fontSize:11.5,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'3px 10px',fontWeight:700}}>
+                    🔒 {tc('send.closingAlreadyRead','Closing already read')}
+                  </span>
+                </div>
+              );
               return (
                 <div key={tk.id} style={{marginBottom:12,paddingBottom:10,borderBottom:'1px solid #f1f5f9'}}>
                   <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
