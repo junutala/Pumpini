@@ -92,18 +92,33 @@ function resolveNozzleOpening(entry, requested) {
   return { opening: asked != null ? asked : 0, source: 'entered', requested: asked, overridden: false };
 }
 
-// Seed this shift's OPENING dips from each tank's last CLOSING dip.
+// Seed this shift's OPENING dips from the IMMEDIATELY PRECEDING shift's closing.
 //
-// Runs when the shift is opened, so the opening stock is already in place before
-// anyone can type one. Idempotent: a tank that already has an opening reading for
-// this shift is skipped, so re-opening or a retried request cannot double-write.
+// 🔴 THE PRECEDING SHIFT, NOT "THE NEWEST CLOSING THAT EXISTS RIGHT NOW".
 //
-// A tank with no prior closing anywhere is deliberately left EMPTY rather than
-// seeded with a zero — the shift-start screen then asks for it, which is correct
-// for a newly commissioned tank and honest about the fact that nobody knows.
+// This used to `ORDER BY dr.recorded_at DESC LIMIT 1` — the most recent closing dip
+// at the instant the shift was opened. That is only correct if shifts are always
+// closed before the next is opened, and they are not: a night handover routinely
+// opens tomorrow at 01:28 and closes today at 01:34, six minutes later.
 //
-// Best-effort by contract: a seeding failure must never stop a shift opening. The
-// screen still lets the reading be entered by hand.
+// When that happens the newest closing in the table is the one from the day BEFORE,
+// so the opening was seeded two days stale — and because this function is
+// idempotent (NOT EXISTS below), the mistake was then frozen and never revisited.
+// Kamala's 03-Aug reconciliation reported 4,254 L of phantom loss across three tanks
+// entirely because of it; the tank that was measured cleanly reconciled to 9 L once
+// the correct opening was used.
+//
+// So: find the shift that immediately precedes this one AT THIS STATION, and take
+// ITS closing. If that shift has not been closed yet there is nothing to carry, and
+// the tank is deliberately left EMPTY — the shift-start screen then asks for it,
+// exactly as it does for a newly commissioned tank. An empty box the manager fills
+// is honest; a figure carried from two days ago is not, and it becomes the number a
+// day's stock variance is judged against.
+//
+// backfillOpeningFromClose() below closes the loop: when that earlier shift is
+// finally closed, the later shift's opening is filled in from it.
+//
+// Best-effort by contract: a seeding failure must never stop a shift opening.
 async function seedOpeningDips(shift_id, recorded_by, client = pool) {
   try {
     const { rows } = await client.query(`
@@ -113,12 +128,26 @@ async function seedOpeningDips(shift_id, recorded_by, client = pool) {
              last.density, last.temperature_c, $2
         FROM shifts s
         JOIN tanks t ON t.station_id = s.station_id
+        -- The shift immediately before this one at this outlet. Ordered by when the
+        -- shift STARTED, which is a fact about the shift, not by when somebody
+        -- happened to type its closing.
+        JOIN LATERAL (
+          SELECT ps.id
+            FROM shifts ps
+           WHERE ps.station_id = s.station_id
+             AND ps.id <> s.id
+             AND ps.start_time < s.start_time
+           ORDER BY ps.start_time DESC
+           LIMIT 1
+        ) prev ON TRUE
+        -- ...and ITS closing for this tank. No row here means that shift is not
+        -- closed yet, so nothing is carried and the screen asks.
         JOIN LATERAL (
           SELECT dr.dip_cm, dr.volume_ltrs, dr.density, dr.temperature_c
             FROM dipstick_readings dr
            WHERE dr.tank_id = t.id
              AND dr.reading_type = 'closing'
-             AND dr.shift_id IS DISTINCT FROM s.id
+             AND dr.shift_id = prev.id
            ORDER BY dr.recorded_at DESC
            LIMIT 1
         ) last ON TRUE
@@ -136,4 +165,50 @@ async function seedOpeningDips(shift_id, recorded_by, client = pool) {
   }
 }
 
-module.exports = { nozzleOpenings, resolveNozzleOpening, seedOpeningDips };
+// The other half of the rule: when a shift's CLOSING dip is recorded, fill in the
+// opening of the shift that follows it, if that shift is already open and still has
+// none for this tank.
+//
+// This is what makes "open tomorrow before closing today" safe. seedOpeningDips
+// refuses to guess at open time; this fills the gap the moment the real figure
+// exists, so the manager never has to re-key a number the system already knows.
+//
+// Only ever writes where there is NO opening yet — it cannot overwrite a reading a
+// manager has entered, and it cannot revise a shift that has moved on.
+async function backfillOpeningFromClose({ station_id, tank_id, shift_id }, client = pool) {
+  try {
+    const { rows } = await client.query(`
+      INSERT INTO dipstick_readings
+        (station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, recorded_by)
+      SELECT $1, $2, nxt.id, 'opening', c.dip_cm, c.volume_ltrs, c.density, c.temperature_c, NULL
+        FROM shifts cur
+        -- the next shift at this outlet, if one has already been opened
+        JOIN LATERAL (
+          SELECT ns.id
+            FROM shifts ns
+           WHERE ns.station_id = cur.station_id
+             AND ns.id <> cur.id
+             AND ns.start_time > cur.start_time
+           ORDER BY ns.start_time ASC
+           LIMIT 1
+        ) nxt ON TRUE
+        JOIN LATERAL (
+          SELECT dr.dip_cm, dr.volume_ltrs, dr.density, dr.temperature_c
+            FROM dipstick_readings dr
+           WHERE dr.shift_id = cur.id AND dr.tank_id = $2 AND dr.reading_type = 'closing'
+           ORDER BY dr.recorded_at DESC LIMIT 1
+        ) c ON TRUE
+       WHERE cur.id = $3
+         AND NOT EXISTS (
+           SELECT 1 FROM dipstick_readings x
+            WHERE x.shift_id = nxt.id AND x.tank_id = $2 AND x.reading_type = 'opening'
+         )
+      RETURNING shift_id`, [station_id, tank_id, shift_id]);
+    return rows.length > 0;
+  } catch (e) {
+    try { require('../utils/logger').error(`opening back-fill failed from shift ${shift_id}: ${e.message || e}`); } catch { /* noop */ }
+    return false;
+  }
+}
+
+module.exports = { nozzleOpenings, resolveNozzleOpening, seedOpeningDips, backfillOpeningFromClose };
