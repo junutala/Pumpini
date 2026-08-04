@@ -918,6 +918,57 @@ router.post('/parse-slip', authenticate,
     const byNumber = {};
     for (const k of known) (byNumber[String(k.nozzle_number).trim()] ||= []).push(k);
 
+    // NOZZLES GROUPED BY THE PUMP THEY HANG OFF. The serial identifies a machine
+    // outright, so once we know WHICH machine printed the slip, only that machine's
+    // own nozzles can be the answer — and the search must be confined to them.
+    //
+    // Building a NAME ("<pump>.<nozzle>") and looking it up across the whole outlet
+    // was the bug. It assumes every outlet names nozzles pump.nozzle, and Highway
+    // does not: its pump 2 carries nozzles named 3.1, 3.2, 4.1 and 4.2, so pump 3's
+    // slip asked for "3.1", found pump 2's diesel nozzle, and matched it with
+    // confidence. Wrong machine, no ambiguity flagged, and at shift CLOSE that is a
+    // closing meter — the figure the day's sales are computed from.
+    const byPump = {};
+    for (const k of known) {
+      if (!k.pump_number) continue;
+      (byPump[String(k.pump_number).trim()] ||= []).push(k);
+    }
+    // Within ONE pump, find the nozzle the slip's number refers to. Tried in order
+    // of how much it is asserted rather than inferred, and it REFUSES rather than
+    // guessing: a pump whose nozzles are named in the outlet's own way and carry no
+    // slip mapping yields nothing here, and the manager types the reading as he
+    // always could. Position within the pump is deliberately NOT used — Highway's
+    // pump 2 prints 01,02,03,04 for nozzles 3.1, 4.2, 3.2, 4.1, so ordinal position
+    // would be right once in four.
+    // A line we could not place. Same shape as a resolved one so the screen needs
+    // no special case: it simply has no nozzle_id, and the manager types the figure.
+    // matched_on carries WHY, so a scan that filled nothing can be explained.
+    const unresolved = (n, no, label, vol, amt, swapped, why) => ({
+      nozzle_no: no || null,
+      label,
+      cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
+      cumulative_amount: isFinite(amt) && amt > 0 ? amt : null,
+      swapped_amount_for_volume: swapped || undefined,
+      legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped,
+      nozzle_id: null,
+      matched_on: why,
+    });
+
+    const withinPump = (pumpNumber, no) => {
+      const mine = byPump[pumpNumber] || [];
+      if (!mine.length || !no) return [];
+      // a. the explicit mapping, set against the nozzle for exactly this purpose
+      const mapped = mine.filter(k => k.slip_nozzle_no && String(k.slip_nozzle_no).trim() === no);
+      if (mapped.length) return mapped;
+      // b. the outlet names nozzles "<pump>.<nozzle>" — the ordinary case
+      const dotted = mine.filter(k => String(k.nozzle_number).trim() === `${pumpNumber}.${no}`);
+      if (dotted.length) return dotted;
+      // c. the outlet names them bare, and the bare name happens to be the
+      //    machine's own number — true of Highway's pump 1 (nozzles 1 and 2)
+      const bare = mine.filter(k => String(k.nozzle_number).trim() === no);
+      return bare;
+    };
+
     // THE SERIAL IS THE DISPENSER'S IDENTITY. A slip that prints no pump number
     // — the HPCL ETOT-MAIN layout does not — leaves "NOZZLE : 1" ambiguous across
     // every dispenser at the outlet, and no amount of renaming our nozzles can
@@ -976,12 +1027,19 @@ router.post('/parse-slip', authenticate,
         // then the bare number. Never fall back to position.
         let cands = [];
         let matchedOn = null;
-        // 1. Serial -> pump number -> "<pump>.<nozzle>". The plain path.
+        // 1. THE SERIAL PATH, CONFINED TO THE PUMP IT IDENTIFIES. If the serial
+        //    tells us which machine printed this slip, the answer is one of THAT
+        //    machine's nozzles or it is nothing — never another pump's. When the
+        //    serial is known and this finds no nozzle, we STOP: falling through to
+        //    the outlet-wide search below would be free to land on a different
+        //    pump, which is exactly the fault this replaces.
         if (serialRaw && no && pumpNumberBySerial[serialRaw]) {
-          cands = byNumber[`${pumpNumberBySerial[serialRaw]}.${no}`] || [];
+          cands = withinPump(pumpNumberBySerial[serialRaw], no);
           matchedOn = cands.length ? 'pump_serial' : null;
+          if (!cands.length) return unresolved(n, no, label, vol, amt, swapped, 'serial_no_nozzle');
         }
-        // 2. Explicit override, for a machine whose own numbering differs.
+        // 2. Serial known but the pump carries no number we can group by — the
+        //    explicit mapping is then the only assertion available.
         if (!cands.length && serialRaw && no) {
           cands = bySerial[`${serialRaw}|${no}`] || [];
           matchedOn = cands.length ? 'pump_serial_mapped' : null;
@@ -1070,6 +1128,16 @@ router.post('/parse-slip', authenticate,
                + 'Add the serial under Settings → Pumps & Nozzles, or enter the readings by hand.';
         }
         if (nozzles.every(n => n.nozzle_id)) return null;
+        // The serial named the machine, but none of THAT machine's nozzles could be
+        // tied to the number the slip printed. Refusing is correct — the alternative
+        // is another pump's nozzle — but the manager needs to know it is fixable.
+        const stuck = nozzles.filter(n => n.matched_on === 'serial_no_nozzle');
+        if (stuck.length) {
+          return 'This pump was recognised, but its nozzles are not yet matched to the numbers '
+               + `the machine prints (${stuck.map(n => n.nozzle_no).filter(Boolean).join(', ')}). `
+               + 'Set the slip number against each nozzle under Settings → Pumps & Nozzles, '
+               + 'or enter the readings by hand.';
+        }
         const amb = nozzles.filter(n => n.matched_on === 'ambiguous');
         if (amb.length) {
           return 'More than one nozzle carries that number, so the reading was not filled in '
