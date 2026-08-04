@@ -184,3 +184,46 @@ FUTURE: with more outlets, anonymized cross-owner peer-benchmarking (network-eff
 - [ ] **Label every number.** The retired tile's whole failure was unlabelled figures
       sitting next to a coloured badge. Whatever replaces it says what each figure IS,
       or it repeats the mistake in a new costume.
+
+## 16. Kamala — verify 9 historic chain breaks against the physical records (🔴 NEXT SESSION)
+> **The owner is bringing the Kamala records.** This is the open thread from 04-Aug:
+> the exact rows to check are below so nothing has to be re-derived.
+>
+> **Context.** The opening-carry fix (#248 for dips, PR #259 for meters) means a nozzle's
+> opening now always equals the previous close. Before that, openings could be typed, and
+> **9 legs across the three real outlets don't tie**. This is HISTORY — the fix does not
+> repair it, it only stops new ones and flags the class via `meter_handover_gap`.
+> Nothing has broken since **18-Jul**; 106/106 legs since 01-Aug are exact.
+>
+> **What the numbers cannot tell us:** whether these are mistyped openings or genuinely
+> missing fuel. In the database both look identical. Only the physical records separate
+> them — which is why this needs the owner, not another query.
+
+| outlet | nozzle | date | recorded opening | previous close | gap |
+|---|---|---|---|---|---|
+| Kamala | 1.2 petrol | 29-Jun | 1,572,022.000 | 1,571,270.000 | **+752.000** |
+| Kamala | 4.2 CNG | 05-Jul | 254,258.530 | 254,058.530 | +200.000 |
+| Kamala | 4.2 CNG | 14-Jul | 261,397.590 | 261,297.590 | +100.000 |
+| Kamala | 4.2 CNG | 04-Jul | 253,189.760 | 253,289.760 | **−100.000** |
+| Kamala | 4.2 CNG | 18-Jul | 263,821.930 | 263,751.930 | +70.000 |
+| Kamala | 4.1 CNG | 14-Jul | 299,707.180 | 299,677.180 | +30.000 |
+| Kamala | 2.2 diesel | 26-Jun | 2,138,869.000 | 2,138,886.000 | **−17.000** |
+| Highway | 3.2 petrol | 10-Jul | 519,879.160 | 519,879.960 | −0.800 |
+| Adhoc | 1.1 / 1.2 premium | 09-Jul | — | 250.000 (setup seed) | **NOT a break — commissioning artifact, ignore** |
+
+- [ ] **Start with 29-Jun petrol 1.2 (+752 L)** — the only one large enough to be real fuel
+      (~₹75,000 at pump price) and the only single-event, non-round figure. Everything else
+      is small or patterned.
+- [ ] **The 5 CNG rows are almost certainly typing, not loss.** Every figure is round
+      (200 / 100 / −100 / 70 / 30) and one is NEGATIVE — a totalizer cannot run backwards,
+      so that opening was simply entered below the prior close. Confirm the habit with the
+      operator rather than hunting for gas.
+- [ ] **Highway −0.8 L and Kamala −17 L**: note and close. Immaterial.
+- [ ] Scale check so the conclusion stays proportionate: **1,269 L against 246,347 L sold
+      at Kamala = 0.52%**, all of it before 18-Jul. Highway is 0.8 L in 209,775 L. Adhoc
+      is clean.
+
+> **Do not re-run the discovery.** The query that produced this table is in the 04-Aug
+> session: `shift_attendant_nozzles` joined to itself via `LATERAL` on the previous leg
+> by `shifts.start_time`, filtered to the three real outlets and `abs(gap) > 0.0005`.
+> Re-deriving it invites a different filter and a different answer.
