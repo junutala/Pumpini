@@ -84,9 +84,22 @@ function priceLookup(client, station_id, suppliedPrice, nozzleCount) {
 //   * a nozzle with no closing — a missing leg silently understates the shift;
 //   * closing BELOW opening — a meter cannot run backwards, so the figure is wrong,
 //     and accepting it would post a negative sale.
+// 🔴 TEST LITRES ARE NO LONGER TYPED (04-Aug-2026). `testByNozzle` comes from
+// `fuel_test_draws` — the events recorded WHEN the manager drew fuel into the
+// measuring can — and it WINS over anything the screen sends for that nozzle.
+//
+// The typed figure it replaces (`shift_reconciliation.test_ltrs`) was filled zero
+// times in production across the system's whole life: a number remembered hours later
+// at close does not get remembered. It also could not name the nozzle, being one
+// figure per operator, and it said nothing about the fuel going back into a tank.
+//
+// A client-sent value still applies to a nozzle with NO recorded draw, so nothing
+// breaks while the Testing screen is being adopted. Once a draw exists for a nozzle it
+// is the authority, for the same reason the carried opening is: a control the screen
+// can overrule is not a control.
 async function computeLegs(client, {
   station_id, opNozzles, closings, closing_reading, test_ltrs = 0, price_per_ltr,
-  missingClosingMessage,
+  missingClosingMessage, testByNozzle = null,
 }) {
   // The single form names the operator's own nozzle, and only when he has exactly
   // one. With two, a bare closing_reading names nothing and the caller must send
@@ -110,7 +123,8 @@ async function computeLegs(client, {
     }
     const opening = parseFloat(nz.opening_reading || 0);
     const closing = parseFloat(c.closing_reading);
-    const test    = parseFloat(c.test_ltrs || 0);
+    const recorded = testByNozzle && testByNozzle[nz.nozzle_id];
+    const test    = recorded != null ? parseFloat(recorded) : parseFloat(c.test_ltrs || 0);
     const meterLtrs = closing - opening;
     if (!(meterLtrs >= 0)) {
       throw new SettlementError(400, 'Closing reading must be ≥ opening reading for every nozzle.');
