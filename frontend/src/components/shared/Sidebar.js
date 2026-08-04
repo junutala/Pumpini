@@ -9,8 +9,7 @@ import {
   Gauge, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket
-} from 'lucide-react';
+  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -43,6 +42,9 @@ const NAV_GROUPS = [
       { key:'dipstick',   href:'/dipstick',        icon:Gauge,          perm:'dipstick.view' },
       { key:'density',    href:'/density-register',icon:Thermometer,    perm:'dipstick.view' },
       { key:'stockreco',  href:'/stock-reco',      icon:Droplet,        perm:'stock.reconcile' },
+      // The calibration draw — fuel out of a nozzle into the can and back into a tank.
+      // Sits under Stock because that is what it is: a stock movement, not a cash event.
+      { key:'testing',    href:'/testing',         icon:FlaskConical,   perm:'dipstick.entry' },
     ]
   },
   {

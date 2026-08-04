@@ -71,7 +71,8 @@
     "density": "Density Register",
     "credit_reports": "Credit Reports",
     "slipbooks": "Coupon Books",
-    "coupons": "Credit Coupons"
+    "coupons": "Credit Coupons",
+    "testing": "Testing"
   },
   "roles": {
     "owner": "Owner",
@@ -2445,8 +2446,8 @@
     "nozzlesUnmanned": "{n} nozzle(s) still unmanned",
     "staggerHint2": "Each attendant goes live the moment you press Start. Stay here for the next one, or leave and come back as they arrive.",
     "doneToDashboard": "Done — go to dashboard",
-    "dipMissingTitle": "Some tanks have no opening reading",
-    "dipMissingBody": "Tank {list} has no opening dip. Without it, today’s stock variance for that tank cannot be trusted.",
+    "dipMissingTitle": "Dip readings missing",
+    "dipMissingBody": "No opening dip has been recorded for:",
     "dipMissingBack": "Enter the readings",
     "dipMissingGo": "Continue anyway",
     "errPickAttendant": "Pick the attendant",
@@ -2525,8 +2526,6 @@
     "slipFailed": "Slip scan failed",
     "notSaved": "● Not saved",
     "savingDips": "Saving dips…",
-    "dipMissingTitle": "Dip readings missing",
-    "dipMissingBody": "No opening dip has been recorded for:",
     "dipMissingWhy": "Without an opening dip this shift cannot be reconciled — any stock loss on these tanks will go undetected.",
     "dipMissingEnter": "Enter dip readings",
     "dipMissingSkip": "Continue without dip readings",
@@ -2843,5 +2842,35 @@
   },
   "photo": {
     "remove": "Remove"
+  },
+  "testing": {
+    "title": "Testing",
+    "subtitle": "Record the calibration draw — fuel out of a nozzle, into the can, and back into a tank. The operator is not charged for it and the tank gets it back.",
+    "fuel": "Fuel",
+    "fromNozzle": "Drawn from nozzle",
+    "selectNozzle": "Select nozzle…",
+    "nozzle": "Nozzle",
+    "pump": "Pump",
+    "noNozzles": "No active nozzles for this fuel.",
+    "noTanks": "No tanks configured for this outlet.",
+    "litres": "Litres drawn",
+    "scanSlip": "Scan the testing slip",
+    "toTank": "Poured back into tank",
+    "tank": "Tank",
+    "selectTank": "Select tank…",
+    "current": "current",
+    "onlyTank": "the only tank for this fuel",
+    "thisNozzlesTank": "this nozzle's tank",
+    "crossTankWarn": "This moves stock between two tanks: {a} loses {l} L and {b} gains it. That is fine — it is exactly what happened — but both tanks will show it on the stock reconciliation.",
+    "record": "Record testing draw",
+    "saving": "Saving…",
+    "saved": "Recorded {l} L from nozzle {n} into tank {t}.",
+    "errNozzle": "Choose the nozzle the fuel was drawn from.",
+    "errTank": "Choose the tank the fuel was poured back into.",
+    "errLitres": "Enter the quantity in litres.",
+    "errSave": "Could not record the draw.",
+    "recent": "Recent testing draws",
+    "none": "Nothing recorded yet.",
+    "crossTank": "across tanks"
   }
 }

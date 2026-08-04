@@ -10,6 +10,7 @@ const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 const artifacts  = require('../services/artifactService');
 const settlement = require('../services/settlementService');
+const testDraws  = require('../services/testDrawService');
 
 // Does the outlet-level self-settlement switch exist yet? Cached only once TRUE, so
 // the first settle after the owner runs the DDL honours it without a restart.
@@ -238,8 +239,13 @@ router.post('/manager', authenticate,
 
       const opNozzles = await settlement.loadOperatorNozzles(client, {
         shift_id, attendant_id, noneMessage: 'No nozzles assigned to this operator.' });
+      // Test fuel comes from the draws recorded at the pump, not from a typed figure.
+      // Shared by both settlement paths so the operator's relief is identical whoever
+      // closes his line.
+      const testByNozzle = await testDraws.testLitresByNozzle({ shift_id, attendant_id }, client);
       const { legs, salesValue, totalTest } = await settlement.computeLegs(client, {
         station_id: sa.station_id, opNozzles, closings, closing_reading, test_ltrs, price_per_ltr,
+        testByNozzle,
         missingClosingMessage: "A closing reading is missing for one of the operator's nozzles.",
       });
 
@@ -423,8 +429,11 @@ router.post('/self-settle', authenticate,
 
       const opNozzles = await settlement.loadOperatorNozzles(client, {
         shift_id, attendant_id, noneMessage: 'No nozzles are assigned to you.' });
+      // Same source as the manager path — see the note there.
+      const testByNozzle = await testDraws.testLitresByNozzle({ shift_id, attendant_id }, client);
       const { legs, salesValue, totalTest } = await settlement.computeLegs(client, {
         station_id: sa.station_id, opNozzles, closings, closing_reading, test_ltrs,
+        testByNozzle,
         missingClosingMessage: 'A closing reading is missing for one of your nozzles.',
       });
 
