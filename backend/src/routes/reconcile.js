@@ -4,7 +4,7 @@ const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
 const invoiceNo = require('../services/invoiceNumberService');
-const { requirePerm } = require('../middleware/permissions');
+const { requirePerm, requireAnyPerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
@@ -726,9 +726,19 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
 // shift_attendant_nozzles, and this feeds it.
 // Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
 // gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
+// THE one meter reader: a photograph of a nozzle's totalizer in, the number out.
+// Nothing is written — the caller decides what to do with the figure.
+//
+// This absorbed /reconcile/ocr-meter, which was a complete copy of it differing only
+// in requirePerm (reconcile.manage rather than settlement.enter) because neither role
+// holds the other's permission. Both are accepted here instead. Shift Open, Shift
+// Close, POS and the operator's own settlement screen all send the SAME body and read
+// the SAME three fields, so there was never a second behaviour — only a second guard.
+// This route is the superset: it also reports the nozzle's opening and whether the
+// reading falls below it, which the copy never did and its callers therefore never got.
 router.post('/pos-meter', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
-  requirePerm('settlement.enter'),
+  requireAnyPerm('settlement.enter', 'reconcile.manage'),
   async (req, res, next) => {
   const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
   if (!shift_id || !nozzle_id || !image_base64) return res.status(400).json({ error: 'shift_id, nozzle_id and image are required' });
@@ -797,64 +807,11 @@ router.post('/pos-meter', authenticate,
 // POST /api/reconcile/shift-opening-meters — REMOVED. Dead (no UI); the live
 // opening-meter capture is the attendant's /pos-meter. See docs/drift-audit.md.
 
-// POST /api/reconcile/ocr-meter — read a fuel-pump totalizer photo via Claude
-// vision, store the image for audit, return the extracted digits. The manager
-// confirms the number on screen; legible=false means "verify before trusting".
-router.post('/ocr-meter', authenticate,
-  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
-  requirePerm('reconcile.manage'),
-  async (req, res, next) => {
-  try {
-    const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
-    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
-
-    let reading = '', legible = false, notes = '';
-    try {
-      const ai = await aiClient.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
-            { type: 'text', text: 'This image is a fuel dispenser cumulative totalizer — a mechanical/electronic counter showing the total litres dispensed for one nozzle over the pump\'s life. Read its digits exactly, left to right, ignoring separators (keep a decimal point only if clearly shown). Respond with ONLY a JSON object and nothing else: {"reading":"<digits as shown>","legible":<true|false>,"notes":"<short note>"}. Set legible=false if any digit is unclear, mid-roll, glare-obscured, or you are not confident.' },
-          ],
-        }],
-      });
-      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
-      const m = txt.match(/\{[\s\S]*\}/);
-      const parsed = m ? JSON.parse(m[0]) : {};
-      reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
-      legible = parsed.legible === true && reading !== '';
-      notes   = String(parsed.notes ?? '');
-    } catch (e) {
-      notes = 'OCR failed: ' + (e.message || 'unknown');
-    }
-
-    // Keep the image for audit (best-effort). bytes → private bucket, DB keeps
-    // only the path; falls back to legacy base64 if storage_path isn't migrated.
-    try {
-      await storeMeterPhoto({ shift_id, nozzle_id: nozzle_id || null, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
-    } catch { /* table not yet created / store failed — OCR result still returns */ }
-
-    res.json({ reading, legible, notes });
-  } catch (err) { next(err); }
-});
-
-// POST /api/reconcile/parse-slip — read a printed pump "Electronic Totalizer"
-// slip (ALL nozzles of one pump at once) via Claude vision. Auto-detects the two
-// layouts and returns each nozzle's CUMULATIVE VOLUME — the anchor the shift
-// open/close uses (litres sold = closing slip − opening slip). One slip can be
-// too long for one photo, so the client may call this per photo and merge.
-// The slip reader lives in services/slipParser — see the require at the top of this
-// file. This route USED to carry its own copy of the prompt, and the two drifted:
-// slipParser learned "Pump SNo", "DU SERIAL NO" and all-digit serials when pump
-// setup met real machines, while this copy still knew only "PUMP SERIAL NUMBER"
-// with one alphanumeric example. The consequence was silent and expensive — a
-// Kamala slip printing "Pump SNo :201807000927" yielded no serial here, the match
-// fell through to the FP. ID printed on the paper, and the readings were offered to
-// a DIFFERENT pump's nozzles. One reader, one prompt, both screens.
-
+// POST /api/reconcile/ocr-meter — REMOVED 04-Aug-2026. It was a second copy of /pos-meter
+// above, made only so it could carry a different requirePerm. See the cardinal rule
+// in CLAUDE.md: a copied block with a changed permission is the tell. Its callers
+// (Shift Open, Shift Close) now use /pos-meter, which returns everything ocr-meter
+// did and the opening cross-check besides.
 
 router.post('/parse-slip', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
