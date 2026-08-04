@@ -497,7 +497,7 @@ export default function ShiftStartPage() {
     setScanning(nozzle.id); setErr('');
     try {
       const b64 = await readB64(file);
-      const r = await api.post('/reconcile/ocr-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       if (r.reading) pickNoz(nozzle.id, { selected:true, opening: r.reading });
       if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozzle.nozzle_number) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errScanFailed','Scan failed')); }

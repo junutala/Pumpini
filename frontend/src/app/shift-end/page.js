@@ -255,7 +255,7 @@ export default function ShiftEndPage() {
     setScanning(nozzle.nozzle_id); setErr('');
     try {
       const b64 = await readB64(file);
-      const r = await api.post('/reconcile/ocr-meter', { shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       if (r.reading) setCl(a.attendant_id, nozzle.nozzle_id, r.reading);
       if (!r.legible) setErr(tc('send.scanUnclear', 'Nozzle {n}: scan unclear{notes} — check the reading.').replace('{n}', nozzle.nozzle_number).replace('{notes}', r.notes ? ` (${r.notes})` : ''));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.scanFailed', 'Scan failed')); }
