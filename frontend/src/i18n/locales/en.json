@@ -1641,7 +1641,10 @@
     "overdue": "overdue",
     "cash": "cash",
     "tapOutletHint": "Tap an outlet to open its full cockpit (live, unmasked).",
-    "exceptions": "Exceptions"
+    "exceptions": "Exceptions",
+    "pickDate": "Show a specific trade day",
+    "clearDate": "Latest settled",
+    "dateHint": "latest settled day"
   },
   "intel": {
     "pageTitle": "Intelligence",
@@ -2874,5 +2877,10 @@
     "recent": "Recent testing draws",
     "none": "Nothing recorded yet.",
     "crossTank": "across tanks"
+  },
+  "gprod": {
+    "ytd": "Year to date · financial year",
+    "borrowedOne": "{p} at {o} is costed on {from}’s rate (₹{r}/L) — estimated until its own delivery rate is entered.",
+    "anotherOutlet": "another outlet"
   }
 }

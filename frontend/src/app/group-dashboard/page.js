@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Building2, Bell, CheckCircle, AlertTriangle, Clock, UserX,
-  Landmark, TrendingUp, TrendingDown, ChevronRight, Brain } from 'lucide-react';
+  Landmark, TrendingUp, TrendingDown, ChevronRight, Brain, CalendarDays } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -35,6 +35,11 @@ export default function GroupDashboardPage() {
   const [selectedOutlet, setSelectedOutlet] = useState(null);
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(false);
+  // Empty = the default "last settled day per bunk". A chosen date PINS every outlet
+  // to that one trade day, which is the only way to compare bunks that settled on
+  // different days. Today is the ceiling — there is no data ahead of the meters.
+  const [pickDate, setPickDate] = useState('');
+  const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
   const stationId = typeof station === 'object' ? station?.id : station;
 
@@ -53,14 +58,18 @@ export default function GroupDashboardPage() {
     if (stationId && selectedOutlet && selectedOutlet !== stationId) setSelectedOutlet(stationId);
   }, [stationId]);
 
-  const loadGroup = async (id) => {
+  const loadGroup = async (id, date) => {
     setLoading(true);
     // as_of=settled → each outlet's sales/margin/litres reflect its last settled
     // trade day, not the empty running "today" (Intelligence keeps today's default).
-    try { setData(await api.get(`/groups/${id}/dashboard?as_of=settled`)); }
+    // An explicit date overrides that and pins every outlet to the same day.
+    const d = date === undefined ? pickDate : date;
+    const qs = d ? `date=${d}` : 'as_of=settled';
+    try { setData(await api.get(`/groups/${id}/dashboard?${qs}`)); }
     catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
+  const changeDate = (d) => { setPickDate(d); if (selectedGroup) loadGroup(selectedGroup.id, d); };
   const loadGroups = useCallback(() => api.get('/groups/my').then(g => {
     setGroups(g); if (g.length === 1) { setSelectedGroup(g[0]); loadGroup(g[0].id); }
   }), []);
@@ -79,7 +88,19 @@ export default function GroupDashboardPage() {
           <h1 className="page-title">{tc('gdash.operations', 'Operations')}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('gdash.bunksAtGlance', 'Your bunks at a glance · drill into any one')}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Date picker. Blank means "each bunk's own last settled day" — the
+              default — and that is spelled out beside it rather than left for the
+              owner to infer from an empty box. */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-2,#475569)' }}>
+            <CalendarDays size={14} />
+            <input type="date" value={pickDate} max={todayIST} onChange={e => changeDate(e.target.value)}
+              aria-label={tc('gdash.pickDate', 'Show a specific trade day')}
+              style={{ fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: 'var(--surface,#fff)', color: 'inherit' }} />
+            {pickDate
+              ? <button onClick={() => changeDate('')} className="btn btn-secondary btn-sm" style={{ padding: '4px 9px' }}>{tc('gdash.clearDate', 'Latest settled')}</button>
+              : <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{tc('gdash.dateHint', 'latest settled day')}</span>}
+          </label>
           <button className="btn btn-primary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> {tc('gdash.intelligence', 'Intelligence')}</button>
           {selectedGroup && <button className="btn btn-secondary btn-sm" onClick={() => loadGroup(selectedGroup.id)}><RefreshCw size={14} /></button>}
         </div>
@@ -117,7 +138,7 @@ export default function GroupDashboardPage() {
         const s = st.find(x => x.id === selectedOutlet);
         const hasFuel = s?.by_fuel && (s.by_fuel.day?.length || s.by_fuel.mtd?.length);
         return hasFuel
-          ? <GroupProductTiles key={selectedOutlet} stations={[s]} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} />
+          ? <GroupProductTiles key={selectedOutlet} stations={[s]} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} ytdFrom={data.totals?.ytd_from} />
           : <DashboardPage key={selectedOutlet} stationId={selectedOutlet} embedded />;
       })()}
 
@@ -141,7 +162,7 @@ export default function GroupDashboardPage() {
               Falls back to the plain totals row if the backend hasn't shipped the
               per-product payload yet (e.g. mid-deploy). */}
           {st.some(s => s.by_fuel && (s.by_fuel.day?.length || s.by_fuel.mtd?.length)) ? (
-            <GroupProductTiles stations={st} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} />
+            <GroupProductTiles stations={st} asOfDate={data.as_of_date} asOfUniform={data.as_of_uniform} ytdFrom={data.totals?.ytd_from} />
           ) : (
             <div className="stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
               <div style={mini}>
