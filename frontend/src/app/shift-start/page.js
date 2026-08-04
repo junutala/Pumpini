@@ -288,12 +288,17 @@ export default function ShiftStartPage() {
   };
   const [nozPick, setNozPick] = useState({});       // nozzle_id -> { selected, opening }
   const [openings, setOpenings] = useState({});     // nozzle_id -> the prior close
-  // nozzle_id -> 'carried' | 'entered'. THE OPENING IS THE LAST CLOSE (owner rule,
-  // 01-Aug): where one exists the server uses it whatever this screen sends, so the
-  // box is shown READ-ONLY rather than as an editable field whose value is ignored.
-  // 'entered' means no prior close anywhere — a newly commissioned nozzle or the
-  // very first shift — and only then is a figure actually needed from the manager.
+  // nozzle_id -> 'carried' | 'pending' | 'entered'. THE OPENING IS THE LAST CLOSE
+  // (owner rule, 01-Aug): where one exists the server uses it whatever this screen
+  // sends, so the box is shown READ-ONLY rather than as an editable field whose value
+  // is ignored. The other two both open the box, and the difference between them is
+  // what the manager is told:
+  //   'entered' — no prior leg at all: a new nozzle or the very first shift.
+  //   'pending' — the shift before this one has the nozzle and has not been settled,
+  //               so its closing does not exist yet. Calling that "a new nozzle" is
+  //               how a manager learns to ignore the warning, so it says which shift.
   const [openSrc, setOpenSrc] = useState({});
+  const [openPending, setOpenPending] = useState({}); // nozzle_id -> the unsettled shift
   const [scanning, setScanning] = useState('');
   // PhotoCapture holds its own preview; remounting it is the only way to clear that
   // preview after a successful Start, so the next attendant never inherits a face.
@@ -306,12 +311,13 @@ export default function ShiftStartPage() {
     const d = await api.get(`/shifts/${id}`);
     setShift(d); setAttendants(d?.attendants || []);
     const ops = await api.get(`/shifts/${id}/nozzle-openings`).catch(()=>[]);
-    const map = {}; const src = {};
+    const map = {}; const src = {}; const pend = {};
     (Array.isArray(ops)?ops:[]).forEach(o => {
       if (o.suggested_opening != null) map[o.nozzle_id] = o.suggested_opening;
       src[o.nozzle_id] = o.source || (o.suggested_opening != null ? 'carried' : 'entered');
+      if (o.pending_on) pend[o.nozzle_id] = o.pending_on;
     });
-    setOpenings(map); setOpenSrc(src);
+    setOpenings(map); setOpenSrc(src); setOpenPending(pend);
 
     // The opening dips the SERVER carried forward from the last close when this
     // shift was opened. A tank that has one needs nothing from the manager — the
@@ -608,7 +614,7 @@ export default function ShiftStartPage() {
         // will overwrite would tell the manager his reading was accepted when it
         // was not. If the slip and the last close genuinely disagree that is a
         // discrepancy to investigate, not an opening to adjust.
-        if (openSrc[noz.id] !== 'entered' && openings[noz.id] != null) {
+        if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
           pickNoz(noz.id, { selected: true });
           if (Math.abs(Number(n.cumulative_volume) - Number(openings[noz.id])) > 1) {
             locked.push(`${n.label} (${tc('sstart.slipSays','slip')} ${n.cumulative_volume} vs ${openings[noz.id]})`);
@@ -934,7 +940,10 @@ export default function ShiftStartPage() {
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
                   const sug = openings[n.id];
                   // Carried = the last close, and the server will use it regardless.
-                  const carried = openSrc[n.id] !== 'entered' && sug != null;
+                  const carried = openSrc[n.id] === 'carried' && sug != null;
+                  // Not carried because the shift before this one has not been settled
+                  // yet — a different thing from a nozzle that has never run.
+                  const pendingOn = !carried && openSrc[n.id] === 'pending' ? openPending[n.id] : null;
                   const cur = carried ? sug : (pick?.opening ?? '');
                   return (
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
@@ -964,7 +973,13 @@ export default function ShiftStartPage() {
                           🔒 {tc('sstart.carriedFromClose','Carried from the last close — the opening must equal it, so there is no gap between shifts.')}
                         </div>
                       )}
-                      {sel && !carried && (
+                      {sel && pendingOn && (
+                        <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
+                          ⚠ {tc('sstart.priorShiftUnsettled','Shift {n} has this nozzle and has not been settled, so there is no close to carry yet — read the meter and enter it. Settle that shift at the same figure.')
+                                .replace('{n}', pendingOn.shift_number ?? '—')}
+                        </div>
+                      )}
+                      {sel && !carried && !pendingOn && (
                         <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
                           ⚠ {tc('sstart.noPriorClose','No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.')}
                         </div>
