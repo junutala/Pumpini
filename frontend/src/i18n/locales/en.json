@@ -1643,8 +1643,11 @@
     "tapOutletHint": "Tap an outlet to open its full cockpit (live, unmasked).",
     "exceptions": "Exceptions",
     "pickDate": "Show a specific trade day",
-    "clearDate": "Latest settled",
-    "dateHint": "latest settled day"
+    "clearDate": "Back to last settled",
+    "dateHint": "latest settled day",
+    "showingDay": "Showing {d}",
+    "showingLatest": "Showing the last settled day · {d}",
+    "showingLatestPerBunk": "Showing each bunk’s own last settled day"
   },
   "intel": {
     "pageTitle": "Intelligence",

@@ -88,19 +88,7 @@ export default function GroupDashboardPage() {
           <h1 className="page-title">{tc('gdash.operations', 'Operations')}</h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>{tc('gdash.bunksAtGlance', 'Your bunks at a glance · drill into any one')}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Date picker. Blank means "each bunk's own last settled day" — the
-              default — and that is spelled out beside it rather than left for the
-              owner to infer from an empty box. */}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--text-2,#475569)' }}>
-            <CalendarDays size={14} />
-            <input type="date" value={pickDate} max={todayIST} onChange={e => changeDate(e.target.value)}
-              aria-label={tc('gdash.pickDate', 'Show a specific trade day')}
-              style={{ fontFamily: 'inherit', fontSize: 12.5, padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border,#e5e7eb)', background: 'var(--surface,#fff)', color: 'inherit' }} />
-            {pickDate
-              ? <button onClick={() => changeDate('')} className="btn btn-secondary btn-sm" style={{ padding: '4px 9px' }}>{tc('gdash.clearDate', 'Latest settled')}</button>
-              : <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{tc('gdash.dateHint', 'latest settled day')}</span>}
-          </label>
+        <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary btn-sm" onClick={() => router.push('/intelligence')}><Brain size={14} /> {tc('gdash.intelligence', 'Intelligence')}</button>
           {selectedGroup && <button className="btn btn-secondary btn-sm" onClick={() => loadGroup(selectedGroup.id)}><RefreshCw size={14} /></button>}
         </div>
@@ -112,6 +100,48 @@ export default function GroupDashboardPage() {
             <button key={g.id} className={`btn ${selectedGroup?.id === g.id ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => { setSelectedGroup(g); setSelectedOutlet(null); loadGroup(g.id); }}><Building2 size={14} />{g.name}</button>
           ))}
+        </div>
+      )}
+
+      <style>{`
+        @media(max-width:560px){
+          .gdash-period{align-items:flex-start}
+          .gdash-period>span:last-child{margin-left:0;width:100%}
+          .gdash-period input[type=date]{flex:1}
+        }
+      `}</style>
+
+      {/* ── WHICH DAY AM I LOOKING AT ────────────────────────────────────────
+          Deliberately loud, and deliberately ABOVE the numbers rather than beside
+          the buttons. Every figure below is meaningless without its period, so this
+          states the period in words first and offers the control second — a small
+          grey date box next to Refresh was read as chrome and skipped, which is
+          worse than having no picker at all: the owner would trust a figure without
+          knowing what it covers. The brand orange is doing a job here, not
+          decoration. */}
+      {data && !loading && (
+        <div className="gdash-period" style={{ background: 'var(--brand,#e07b0c)', borderRadius: 12, padding: '11px 14px', marginBottom: 14, color: '#fff', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', boxShadow: '0 1px 3px rgba(224,123,12,.35)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <CalendarDays size={18} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 13.5, fontWeight: 800, lineHeight: 1.35 }}>
+              {pickDate
+                ? tc('gdash.showingDay', 'Showing {d}').replace('{d}', fmtFull(pickDate))
+                : (data.as_of_uniform === false
+                    ? tc('gdash.showingLatestPerBunk', 'Showing each bunk’s own last settled day')
+                    : tc('gdash.showingLatest', 'Showing the last settled day · {d}').replace('{d}', fmtFull(data.as_of_date)))}
+            </span>
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input type="date" value={pickDate} max={todayIST} onChange={e => changeDate(e.target.value)}
+              aria-label={tc('gdash.pickDate', 'Show a specific trade day')}
+              style={{ fontFamily: 'inherit', fontSize: 13, fontWeight: 700, padding: '6px 9px', borderRadius: 8, border: '1.5px solid rgba(255,255,255,.75)', background: 'rgba(255,255,255,.16)', color: '#fff', colorScheme: 'dark' }} />
+            {pickDate && (
+              <button onClick={() => changeDate('')}
+                style={{ fontFamily: 'inherit', fontSize: 12.5, fontWeight: 800, padding: '7px 12px', borderRadius: 8, border: 0, background: '#fff', color: 'var(--brand,#e07b0c)', cursor: 'pointer' }}>
+                {tc('gdash.clearDate', 'Back to last settled')}
+              </button>
+            )}
+          </span>
         </div>
       )}
 
