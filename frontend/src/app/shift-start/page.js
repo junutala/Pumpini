@@ -539,12 +539,19 @@ export default function ShiftStartPage() {
         pickNoz(noz.id, { selected: true, opening: n.cumulative_volume });
         matched++;
       });
-      if (!matched) setErr(tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
+      // The server's hint names the serial and the screen that fixes it, so prefer
+      // it over the generic wording whenever it is present.
+      if (!matched) setErr(r.hint || tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
       else {
         let msg = tc('sstart.slipTicked','Ticked {n} nozzle(s) from the slip.').replace('{n}', matched);
         if (miss.length)  msg += ' ' + tc('sstart.slipNoMatchSome','No app nozzle for: {x}.').replace('{x}', miss.join(', '));
         if (locked.length) msg += ' ' + tc('sstart.slipDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
         if (!r.legible)   msg += ' ' + tc('sstart.slipVerify','⚠ Some digits unclear — verify.');
+        // The server's own warning — chiefly an unrecognised pump serial, which
+        // means these readings may have been matched on the pump number the slip
+        // prints rather than on the machine's identity. Shown verbatim: it names
+        // the serial and the screen that fixes it, which no client wording can.
+        if (r.hint)       msg += ' ⚠ ' + r.hint;
         setErr(msg);
       }
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipFailed','Slip scan failed')); }
