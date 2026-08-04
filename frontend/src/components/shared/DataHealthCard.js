@@ -23,7 +23,7 @@ const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--bor
 const IST = { timeZone: 'Asia/Kolkata' };
 const fmtDay = (d) => { try { return new Date((d && d.length <= 10 ? d + 'T00:00:00' : d)).toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short' }); } catch { return d || ''; } };
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const ICON = { missing_dip: Droplets, overdue_physical_dip: Gauge, stale_open_shift: Clock, late_close: Clock, handover_mismatch: AlertTriangle, unverified_meter_entry: AlertTriangle };
+const ICON = { missing_dip: Droplets, overdue_physical_dip: Gauge, stale_open_shift: Clock, late_close: Clock, handover_mismatch: AlertTriangle, meter_handover_gap: Gauge, unverified_meter_entry: AlertTriangle };
 
 // Human-readable line for a single flag. tc = translate helper (key, fallback).
 function flagText(f, tc) {
@@ -46,6 +46,18 @@ function flagText(f, tc) {
     case 'handover_mismatch':
       return tc('dh.handover', '{t} — handover gap {v} L ({from} → {to})')
         .replace('{t}', tank(f.tank_number, f.fuel_type))
+        .replace('{v}', f.diff_ltrs != null ? (f.diff_ltrs > 0 ? '+' : '') + f.diff_ltrs : '?')
+        .replace('{from}', fmtDay(f.prev_date))
+        .replace('{to}', fmtDay(f.date));
+    // The meter twin of the line above. Worded as litres rather than as a verdict:
+    // where the server carried the close forward the two figures are identical, so a
+    // difference means the opening was typed — and these are the litres that ended up
+    // on nobody's settlement. A pump swap produces the same flag, which is why it
+    // reports the size and lets the owner ask.
+    case 'meter_handover_gap':
+      return tc('dh.meterHandover', 'Nozzle {n} · {fuel} — opening meter {v} L off the previous close ({from} → {to})')
+        .replace('{n}', f.nozzle_number)
+        .replace('{fuel}', cap(f.fuel_type || ''))
         .replace('{v}', f.diff_ltrs != null ? (f.diff_ltrs > 0 ? '+' : '') + f.diff_ltrs : '?')
         .replace('{from}', fmtDay(f.prev_date))
         .replace('{to}', fmtDay(f.date));
