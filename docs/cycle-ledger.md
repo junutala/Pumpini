@@ -183,6 +183,39 @@ Reconciliation, stored once at close:
 variance_ltrs = opening + delivered − sold − closing
 ```
 
+### 4.1.1 How `delivered_ltrs` is attributed
+
+**Not by `shift_id`.** Verified in production 04-Aug-2026: **all 63 deliveries across the
+three real outlets have `fuel_deliveries.shift_id = NULL`**, and always have. It is never
+populated.
+
+That is harmless today only because `tankReco` already windows on the timestamp instead:
+
+```sql
+AND fd.received_at >  COALESCE(op.recorded_at, …)
+AND fd.received_at <= COALESCE(cl.recorded_at, …)
+```
+
+But look at what bounds that window: **the dip rows' `recorded_at`** — the very timestamps
+the duplicate and stale-carry rows corrupted. A seeded opening carries the time it was
+*seeded*, not the time the tank was *read*, so a tanker can fall on the wrong side of a
+boundary and be counted into the wrong shift. Several of the 14 backfill disagreements
+(§7 Step 2) are very likely exactly this.
+
+**In the cycle ledger the window is the cycle itself:**
+
+```
+delivered_ltrs = Σ fuel_deliveries.received_at ∈ ( previous cycle.closed_at , this cycle.closed_at ]
+```
+
+Two properties follow. The bound is a **reading event** rather than a row's insert time, so
+it cannot drift. And because cycles are contiguous and gapless by `seq`, **every delivery
+falls into exactly one cycle** — none double-counted, none lost between two shifts.
+
+Going forward `fuel_deliveries` also carries a `tank_cycle_id`, stamped when the decant is
+recorded, so attribution stops being an inference at all. `received_at` remains the
+authority for the backfill and for any delivery recorded before that column exists.
+
 ### 4.2 `nozzle_cycles`
 
 | Column | Type | Notes |
@@ -366,6 +399,24 @@ data begins **25-Jun-2026**; the ledger starts there.
 **Test fixtures are excluded.** Only Kamala, Adhoc Highway and Highway are real outlets in
 production. Dilsukhnagar Bunk, VAWE-1 and the unnamed outlet are backfilled in staging
 only, so a prod ledger holds nothing that has to be filtered out by hand later.
+
+**The disagreement report, run 04-Aug-2026 (read-only).** Fourteen places where a stored
+opening differs from the previous shift's closing — **all of them at Kamala**; Highway and
+Adhoc Highway have none. They fall into three groups:
+
+| Group | Examples | Reading |
+|---|---|---|
+| Noise | ±12 to ±39 L (25-Jun, 15-Jul, 20-Jul, 29-Jul, 31-Jul) | measurement tolerance; accept |
+| Positive jumps | +1,538 (T1 16-Jul), +3,442 (T2 16-Jul), +1,097 (T3 16-Jul) | a decant landing outside the dip window (§4.1.1) |
+| Negative gaps | −688 (T1 04-Jul), −869 (T1 24-Jul), −2,339 (T2 24-Jul), −1,016 (T3 24-Jul) | stock leaving **between** two shifts — the exact gap the carry-forward rule exists to close |
+
+The 24-Jul cluster hits all three tanks on the day all three took a delivery, which points
+at the delivery window rather than at three simultaneous losses. The backfill does not
+"fix" any of these — it records each as the cycle's `variance_ltrs` so the drift is
+permanent and visible, which is the whole purpose of the column.
+
+Kamala 16-Jul tank 2 (511.69 vs 12,824.76, prior close 9,382.66) remains held for the
+owner's decision and is the one duplicate pair deliberately left in place.
 
 **Step 3 — dual-write.** New readings land in both models. Reads stay on the old. Nothing
 user-visible changes; the two models are compared daily.
