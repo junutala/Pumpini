@@ -10,6 +10,21 @@ const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 const artifacts  = require('../services/artifactService');
 const settlement = require('../services/settlementService');
+
+// Does the outlet-level self-settlement switch exist yet? Cached only once TRUE, so
+// the first settle after the owner runs the DDL honours it without a restart.
+let _hasSelfSettleFlag = false;
+async function hasSelfSettleFlag(client = pool) {
+  if (_hasSelfSettleFlag) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='self_settlement_enabled' LIMIT 1`);
+    _hasSelfSettleFlag = rows.length > 0;
+  } catch { _hasSelfSettleFlag = false; }
+  return _hasSelfSettleFlag;
+}
 const slipParser = require('../services/slipParser');
 const attendance = require('../services/attendanceService');
 
@@ -369,6 +384,27 @@ router.post('/self-settle', authenticate,
         shift_id, attendant_id,
         notFoundStatus: 403, notFoundMessage: 'You are not assigned to this shift.' });
       if (sa.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This shift is already closed.' }); }
+
+      // OUTLET POLICY, enforced here and not only in the menu. Some outlets run
+      // operator self-service and others are manager-led (CLAUDE.md, owner-set
+      // 04-Aug); this is the outlet saying which. Server-authoritative for the same
+      // reason the geofence below is — hiding a sidebar link is a hint, not a gate,
+      // and a settlement recorded down the wrong path at a manager-led outlet is a
+      // second record of the same money.
+      //
+      // PROBED, never try-and-caught. This runs inside a transaction, where a failed
+      // statement aborts the whole thing and the fallback dies with it — see CLAUDE.md.
+      // A catalog SELECT succeeds either way. An outlet without the column keeps
+      // today's behaviour (self-settlement allowed).
+      if (await hasSelfSettleFlag(client)) {
+        const { rows: pol } = await client.query(
+          `SELECT COALESCE(self_settlement_enabled, TRUE) AS ok
+             FROM station_settings WHERE station_id=$1`, [sa.station_id]);
+        if (pol.length && pol[0].ok === false) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'This outlet settles through the manager. Ask him to close your line at shift end.' });
+        }
+      }
 
       // Server-side geofence — authoritative. If the outlet has geofencing on, the
       // operator's device coords (sent with the request) must be within the radius.
