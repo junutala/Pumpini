@@ -1250,3 +1250,21 @@ DROP TABLE IF EXISTS public.shift_nozzle_readings;
 
 ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS opening_reading;
 ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS closing_reading;
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- WHO CLOSES AN OPERATOR'S LINE (2026-08-04)
+--
+-- Both settlement paths are permanent (CLAUDE.md): the manager closes an operator
+-- at Shift Close, or the operator closes himself at /settlement. Outlets differ,
+-- and until now every attendant everywhere could self-settle — so at a manager-led
+-- outlet an operator could still record a second version of the same money.
+--
+-- This is the OUTLET saying which it runs. DEFAULT TRUE, so every existing outlet
+-- keeps exactly the behaviour it has today and nothing changes on the day the
+-- column appears. Enforced server-side in POST /reconcile/self-settle, the same way
+-- the geofence is — a hidden menu item is a hint, not a gate.
+--
+-- Manager-led close is unaffected either way. This only decides whether the
+-- operator may also do it himself.
+-- ══════════════════════════════════════════════════════════════════════════════
+ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS self_settlement_enabled BOOLEAN DEFAULT TRUE;

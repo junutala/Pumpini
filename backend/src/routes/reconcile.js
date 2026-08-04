@@ -4,11 +4,27 @@ const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationVia } = require('../middleware/stationAccess');
 const invoiceNo = require('../services/invoiceNumberService');
-const { requirePerm } = require('../middleware/permissions');
+const { requirePerm, requireAnyPerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const { recomputeShift } = require('../services/settlementLedger');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 const artifacts  = require('../services/artifactService');
+const settlement = require('../services/settlementService');
+
+// Does the outlet-level self-settlement switch exist yet? Cached only once TRUE, so
+// the first settle after the owner runs the DDL honours it without a restart.
+let _hasSelfSettleFlag = false;
+async function hasSelfSettleFlag(client = pool) {
+  if (_hasSelfSettleFlag) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='self_settlement_enabled' LIMIT 1`);
+    _hasSelfSettleFlag = rows.length > 0;
+  } catch { _hasSelfSettleFlag = false; }
+  return _hasSelfSettleFlag;
+}
 const slipParser = require('../services/slipParser');
 const attendance = require('../services/attendanceService');
 
@@ -216,126 +232,35 @@ router.post('/manager', authenticate,
     try {
       await client.query('BEGIN');
 
-      const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_cash, s.station_id
-        FROM shift_attendants sa
-        JOIN shifts s ON s.id = sa.shift_id
-        WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
-      if (!saRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Attendant not assigned to this shift' }); }
-      const sa = saRows[0];
+      // Line lookup, nozzles and the sale itself all come from settlementService —
+      // the SAME code the operator's own settle runs. See that file for why.
+      const sa = await settlement.loadOperatorLine(client, { shift_id, attendant_id });
 
-      // The operator's nozzles. ONE source — shift_attendant_nozzles. The legacy
-      // single-nozzle fallback on shift_attendants is retired (01-Aug-2026): it read
-      // a column the settlement never trusted, and every row that would have used it
-      // is an unsettled test shift from before multi-nozzle existed.
-      const { rows: opNozzles } = await client.query(`
-        SELECT san.nozzle_id, san.opening_reading, n.fuel_type
-        FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
-        WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles assigned to this operator.' }); }
+      const opNozzles = await settlement.loadOperatorNozzles(client, {
+        shift_id, attendant_id, noneMessage: 'No nozzles assigned to this operator.' });
+      const { legs, salesValue, totalTest } = await settlement.computeLegs(client, {
+        station_id: sa.station_id, opNozzles, closings, closing_reading, test_ltrs, price_per_ltr,
+        missingClosingMessage: "A closing reading is missing for one of the operator's nozzles.",
+      });
 
-      // Closing readings: { nozzle_id -> {closing_reading, test_ltrs} } (multi), else the
-      // single form. The single form used to name the nozzle from the retired
-      // sa.nozzle_id column; it now takes the operator's own nozzle, and only when he
-      // has exactly one — with two, a bare closing_reading names nothing and the
-      // caller must send `closings`.
-      const closeArr = (Array.isArray(closings) && closings.length)
-        ? closings
-        : (closing_reading != null && opNozzles.length === 1
-            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
-      const closeMap = {};
-      for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
-
-      // Price per fuel (supplied price applies only to a single-fuel operator).
-      const priceCache = {};
-      const priceFor = async (fuel) => {
-        if (priceCache[fuel] != null) return priceCache[fuel];
-        let p = (price_per_ltr && opNozzles.length === 1) ? parseFloat(price_per_ltr) : 0;
-        if (!p) {
-          const { rows: pr } = await client.query(
-            `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2 ORDER BY effective_from DESC LIMIT 1`,
-            [sa.station_id, fuel]);
-          p = parseFloat(pr[0]?.price || 0);
-        }
-        priceCache[fuel] = p; return p;
-      };
-
-      // Sales = Σ over his nozzles of (closing − opening − test) × price(fuel).
-      let salesValue = 0, totalTest = 0;
-      const legs = [];
-      for (const nz of opNozzles) {
-        const c = closeMap[nz.nozzle_id];
-        if (!c || c.closing_reading == null || c.closing_reading === '') {
-          await client.query('ROLLBACK');
-          return res.status(400).json({ error: "A closing reading is missing for one of the operator's nozzles." });
-        }
-        const opening = parseFloat(nz.opening_reading || 0);
-        const closing = parseFloat(c.closing_reading);
-        const test    = parseFloat(c.test_ltrs || 0);
-        const meterLtrs = closing - opening;
-        if (!(meterLtrs >= 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Closing reading must be ≥ opening reading for every nozzle.' }); }
-        const litres = Math.max(0, meterLtrs - test);
-        const price  = await priceFor(nz.fuel_type);
-        if (!price) { await client.query('ROLLBACK'); return res.status(400).json({ error: `No current price found for ${nz.fuel_type}.` }); }
-        salesValue += litres * price; totalTest += test;
-        legs.push({ nozzle_id: nz.nozzle_id, fuel_type: nz.fuel_type, price, litres, value: +(litres*price).toFixed(2), closing });
-      }
-      salesValue = +salesValue.toFixed(2);
-
-      const openingCash = parseFloat(sa.opening_cash || 0);
       const cardVal   = parseFloat(card_total || 0);
       const upiVal    = parseFloat(upi_total || 0);
       const creditVal = parseFloat(credit_total || 0);    // manual lump → suspense
       const pettyVal  = parseFloat(petty_cash || 0);      // cash out of drawer → petty-cash fund
-      const cashValue = +(salesValue - cardVal - upiVal - creditVal).toFixed(2);
-      const expectedCash = +(openingCash + cashValue - pettyVal).toFixed(2);
-      const cashActual   = parseFloat(cash_actual || 0);
-      const variance     = +(cashActual - expectedCash).toFixed(2);
+      const cashActual = parseFloat(cash_actual || 0);
+      const { cashValue, expectedCash, variance } = settlement.cashPosition({
+        salesValue, openingCash: sa.opening_cash, cardVal, upiVal, creditVal, pettyVal, cashActual });
 
-      // Re-create synthesized sales: distribute each payment bucket (incl. the
-      // credit lump) across his nozzles by value share — keeps per-fuel litres AND
-      // payment-mode totals exact. amount is generated (qty×rate).
-      await client.query(`DELETE FROM dispense_events WHERE shift_id=$1 AND attendant_id=$2 AND source='manager'`, [shift_id, attendant_id]);
-      for (const leg of legs) {
-        const share = salesValue > 0 ? leg.value / salesValue : (1 / legs.length);
-        for (const [mode, total] of [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]]) {
-          const val = +(total * share).toFixed(2);
-          if (val > 0) {
-            await client.query(
-              `INSERT INTO dispense_events
-                 (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
-                  quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',
-                 (((SELECT date FROM shifts WHERE id=$2)::date + TIME '12:00') AT TIME ZONE 'Asia/Kolkata'))`,
-              [sa.station_id, shift_id, attendant_id, leg.nozzle_id, leg.fuel_type,
-               +(val / leg.price).toFixed(3), leg.price, mode]);
-          }
-        }
-      }
+      await settlement.writeSynthesisedSales(client, {
+        station_id: sa.station_id, shift_id, attendant_id, legs, salesValue,
+        buckets: [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]],
+      });
+      await settlement.persistClosings(client, { shift_id, attendant_id, legs });
 
-      // Persist each nozzle's closing. The mirror onto shift_attendants.closing_reading
-      // is gone — writing "the last leg's closing" onto a single column was where the
-      // impossible figures came from: an operator on four nozzles left one number
-      // standing for four meters, and nothing read it back except a carry-forward
-      // fallback that has now been retired with it.
-      for (const leg of legs) {
-        await client.query(
-          `UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`,
-          [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
-      }
-
-      // Petty cash/skimming → one top-up into the station petty-cash fund per
-      // operator (idempotent on the operator's settlement row).
-      await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
-      if (pettyVal > 0) {
-        const { rows: whoRows } = await client.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
-        const { rows: shRows }  = await client.query('SELECT date FROM shifts WHERE id=$1', [shift_id]);
-        const dt = shRows[0]?.date ? String(shRows[0].date).slice(0, 10) : '';
-        await client.query(
-          `INSERT INTO petty_cash_entries(station_id, direction, amount, entry_type, description, reference_type, reference_id, created_by)
-           VALUES($1,'in',$2,'topup',$3,'shift_close',$4,$5)`,
-          [sa.station_id, pettyVal, `Petty cash @ shift close — ${whoRows[0]?.name || 'operator'}_${dt}`, sa.id, req.user.id]);
-      }
+      await settlement.writePettyCash(client, {
+        station_id: sa.station_id, attendant_id, settlementRowId: sa.id, pettyVal,
+        tradeDate: sa.trade_date, created_by: req.user.id,
+      });
 
       // Credit lump → credit-suspense control account 'in' (idempotent per operator).
       await client.query(`DELETE FROM credit_suspense_entries WHERE shift_id=$1 AND attendant_id=$2 AND reference_type='shift_close' AND direction='in'`, [shift_id, attendant_id]);
@@ -421,7 +346,13 @@ router.post('/manager', authenticate,
       }
 
       res.status(201).json({ ...recoRows[0], variance });
-    } catch (e) { await client.query('ROLLBACK'); next(e); }
+    } catch (e) {
+      await client.query('ROLLBACK');
+      // A refusal raised by settlementService carries the status it should return —
+      // a missing closing is a 400 the operator can act on, not a 500.
+      if (e instanceof settlement.SettlementError) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
     finally { client.release(); }
   });
 
@@ -447,14 +378,33 @@ router.post('/self-settle', authenticate,
     try {
       await client.query('BEGIN');
 
-      const { rows: saRows } = await client.query(`
-        SELECT sa.id, sa.opening_cash, s.station_id, s.status, s.date AS trade_date
-        FROM shift_attendants sa
-        JOIN shifts s ON s.id = sa.shift_id
-        WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
-      if (!saRows.length) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You are not assigned to this shift.' }); }
-      const sa = saRows[0];
+      // Same lookup the manager close runs — 403 rather than 404 here, because the
+      // operator is being told this is not his shift, not that nobody was found.
+      const sa = await settlement.loadOperatorLine(client, {
+        shift_id, attendant_id,
+        notFoundStatus: 403, notFoundMessage: 'You are not assigned to this shift.' });
       if (sa.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This shift is already closed.' }); }
+
+      // OUTLET POLICY, enforced here and not only in the menu. Some outlets run
+      // operator self-service and others are manager-led (CLAUDE.md, owner-set
+      // 04-Aug); this is the outlet saying which. Server-authoritative for the same
+      // reason the geofence below is — hiding a sidebar link is a hint, not a gate,
+      // and a settlement recorded down the wrong path at a manager-led outlet is a
+      // second record of the same money.
+      //
+      // PROBED, never try-and-caught. This runs inside a transaction, where a failed
+      // statement aborts the whole thing and the fallback dies with it — see CLAUDE.md.
+      // A catalog SELECT succeeds either way. An outlet without the column keeps
+      // today's behaviour (self-settlement allowed).
+      if (await hasSelfSettleFlag(client)) {
+        const { rows: pol } = await client.query(
+          `SELECT COALESCE(self_settlement_enabled, TRUE) AS ok
+             FROM station_settings WHERE station_id=$1`, [sa.station_id]);
+        if (pol.length && pol[0].ok === false) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'This outlet settles through the manager. Ask him to close your line at shift end.' });
+        }
+      }
 
       // Server-side geofence — authoritative. If the outlet has geofencing on, the
       // operator's device coords (sent with the request) must be within the radius.
@@ -471,52 +421,12 @@ router.post('/self-settle', authenticate,
         if (!onSite) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'You must be at the outlet to settle — location check failed.' }); }
       }
 
-      // ONE source for the operator's nozzles — see the manager path above for why
-      // the legacy shift_attendants fallback is retired.
-      const { rows: opNozzles } = await client.query(`
-        SELECT san.nozzle_id, san.opening_reading, n.fuel_type
-        FROM shift_attendant_nozzles san JOIN nozzles n ON n.id = san.nozzle_id
-        WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
-      if (!opNozzles.length) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'No nozzles are assigned to you.' }); }
-
-      // Single form names the operator's own nozzle, and only when he has exactly
-      // one — same as the manager path, and for the same reason.
-      const closeArr = (Array.isArray(closings) && closings.length)
-        ? closings
-        : (closing_reading != null && opNozzles.length === 1
-            ? [{ nozzle_id: opNozzles[0].nozzle_id, closing_reading, test_ltrs }] : []);
-      const closeMap = {};
-      for (const c of closeArr) if (c && c.nozzle_id) closeMap[c.nozzle_id] = c;
-
-      // Board price per fuel — same source the manager close uses.
-      const priceCache = {};
-      const priceFor = async (fuel) => {
-        if (priceCache[fuel] != null) return priceCache[fuel];
-        const { rows: pr } = await client.query(
-          `SELECT price FROM fuel_prices WHERE station_id=$1 AND fuel_type=$2 ORDER BY effective_from DESC LIMIT 1`,
-          [sa.station_id, fuel]);
-        const p = parseFloat(pr[0]?.price || 0);
-        priceCache[fuel] = p; return p;
-      };
-
-      // Sales = Σ over his nozzles of (closing − opening − test) × price.
-      let salesValue = 0, totalTest = 0;
-      const legs = [];
-      for (const nz of opNozzles) {
-        const c = closeMap[nz.nozzle_id];
-        if (!c || c.closing_reading == null || c.closing_reading === '') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'A closing reading is missing for one of your nozzles.' }); }
-        const opening = parseFloat(nz.opening_reading || 0);
-        const closing = parseFloat(c.closing_reading);
-        const test    = parseFloat(c.test_ltrs || 0);
-        const meterLtrs = closing - opening;
-        if (!(meterLtrs >= 0)) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Closing reading must be ≥ opening reading for every nozzle.' }); }
-        const litres = Math.max(0, meterLtrs - test);
-        const price  = await priceFor(nz.fuel_type);
-        if (!price) { await client.query('ROLLBACK'); return res.status(400).json({ error: `No current price found for ${nz.fuel_type}.` }); }
-        salesValue += litres * price; totalTest += test;
-        legs.push({ nozzle_id: nz.nozzle_id, fuel_type: nz.fuel_type, price, litres, value: +(litres*price).toFixed(2), opening, closing });
-      }
-      salesValue = +salesValue.toFixed(2);
+      const opNozzles = await settlement.loadOperatorNozzles(client, {
+        shift_id, attendant_id, noneMessage: 'No nozzles are assigned to you.' });
+      const { legs, salesValue, totalTest } = await settlement.computeLegs(client, {
+        station_id: sa.station_id, opNozzles, closings, closing_reading, test_ltrs,
+        missingClosingMessage: 'A closing reading is missing for one of your nozzles.',
+      });
 
       // Payments. "Cash adj" folds into cash — cash + adj = the accountable cash.
       const openingCash = parseFloat(sa.opening_cash || 0);
@@ -528,44 +438,19 @@ router.post('/self-settle', authenticate,
         .filter(l => l.corporate_id && l.amount > 0);
       const creditVal = +creditItems.reduce((a, l) => a + l.amount, 0).toFixed(2);
       const cashActual = +(parseFloat(cash || 0) + parseFloat(cash_adj || 0)).toFixed(2);
-      const cashValue = +(salesValue - cardVal - upiVal - creditVal).toFixed(2);
-      const expectedCash = +(openingCash + cashValue - pettyVal).toFixed(2);
-      const variance = +(cashActual - expectedCash).toFixed(2);
+      const { cashValue, expectedCash, variance } = settlement.cashPosition({
+        salesValue, openingCash, cardVal, upiVal, creditVal, pettyVal, cashActual });
 
-      // Re-synthesise this operator's sales into dispense_events (per nozzle × mode).
-      await client.query(`DELETE FROM dispense_events WHERE shift_id=$1 AND attendant_id=$2 AND source='manager'`, [shift_id, attendant_id]);
-      for (const leg of legs) {
-        const share = salesValue > 0 ? leg.value / salesValue : (1 / legs.length);
-        for (const [mode, total] of [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]]) {
-          const val = +(total * share).toFixed(2);
-          if (val > 0) {
-            await client.query(
-              `INSERT INTO dispense_events
-                 (station_id, shift_id, attendant_id, nozzle_id, fuel_type,
-                  quantity_ltrs, rate_per_ltr, payment_mode, source, occurred_at)
-               VALUES($1,$2,$3,$4,$5,$6,$7,$8,'manager',
-                 (((SELECT date FROM shifts WHERE id=$2)::date + TIME '12:00') AT TIME ZONE 'Asia/Kolkata'))`,
-              [sa.station_id, shift_id, attendant_id, leg.nozzle_id, leg.fuel_type, +(val/leg.price).toFixed(3), leg.price, mode]);
-          }
-        }
-      }
+      await settlement.writeSynthesisedSales(client, {
+        station_id: sa.station_id, shift_id, attendant_id, legs, salesValue,
+        buckets: [['cash', cashValue], ['card', cardVal], ['upi', upiVal], ['credit', creditVal]],
+      });
+      await settlement.persistClosings(client, { shift_id, attendant_id, legs });
 
-      // Persist each nozzle's closing. No mirror onto shift_attendants — see the
-      // manager path above.
-      for (const leg of legs) {
-        await client.query(`UPDATE shift_attendant_nozzles SET closing_reading=$1 WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4`, [leg.closing, shift_id, attendant_id, leg.nozzle_id]);
-      }
-
-      // Petty → station petty-cash fund (idempotent per operator settlement).
-      await client.query(`DELETE FROM petty_cash_entries WHERE reference_type='shift_close' AND reference_id=$1`, [sa.id]);
-      if (pettyVal > 0) {
-        const { rows: who } = await client.query('SELECT name FROM users WHERE id=$1', [attendant_id]);
-        const dt = sa.trade_date ? String(sa.trade_date).slice(0, 10) : '';
-        await client.query(
-          `INSERT INTO petty_cash_entries(station_id, direction, amount, entry_type, description, reference_type, reference_id, created_by)
-           VALUES($1,'in',$2,'topup',$3,'shift_close',$4,$5)`,
-          [sa.station_id, pettyVal, `Petty cash @ self-settle — ${who[0]?.name || 'operator'}_${dt}`, sa.id, attendant_id]);
-      }
+      await settlement.writePettyCash(client, {
+        station_id: sa.station_id, attendant_id, settlementRowId: sa.id, pettyVal,
+        tradeDate: sa.trade_date, created_by: req.user.id,
+      });
 
       // Itemised credit → one invoice per customer line, auto-numbered off the station
       // sequence. Idempotent: clear this operator's prior self-settle invoices for the
@@ -623,7 +508,13 @@ router.post('/self-settle', authenticate,
       try { await recomputeShift(shift_id); } catch (e) { console.error('[settlementLedger]', e.message); }
 
       res.status(201).json({ ...recoRows[0], variance, amount_due: salesValue, legs, invoices });
-    } catch (e) { await client.query('ROLLBACK'); next(e); }
+    } catch (e) {
+      await client.query('ROLLBACK');
+      // A refusal raised by settlementService carries the status it should return —
+      // a missing closing is a 400 the operator can act on, not a 500.
+      if (e instanceof settlement.SettlementError) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
     finally { client.release(); }
   });
 
@@ -726,9 +617,19 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
 // shift_attendant_nozzles, and this feeds it.
 // Meter OCR during shift close — part of the attendant SETTLEMENT flow, so it is
 // gated on settlement.enter (held by attendant + manager + owner), not reconcile.manage.
+// THE one meter reader: a photograph of a nozzle's totalizer in, the number out.
+// Nothing is written — the caller decides what to do with the figure.
+//
+// This absorbed /reconcile/ocr-meter, which was a complete copy of it differing only
+// in requirePerm (reconcile.manage rather than settlement.enter) because neither role
+// holds the other's permission. Both are accepted here instead. Shift Open, Shift
+// Close, POS and the operator's own settlement screen all send the SAME body and read
+// the SAME three fields, so there was never a second behaviour — only a second guard.
+// This route is the superset: it also reports the nozzle's opening and whether the
+// reading falls below it, which the copy never did and its callers therefore never got.
 router.post('/pos-meter', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
-  requirePerm('settlement.enter'),
+  requireAnyPerm('settlement.enter', 'reconcile.manage'),
   async (req, res, next) => {
   const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
   if (!shift_id || !nozzle_id || !image_base64) return res.status(400).json({ error: 'shift_id, nozzle_id and image are required' });
@@ -797,64 +698,11 @@ router.post('/pos-meter', authenticate,
 // POST /api/reconcile/shift-opening-meters — REMOVED. Dead (no UI); the live
 // opening-meter capture is the attendant's /pos-meter. See docs/drift-audit.md.
 
-// POST /api/reconcile/ocr-meter — read a fuel-pump totalizer photo via Claude
-// vision, store the image for audit, return the extracted digits. The manager
-// confirms the number on screen; legible=false means "verify before trusting".
-router.post('/ocr-meter', authenticate,
-  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
-  requirePerm('reconcile.manage'),
-  async (req, res, next) => {
-  try {
-    const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
-    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
-
-    let reading = '', legible = false, notes = '';
-    try {
-      const ai = await aiClient.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
-            { type: 'text', text: 'This image is a fuel dispenser cumulative totalizer — a mechanical/electronic counter showing the total litres dispensed for one nozzle over the pump\'s life. Read its digits exactly, left to right, ignoring separators (keep a decimal point only if clearly shown). Respond with ONLY a JSON object and nothing else: {"reading":"<digits as shown>","legible":<true|false>,"notes":"<short note>"}. Set legible=false if any digit is unclear, mid-roll, glare-obscured, or you are not confident.' },
-          ],
-        }],
-      });
-      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
-      const m = txt.match(/\{[\s\S]*\}/);
-      const parsed = m ? JSON.parse(m[0]) : {};
-      reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
-      legible = parsed.legible === true && reading !== '';
-      notes   = String(parsed.notes ?? '');
-    } catch (e) {
-      notes = 'OCR failed: ' + (e.message || 'unknown');
-    }
-
-    // Keep the image for audit (best-effort). bytes → private bucket, DB keeps
-    // only the path; falls back to legacy base64 if storage_path isn't migrated.
-    try {
-      await storeMeterPhoto({ shift_id, nozzle_id: nozzle_id || null, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
-    } catch { /* table not yet created / store failed — OCR result still returns */ }
-
-    res.json({ reading, legible, notes });
-  } catch (err) { next(err); }
-});
-
-// POST /api/reconcile/parse-slip — read a printed pump "Electronic Totalizer"
-// slip (ALL nozzles of one pump at once) via Claude vision. Auto-detects the two
-// layouts and returns each nozzle's CUMULATIVE VOLUME — the anchor the shift
-// open/close uses (litres sold = closing slip − opening slip). One slip can be
-// too long for one photo, so the client may call this per photo and merge.
-// The slip reader lives in services/slipParser — see the require at the top of this
-// file. This route USED to carry its own copy of the prompt, and the two drifted:
-// slipParser learned "Pump SNo", "DU SERIAL NO" and all-digit serials when pump
-// setup met real machines, while this copy still knew only "PUMP SERIAL NUMBER"
-// with one alphanumeric example. The consequence was silent and expensive — a
-// Kamala slip printing "Pump SNo :201807000927" yielded no serial here, the match
-// fell through to the FP. ID printed on the paper, and the readings were offered to
-// a DIFFERENT pump's nozzles. One reader, one prompt, both screens.
-
+// POST /api/reconcile/ocr-meter — REMOVED 04-Aug-2026. It was a second copy of /pos-meter
+// above, made only so it could carry a different requirePerm. See the cardinal rule
+// in CLAUDE.md: a copied block with a changed permission is the tell. Its callers
+// (Shift Open, Shift Close) now use /pos-meter, which returns everything ocr-meter
+// did and the opening cross-check besides.
 
 router.post('/parse-slip', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),

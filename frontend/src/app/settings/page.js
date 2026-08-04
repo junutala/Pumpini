@@ -1525,12 +1525,21 @@ function ShiftsTab({ stationId, onSaved }) {
   const [loading,setLoading] = useState(false);
   const [mgrMode,setMgrMode] = useState(false);   // manager-driven blind drop
   const [modeBusy,setModeBusy] = useState(false);
+  // Who closes an operator's line at this outlet. Both paths are permanent; this is
+  // the outlet saying which one it runs, so the expectation is set rather than left
+  // to whoever opens a screen first. Defaults ON — every existing outlet keeps the
+  // behaviour it has today.
+  const [selfSettle,setSelfSettle] = useState(true);
+  const [selfBusy,setSelfBusy] = useState(false);
   const isOwner = user?.role === 'owner';
 
   useEffect(()=>{
     if(!sid) return;
     api.get(`/shifts/definitions/${sid}`).then(d=>{ if(d?.length) setDefs(d); }).catch(()=>{});
-    api.get(`/stations/${sid}/settings`).then(s=>setMgrMode(!!s?.manager_blind_drop)).catch(()=>{});
+    api.get(`/stations/${sid}/settings`).then(s=>{
+      setMgrMode(!!s?.manager_blind_drop);
+      setSelfSettle(s?.self_settlement_enabled !== false);
+    }).catch(()=>{});
   },[sid]);
 
   const toggleMode = async () => {
@@ -1542,6 +1551,16 @@ function ShiftsTab({ stationId, onSaved }) {
     setModeBusy(false);
   };
 
+  // Written through the EXISTING settings endpoint — no route of its own.
+  const toggleSelfSettle = async () => {
+    setSelfBusy(true);
+    try {
+      const r = await api.post(`/stations/${sid}/settings`, { self_settlement_enabled: !selfSettle });
+      setSelfSettle(r?.self_settlement_enabled !== false);
+    } catch(e){ alert(e.response?.data?.error || e.error || tc('setp.couldNotChangeMode', 'Could not change mode')); }
+    setSelfBusy(false);
+  };
+
   const save = async() => {
     setLoading(true);
     try { await api.post('/shifts/definitions',{station_id:sid,shifts:defs}); onSaved(); }
@@ -1551,6 +1570,28 @@ function ShiftsTab({ stationId, onSaved }) {
 
   return (
     <div style={{maxWidth:560}}>
+    {/* Who closes an operator's line at this outlet (owner only) */}
+    {isOwner && (
+      <div className="card" style={{marginBottom:'1rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{paddingRight:12}}>
+            <div style={{fontWeight:700,fontSize:15}}>{tc('setp.selfSettle', 'Operators settle their own line')}</div>
+            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+              {tc('setp.selfSettleDesc', 'When ON, an operator closes his own line from the Settlement screen. When OFF, only the manager settles him at Shift Close, and an operator who opens Settlement is told so. Manager-led close works either way — this only decides whether the operator may do it himself.')}
+            </div>
+          </div>
+          <button onClick={toggleSelfSettle} disabled={selfBusy}
+            style={{background:'none',border:'none',cursor:selfBusy?'wait':'pointer',padding:0,flexShrink:0}}>
+            <div style={{width:52,height:28,borderRadius:14,position:'relative',
+              background: selfSettle ? '#16a34a' : '#e5e3de', transition:'all .2s'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',top:3,
+                left: selfSettle ? 27 : 3, transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+    )}
+
     {/* Blind-drop reconciliation mode (owner only) */}
     {isOwner && (
       <div className="card" style={{marginBottom:'1rem'}}>
