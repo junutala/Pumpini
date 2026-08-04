@@ -159,3 +159,28 @@ FUTURE: with more outlets, anonymized cross-owner peer-benchmarking (network-eff
          `trg_increase_stock AFTER INSERT ON fuel_deliveries → increase_tank_stock()`.
          A fake CNG purchase would inflate stock we do not own and cannot dip, breaking
          Stock Reco and days-of-cover to fix a margin figure.
+
+## 15. Group View — reclaim the retired "Outlets" slot for DRIFT reporting (NEW 2026-08-04)
+> The **"Outlets" list is retired** from Group View (PR: retire-outlets-tile, 04-Aug). It
+> showed, per outlet, four unlabelled figures in a row — `₹1,90,487 · 2.29%` then a red
+> **stock loss** badge then `cash ₹896` — and the sales figure landing immediately before
+> that badge read as **the loss**. The owner misread his own dashboard that way; that is
+> all the evidence a layout needs. It was redundant besides: the outlet PILLS at the top
+> already select an outlet and already carry the health dot.
+>
+> **The slot is reserved, not abandoned.** Do NOT restore the old list to fill the gap.
+> What the owner wants there is the thing Group View currently cannot tell him:
+- [ ] **Drift / manual-entry report per outlet** — where a tank or nozzle reading was
+      TYPED rather than read off the instrument, and where the chain does not tie:
+      - `meter_handover_gap` (shipped 04-Aug) — a nozzle's opening ≠ the previous close.
+      - `unverified_meter_entry` (shipped) — closing meters always whole litres, i.e.
+        typed, not scanned off a slip that prints 3 decimals.
+      - `handover_mismatch` (shipped) — a tank's closing dip vs the next opening dip.
+      - `pending` openings (shipped 04-Aug) — a shift opened while its predecessor was
+        unsettled, so no close could be carried.
+      These already exist as data-health flags; this is a per-outlet ROLL-UP of them in
+      the group rollup, not a new detector. **Reuse `dataHealthService` — do not write a
+      second one** (one-writer rule).
+- [ ] **Label every number.** The retired tile's whole failure was unlabelled figures
+      sitting next to a coloured badge. Whatever replaces it says what each figure IS,
+      or it repeats the mistake in a new costume.

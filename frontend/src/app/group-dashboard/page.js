@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Building2, Bell, CheckCircle, AlertTriangle, Clock, UserX,
-  Landmark, TrendingUp, TrendingDown, ChevronRight, Brain, CalendarDays } from 'lucide-react';
+  Landmark, TrendingUp, TrendingDown, Brain, CalendarDays } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -19,7 +19,6 @@ const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFracti
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 // Coverage-date labels (house rule: en-IN · Asia/Kolkata).
 const fmtFull = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
-const fmtDay  = t => t ? new Date(t).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' }) : '';
 const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
 const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10, padding: '12px 14px' };
 const health = o => (o.wetstock_beyond || o.overdue_90 > 0) ? '#dc2626' : (o.cash_undeposited > 5000 ? '#d97706' : '#16a34a');
@@ -221,24 +220,17 @@ export default function GroupDashboardPage() {
             </div>
           </div>
 
-          <div style={{ ...card, padding: '14px 16px', marginBottom: 14 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{tc('gdash.outlets', 'Outlets')}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {st.map(s => (
-                <div key={s.id} onClick={() => pickOutlet(s)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--surface-2,#f8fafc)', borderRadius: 10, flexWrap: 'wrap', cursor: 'pointer' }}>
-                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: health(s), flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, minWidth: 90 }}>{s.name}</span>
-                  <span style={{ fontSize: 13, color: 'var(--text-2,#475569)' }}>{fmtR(s.sales)} · <span style={{ color: '#3b6d11' }}>{s.gross_margin_pct != null ? s.gross_margin_pct + '%' : '—'}</span></span>
-                  {s.metric_date && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{fmtDay(s.metric_date)}</span>}
-                  {s.wetstock_beyond && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{tc('gdash.stockLoss', 'stock loss')}</span>}
-                  {s.overdue_90 > 0 && <span style={{ fontSize: 12, background: '#fee2e2', color: '#991b1b', padding: '2px 8px', borderRadius: 99 }}>{fmtR(s.overdue_90)} {tc('gdash.overdue', 'overdue')}</span>}
-                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('gdash.cash', 'cash')} {fmtR(s.cash_undeposited)}</span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--text-3)' }}><ChevronRight size={16} /></span>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 8 }}>{tc('gdash.tapOutletHint', 'Tap an outlet to open its full cockpit (live, unmasked).')}</div>
-          </div>
+          {/* The "Outlets" list used to sit here and is RETIRED (owner, 04-Aug).
+              It put four unlabelled figures in a row — sales · margin% · date · a red
+              "stock loss" badge · cash — and the sales figure landing immediately
+              before that badge read as the LOSS. The owner misread his own dashboard
+              that way, which is the only evidence a layout needs.
+              It was also redundant: the outlet PILLS above already select an outlet,
+              and they carry the same health dot without pretending to be a report.
+              The slot is reserved, not deleted — see TODO.md #15 for what belongs
+              here: drift / manually-entered tank & nozzle readings, which is the one
+              thing this screen cannot currently tell him. Do not restore the old list
+              to fill the gap. */}
 
           {exc.length > 0 && (
             <div style={{ ...card, padding: '14px 16px' }}>
