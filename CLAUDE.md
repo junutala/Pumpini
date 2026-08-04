@@ -105,6 +105,28 @@ on top of the impact analysis above and are not optional:
    ordered steps. After each step, **wait for the owner to confirm it ran in Supabase**
    before giving the next. Never hand over a multi-step SQL sequence to run all at once.
 
+### 🔴 EXCEPTION (owner-set 04-Aug-2026): `staging` is RESERVED FOR VAWE. Do not sync
+### the dashboard to it, and do not treat "lockstep" as a reason to.
+
+`staging` is where the **VAWE** integration work lives and is deliberately allowed to run
+its own course. It is **not** a mirror of production and is **not** to be dragged back into
+line with `main` as a side effect of shipping a Pumpini feature.
+
+Concretely, and these are the traps:
+
+- **`staging` is BEHIND `main` on the dashboard** — as of 04-Aug its `groups.js` still
+  files sales by `occurred_at` and it has no `GroupProductTiles.js` at all. That is not a
+  regression to fix. It has no test data either, so a Pumpini screen cannot be verified
+  there — which is why the owner routes dashboard work straight to production and eyeballs
+  it live, with **revert-the-PR** as the rollback.
+- **Rule 2's "two PRs, keep them in lockstep" does NOT apply to dashboard/group-view
+  work.** Ship those to `main` only.
+- **Never resolve a cherry-pick conflict onto `staging` by taking `main`'s file wholesale.**
+  Doing so silently promotes a whole slice of production behaviour into the VAWE branch.
+  (Assistant note 04-Aug: this was started and stopped by the owner mid-flight — the
+  conflict looked like ordinary drift, and "bring staging up to date" felt helpful. It
+  isn't; it is an unrequested merge of two divergent products.)
+
 When unsure which bucket a change is in, treat it as **medium/high** and route it
 through staging. Staging exists precisely so the owner verifies risky changes before
 they touch real outlets.
