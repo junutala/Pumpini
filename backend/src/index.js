@@ -97,6 +97,9 @@ app.use('/api/reconcile',  reconcileRoutes);
 app.use('/api/corporate',  corporateRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/dipstick',   dipstickRoutes);
+// Calibration/testing draws — the 5-litre check into the measuring can and back into
+// a tank. One row carries both ends; see services/testDrawService.
+app.use('/api/test-draws', require('./routes/testDraws'));
 app.use('/api/calibration', require('./routes/calibration'));
 app.use('/api/dashboard',  dashboardRoutes);
 app.use('/api/alerts',     alertRoutes);

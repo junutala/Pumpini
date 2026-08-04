@@ -57,7 +57,25 @@ async function computeShiftReco(shift_id) {
         JOIN nozzles n ON n.id = de.nozzle_id
         WHERE de.shift_id = $1 AND n.tank_id = t.id
           AND NOT COALESCE(de.is_voided, FALSE)
-      ), 0) AS sales_ltrs
+      ), 0) AS sales_ltrs,
+      -- Calibration/testing draws that CROSSED tanks in this window.
+      --
+      -- A same-tank draw contributes nothing and is deliberately excluded: the fuel
+      -- left and came back, and the sale this tank is measured against is already net
+      -- of test, so its −T and +T cancel. Only a cross-tank draw moves stock — the
+      -- source tank is genuinely down T and the destination genuinely up T.
+      --
+      -- This is the diesel case. Almost every outlet has several diesel tanks and the
+      -- manager pours the can back into whichever is at hand, which until now left one
+      -- tank permanently short and another permanently long, as unattributed drift.
+      COALESCE((
+        SELECT SUM(CASE WHEN ftd.to_tank_id = t.id THEN ftd.litres ELSE -ftd.litres END)
+        FROM fuel_test_draws ftd
+        WHERE ftd.from_tank_id <> ftd.to_tank_id
+          AND (ftd.to_tank_id = t.id OR ftd.from_tank_id = t.id)
+          AND ftd.drawn_at >  COALESCE(win.from_at, op.recorded_at, $2)
+          AND ftd.drawn_at <= COALESCE(cl.recorded_at, $3)
+      ), 0) AS test_move_ltrs
     FROM tanks t
     LEFT JOIN LATERAL (
       -- this shift's closing dip
@@ -131,7 +149,9 @@ async function computeShiftReco(shift_id) {
     const opening    = hasBaseline ? parseFloat(r.opening_ltrs) : null;
     const deliveries = parseFloat(r.deliveries_ltrs || 0);
     const sales      = parseFloat(r.sales_ltrs || 0);
-    const book       = hasBaseline ? +(opening + deliveries - sales).toFixed(2) : null;
+    // Signed: + into this tank, − out of it. Zero unless a test draw crossed tanks.
+    const testMove   = parseFloat(r.test_move_ltrs || 0);
+    const book       = hasBaseline ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
     const hasClosing = r.actual_closing != null;
     const actual     = hasClosing ? parseFloat(r.actual_closing) : null;
     // A variance needs BOTH an opening baseline and a closing dip. Without the
@@ -145,6 +165,7 @@ async function computeShiftReco(shift_id) {
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
+      test_move_ltrs: testMove,
       book_closing: book, actual_closing: actual,
       has_closing: hasClosing, has_baseline: hasBaseline,
       delivery_window_from: r.delivery_window_from || null,
@@ -223,7 +244,18 @@ async function computePeriodReco(station_id, dateFrom, dateTo) {
           AND sh2.station_id = $1
           AND sh2.date >= $2::date AND sh2.date <= $3::date
           AND NOT COALESCE(de.is_voided, FALSE)
-      ), 0) AS sales_ltrs
+      ), 0) AS sales_ltrs,
+      -- Cross-tank test draws over the same dip-to-dip window. Same rule as the
+      -- per-shift view above: a same-tank draw nets to zero and is excluded, so the
+      -- KPI and the shift screen cannot disagree about a tank.
+      COALESCE((
+        SELECT SUM(CASE WHEN ftd.to_tank_id = t.id THEN ftd.litres ELSE -ftd.litres END)
+        FROM fuel_test_draws ftd
+        WHERE ftd.from_tank_id <> ftd.to_tank_id
+          AND (ftd.to_tank_id = t.id OR ftd.from_tank_id = t.id)
+          AND ftd.drawn_at >  op.recorded_at
+          AND ftd.drawn_at <= cl.recorded_at
+      ), 0) AS test_move_ltrs
     FROM tanks t
     LEFT JOIN LATERAL (
       SELECT d.volume_ltrs, d.recorded_at FROM dedup d
@@ -251,9 +283,9 @@ async function computePeriodReco(station_id, dateFrom, dateTo) {
     ORDER BY t.tank_number`,
     [station_id, dateFrom, dateTo, station_id]);
 
-  const shape = (r, opening, deliveries, sales, actual, fuel) => {
+  const shape = (r, opening, deliveries, sales, actual, fuel, testMove = 0) => {
     const reconcilable = opening != null && actual != null;
-    const book      = reconcilable ? +(opening + deliveries - sales).toFixed(2) : null;
+    const book      = reconcilable ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
     const variance  = reconcilable ? +(actual - book).toFixed(2) : null;
     const base      = reconcilable ? opening + deliveries : 0;
     const tolerance = +Math.max(floor, base * tolPctForFuel(settings, fuel) / 100).toFixed(2);
@@ -268,13 +300,15 @@ async function computePeriodReco(station_id, dateFrom, dateTo) {
     const actual     = r.actual_closing != null ? parseFloat(r.actual_closing) : null;
     const deliveries = parseFloat(r.deliveries_ltrs || 0);
     const sales      = parseFloat(r.sales_ltrs || 0);
+    const testMove   = parseFloat(r.test_move_ltrs || 0);
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
+      test_move_ltrs: testMove,
       actual_closing: actual,
       has_baseline: opening != null, has_closing: actual != null,
       opening_at: r.opening_at || null, closing_at: r.closing_at || null,
-      ...shape(r, opening, deliveries, sales, actual, r.fuel_type),
+      ...shape(r, opening, deliveries, sales, actual, r.fuel_type, testMove),
     };
   });
 
