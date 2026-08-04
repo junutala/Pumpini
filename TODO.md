@@ -132,3 +132,30 @@ FUTURE: with more outlets, anonymized cross-owner peer-benchmarking (network-eff
 > The tripwire is SHIPPED to prod. Optional follow-ups surfaced during the build:
 - [ ] Historical `occurred_at` backfill on old rows (`ops/staging/backfill-occurred-at.sql`) — gated, for clean trade-day dating on history.
 - [ ] Tune thresholds once real usage shows the right cadence (`DATA_HEALTH_*` envs; defaults: dip stale 2d, physical dip 7d, open-shift 1d).
+
+## 14. CNG commission rate — move it from an env var to a Settings field (NEW 2026-08-04)
+> Shipped 04-Aug (PR #260): CNG margin is a **commission of ₹2.03/kg sold**, not
+> `sell − buy`. We never buy the gas — the IOCL contractor owns the stock, which is also
+> why CNG has no dip and no opening/closing stock. Before this it booked **₹0** for
+> months (₹81,808 unreported at Kamala this FY) because the margin formula everywhere
+> was a subtraction and a commission has no buy price to subtract.
+>
+> The rate currently lives in the `CNG_COMMISSION_PER_KG` env var on Railway, so
+> changing it needs a dashboard visit. The owner should be able to change it himself the
+> day the contractor revises it.
+- [ ] **CNG commission as an editable Settings field**, per outlet, feeding
+      `marginService.unitMargin` (keep the env var as the fallback default). Reuse the
+      existing Settings form — no new screen, no new route (cardinal rule).
+- [ ] Keep it as a **commission**, NOT a fabricated purchase price. The owner proposed
+      (04-Aug) setting a CNG buy price of `sell − 2.03` so the ordinary margin maths would
+      work, and agreed against it once the two failure modes were shown. **Do not
+      re-propose it, and do not "simplify" the commission into a buy rate later:**
+      1. **The pump price moves; the commission does not.** Kamala CNG went ₹107.00
+         (20-Jun) → ₹108.00 (01-Aug). A buy price pinned at ₹104.97 would have silently
+         reported ₹3.03/kg — 49% overstated, ~₹40k/yr at current volume — with nothing
+         on screen looking wrong. Two numbers kept in lockstep by memory is the bug.
+      2. **A buy rate can only be recorded as a DELIVERY, and a delivery moves stock.**
+         `fuel_deliveries` is the only source of `rate_per_ltr`, and prod has
+         `trg_increase_stock AFTER INSERT ON fuel_deliveries → increase_tank_stock()`.
+         A fake CNG purchase would inflate stock we do not own and cannot dip, breaking
+         Stock Reco and days-of-cover to fix a margin figure.
