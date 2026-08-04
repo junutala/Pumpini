@@ -129,6 +129,56 @@ money/access risk. The standing rule now:
 The living inventory + fix checklist is `docs/drift-audit.md`. Fix drift in small,
 reversible, one-concept-per-PR slices.
 
+## 🔴 CARDINAL RULE — reuse the field, reuse the form. Do NOT open a new route.
+### owner-set 2026-08-04
+
+> *"This building of forms for every enhancement brought us to the 'multiple routes to
+> the same destination' syndrome. We have closed most of the routes now. Do not open
+> new routes. This is a cardinal rule from now on."*
+
+The rule above says what SHOULD exist. This one says what you must not do when a
+feature arrives. Every enhancement is to be delivered by **extending what is already
+there**, not by adding a parallel path beside it.
+
+Before writing a line of a new screen, endpoint or field, answer in the PR:
+
+1. **Which existing form already collects this?** Extend it, or EMBED it. A second
+   form for the same concept is the drift, whoever it is for.
+2. **Which existing endpoint already writes this?** Add to its service. If the new
+   caller has a different trust boundary, that is a thin guarded ROUTE over the SAME
+   service — never a second copy of the logic. (See rule 3 above.)
+3. **Which existing column already holds this?** A second column for the same fact is
+   how `opening_reading` came to live in three tables.
+
+**The tell that you are about to break this rule:** you are copying a block of code
+and changing a permission, a role, or a label. `pos-meter` and `ocr-meter` are two
+complete copies of one OCR call differing only in `requirePerm`. `/reconcile/manager`
+and `/reconcile/self-settle` are two copies of the settlement maths differing only in
+who may call them. Both were written that way, and both had to be untangled later.
+
+**Deliver every enhancement as a net reduction, or at worst as neutral.** A PR that
+adds a route must say which route it closes.
+
+## 🔴 BOTH settlement paths are permanent — owner-set 2026-08-04
+
+Outlets differ, and Pumpini serves both patterns. Neither is legacy, neither is to be
+"consolidated away":
+
+- **Operator self-service** — the attendant closes his own line at `/settlement`
+  (`POST /reconcile/self-settle`, permission `settlement.enter`, `attendant_id` forced
+  from the JWT). It is the attendant's HOME screen: login, dashboard and sidebar all
+  route `role='attendant'` there.
+- **Manager-led** — the manager opens and closes the shift and settles each operator
+  through Shift Open / Shift Close (`POST /reconcile/manager`, permission
+  `reconcile.manage`).
+
+The two permissions ALREADY separate them, so this needs no switch and no new setting.
+
+**What this obliges:** the two are different TRUST BOUNDARIES over ONE settlement
+concept. They must share the writer and share the form, so that an enhancement made
+for one reaches the other by construction rather than by somebody remembering. Today
+they do not, and that is the work — see `docs/drift-audit.md`.
+
 ## 🔴 ONE meter store — the spare tires are retired (owner-set 2026-08-01)
 
 There is exactly **one** place a nozzle's opening and closing meter lives:
