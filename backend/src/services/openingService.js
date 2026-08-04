@@ -45,17 +45,56 @@ const pool = require('../db/pool');
 // table has no closing for a nozzle, that means no prior close exists, and
 // `source: 'entered'` is the honest answer.
 //
-// `$1` is the shift being opened, excluded from its own lookup so re-running this
-// for a shift that has already been assigned cannot read its own figures back.
+// 🔴 THE LEG IMMEDIATELY BEFORE, NOT "THE NEWEST CLOSING THAT EXISTS RIGHT NOW".
+//
+// This used to filter `closing_reading IS NOT NULL` and take the newest survivor —
+// which means it would SKIP a shift that has the nozzle but has not been settled yet,
+// and carry from the one before it. That is the same shape as the dip bug fixed in
+// #248, and here it is worse, because the figure it lands on is where the SKIPPED
+// shift STARTED. Every litre that shift sold would then be inside the next operator's
+// opening as well: charged to a man who did not sell it, while the shift that did
+// settles later against a meter that has moved on. It cannot happen where shifts are
+// settled before the next opens — which is why it has never fired (verified in
+// production: 972 legs across the three real outlets, not one instance) — but a night
+// handover routinely opens tomorrow before closing today, and that is precisely the
+// case the filter mishandles.
+//
+// So: the most recent PRIOR leg on this nozzle, whatever state it is in.
+//   * it has a closing            → carry it ('carried')
+//   * it exists but has none yet  → carry NOTHING ('pending'); the shift it is waiting
+//                                   on is named, so the screen can say why the box is
+//                                   open instead of pretending the nozzle is new
+//   * there is no prior leg       → 'entered', a genuinely new nozzle or first shift
+//
+// Skipping shifts that never had the nozzle assigned stays correct and is the reason
+// this looks at legs rather than at shifts: nobody manned it, so its meter did not
+// move, and the older close is still the truth. Skipping a shift that DID have it is
+// the bug.
+//
+// `$1` is the shift being opened, excluded from its own lookup so re-running this for
+// a shift that has already been assigned cannot read its own figures back — and bounded
+// by `start_time`, so a shift entered out of order cannot carry a LATER shift's meter
+// backwards into an earlier one.
 async function nozzleOpenings(shift_id, client = pool) {
   const { rows } = await client.query(`
     SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
-      (SELECT san.closing_reading FROM shift_attendant_nozzles san JOIN shifts s2 ON s2.id=san.shift_id
-        WHERE san.nozzle_id=n.id AND san.shift_id<>$1 AND san.closing_reading IS NOT NULL
-        ORDER BY s2.start_time DESC LIMIT 1) AS carried_opening
-    FROM nozzles n
-    WHERE n.station_id = (SELECT station_id FROM shifts WHERE id=$1) AND n.is_active
-    ORDER BY n.nozzle_number`, [shift_id]);
+           prev.closing_reading                AS carried_opening,
+           (prev.shift_id IS NOT NULL)         AS has_prior_leg,
+           prev.shift_number                   AS prior_shift_number,
+           prev.date::text                     AS prior_shift_date
+      FROM (SELECT id, station_id, start_time FROM shifts WHERE id = $1) cur
+      JOIN nozzles n ON n.station_id = cur.station_id AND n.is_active
+      LEFT JOIN LATERAL (
+        SELECT san.closing_reading, san.shift_id, s2.shift_number, s2.date
+          FROM shift_attendant_nozzles san
+          JOIN shifts s2 ON s2.id = san.shift_id
+         WHERE san.nozzle_id = n.id
+           AND san.shift_id <> cur.id
+           AND s2.start_time < cur.start_time
+         ORDER BY s2.start_time DESC
+         LIMIT 1
+      ) prev ON TRUE
+     ORDER BY n.nozzle_number`, [shift_id]);
 
   const map = {};
   for (const r of rows) {
@@ -65,8 +104,16 @@ async function nozzleOpenings(shift_id, client = pool) {
       fuel_type: r.fuel_type,
       carried_opening: r.carried_opening,
       // 'carried'  — taken from the last close; the client cannot change it.
-      // 'entered'  — no prior close anywhere; the client's figure is accepted.
-      source: r.carried_opening != null ? 'carried' : 'entered',
+      // 'pending'  — the shift before this one worked the nozzle and has not been
+      //              settled, so there is no close to carry YET. The client's figure
+      //              is accepted (a shift must be able to start), and the two numbers
+      //              are compared afterwards by the meter_handover_gap tripwire.
+      // 'entered'  — no prior leg at all; the client's figure is accepted.
+      source: r.carried_opening != null ? 'carried' : (r.has_prior_leg ? 'pending' : 'entered'),
+      // Only set when 'pending' — which shift is holding the figure up.
+      pending_on: r.carried_opening == null && r.has_prior_leg
+        ? { shift_number: r.prior_shift_number, date: r.prior_shift_date }
+        : null,
     };
   }
   return map;
@@ -89,7 +136,18 @@ function resolveNozzleOpening(entry, requested) {
       overridden: asked != null && Math.abs(asked - carried) > 0.0005,
     };
   }
-  return { opening: asked != null ? asked : 0, source: 'entered', requested: asked, overridden: false };
+  // No close to carry. Either the nozzle has never run ('entered') or the shift
+  // before this one has it open and unsettled ('pending'). Both accept the manager's
+  // figure — refusing would stop the outlet selling because somebody has not finished
+  // yesterday's paperwork — but they are NOT the same event and are not reported as
+  // one. 'pending' is the case worth watching, and the gap it can leave is caught
+  // afterwards by the meter_handover_gap tripwire.
+  return {
+    opening: asked != null ? asked : 0,
+    source: entry && entry.source === 'pending' ? 'pending' : 'entered',
+    requested: asked,
+    overridden: false,
+  };
 }
 
 // Seed this shift's OPENING dips from the IMMEDIATELY PRECEDING shift's closing.

@@ -2540,6 +2540,7 @@
     "carriedFromLastClose": "Carried from last close",
     "dipHelpCarried": "The opening stock is whatever the last shift closed at — it is carried across automatically so no litre can go missing between two shifts. You only enter a reading for a tank that has no previous close.",
     "noPriorClose": "No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.",
+    "priorShiftUnsettled": "Shift {n} has this nozzle and has not been settled, so there is no close to carry yet — read the meter and enter it. Settle that shift at the same figure.",
     "slipDisagrees": "⚠ The slip disagrees with the last close for {x}. The last close stands — report this.",
     "slipSays": "slip",
     "slipTicked": "Ticked {n} nozzle(s) from the slip.",
@@ -2752,6 +2753,7 @@
     "staleOpenN": "{n} shifts still open past their day",
     "lateClose": "{n} shift(s) closed late — batch entry",
     "handover": "{t} — handover gap {v} L ({from} → {to})",
+    "meterHandover": "Nozzle {n} · {fuel} — opening meter {v} L off the previous close ({from} → {to})",
     "unverifiedMeter": "Nozzle {n} · {fuel} — {p}% of {c} closing meters entered as whole litres; the pump slip prints decimals, so these were typed, not scanned"
   },
   "slipbook": {

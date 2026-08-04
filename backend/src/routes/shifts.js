@@ -404,8 +404,11 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
 //
 // `suggested_opening` is kept in the payload under its old name because other
 // callers read it; `source` is what tells the screen whether the box is fixed
-// ('carried') or genuinely needs a figure ('entered' — no prior close anywhere,
-// i.e. a newly commissioned nozzle or the first shift ever run).
+// ('carried') or genuinely needs a figure:
+//   'entered' — no prior leg at all: a newly commissioned nozzle or the first shift.
+//   'pending' — the shift before this one has the nozzle and has not been settled, so
+//               its closing does not exist yet. `pending_on` names that shift so the
+//               screen can say WHICH one, rather than calling a working nozzle new.
 router.get('/:id/nozzle-openings', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'),
   async (req, res, next) => {
@@ -417,6 +420,7 @@ router.get('/:id/nozzle-openings', authenticate,
       fuel_type: o.fuel_type,
       suggested_opening: o.carried_opening,
       source: o.source,
+      pending_on: o.pending_on,
     })));
   } catch (err) { next(err); }
 });
