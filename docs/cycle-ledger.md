@@ -161,7 +161,8 @@ Both are station-scoped and carry RLS from birth (§7).
 | `tank_id` | uuid | |
 | `seq` | int | gapless per tank, from 0 |
 | `state` | text | `open` \| `closed` |
-| `shift_id` | uuid null | the shift this cycle covers; null on `seq 0` |
+| `opened_in_shift_id` | uuid null | null on `seq 0` |
+| `closed_in_shift_id` | uuid null | differs from the above when the cycle spanned shifts (§4.3) |
 | `closing_ltrs` | numeric null | **the reading.** null while open |
 | `closing_dip_cm` | numeric null | null for a system/ATG reading — that is how the two are told apart |
 | `closing_density` | numeric null | |
@@ -191,7 +192,8 @@ variance_ltrs = opening + delivered − sold − closing
 | `nozzle_id` | uuid | |
 | `seq` | int | gapless per nozzle, from 0 |
 | `state` | text | `open` \| `closed` |
-| `shift_id` | uuid null | |
+| `opened_in_shift_id` | uuid null | |
+| `closed_in_shift_id` | uuid null | differs when the man worked through a shift boundary (§4.3) |
 | `attendant_id` | uuid null | who worked it in this cycle |
 | `closing_reading` | numeric null | **the reading.** null while open |
 | `test_ltrs` | numeric | |
@@ -199,6 +201,7 @@ variance_ltrs = opening + delivered − sold − closing
 | `artifact_id` | uuid null | the pump slip |
 | `sold_ltrs` | numeric null | `closing − opening − test`, materialised at close |
 | `variance_ltrs` | numeric null | vs. an independent check (POS/console), kept forever |
+| `settlement_id` | uuid null | which settlement paid this cycle out; null = closed and unsettled (§4.3) |
 
 `opening_reading` — **derived**.
 
@@ -210,6 +213,61 @@ which is the right way round.
 
 Two attendants on one nozzle in a shift is then natural: two cycles, consecutive `seq`,
 each with its own operator, and the handover between them is one reading like any other.
+
+---
+
+## 4.3 A cycle is bounded by READINGS, not by shifts
+
+This is the property that resolves a case Pumpini has never handled, raised by the owner
+04-Aug-2026:
+
+> *"Sometimes one attendant covers more than one shift and he comes back at the end of the
+> second shift and does his settlement."*
+
+Because a line closes only when a **reading arrives**, and no reading is taken when nobody
+hands over, one cycle simply spans both shifts. The man works, no scan happens at the shift
+boundary, the line stays `open`, and at the end of his second shift one reading closes it.
+His sale is `closing − opening − test` on **one** cycle. There is no special case, no
+"which shift does this settlement belong to", and no stitching of two half-settlements.
+
+The current model cannot express this at all: a meter row is keyed to a shift
+(`shift_attendant_nozzles`), so a man across two shifts has two rows and the boundary
+between them is a reading nobody took.
+
+Two consequences must be built in, or the case breaks anyway:
+
+**A cycle records where it opened and where it closed.**
+
+| | |
+|---|---|
+| `opened_in_shift_id` | the shift running when the line opened |
+| `closed_in_shift_id` | the shift running when the reading arrived |
+
+When they differ the cycle spanned shifts. That is a **fact to record, not an error to
+reject** — and it is how the tank reco knows which shift's stock movement to attribute.
+(A single `shift_id` column cannot express it, which is why it is two.)
+
+**Settlement is keyed on cycles, not on a shift.** The rule:
+
+> An attendant's settlement covers **every closed, unsettled cycle of his** — not "the
+> cycles of this shift."
+
+That one sentence handles all four shapes without branching:
+
+| Situation | Cycles | Settlement |
+|---|---|---|
+| One attendant, one shift | 1 | that cycle |
+| One attendant, two shifts, no boundary reading | 1, spanning both | that cycle |
+| One attendant, two shifts, boundary reading taken | 2 | both, summed |
+| Two attendants on one nozzle in a shift | 2, consecutive `seq` | each separately |
+
+The third row matters: sometimes a reading *is* taken at the boundary because the other
+operators changed over. The man himself did not, so his two cycles settle together. Keying
+on the shift would have split his money in half.
+
+This is also what the owner's ordering already implies — *the line closes → reco runs →
+the cash settlement relieves the attendant.* The settlement relieves the **man**, and it
+does so over whatever lines of his are closed and unpaid.
 
 ---
 
@@ -297,6 +355,17 @@ by shift `start_time`. The backfill's own report is the deliverable: **every pla
 derived opening disagrees with the stored one is a drift not yet found.** Expect Kamala
 16-Jul tank 2 to appear (511.69 vs 12,824.76, prior close 9,382.66, no delivery — still
 held for the owner's decision).
+
+**Backfill ALL available history, not a chosen window.** `seq` must be gapless from the
+meter's first known reading, and whatever the backfill starts from *becomes* `seq 0` — the
+commissioning figure. Backfilling only July would silently declare the first July reading
+to be each meter's commissioning point and orphan June behind it. The volume is trivial
+(876 nozzle rows and a few hundred dips), so there is no reason to truncate. Production
+data begins **25-Jun-2026**; the ledger starts there.
+
+**Test fixtures are excluded.** Only Kamala, Adhoc Highway and Highway are real outlets in
+production. Dilsukhnagar Bunk, VAWE-1 and the unnamed outlet are backfilled in staging
+only, so a prod ledger holds nothing that has to be filtered out by hand later.
 
 **Step 3 — dual-write.** New readings land in both models. Reads stay on the old. Nothing
 user-visible changes; the two models are compared daily.
