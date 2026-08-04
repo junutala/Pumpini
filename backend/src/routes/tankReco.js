@@ -48,15 +48,34 @@ async function computeShiftReco(shift_id) {
         SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
         FROM fuel_deliveries fd
         WHERE fd.tank_id = t.id
-          AND fd.received_at >  COALESCE(op.recorded_at, $2)
+          AND fd.received_at >  COALESCE(win.from_at, op.recorded_at, $2)
           AND fd.received_at <= COALESCE(cl.recorded_at, $3)
       ), 0) AS deliveries_ltrs,
+      COALESCE(win.from_at, op.recorded_at) AS delivery_window_from,
       COALESCE((
         SELECT SUM(de.quantity_ltrs) FROM dispense_events de
         JOIN nozzles n ON n.id = de.nozzle_id
         WHERE de.shift_id = $1 AND n.tank_id = t.id
           AND NOT COALESCE(de.is_voided, FALSE)
-      ), 0) AS sales_ltrs
+      ), 0) AS sales_ltrs,
+      -- Calibration/testing draws that CROSSED tanks in this window.
+      --
+      -- A same-tank draw contributes nothing and is deliberately excluded: the fuel
+      -- left and came back, and the sale this tank is measured against is already net
+      -- of test, so its −T and +T cancel. Only a cross-tank draw moves stock — the
+      -- source tank is genuinely down T and the destination genuinely up T.
+      --
+      -- This is the diesel case. Almost every outlet has several diesel tanks and the
+      -- manager pours the can back into whichever is at hand, which until now left one
+      -- tank permanently short and another permanently long, as unattributed drift.
+      COALESCE((
+        SELECT SUM(CASE WHEN ftd.to_tank_id = t.id THEN ftd.litres ELSE -ftd.litres END)
+        FROM fuel_test_draws ftd
+        WHERE ftd.from_tank_id <> ftd.to_tank_id
+          AND (ftd.to_tank_id = t.id OR ftd.from_tank_id = t.id)
+          AND ftd.drawn_at >  COALESCE(win.from_at, op.recorded_at, $2)
+          AND ftd.drawn_at <= COALESCE(cl.recorded_at, $3)
+      ), 0) AS test_move_ltrs
     FROM tanks t
     LEFT JOIN LATERAL (
       -- this shift's closing dip
@@ -69,7 +88,8 @@ async function computeShiftReco(shift_id) {
       -- opening baseline: this shift's own opening dip, else the prior shift's
       -- closing dip carried forward (the reading just before this closing). NULL if
       -- neither exists — never a fabricated 0.
-      SELECT dr.volume_ltrs, dr.recorded_at
+      SELECT dr.volume_ltrs, dr.recorded_at,
+             (dr.shift_id = $1 AND dr.reading_type = 'opening') AS is_own_opening
       FROM dipstick_readings dr
       WHERE dr.tank_id = t.id
         AND ( (dr.shift_id = $1 AND dr.reading_type = 'opening')
@@ -78,6 +98,47 @@ async function computeShiftReco(shift_id) {
                dr.recorded_at DESC
       LIMIT 1
     ) op ON TRUE
+    LEFT JOIN LATERAL (
+      -- The reading this shift's OPENING dip chains from — the previous shift's
+      -- closing dip. Needed only to decide the delivery window (see win, below).
+      SELECT dr.volume_ltrs, dr.recorded_at
+      FROM dipstick_readings dr
+      WHERE dr.tank_id = t.id
+        AND dr.reading_type = 'closing'
+        AND (dr.shift_id IS NULL OR dr.shift_id <> $1)
+        AND dr.recorded_at < op.recorded_at
+      ORDER BY dr.recorded_at DESC LIMIT 1
+    ) pc ON TRUE
+    LEFT JOIN LATERAL (
+      -- Where this reconciliation starts counting DELIVERIES.
+      --
+      -- Normally that is the opening baseline itself. But managers dip at shift
+      -- CLOSE and then re-key the same figure as the next shift's OPENING, hours
+      -- later — so consecutive reconciliations did NOT tile the timeline: a tanker
+      -- decanted between one shift's closing dip and the next shift's opening dip
+      -- fell in the hole and was counted by NO reconciliation. Book stayed at the
+      -- pre-delivery level while the dip showed the full tank, surfacing a phantom
+      -- full-tanker "gain" (Kamala T1, 18-Jul-2026: +10,386 L on a 10,000 L decant)
+      -- that then flattered the 30-day drift KPI to green while the tank was
+      -- actually losing stock every day.
+      --
+      -- The test is PHYSICAL, not a timestamp comparison — received_at is typed
+      -- by hand off the challan and is routinely an hour or two out (Kamala,
+      -- 24-Jul-2026: recorded 04:00, but the 04:45 opening dip proves the tanker
+      -- had not yet decanted). Stock in a tank only RISES on a delivery. So if the
+      -- opening dip is no higher than the prior closing dip, no delivery can be
+      -- baked into it, and anything recorded in the gap belongs to THIS
+      -- reconciliation — start the window at the prior closing dip and the hole
+      -- closes. If the opening dip is higher, the tank demonstrably gained stock
+      -- before it was read: that dip already absorbed the delivery, so the window
+      -- stays put and we do not double-count.
+      --
+      -- (+1 L of slack absorbs dip-chart rounding on an otherwise flat re-key.)
+      SELECT CASE
+        WHEN op.is_own_opening AND pc.recorded_at IS NOT NULL
+             AND op.volume_ltrs <= pc.volume_ltrs + 1
+        THEN pc.recorded_at ELSE op.recorded_at END AS from_at
+    ) win ON TRUE
     WHERE t.station_id = $4
     ORDER BY t.tank_number`,
     [shift_id, start_time, end_time, station_id]);
@@ -88,7 +149,9 @@ async function computeShiftReco(shift_id) {
     const opening    = hasBaseline ? parseFloat(r.opening_ltrs) : null;
     const deliveries = parseFloat(r.deliveries_ltrs || 0);
     const sales      = parseFloat(r.sales_ltrs || 0);
-    const book       = hasBaseline ? +(opening + deliveries - sales).toFixed(2) : null;
+    // Signed: + into this tank, − out of it. Zero unless a test draw crossed tanks.
+    const testMove   = parseFloat(r.test_move_ltrs || 0);
+    const book       = hasBaseline ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
     const hasClosing = r.actual_closing != null;
     const actual     = hasClosing ? parseFloat(r.actual_closing) : null;
     // A variance needs BOTH an opening baseline and a closing dip. Without the
@@ -102,13 +165,178 @@ async function computeShiftReco(shift_id) {
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
+      test_move_ltrs: testMove,
       book_closing: book, actual_closing: actual,
       has_closing: hasClosing, has_baseline: hasBaseline,
+      delivery_window_from: r.delivery_window_from || null,
       variance_ltrs: variance, variance_pct: variancePct,
       tolerance_ltrs: tolerance, beyond_tolerance: beyond,
     };
   });
   return { station_id, tanks };
+}
+
+// Reconcile a DATE RANGE as ONE interval: the opening dip at the start of the
+// period, the closing dip at the end, and every delivery and sale in between.
+//
+// Deliberately NOT a sum of the per-shift variances. Summing accumulates per-shift
+// noise instead of cancelling it — a sale keyed to the wrong shift lands twice,
+// once each way, and neither cancels because both are squared away into separate
+// rows. The interval only cares about the period's totals, so that noise drops out
+// the way it physically should. Kamala petrol for July: +0.88% as an interval,
+// against +30,243 L when the same shifts were summed.
+//
+// A single day is just a short period, so the day view and the month view are the
+// same computation with different bounds.
+async function computePeriodReco(station_id, dateFrom, dateTo) {
+  if (!station_id || !dateFrom || !dateTo) return { station_id, tanks: [], totals: [] };
+
+  const { rows: setRows } = await pool.query(
+    `SELECT stock_tol_pct_petrol, stock_tol_pct_diesel, stock_tol_floor_ltrs
+     FROM station_settings WHERE station_id=$1`, [station_id]);
+  const settings = setRows[0] || {};
+  const floor = parseFloat(settings.stock_tol_floor_ltrs ?? 20);
+
+  const { rows } = await pool.query(`
+    WITH dips AS (
+      -- Bucket by TRADE date, not wall-clock. A shift dated the 27th closes around
+      -- 06:30 IST on the 28th, so filtering on the raw timestamp would slice that
+      -- shift's closing dip off the 27th and leave the day unreconcilable.
+      SELECT dr.tank_id, dr.shift_id, dr.reading_type, dr.volume_ltrs, dr.recorded_at,
+             COALESCE(sh.date, (dr.recorded_at AT TIME ZONE 'Asia/Kolkata')::date) AS trade_date
+      FROM dipstick_readings dr
+      LEFT JOIN shifts sh ON sh.id = dr.shift_id
+      WHERE dr.station_id = $1
+    ),
+    dedup AS (
+      -- A re-keyed dip supersedes the earlier one for the same shift + type. A typo
+      -- correction leaves BOTH rows behind and only the last is true (Kamala T2,
+      -- 01-Jul: 62.00 cm then 77.30 cm, eight seconds apart).
+      SELECT DISTINCT ON (tank_id, shift_id, reading_type)
+             tank_id, volume_ltrs, recorded_at
+      FROM dips
+      WHERE trade_date >= $2::date AND trade_date <= $3::date
+      ORDER BY tank_id, shift_id, reading_type, recorded_at DESC
+    )
+    SELECT t.id AS tank_id, t.tank_number, t.fuel_type,
+      op.volume_ltrs AS opening_ltrs, op.recorded_at AS opening_at,
+      cl.volume_ltrs AS actual_closing, cl.recorded_at AS closing_at,
+      COALESCE((
+        SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
+        FROM fuel_deliveries fd
+        WHERE fd.tank_id = t.id
+          AND fd.received_at >  op.recorded_at
+          AND fd.received_at <= cl.recorded_at
+      ), 0) AS deliveries_ltrs,
+      COALESCE((
+        -- Sales attach by SHIFT, never by timestamp. In manager mode dispense_events
+        -- are synthesized from meter readings and every event in a shift is stamped
+        -- with the same constant (Kamala 27-Jul: all 21 events at 06:30:00Z, hours
+        -- before that shift's own opening dip at 13:09Z). Windowing on occurred_at
+        -- therefore drops the entire shift and reports zero sales. The shifts dated
+        -- inside the period are exactly the ones the opening and closing dips bound,
+        -- and this also picks up shifts that were never dipped at all — whose sales
+        -- still physically left the tank and must be accounted for.
+        SELECT SUM(de.quantity_ltrs) FROM dispense_events de
+        JOIN nozzles n  ON n.id  = de.nozzle_id
+        JOIN shifts  sh2 ON sh2.id = de.shift_id
+        WHERE n.tank_id = t.id
+          AND sh2.station_id = $1
+          AND sh2.date >= $2::date AND sh2.date <= $3::date
+          AND NOT COALESCE(de.is_voided, FALSE)
+      ), 0) AS sales_ltrs,
+      -- Cross-tank test draws over the same dip-to-dip window. Same rule as the
+      -- per-shift view above: a same-tank draw nets to zero and is excluded, so the
+      -- KPI and the shift screen cannot disagree about a tank.
+      COALESCE((
+        SELECT SUM(CASE WHEN ftd.to_tank_id = t.id THEN ftd.litres ELSE -ftd.litres END)
+        FROM fuel_test_draws ftd
+        WHERE ftd.from_tank_id <> ftd.to_tank_id
+          AND (ftd.to_tank_id = t.id OR ftd.from_tank_id = t.id)
+          AND ftd.drawn_at >  op.recorded_at
+          AND ftd.drawn_at <= cl.recorded_at
+      ), 0) AS test_move_ltrs
+    FROM tanks t
+    LEFT JOIN LATERAL (
+      SELECT d.volume_ltrs, d.recorded_at FROM dedup d
+      WHERE d.tank_id = t.id ORDER BY d.recorded_at DESC LIMIT 1
+    ) cl ON TRUE
+    LEFT JOIN LATERAL (
+      -- First dip inside the period, provided it isn't the closing one itself.
+      SELECT d.volume_ltrs, d.recorded_at FROM dedup d
+      WHERE d.tank_id = t.id AND d.recorded_at < cl.recorded_at
+      ORDER BY d.recorded_at ASC LIMIT 1
+    ) fo ON TRUE
+    LEFT JOIN LATERAL (
+      -- Fallback when the period holds only ONE dip: chain back to the last dip
+      -- before it. Otherwise a day where the manager dipped only at close could
+      -- never reconcile, which is most of them.
+      SELECT dp.volume_ltrs, dp.recorded_at FROM dips dp
+      WHERE dp.tank_id = t.id AND dp.trade_date < $2::date
+      ORDER BY dp.recorded_at DESC LIMIT 1
+    ) pb ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(fo.volume_ltrs, pb.volume_ltrs) AS volume_ltrs,
+             COALESCE(fo.recorded_at, pb.recorded_at) AS recorded_at
+    ) op ON TRUE
+    WHERE t.station_id = $4
+    ORDER BY t.tank_number`,
+    [station_id, dateFrom, dateTo, station_id]);
+
+  const shape = (r, opening, deliveries, sales, actual, fuel, testMove = 0) => {
+    const reconcilable = opening != null && actual != null;
+    const book      = reconcilable ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
+    const variance  = reconcilable ? +(actual - book).toFixed(2) : null;
+    const base      = reconcilable ? opening + deliveries : 0;
+    const tolerance = +Math.max(floor, base * tolPctForFuel(settings, fuel) / 100).toFixed(2);
+    const pct       = (reconcilable && base > 0) ? +(variance / base * 100).toFixed(2) : null;
+    return { book_closing: book, variance_ltrs: variance, variance_pct: pct,
+             tolerance_ltrs: tolerance,
+             beyond_tolerance: reconcilable ? Math.abs(variance) > tolerance : false };
+  };
+
+  const tanks = rows.map(r => {
+    const opening    = r.opening_ltrs   != null ? parseFloat(r.opening_ltrs)   : null;
+    const actual     = r.actual_closing != null ? parseFloat(r.actual_closing) : null;
+    const deliveries = parseFloat(r.deliveries_ltrs || 0);
+    const sales      = parseFloat(r.sales_ltrs || 0);
+    const testMove   = parseFloat(r.test_move_ltrs || 0);
+    return {
+      tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
+      opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
+      test_move_ltrs: testMove,
+      actual_closing: actual,
+      has_baseline: opening != null, has_closing: actual != null,
+      opening_at: r.opening_at || null, closing_at: r.closing_at || null,
+      ...shape(r, opening, deliveries, sales, actual, r.fuel_type, testMove),
+    };
+  });
+
+  // Where a station runs SEVERAL tanks of one fuel, the per-tank split is only as
+  // good as the nozzle-to-tank mapping, and the pumps may draw from either tank.
+  // Kamala's two diesel tanks read -6,861 L and +7,496 L for July and net to
+  // +635 L (0.56% of throughput) — the fuel is all present, it is just booked
+  // against the wrong tank. So the fuel TOTAL is the honest verdict, and judging a
+  // single tank alone would raise an alarm about nothing. Only emitted when the
+  // fuel actually has more than one tank, since otherwise it just repeats the row.
+  const totals = [];
+  const byFuel = tanks.filter(t => t.has_baseline && t.has_closing)
+    .reduce((m, t) => { (m[t.fuel_type] = m[t.fuel_type] || []).push(t); return m; }, {});
+  for (const [fuel, list] of Object.entries(byFuel)) {
+    if (list.length < 2) continue;
+    const sum = k => +list.reduce((a, t) => a + (t[k] || 0), 0).toFixed(2);
+    const opening = sum('opening_ltrs'), deliveries = sum('deliveries_ltrs');
+    const sales = sum('sales_ltrs'), actual = sum('actual_closing');
+    totals.push({
+      fuel_type: fuel, tank_count: list.length,
+      tank_numbers: list.map(t => t.tank_number),
+      opening_ltrs: opening, deliveries_ltrs: deliveries, sales_ltrs: sales,
+      actual_closing: actual, has_baseline: true, has_closing: true,
+      ...shape(null, opening, deliveries, sales, actual, fuel),
+    });
+  }
+
+  return { station_id, date_from: dateFrom, date_to: dateTo, tanks, totals };
 }
 
 // Compute + persist + alert. Called by the POST route and the shift-close hook.
@@ -214,6 +442,28 @@ router.get('/live', authenticate, requireStationAccess({ required: true }), asyn
   try { res.json(await computeLiveTankStatus(req.query.station_id)); } catch (e) { next(e); }
 });
 
+// GET /api/tank-reco/period?station_id=&date_from=&date_to= — reconcile a date
+// range as one interval. Powers BOTH the day tile and the month tile.
+router.get('/period', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { station_id, date_from, date_to } = req.query;
+    if (!date_from || !date_to) return res.status(400).json({ error: 'date_from and date_to are required.' });
+    res.json(await computePeriodReco(station_id, date_from, date_to));
+  } catch (e) { next(e); }
+});
+
+// GET /api/tank-reco/last-day?station_id= — the most recent trade day that has any
+// dip at all, so the day tile can open on real data instead of an empty today.
+router.get('/last-day', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT MAX(COALESCE(sh.date, (dr.recorded_at AT TIME ZONE 'Asia/Kolkata')::date))::text AS last_day
+      FROM dipstick_readings dr LEFT JOIN shifts sh ON sh.id = dr.shift_id
+      WHERE dr.station_id = $1`, [req.query.station_id]);
+    res.json({ last_day: rows[0]?.last_day || null });
+  } catch (e) { next(e); }
+});
+
 // GET /api/tank-reco/shift/:shift_id — live preview (no write)
 router.get('/shift/:shift_id', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
@@ -256,5 +506,6 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 
 module.exports = router;
 module.exports.finalizeShiftReco = finalizeShiftReco;
+module.exports.computePeriodReco = computePeriodReco;
 module.exports.computeLiveTankStatus = computeLiveTankStatus;
 module.exports.computeShiftReco = computeShiftReco;
