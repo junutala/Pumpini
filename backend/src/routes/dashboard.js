@@ -4,6 +4,7 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
 const { computeShiftReco } = require('./tankReco');   // live per-tank reconciliation for the wet-stock tile
+const margins = require('../services/marginService'); // the ONE writer for margin economics
 
 // GET /api/dashboard/owner?station_id=&date=
 router.get('/owner', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -131,16 +132,46 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       ]);
 
       const sell = {}; prices.rows.forEach(r => { sell[r.fuel_type] = parseFloat(r.price); });
-      const buy  = {}; buyRates.rows.forEach(r => { buy[r.fuel_type] = parseFloat(r.rate_per_ltr); });
-      const ltrsByFuel = {};
-      sales.rows.forEach(r => { ltrsByFuel[r.fuel_type] = (ltrsByFuel[r.fuel_type] || 0) + parseFloat(r.total_ltrs || 0); });
-      let marginAmt = 0, salesAmt = 0;
-      Object.keys(ltrsByFuel).forEach(ft => {
-        const l = ltrsByFuel[ft];
-        if (sell[ft] != null) salesAmt += l * sell[ft];
-        if (sell[ft] != null && buy[ft] != null) marginAmt += l * (sell[ft] - buy[ft]);
+      const own  = {}; buyRates.rows.forEach(r => { own[r.fuel_type] = parseFloat(r.rate_per_ltr); });
+      const ltrsByFuel = {}, amtByFuel = {};
+      sales.rows.forEach(r => {
+        const l = parseFloat(r.total_ltrs || 0);
+        ltrsByFuel[r.fuel_type] = (ltrsByFuel[r.fuel_type] || 0) + l;
+        amtByFuel[r.fuel_type]  = (amtByFuel[r.fuel_type] || 0) + (sell[r.fuel_type] != null ? l * sell[r.fuel_type] : 0);
       });
-      margin = { amount: +marginAmt.toFixed(2), pct: salesAmt > 0 ? +(marginAmt / salesAmt * 100).toFixed(1) : null, basis: 'last_delivery' };
+
+      // Sister-outlet rates for products this bunk sells but has never costed —
+      // the SAME borrow the group rollup does, so Bunk View and Group View cannot
+      // report different margins for the same product. Best-effort: an outlet in
+      // no group simply gets no peer, which is the old behaviour.
+      const peers = {};
+      try {
+        const { rows: pr2 } = await pool.query(`
+          SELECT DISTINCT ON (fd.fuel_type) fd.fuel_type, fd.rate_per_ltr, st.name AS station_name
+            FROM fuel_deliveries fd
+            JOIN stations st ON st.id = fd.station_id
+           WHERE fd.rate_per_ltr IS NOT NULL AND fd.station_id <> $1
+             AND fd.station_id IN (
+               SELECT sgm2.station_id FROM station_group_members sgm2
+                 JOIN station_groups stg2 ON stg2.id = sgm2.station_group_id
+                WHERE stg2.owner_group_id IN (
+                  SELECT stg.owner_group_id FROM station_group_members sgm
+                    JOIN station_groups stg ON stg.id = sgm.station_group_id
+                   WHERE sgm.station_id = $1))
+           ORDER BY fd.fuel_type, fd.received_at DESC NULLS LAST`, [station_id]);
+        pr2.forEach(r => { peers[r.fuel_type] = { rate: parseFloat(r.rate_per_ltr), station_name: r.station_name }; });
+      } catch (e) { /* best-effort */ }
+
+      const rates = {};
+      for (const ft of new Set([...Object.keys(ltrsByFuel), ...Object.keys(sell)])) {
+        rates[ft] = { sell: sell[ft] ?? null, own: own[ft] ?? null, peer: peers[ft] || null };
+      }
+      const m = margins.computeMargin(ltrsByFuel, amtByFuel, rates);
+      // `basis` is now per product (delivery_rate / borrowed_rate / commission), so
+      // the tile can say WHY a figure is what it is instead of asserting one blanket
+      // source that was never true for CNG.
+      margin = { amount: m.amount, pct: m.pct, basis: 'per_product', by_fuel: m.by_fuel,
+                 prices: margins.priceRows(Object.keys(rates), rates) };
 
       const avgDaily = {}; trail.rows.forEach(r => { avgDaily[r.fuel_type] = parseFloat(r.avg_daily); });
       cover = stock.rows.map(t => {

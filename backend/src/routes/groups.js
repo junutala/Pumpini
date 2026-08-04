@@ -1,6 +1,7 @@
 // src/routes/groups.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
+const margins = require('../services/marginService');
 const { authenticate, authorize } = require('../middleware/auth');
 
 // The group rollup carries owner-only figures (margins, blended margin %,
@@ -31,10 +32,20 @@ router.get('/my', authenticate, authorize('owner'), async (req, res, next) => {
 // blind-drop, so this counts ALL of today's sales (open + closed). A handful of
 // queries per outlet — fine for a group of a few bunks. Best-effort: a failure
 // degrades to safe zeros rather than breaking the whole rollup.
-async function outletMetrics(sid, date) {
+// The Indian FINANCIAL year starts 1 April, and that is the year an outlet's books
+// are kept in — a "year to date" that silently meant January would be a different
+// number from every statement the owner already has. Jan–Mar therefore belongs to
+// the financial year that STARTED the previous April.
+function fyStart(date) {
+  const y = +date.slice(0, 4), m = +date.slice(5, 7);
+  return `${m >= 4 ? y : y - 1}-04-01`;
+}
+
+async function outletMetrics(sid, date, groupBuy = {}) {
   const monthStart = date.slice(0, 8) + '01';
+  const yearStart  = fyStart(date);
   try {
-    const [sf, yd, pr, by, rv, wt, lg, ud, ml, mf] = await Promise.all([
+    const [sf, yd, pr, by, rv, wt, lg, ud, ml, mf, yf] = await Promise.all([
       // Sales are filed by the shift's TRADE DAY (shifts.date), never by
       // occurred_at. occurred_at is a data-entry timestamp — it is written when the
       // shift is settled, so a shift traded on 30-Jun that closed at 01:20 on 1-Jul
@@ -73,11 +84,18 @@ async function outletMetrics(sid, date) {
                   FROM dispense_events de JOIN shifts s ON s.id=de.shift_id
                   WHERE s.station_id=$1 AND s.date BETWEEN $2 AND $3 AND NOT COALESCE(de.is_voided,FALSE)
                   GROUP BY 1`, [sid, monthStart, date]),
+      // Year-to-date per product, on the FINANCIAL year (1 Apr → the settled day).
+      // Same voided/trade-date rules as every other slice above, so the three tiles
+      // are the same measurement over three windows and cannot disagree.
+      pool.query(`SELECT de.fuel_type, COALESCE(SUM(de.quantity_ltrs),0) AS ltrs, COALESCE(SUM(de.amount),0) AS amt
+                  FROM dispense_events de JOIN shifts s ON s.id=de.shift_id
+                  WHERE s.station_id=$1 AND s.date BETWEEN $2 AND $3 AND NOT COALESCE(de.is_voided,FALSE)
+                  GROUP BY 1`, [sid, yearStart, date]),
     ]);
 
     const sell = {}; pr.rows.forEach(r => { sell[r.fuel_type] = parseFloat(r.price); });
-    const buy  = {}; by.rows.forEach(r => { buy[r.fuel_type] = parseFloat(r.rate_per_ltr); });
-    let sales = 0, ltrs = 0, creditAmt = 0, marginAmt = 0;
+    const own  = {}; by.rows.forEach(r => { own[r.fuel_type] = parseFloat(r.rate_per_ltr); });
+    let sales = 0, ltrs = 0, creditAmt = 0;
     const ltrsByFuel = {}, amtByFuel = {};
     sf.rows.forEach(r => {
       const a = parseFloat(r.amt), l = parseFloat(r.ltrs);
@@ -86,16 +104,31 @@ async function outletMetrics(sid, date) {
       ltrsByFuel[r.fuel_type] = (ltrsByFuel[r.fuel_type] || 0) + l;
       amtByFuel[r.fuel_type]  = (amtByFuel[r.fuel_type]  || 0) + a;
     });
-    Object.keys(ltrsByFuel).forEach(ft => { if (sell[ft] != null && buy[ft] != null) marginAmt += ltrsByFuel[ft] * (sell[ft] - buy[ft]); });
 
-    // Per-product breakdown for the group tiles. Prices (sell/buy) are the latest
-    // on file; a null buy ⇒ margin can't be computed for that product (the UI
-    // surfaces this so the owner enters the delivery rate).
-    const fuelSet = new Set([...Object.keys(ltrsByFuel), ...mf.rows.map(r => r.fuel_type)]);
+    // Every product this outlet sells or prices, across all three windows.
+    const fuelSet = new Set([...Object.keys(ltrsByFuel), ...Object.keys(sell),
+      ...mf.rows.map(r => r.fuel_type), ...yf.rows.map(r => r.fuel_type)]);
+    // How each product is costed: this outlet's own delivery rate, else a sister
+    // outlet's for the same product (marginService labels the borrow), and CNG on
+    // its commission regardless of either. ONE writer decides — see marginService.
+    const rates = {};
+    for (const ft of fuelSet) rates[ft] = { sell: sell[ft] ?? null, own: own[ft] ?? null, peer: groupBuy[ft] || null };
+
+    const qtyOf = rows => { const m = {}; rows.forEach(r => { m[r.fuel_type] = parseFloat(r.ltrs) || 0; }); return m; };
+    const amtOf = rows => { const m = {}; rows.forEach(r => { m[r.fuel_type] = parseFloat(r.amt) || 0; }); return m; };
+    const dayMargin = margins.computeMargin(ltrsByFuel, amtByFuel, rates);
+    const mtdMargin = margins.computeMargin(qtyOf(mf.rows), amtOf(mf.rows), rates);
+    const ytdMargin = margins.computeMargin(qtyOf(yf.rows), amtOf(yf.rows), rates);
+    const marginAmt = dayMargin.amount;
+
+    // Per-product breakdown for the group tiles. `price` now carries the ANSWER
+    // (`unit_margin` + `basis`) rather than the ingredients, so the browser no
+    // longer re-derives margin and cannot drift from this file.
     const by_fuel = {
       day: Object.keys(ltrsByFuel).map(ft => ({ fuel_type: ft, litres: +ltrsByFuel[ft].toFixed(1), amount: +(amtByFuel[ft] || 0).toFixed(2) })),
       mtd: mf.rows.map(r => ({ fuel_type: r.fuel_type, litres: +parseFloat(r.ltrs).toFixed(1), amount: +parseFloat(r.amt).toFixed(2) })),
-      price: [...fuelSet].map(ft => ({ fuel_type: ft, sell: sell[ft] ?? null, buy: buy[ft] ?? null })),
+      ytd: yf.rows.map(r => ({ fuel_type: r.fuel_type, litres: +parseFloat(r.ltrs).toFixed(1), amount: +parseFloat(r.amt).toFixed(2) })),
+      price: margins.priceRows(fuelSet, rates),
     };
 
     const r0 = rv.rows[0];
@@ -110,7 +143,15 @@ async function outletMetrics(sid, date) {
 
     return {
       sales: +sales.toFixed(2), litres: +ltrs.toFixed(1), yest_sales: +yest.toFixed(2),
-      margin: +marginAmt.toFixed(2), gross_margin_pct: sales > 0 ? +(marginAmt / sales * 100).toFixed(2) : null,
+      // The blended % is margin over the sales we can actually COST, not over all
+      // sales. A product with no basis contributes to neither side; letting it sit
+      // in the denominator alone would report a lower margin than the outlet earns.
+      margin: +marginAmt.toFixed(2), gross_margin_pct: dayMargin.pct,
+      margin_costed_sales: dayMargin.costed_amount,
+      mtd_margin: mtdMargin.amount, ytd_margin: ytdMargin.amount,
+      ytd_sales: +yf.rows.reduce((s, r) => s + (parseFloat(r.amt) || 0), 0).toFixed(2),
+      ytd_litres: +yf.rows.reduce((s, r) => s + (parseFloat(r.ltrs) || 0), 0).toFixed(1),
+      ytd_from: yearStart,
       margin_frac: sales > 0 ? marginAmt / sales : null,
       credit_pct: sales > 0 ? +(creditAmt / sales * 100).toFixed(1) : 0,
       outstanding: +outstanding.toFixed(2), overdue_90: +overdue90.toFixed(2),
@@ -121,7 +162,7 @@ async function outletMetrics(sid, date) {
       by_fuel,
     };
   } catch (e) {
-    return { sales: 0, litres: 0, yest_sales: 0, margin: 0, gross_margin_pct: null, margin_frac: null, credit_pct: 0, outstanding: 0, overdue_90: 0, overdue_pct: 0, wetstock_loss_ltrs: 0, wetstock_loss_pct: 0, wetstock_beyond: false, collection_lag_days: null, cash_undeposited: 0, vs_yesterday_pct: null, by_fuel: { day: [], mtd: [], price: [] } };
+    return { sales: 0, litres: 0, yest_sales: 0, margin: 0, gross_margin_pct: null, margin_costed_sales: 0, mtd_margin: 0, ytd_margin: 0, ytd_sales: 0, ytd_litres: 0, ytd_from: yearStart, margin_frac: null, credit_pct: 0, outstanding: 0, overdue_90: 0, overdue_pct: 0, wetstock_loss_ltrs: 0, wetstock_loss_pct: 0, wetstock_beyond: false, collection_lag_days: null, cash_undeposited: 0, vs_yesterday_pct: null, by_fuel: { day: [], mtd: [], ytd: [], price: [] } };
   }
 }
 
@@ -134,7 +175,13 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
     );
     if (!member.length) return res.status(403).json({ error: 'Not a member of this group' });
 
+    // `date=YYYY-MM-DD` pins every outlet to one trade day (the Group View date
+    // picker). It is validated by SHAPE and then handed to Postgres as a bound
+    // parameter — never interpolated — and a malformed value falls back to today
+    // rather than erroring, so a stale bookmark cannot blank the owner's dashboard.
     const today = new Date().toISOString().slice(0, 10);
+    const asked = String(req.query.date || '');
+    const pinnedDate = /^\d{4}-\d{2}-\d{2}$/.test(asked) && asked <= today ? asked : null;
     const { rows } = await pool.query(`
       SELECT 
         s.id, s.name, s.city, s.state, s.oil_company,
@@ -160,7 +207,8 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
     // instead of the empty running "today" — the group-view analog of the bunk
     // cockpit's last-settled-day default. Intelligence keeps the default (today) so
     // its cross-outlet scorecard stays same-period. Best-effort: falls back to today.
-    const asOfSettled = req.query.as_of === 'settled';
+    // An explicit date beats "last settled": the owner asked for THAT day.
+    const asOfSettled = req.query.as_of === 'settled' && !pinnedDate;
     const dateByStation = {};
     if (asOfSettled) {
       try {
@@ -175,22 +223,50 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
         lt.forEach(x => { if (x.d) dateByStation[x.sid] = x.d; });
       } catch (e) { /* best-effort — fall back to today */ }
     }
-    const dateFor = id => (asOfSettled ? (dateByStation[String(id)] || today) : today);
+    const dateFor = id => (pinnedDate || (asOfSettled ? (dateByStation[String(id)] || today) : today));
+
+    // GROUP-WIDE delivery rates: the latest rate on file for each product ACROSS the
+    // owner's outlets. An outlet that has never recorded a rate for a product it
+    // sells borrows this one rather than booking ₹0 margin — see marginService for
+    // why zero is the one answer known to be wrong. Best-effort: no rates ⇒ the old
+    // behaviour (untracked), never an error.
+    const groupBuy = {};
+    try {
+      const { rows: gb } = await pool.query(`
+        SELECT DISTINCT ON (fd.fuel_type) fd.fuel_type, fd.rate_per_ltr, st.name AS station_name
+          FROM fuel_deliveries fd
+          JOIN stations st ON st.id = fd.station_id
+          JOIN station_group_members sgm ON sgm.station_id = fd.station_id
+          JOIN station_groups stg ON stg.id = sgm.station_group_id
+         WHERE stg.owner_group_id = $1 AND fd.rate_per_ltr IS NOT NULL
+         ORDER BY fd.fuel_type, fd.received_at DESC NULLS LAST`, [req.params.id]);
+      gb.forEach(r => { groupBuy[r.fuel_type] = { rate: parseFloat(r.rate_per_ltr), station_name: r.station_name }; });
+    } catch (e) { /* best-effort — falls back to own-rate-only */ }
 
     // Enrich each outlet with cockpit metrics for the rollup + scorecard + simulator.
     const stations = await Promise.all(rows.map(async r => {
       const md = dateFor(r.id);
-      return { ...r, metric_date: md, ...(await outletMetrics(r.id, md)) };
+      return { ...r, metric_date: md, ...(await outletMetrics(r.id, md, groupBuy)) };
     }));
 
     const inr = x => '₹' + Math.round(x).toLocaleString('en-IN');
     const sum = k => stations.reduce((s, r) => s + (parseFloat(r[k]) || 0), 0);
     const totalSales = sum('sales'), totalYest = sum('yest_sales'), totalMargin = sum('margin');
+    const totalCosted = sum('margin_costed_sales');
+    const ytdSales = sum('ytd_sales'), ytdMargin = sum('ytd_margin');
     const totals = {
       total_sales:   +totalSales.toFixed(2),
       total_litres:  +sum('litres').toFixed(1),
       total_margin:  +totalMargin.toFixed(2),
-      group_margin_pct: totalSales > 0 ? +(totalMargin / totalSales * 100).toFixed(2) : null,
+      // Blended over COSTED sales (see outletMetrics) so an untracked product
+      // cannot understate the margin the group actually earns.
+      group_margin_pct: totalCosted > 0 ? +(totalMargin / totalCosted * 100).toFixed(2) : null,
+      ytd_sales:     +ytdSales.toFixed(2),
+      ytd_litres:    +sum('ytd_litres').toFixed(1),
+      ytd_margin:    +ytdMargin.toFixed(2),
+      mtd_margin:    +sum('mtd_margin').toFixed(2),
+      // The window is reported, never implied: the UI prints both ends of it.
+      ytd_from:      stations[0]?.ytd_from || null,
       vs_yesterday_pct: totalYest > 0 ? +((totalSales - totalYest) / totalYest * 100).toFixed(1) : null,
       cash_undeposited: +sum('cash_undeposited').toFixed(2),
       receivables_outstanding: +sum('outstanding').toFixed(2),
@@ -214,7 +290,9 @@ router.get('/:id/dashboard', authenticate, authorize('owner'), async (req, res, 
     const as_of_uniform = metricDates.length <= 1;
     const as_of_date = metricDates.length ? metricDates.slice().sort().slice(-1)[0] : today;
 
-    res.json({ stations, totals, exceptions, date: today, as_of_date, as_of_uniform, as_of_settled: asOfSettled });
+    res.json({ stations, totals, exceptions, date: today, as_of_date, as_of_uniform,
+               as_of_settled: asOfSettled, pinned_date: pinnedDate, max_date: today,
+               cng_commission_per_kg: margins.CNG_COMMISSION_PER_KG });
   } catch (err) { next(err); }
 });
 

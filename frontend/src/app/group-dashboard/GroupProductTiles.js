@@ -8,7 +8,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 
 const PRODUCTS = {
   petrol:         { label: 'Petrol',  color: '#2a78d6', order: 1 },
@@ -17,6 +17,19 @@ const PRODUCTS = {
   cng:            { label: 'CNG',      color: '#c98a00', order: 4 },
 };
 const meta = ft => PRODUCTS[ft] || { label: String(ft).replace(/_/g, ' '), color: '#8a867f', order: 9 };
+
+// Dates: house rule is en-IN + Asia/Kolkata, DD MMM YYYY. A YYYY-MM-DD string is
+// parsed as midnight UTC, which in IST is still the SAME calendar day, so these are
+// safe for the date-only values the API sends.
+const fmtDMY   = d => d ? new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
+const fmtMonth = d => d ? new Date(d + (String(d).length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', month: 'long', year: 'numeric' }) : '';
+const monthStartOf = d => d ? String(d).slice(0, 8) + '01' : '';
+// "FY 2026-27" — named, not inferred. The Indian financial year runs 1 Apr → 31 Mar.
+const fyLabel = (from, to) => {
+  const src = from || to; if (!src) return 'Year to date';
+  const y = +String(from || '').slice(0, 4) || (+String(to).slice(5, 7) >= 4 ? +String(to).slice(0, 4) : +String(to).slice(0, 4) - 1);
+  return `FY ${y}–${String((y + 1) % 100).padStart(2, '0')}`;
+};
 
 const fmtR = n => '₹' + Math.round(+n || 0).toLocaleString('en-IN');
 const fmtL = n => Math.round(+n || 0).toLocaleString('en-IN') + ' L';
@@ -28,7 +41,13 @@ const MEASURES = {
   amt: { label: 'Sale Amount',   fmt: fmtR, compact: compactR },
   mgn: { label: 'Margin',        fmt: fmtR, compact: compactR },
 };
-const val = (r, m) => !r ? 0 : m === 'qty' ? r.l : m === 'amt' ? r.amt : (r.buy == null ? 0 : r.l * (r.sell - r.buy));
+// Margin is NOT recomputed here. The backend's marginService decides what a unit of
+// each product earns — an ordinary delivery rate, a sister outlet's rate borrowed
+// because this one has none, or CNG's fixed commission per kg — and sends the answer
+// as `unit_margin`. This file only multiplies it by the quantity it is displaying.
+// It used to do `sell − buy` itself, which is how CNG booked ₹0 for months: a
+// commission has no buy price, so the subtraction had nothing to work with.
+const val = (r, m) => !r ? 0 : m === 'qty' ? r.l : m === 'amt' ? r.amt : (r.unit == null ? 0 : r.l * r.unit);
 
 const DIAL_MAX_PCT = 4, DIAL_SPAN = 0.75;
 function dialPath() {
@@ -38,7 +57,7 @@ function dialPath() {
 }
 const DONUT_C = 2 * Math.PI * 46;
 
-export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
+export default function GroupProductTiles({ stations, asOfDate, asOfUniform, ytdFrom }) {
   const router = useRouter();
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
@@ -46,12 +65,24 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
 
   const outlets = useMemo(() => (stations || []).map(s => {
     const price = {}; (s.by_fuel?.price || []).forEach(p => { price[p.fuel_type] = p; });
-    const mk = arr => { const m = {}; (arr || []).forEach(r => { const pr = price[r.fuel_type] || {}; m[r.fuel_type] = { l: +r.litres || 0, amt: +r.amount || 0, sell: pr.sell == null ? null : +pr.sell, buy: pr.buy == null ? null : +pr.buy }; }); return m; };
+    const mk = arr => { const m = {}; (arr || []).forEach(r => { const pr = price[r.fuel_type] || {}; m[r.fuel_type] = {
+      l: +r.litres || 0, amt: +r.amount || 0,
+      sell: pr.sell == null ? null : +pr.sell, buy: pr.buy == null ? null : +pr.buy,
+      // The backend's verdict for this product, carried through untouched.
+      // MID-DEPLOY FALLBACK: Vercel and Railway ship independently, so for a few
+      // minutes this file can be newer than the API that feeds it. When `unit_margin`
+      // is absent (older backend) fall back to the old sell−buy so the tiles keep
+      // showing the margin they showed yesterday, rather than reading ₹0 / "not
+      // tracked" across the board until Railway catches up. `??` not `||` — a
+      // genuine 0 margin is a real answer and must not trip the fallback.
+      unit: pr.unit_margin ?? (pr.buy == null || pr.sell == null ? null : +pr.sell - +pr.buy),
+      basis: pr.basis || null, borrowedFrom: pr.borrowed_from || null,
+    }; }); return m; };
     return {
       name: s.name,
       short: (s.name || '').replace(/ Filling Station| Petrol Bunk| Bunk/i, '').trim() || s.name,
       health: (s.wetstock_beyond || s.overdue_90 > 0) ? '#dc2626' : (s.cash_undeposited > 5000 ? '#d97706' : '#16a34a'),
-      day: mk(s.by_fuel?.day), mtd: mk(s.by_fuel?.mtd),
+      day: mk(s.by_fuel?.day), mtd: mk(s.by_fuel?.mtd), ytd: mk(s.by_fuel?.ytd),
     };
   }), [stations]);
 
@@ -63,10 +94,18 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
   const outletTotal = (o, period) => Object.keys(o[period]).reduce((s, k) => s + val(o[period][k], measure), 0);
   const productTotal = (period, k) => outlets.reduce((s, o) => s + val(o[period][k], measure), 0);
   const groupTotal = period => outlets.reduce((s, o) => s + outletTotal(o, period), 0);
-  const groupMargin = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.buy == null ? 0 : r.l * (r.sell - r.buy)); }, 0), 0);
-  const marginBearingSales = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.buy == null ? 0 : r.amt); }, 0), 0);
+  const groupMargin = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.unit == null ? 0 : r.l * r.unit); }, 0), 0);
+  // Sales we can actually cost. A product with no basis sits in NEITHER the numerator
+  // nor the denominator — counting its sales alone would report a margin lower than
+  // the group earns, which is the same mistake as booking its margin at zero.
+  const marginBearingSales = period => outlets.reduce((s, o) => s + Object.keys(o[period]).reduce((ss, k) => { const r = o[period][k]; return ss + (r.unit == null ? 0 : r.amt); }, 0), 0);
   const blended = period => { const b = marginBearingSales(period); return b > 0 ? groupMargin(period) / b * 100 : 0; };
-  const untracked = period => { const m = {}; outlets.forEach(o => Object.keys(o[period]).forEach(k => { const r = o[period][k]; if (r.buy == null && r.amt > 0) { const e = (m[k] = m[k] || { key: k, label: meta(k).label, sales: 0, outlets: [] }); e.sales += r.amt; if (!e.outlets.includes(o.short)) e.outlets.push(o.short); } })); return Object.values(m).sort((a, b) => b.sales - a.sales); };
+  // Genuinely untracked = no basis at all. A borrowed rate and a CNG commission are
+  // both a basis, so neither belongs in the "enter a delivery rate" nudge.
+  const untracked = period => { const m = {}; outlets.forEach(o => Object.keys(o[period]).forEach(k => { const r = o[period][k]; if (r.unit == null && r.amt > 0) { const e = (m[k] = m[k] || { key: k, label: meta(k).label, sales: 0, outlets: [] }); e.sales += r.amt; if (!e.outlets.includes(o.short)) e.outlets.push(o.short); } })); return Object.values(m).sort((a, b) => b.sales - a.sales); };
+  // Products earning on an ESTIMATE — a sister outlet's rate. Shown plainly, because
+  // an estimate presented as a fact is worse than no estimate.
+  const borrowed = period => { const m = {}; outlets.forEach(o => Object.keys(o[period]).forEach(k => { const r = o[period][k]; if (r.basis === 'borrowed_rate' && r.amt > 0) { const e = (m[k] = m[k] || { key: k, label: meta(k).label, from: r.borrowedFrom, buy: r.buy, outlets: [] }); if (!e.outlets.includes(o.short)) e.outlets.push(o.short); } })); return Object.values(m); };
 
   const surface = 'var(--surface,#fff)';
   const mini = { background: 'var(--surface-2,#f8fafc)', borderRadius: 10 };
@@ -76,6 +115,7 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
     const gTotal = groupTotal(period);
     const mp = blended(period);
     const ut = untracked(period);
+    const bw = borrowed(period);
     const maxOutlet = Math.max(1, ...outlets.map(o => outletTotal(o, period)));
     let acc = 0;
 
@@ -89,9 +129,11 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
             <div style={{ fontSize: 16, fontWeight: 800, marginTop: 5 }}>{name}</div>
             <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{stamp}</div>
           </div>
-          <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-2,#f8fafc)', border: '1px dashed var(--border-strong,#c9c6bf)', padding: '4px 9px', borderRadius: 99, maxWidth: 120, textAlign: 'right', lineHeight: 1.3 }}>
-            {tc('gprod.noPrior', 'no prior month')}
-          </span>
+          {period === 'mtd' && (
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-2,#f8fafc)', border: '1px dashed var(--border-strong,#c9c6bf)', padding: '4px 9px', borderRadius: 99, maxWidth: 120, textAlign: 'right', lineHeight: 1.3 }}>
+              {tc('gprod.noPrior', 'no prior month')}
+            </span>
+          )}
         </div>
 
         {/* hero: dial + number */}
@@ -131,6 +173,19 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
             <button onClick={() => router.push('/deliveries')} style={{ whiteSpace: 'nowrap', background: 'var(--brand,#e07b0c)', color: '#fff', border: 0, borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0 }}>
               {tc('gprod.enterRate', 'Enter delivery rate →')}
             </button>
+          </div>
+        )}
+
+        {/* Borrowed-rate disclosure. Deliberately NOT styled as a warning: the
+            estimate is what makes the figure usable, and the owner only needs to
+            know it is an estimate and whose rate it stands on. */}
+        {bw.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'var(--surface-2,#f8fafc)', border: '1px solid var(--border,#e5e7eb)', borderLeft: '3px solid #2a78d6', borderRadius: 10, padding: '9px 11px', marginBottom: 14, fontSize: 11.5, lineHeight: 1.45, color: 'var(--text-2,#475569)' }}>
+            <Info size={15} color="#2a78d6" style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{bw.map(u => tc('gprod.borrowedOne', '{p} at {o} is costed on {from}’s rate (₹{r}/L) — estimated until its own delivery rate is entered.')
+              .replace('{p}', u.label).replace('{o}', u.outlets.join(', '))
+              .replace('{from}', u.from || tc('gprod.anotherOutlet', 'another outlet'))
+              .replace('{r}', u.buy != null ? Number(u.buy).toFixed(2) : '—')).join(' ')}</span>
           </div>
         )}
 
@@ -215,7 +270,8 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
   return (
     <div className="gpt">
       <style>{`
-        .gpt-tiles{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+        .gpt-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+        @media(max-width:1180px){.gpt-tiles{grid-template-columns:1fr 1fr}}
         @media(max-width:820px){.gpt-tiles{grid-template-columns:1fr}}
         .gpt-varGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
         @media(max-width:720px){.gpt-varGrid{grid-template-columns:1fr}}
@@ -238,7 +294,16 @@ export default function GroupProductTiles({ stations, asOfDate, asOfUniform }) {
 
       <div className="gpt-tiles">
         <Tile period="day" eyebrow={tc('gprod.day', 'Day · last shift close')} name={asOfDate ? new Date(asOfDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short' }) : tc('gprod.day', 'Day')} stamp={`${tc('gprod.settled', 'Settled')}${asOfUniform === false ? ' · ' + tc('gprod.perBunk', 'latest per bunk') : ''}`} accent="#e07b0c" />
-        <Tile period="mtd" eyebrow={tc('gprod.mtd', 'Month to date · through close')} name={tc('gprod.thisMonth', 'This month')} stamp={asOfDate ? `${tc('gprod.through', 'Through')} ${new Date(asOfDate).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short' })}` : ''} accent="#2a78d6" />
+        <Tile period="mtd" eyebrow={tc('gprod.mtd', 'Month to date · through close')} name={fmtMonth(asOfDate)} stamp={asOfDate ? `${fmtDMY(monthStartOf(asOfDate))} → ${fmtDMY(asOfDate)}` : ''} accent="#2a78d6" />
+        {/* YEAR TO DATE. Both ends of the window are printed on the tile, and the
+            financial year is named, because "year to date" alone means April to one
+            reader and January to another — and the owner's books say April. An
+            unlabelled window is the ambiguity, not the choice of window. */}
+        <Tile period="ytd"
+          eyebrow={tc('gprod.ytd', 'Year to date · financial year')}
+          name={fyLabel(ytdFrom, asOfDate)}
+          stamp={ytdFrom && asOfDate ? `${fmtDMY(ytdFrom)} → ${fmtDMY(asOfDate)}` : ''}
+          accent="#7c3aed" />
       </div>
 
       {/* margin variance — needs at least two outlets to compare */}
