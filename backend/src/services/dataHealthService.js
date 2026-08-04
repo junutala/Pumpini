@@ -19,6 +19,12 @@
 //   4. handover_mismatch    — a tank's prior-shift CLOSING dip vs the next-shift
 //                             OPENING dip differ beyond a small litre tolerance
 //                             (a wet-stock red flag). Advisory only.
+//   4b. meter_handover_gap  — the same question asked of a NOZZLE: the prior shift's
+//                             closing meter vs the next shift's opening meter. Where
+//                             the server carried the figure these are equal by
+//                             construction, so a difference means the opening was
+//                             typed — and the litres between the two are on nobody's
+//                             settlement. Advisory only.
 //   5. unverified_meter_entry — a nozzle whose closing meters are ALWAYS whole
 //                             litres, i.e. typed rather than read off the pump
 //                             slip (which prints 3 decimals). The guardrail behind
@@ -44,6 +50,13 @@ const THRESHOLDS = {
   open_shift_days:          posInt(process.env.DATA_HEALTH_OPEN_SHIFT_DAYS, 1),
   late_close_days:          posInt(process.env.DATA_HEALTH_LATE_CLOSE_DAYS, 2),
   handover_tolerance_ltrs:  posNum(process.env.DATA_HEALTH_HANDOVER_TOLERANCE_LTRS, 50),
+  // The METER handover (flag 4b) is held to a far tighter tolerance than the tank
+  // dip above, and deliberately. A dip is a physical measurement with a real error
+  // bar, and a delivery can land between two shifts; a totalizer is a counter that
+  // only ever goes up, so where the server carried the close forward the two figures
+  // are IDENTICAL. Half a litre is slack for a manual entry's rounding, not for a
+  // genuine discrepancy.
+  meter_handover_tolerance_ltrs: posNum(process.env.DATA_HEALTH_METER_HANDOVER_TOLERANCE_LTRS, 0.5),
   // Unverified meter entry (flag 5). A totalizer prints 3 decimals, so a genuine
   // reading is whole about 1 time in 1000. 80% sits in the empty gap measured on
   // production: honest outlets peaked at 17% (39% on two slow premium nozzles),
@@ -209,6 +222,75 @@ async function computeDataHealth(stationIds, today = istToday()) {
     push(r.station_id, {
       type: 'handover_mismatch',
       tank_number: r.tank_number,
+      fuel_type: r.fuel_type,
+      diff_ltrs: r.diff_ltrs == null ? null : Number(r.diff_ltrs),
+      date: r.date,
+      shift_number: r.shift_number,
+      prev_date: r.prev_date,
+      prev_shift_number: r.prev_shift_number,
+    });
+  }
+
+  // ── Flag 4b: closing→opening METER gap at handover (advisory) ─────────────
+  //
+  // The nozzle twin of flag 4, and the reason it exists: the tank half of a handover
+  // has been watched since the tripwire shipped, and the meter half — the one that
+  // turns into an operator's money — has not.
+  //
+  // A totalizer only counts up, so where the server carried the last close forward
+  // these two figures are the SAME NUMBER by construction. A difference therefore
+  // says the opening was typed rather than carried, which happens in exactly the two
+  // cases openingService declines to carry: a nozzle with no history, and a nozzle
+  // whose previous shift had not been settled when this one opened. The first is
+  // expected and rare. The second leaves the litres between the two figures on
+  // NOBODY's settlement — the gap the whole carry rule exists to close — and it is
+  // only visible once that earlier shift is finally settled, which is after the
+  // screen could have said anything about it. Hence a tripwire rather than a
+  // validation.
+  //
+  // Ordered by shift START TIME, not by date: at a three-shifts-a-day outlet the
+  // trade date drifts inside a shift, so date ordering puts an 01:28 handover in the
+  // wrong place — the same trap openingService.seedOpeningDips documents.
+  //
+  // Advisory only. A pump swap or a totalizer replacement is a real event that shows
+  // up here, and it should — but it is not a reason to block anything.
+  let meterGapRows = [];
+  try {
+    const { rows } = await pool.query(
+      `WITH leg AS (
+         SELECT s.station_id, n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
+                s.date, s.shift_number, s.start_time,
+                san.opening_reading, san.closing_reading
+           FROM shift_attendant_nozzles san
+           JOIN shifts  s ON s.id = san.shift_id
+           JOIN nozzles n ON n.id = san.nozzle_id
+          WHERE s.station_id = ANY($1::uuid[])
+            AND s.date >= ($2::date - $3::int)
+       ),
+       seq AS (
+         SELECT leg.*,
+                LAG(closing_reading) OVER w AS prev_closing,
+                LAG(date)            OVER w AS prev_date,
+                LAG(shift_number)    OVER w AS prev_shift_number
+           FROM leg
+         WINDOW w AS (PARTITION BY nozzle_id ORDER BY start_time, date, shift_number)
+       )
+       SELECT station_id, nozzle_number, fuel_type, date::text AS date, shift_number,
+              prev_date::text AS prev_date, prev_shift_number,
+              ROUND((opening_reading - prev_closing)::numeric, 3) AS diff_ltrs
+         FROM seq
+        WHERE opening_reading IS NOT NULL AND prev_closing IS NOT NULL
+          AND ABS(opening_reading - prev_closing) > $4::numeric
+        ORDER BY date DESC, shift_number DESC`,
+      [ids, today, T.lookback_days, T.meter_handover_tolerance_ltrs]
+    );
+    meterGapRows = rows;
+  } catch (e) { /* best-effort */ }
+
+  for (const r of meterGapRows) {
+    push(r.station_id, {
+      type: 'meter_handover_gap',
+      nozzle_number: r.nozzle_number,
       fuel_type: r.fuel_type,
       diff_ltrs: r.diff_ltrs == null ? null : Number(r.diff_ltrs),
       date: r.date,

@@ -11,6 +11,10 @@ test('THRESHOLDS carries the documented defaults', () => {
   assert.strictEqual(THRESHOLDS.open_shift_days, 1);
   assert.ok(THRESHOLDS.handover_tolerance_ltrs > 0);
   assert.ok(THRESHOLDS.lookback_days > 0);
+  // The meter handover is held far tighter than the tank dip: a totalizer is a
+  // counter, not a measurement, so a carried handover is exact.
+  assert.ok(THRESHOLDS.meter_handover_tolerance_ltrs > 0);
+  assert.ok(THRESHOLDS.meter_handover_tolerance_ltrs < THRESHOLDS.handover_tolerance_ltrs);
 });
 
 test('computeDataHealth returns an empty map for no stations (no DB call)', async () => {
