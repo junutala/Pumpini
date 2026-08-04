@@ -138,4 +138,31 @@ const requirePerm = (module) => async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getUserPermissions, clearPermCache, clearStationPermCache, requirePerm };
+// ANY of several permissions. Exists so that ONE endpoint can serve two roles that
+// legitimately reach the same thing by different routes, instead of the endpoint
+// being COPIED so the copy can carry a different requirePerm.
+//
+// That copying is the tell the cardinal rule names, and it had already happened
+// twice: /reconcile/pos-meter and /reconcile/ocr-meter were two complete copies of
+// one OCR call — same inputs, same model, same response — differing ONLY in whether
+// they demanded settlement.enter (the attendant's one capability) or reconcile.manage
+// (the manager's). Neither role holds the other's permission, which is why a second
+// route felt necessary; this is what makes it unnecessary.
+//
+// Granting the UNION is not a widening: every caller could already reach the same
+// work through whichever copy its role was allowed, so nobody gains access they did
+// not have. Same station guard, same behaviour, one path.
+const requireAnyPerm = (...modules) => async (req, res, next) => {
+  try {
+    const stationId = req.query.station_id || req.body.station_id || req.params.station_id || req.stationId;
+    if (!stationId) return next();
+    const perms = await getUserPermissions(req.user.id, stationId);
+    if (!perms.includes('ALL') && !modules.some(m => perms.includes(m))) {
+      return res.status(403).json({ error: `Permission denied: ${modules.join(' or ')}` });
+    }
+    req.userPermissions = perms;
+    next();
+  } catch (err) { next(err); }
+};
+
+module.exports = { getUserPermissions, clearPermCache, clearStationPermCache, requirePerm, requireAnyPerm };

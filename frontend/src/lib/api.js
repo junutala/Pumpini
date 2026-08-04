@@ -169,8 +169,10 @@ export const updatePump = (sid, id, d) => api.patch(`/stations/${sid}/pumps/${id
 export const deletePump = (sid, id)    => api.delete(`/stations/${sid}/pumps/${id}`);
 
 // Reconcile (denomination)
-export const submitDenomination = (data) => api.post('/reconcile/denomination', data);
-export const confirmReco        = (id)   => api.patch(`/reconcile/${id}/confirm`, {});
+// submitDenomination / confirmReco — REMOVED 04-Aug-2026. Both wrappers had no
+// caller: the screens that use those endpoints (POS, dispense, the reconcile list)
+// post to them directly. The ENDPOINTS are live and untouched; only the unused
+// helpers go, so nobody reaches for a wrapper that nothing has ever exercised.
 
 // AI Chat — longer timeout: model latency + possible Railway cold start
 export const sendAiChat = (data) => api.post('/ai-chat', data, { timeout: 60000 });
