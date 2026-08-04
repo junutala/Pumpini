@@ -5,6 +5,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 const { dipToVolume } = require('../lib/calibration');
 const artifacts = require('../services/artifactService');
+const openings = require('../services/openingService');
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -29,7 +30,40 @@ async function hasArtifactCol() {
 // the tank has a calibration type, volume is computed authoritatively from the
 // geometry and the client's volume_ltrs is ignored; otherwise it falls back to
 // the manually entered volume (tanks not yet assigned a type).
+//
+// 🔴 ONE READING PER SHIFT PER TANK PER TYPE. This used to INSERT unconditionally,
+// and a shift-start sequence writes twice by construction: the manager types his
+// dips before the shift exists, persistDip calls ensureShift(), the server seeds
+// the carried opening from the last close — and THEN this route inserted his typed
+// figure alongside it. Every tank-shift since 02-Aug-2026 carries exactly two
+// opening rows, and where the two disagree the readers disagree too: the stock
+// reconciliation takes the NEWEST, deliveries and the settlement ledger take the
+// OLDEST, and data-health takes the LARGEST. The same tank-shift therefore reports
+// three different opening stocks on three screens. (Highway tank 1: 6,592.56 vs
+// 3,475.52 — a 3,117 L difference of opinion about the same morning.)
+//
+// So the write is now conditional on what already exists, and the two types differ
+// deliberately:
+//
+//   opening — FIRST WRITE WINS. Once an opening exists it is not replaced. When the
+//     server has carried it from the last close, that figure IS the control (owner
+//     rule 01-Aug-2026: the close is the next open, so no litre can fall in a gap
+//     between two shifts) and the shift-start screen renders the tank locked for
+//     exactly that reason. A later POST is either the pre-shift typing described
+//     above or a client racing itself; neither may overturn the carry. The caller
+//     is told, so the screen can show what was kept.
+//
+//   closing — LAST WRITE WINS, in place. A manager re-shooting the gauge at close
+//     is correcting his own reading, and every reader already takes the newest
+//     closing, so updating the row preserves today's behaviour exactly while
+//     removing the duplicate.
+//
+// Serialised on an advisory lock over (shift, tank, type) so two concurrent posts
+// cannot both find nothing and both insert. A unique index is the proper backstop
+// and is owner-run DDL; the lock holds the line until it is applied, and remains
+// correct afterwards.
 router.post('/', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { station_id, tank_id, shift_id, reading_type, dip_cm, density, temperature_c,
             artifact_id } = req.body;
@@ -40,7 +74,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // pull its calibration type in the same hop.
     let chart = null;
     if (tank_id) {
-      const { rows: tk } = await pool.query(
+      const { rows: tk } = await client.query(
         `SELECT c.diameter_cm, c.length_cm
          FROM tanks t
          LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
@@ -58,21 +92,74 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // artifact_id links this figure back to the gauge-screen photograph it was read
     // off, so a number on the stock reconciliation can always be traced to a picture.
     // A manually dipped tank simply has none — it is optional by design, and the
-    // column is only named once the migration has been applied.
-    const cols = ['station_id','tank_id','shift_id','reading_type','dip_cm','volume_ltrs','density','temperature_c','recorded_by'];
-    const vals = [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id];
-    if (artifact_id && await hasArtifactCol()) { cols.push('artifact_id'); vals.push(artifact_id); }
-    const { rows } = await pool.query(
-      `INSERT INTO dipstick_readings(${cols.join(',')})
-       VALUES(${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
-      vals
-    );
+    // column is only named once the migration has been applied. Probed against the
+    // catalog BEFORE the transaction opens: a failed statement inside one aborts it.
+    const withArtifact = !!artifact_id && await hasArtifactCol();
 
-    // Update tank current stock (station-scoped as a belt-and-suspenders guard)
-    await pool.query('UPDATE tanks SET current_stock=$1, density=$2 WHERE id=$3 AND station_id=$4', [volume_ltrs, density, tank_id, station_id]);
+    await client.query('BEGIN');
+    // int4 pair, so the lock is specific to this shift+tank and this type.
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
+      [`${shift_id}:${tank_id}`, String(reading_type || '')]);
 
-    res.status(201).json(rows[0]);
-  } catch (err) { next(err); }
+    const { rows: existing } = await client.query(
+      `SELECT * FROM dipstick_readings
+        WHERE shift_id=$1 AND tank_id=$2 AND reading_type=$3
+        ORDER BY recorded_at ASC LIMIT 1`, [shift_id, tank_id, reading_type]);
+
+    let row, kept = false;
+    if (existing.length && reading_type === 'opening') {
+      // Already carried or already entered. Keep it, write nothing.
+      row = existing[0];
+      kept = true;
+    } else if (existing.length) {
+      const sets = ['dip_cm=$1','volume_ltrs=$2','density=$3','temperature_c=$4','recorded_by=$5','recorded_at=NOW()'];
+      const vals = [dip_cm, volume_ltrs, density, temperature_c, req.user.id];
+      if (withArtifact) { vals.push(artifact_id); sets.push(`artifact_id=$${vals.length}`); }
+      vals.push(existing[0].id);
+      const { rows } = await client.query(
+        `UPDATE dipstick_readings SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals);
+      row = rows[0];
+    } else {
+      const cols = ['station_id','tank_id','shift_id','reading_type','dip_cm','volume_ltrs','density','temperature_c','recorded_by'];
+      const vals = [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id];
+      if (withArtifact) { cols.push('artifact_id'); vals.push(artifact_id); }
+      const { rows } = await client.query(
+        `INSERT INTO dipstick_readings(${cols.join(',')})
+         VALUES(${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
+        vals
+      );
+      row = rows[0];
+    }
+
+    // Update tank current stock (station-scoped as a belt-and-suspenders guard).
+    // From the row that SURVIVED, never from a figure that was refused — otherwise
+    // a rejected opening would still move the tank.
+    await client.query('UPDATE tanks SET current_stock=$1, density=$2 WHERE id=$3 AND station_id=$4',
+      [row.volume_ltrs, row.density, tank_id, station_id]);
+
+    await client.query('COMMIT');
+
+    // The other half of the carry-forward rule. A night handover opens tomorrow
+    // before it closes today, so at open time there was nothing to carry and the
+    // next shift's opening was deliberately left empty. It exists now — fill it.
+    //
+    // AFTER the commit, on the pool, deliberately. The back-fill is best-effort and
+    // swallows its own errors; run inside the transaction above, a swallowed failure
+    // would still have ABORTED it, and the COMMIT would then take the closing
+    // reading down with it (CLAUDE.md — a failed statement poisons the whole
+    // transaction, which is why we never rely on catching inside one). Out here the
+    // closing is already durable and a back-fill that cannot run costs nothing but
+    // an empty opening the next screen asks for.
+    if (reading_type === 'closing') {
+      await openings.backfillOpeningFromClose({ station_id, tank_id, shift_id });
+    }
+
+    res.status(kept ? 200 : 201).json({ ...row, kept_existing: kept });
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* noop */ }
+    next(err);
+  } finally { client.release(); }
 });
 
 // GET /api/dipstick?tank_id=&date_from=&date_to=
