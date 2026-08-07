@@ -13,8 +13,74 @@
 // Every path funnels through here per the anti-drift rule; callers may pass a
 // transaction `client` to compose.
 const pool = require('../db/pool');
+const artifacts = require('./artifactService');
 
 const STATUSES = ['active', 'exhausted', 'cancelled', 'lost'];
+
+// The sample-coupon column (credit_slip_books.sample_artifact_id) arrives via
+// owner-run DDL AFTER this code, exactly like the artifact table itself. So we
+// PROBE information_schema before ever naming the column — a catalog SELECT that
+// succeeds either way and cannot poison a transaction — rather than writing it
+// blindly and catching 42703, which inside a BEGIN…COMMIT would abort the whole
+// thing. (Same discipline as artifactService; see CLAUDE.md.) Cached only once
+// TRUE, so the first issue after the migration starts linking without a restart.
+let _hasSampleCol = false;
+async function hasSampleColumn(client = pool) {
+  if (_hasSampleCol) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='credit_slip_books'
+          AND column_name='sample_artifact_id' LIMIT 1`
+    );
+    _hasSampleCol = rows.length > 0;
+  } catch { _hasSampleCol = false; }
+  return _hasSampleCol;
+}
+
+// Store a sample coupon photographed from THIS booklet and hand back its artifact
+// id. It is the slip format the coupon parser reads AND the dispute backup — the
+// paper a bill is checked against months later. Best-effort, like every artifact:
+// a book must still be issuable when the camera or the store fails, and a customer
+// whose book was recorded without a photo is a small loss, not a blocked issue.
+async function storeSlipSample({ station_id, book_id, image_base64, media_type, ocr, uploaded_by }, client = pool) {
+  if (!image_base64) return null;
+  const a = await artifacts.save({
+    station_id,
+    entity_type: 'credit_slip_book',
+    entity_id: book_id,
+    kind: 'coupon',
+    file_base64: image_base64,
+    media_type: media_type || 'image/jpeg',
+    ocr: ocr || null,
+    meta: { purpose: 'slip_format_sample' },
+    uploaded_by: uploaded_by || null,
+  }, client);
+  return a ? a.id : null;
+}
+
+// Attach a sample coupon to a freshly written/updated book: store the photo (if one
+// was supplied and not already stored) against the book, then link it back. The
+// artifact hangs off the book's id, so it can only be written once the book exists —
+// hence store-then-link rather than link-on-insert, mirroring pumpService. Every
+// step is guarded: no image → no-op; column not migrated → keep the book unchanged.
+async function attachSlipSample(book, { sample_artifact_id, image_base64, media_type, ocr, uploaded_by }, client = pool) {
+  if (!book) return book;
+  let artId = sample_artifact_id || null;
+  if (!artId && image_base64) {
+    artId = await storeSlipSample(
+      { station_id: book.station_id, book_id: book.id, image_base64, media_type, ocr, uploaded_by }, client);
+  }
+  if (!artId) return book;
+  if (!(await hasSampleColumn(client))) return book;   // column not migrated yet
+  try {
+    const { rows } = await client.query(
+      'UPDATE credit_slip_books SET sample_artifact_id=$2, updated_at=now() WHERE id=$1 RETURNING *',
+      [book.id, artId]
+    );
+    return rows[0] || book;
+  } catch { return book; }
+}
 
 function asPositiveInt(v, label) {
   const n = Number(v);
@@ -77,6 +143,8 @@ async function issueBook(input, client = pool) {
     station_id, corporate_id, book_label,
     series_start, series_end, opening_leaf,
     issued_on, notes, issued_by,
+    // Sample coupon photo (slip format / dispute backup) — optional, best-effort.
+    sample_artifact_id, image_base64, media_type, ocr, uploaded_by,
   } = input;
 
   if (!station_id)   throw badRequest('station_id is required.');
@@ -118,7 +186,8 @@ async function issueBook(input, client = pool) {
       [station_id, corporate_id, book_label || null, start, end,
        opening, issued_on || null, notes || null, issued_by || null]
     );
-    return rows[0];
+    return await attachSlipSample(
+      rows[0], { sample_artifact_id, image_base64, media_type, ocr, uploaded_by }, client);
   } catch (e) {
     if (e.code === '23P01') throw await overlapError({ station_id, start, end }, client);
     throw e;
@@ -155,7 +224,8 @@ async function overlapError({ station_id, start, end }, client = pool) {
 // deliberately NOT editable: it is the outlet's record of paper physically handed
 // over, and editing it would silently move which coupons are authorised. To fix a
 // wrongly entered range, cancel the book and issue the correct one.
-async function updateBook({ id, station_id, status, book_label, notes, opening_leaf }, client = pool) {
+async function updateBook({ id, station_id, status, book_label, notes, opening_leaf,
+                            sample_artifact_id, image_base64, media_type, ocr, uploaded_by }, client = pool) {
   const { rows: existing } = await client.query(
     'SELECT * FROM credit_slip_books WHERE id=$1 AND station_id=$2',
     [id, station_id]
@@ -189,7 +259,11 @@ async function updateBook({ id, station_id, status, book_label, notes, opening_l
       RETURNING *`,
     [id, station_id, status || null, book_label || null, notes || null, opening]
   );
-  return rows[0];
+  // Re-photographing a booklet (a first shot that was unreadable, or a clearer one
+  // for the record) stores the new sample and repoints the book. The old artifact is
+  // left in place — it is evidence of what was on file at the time.
+  return await attachSlipSample(
+    rows[0], { sample_artifact_id, image_base64, media_type, ocr, uploaded_by }, client);
 }
 
 module.exports = { listBooks, findBookForLeaf, issueBook, updateBook, STATUSES };

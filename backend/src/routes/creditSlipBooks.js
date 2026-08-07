@@ -45,7 +45,7 @@ router.get('/resolve', authenticate, requireStationAccess({ required: true }), r
 // POST /api/credit-slip-books — issue a book to a credit customer
 router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('corporate.manage'), async (req, res, next) => {
   try {
-    const book = await svc.issueBook({ ...req.body, station_id: req.body.station_id, issued_by: req.user.id });
+    const book = await svc.issueBook({ ...req.body, station_id: req.body.station_id, issued_by: req.user.id, uploaded_by: req.user.id });
     res.status(201).json(book);
   } catch (err) {
     if (isMissingTable(err)) return res.status(503).json({ error: NOT_MIGRATED });
@@ -58,7 +58,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
 // The coupon RANGE is intentionally not editable — see the service.
 router.patch('/:id', authenticate, requireStationAccess({ required: true }), requirePerm('corporate.manage'), async (req, res, next) => {
   try {
-    const book = await svc.updateBook({ ...req.body, id: req.params.id, station_id: req.body.station_id });
+    const book = await svc.updateBook({ ...req.body, id: req.params.id, station_id: req.body.station_id, uploaded_by: req.user.id });
     res.json(book);
   } catch (err) {
     if (isMissingTable(err)) return res.status(503).json({ error: NOT_MIGRATED });

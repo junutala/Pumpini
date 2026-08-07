@@ -102,8 +102,10 @@ export const setTankChart         = (tankId, data) => api.patch(`/calibration/ta
 // resolves to exactly one book and therefore one customer. See
 // docs/credit-slip-invoicing.md.
 export const getCreditSlipBooks   = (params)   => api.get('/credit-slip-books', { params });
-export const issueCreditSlipBook  = (data)     => api.post('/credit-slip-books', data);
-export const updateCreditSlipBook = (id, data) => api.patch(`/credit-slip-books/${id}`, data);
+// Longer timeout: these can carry a sample-coupon photograph (the slip format /
+// dispute backup), the same way createPump carries its slip photo.
+export const issueCreditSlipBook  = (data)     => api.post('/credit-slip-books', data, { timeout: 90000 });
+export const updateCreditSlipBook = (id, data) => api.patch(`/credit-slip-books/${id}`, data, { timeout: 90000 });
 export const resolveCouponBook    = (params)   => api.get('/credit-slip-books/resolve', { params });
 
 // Coupon capture — a filled-in requisition coupon becomes a credit sale through the

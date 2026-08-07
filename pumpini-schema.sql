@@ -955,6 +955,15 @@ END $$;
 ALTER TABLE public.dipstick_readings
   ADD COLUMN IF NOT EXISTS artifact_id uuid REFERENCES public.station_artifacts(id);
 
+-- A coupon booklet records a SAMPLE coupon photographed from it — the slip format
+-- the parser reads, and the dispute backup the customer's bill is checked against
+-- months later. Mirrors pumps.slip_artifact_id (the machine's sample slip). The
+-- writer (services/creditSlipBookService) probes for this column before using it,
+-- so the code is safe both before and after this runs. Sample coupons are stored in
+-- station_artifacts as kind='coupon', entity_type='credit_slip_book'.
+ALTER TABLE public.credit_slip_books
+  ADD COLUMN IF NOT EXISTS sample_artifact_id uuid REFERENCES public.station_artifacts(id);
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- PER-ATTENDANT SHIFT CLOCK (2026-08-01)
 --

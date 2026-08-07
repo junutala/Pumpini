@@ -33,7 +33,7 @@ const pool = require('../db/pool');
 // 'station' is the parent for a capture that belongs to the outlet rather than to
 // any one record — a gauge screen photographed for the dip register outside a
 // shift, for instance. Those carry entity_id NULL and are found by station+kind.
-const ENTITY_TYPES = ['dispense_event', 'shift', 'shift_attendant', 'dipstick_reading', 'station', 'user', 'pump'];
+const ENTITY_TYPES = ['dispense_event', 'shift', 'shift_attendant', 'dipstick_reading', 'station', 'user', 'pump', 'credit_slip_book'];
 
 // Must stay in step with the CHECK constraint in pumpini-schema.sql.
 const KINDS = ['coupon', 'gauge_screen', 'attendant_photo', 'nozzle_meter', 'nozzle_slip'];
