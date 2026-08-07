@@ -123,8 +123,9 @@ order = [
     ("9. Fuel Prices",   "Opening per-litre price for each fuel this outlet sells."),
     ("10. Shift Timings","The 1–3 daily shift windows the outlet runs."),
     ("11. Credit Customers","Corporate / credit accounts and their go-live opening balances."),
-    ("12. Products",     "OPTIONAL — shop / lubricant products, only if the outlet uses the store module."),
-    ("13. Corporate Drivers","OPTIONAL — drivers/vehicles under a credit customer (RFID/FastTag fleets)."),
+    ("12. Credit Slip Books","Coupon booklets allocated to a credit customer: series range + a sample coupon photo."),
+    ("13. Products",     "OPTIONAL — shop / lubricant products, only if the outlet uses the store module."),
+    ("14. Corporate Drivers","OPTIONAL — drivers/vehicles under a credit customer (RFID/FastTag fleets)."),
 ]
 r = 6
 for name, desc in order:
@@ -151,6 +152,9 @@ img_lines = [
     "— OCR fills them, and the owner confirms before it's saved.",
     "Tank gauge / ATG (Pinelabs) screen (green column on tab 6) — recommended at go-live. A photo of the gauge screen "
     "showing opening stock; it's the picture behind the first wet-stock figure the outlet is measured against.",
+    "Credit-coupon sample (green column on tab 12) — one photo per credit customer's booklet. It records the SLIP "
+    "FORMAT the coupon parser will read (Coupon No, Date, Vehicle, litres, seal). A sample per customer/dealer, not "
+    "per coupon — the live coupons are photographed per sale in the app.",
     "Nozzle meter photos are NOT a setup item — those are captured per shift during settlement, in the app.",
 ]
 for t in img_lines:
@@ -459,11 +463,40 @@ input_rows(ws, 6, specs, n=16)
 ws.freeze_panes = "A5"
 
 # ══════════════════════════════════════════════════════════════════════════
-# 12. PRODUCTS (optional)
+# 12. CREDIT SLIP BOOKS (coupon booklet allocation + sample coupon photo)
 # ══════════════════════════════════════════════════════════════════════════
-ws = wb.create_sheet("12. Products")
+ws = wb.create_sheet("12. Credit Slip Books")
 ws.sheet_view.showGridLines = False
-sheet_title(ws, "12 · Products  (OPTIONAL — only if the store module is used)",
+sheet_title(ws, "12 · Credit Slip Books (coupon booklets)",
+            "The pre-printed coupon booklets allocated to a credit customer. One row per booklet. The coupon series "
+            "range is recorded so a missing / re-used coupon can be caught; the green column holds a sample coupon "
+            "photo that records the slip format. Company name must match a row on tab 11.", 8)
+specs = [
+    ("Company name\n(→ Credit Customers)", 26, "req", "Which credit customer this booklet is issued to. Must match a company on tab 11."),
+    ("Book label\n(credit_slip_books.book_label)", 16, "opt", "Optional printed book id / name. Free text."),
+    ("Series start\n(series_start)", 14, "req", "The FIRST coupon number in the book, e.g. 17701. Ranges must not overlap another book at this outlet."),
+    ("Series end\n(series_end)", 14, "req", "The LAST coupon number in the book, e.g. 17800. Must be ≥ series start."),
+    ("First unused #\n(opening_leaf)", 14, "opt", "Only if the book is handed over PART-USED — the first still-blank coupon. Blank = starts at series start."),
+    ("Issued on\n(issued_on)", 14, "opt", "Date the book was handed over. Default = today."),
+    ("Status\n(status)", 13, "opt", "active / exhausted / cancelled / lost. Default active."),
+    ("Sample coupon photo\n(slip format → coupon artifact)", 28, "img",
+     "One photo of a coupon from THIS booklet — records the slip format the parser reads (Coupon No, Date, Vehicle, "
+     "litres, seal). Put the file name (e.g. Coupon-ABC-sample.jpg) or a link here; picture goes in the shared folder. "
+     "Note: there is no dedicated store for a per-customer format sample yet — see the chat note."),
+]
+header_row(ws, 4, specs)
+example_row(ws, 5, ["ABC Logistics Pvt Ltd", "Book-A/26-27", 17701, 17800, "", "05-Aug-2026",
+                    "active", "Coupon-ABC-sample.jpg"])
+input_rows(ws, 6, specs, n=12)
+add_dv(ws, "G", ["active", "exhausted", "cancelled", "lost"], 6)
+ws.freeze_panes = "A5"
+
+# ══════════════════════════════════════════════════════════════════════════
+# 13. PRODUCTS (optional)
+# ══════════════════════════════════════════════════════════════════════════
+ws = wb.create_sheet("13. Products")
+ws.sheet_view.showGridLines = False
+sheet_title(ws, "13 · Products  (OPTIONAL — only if the store module is used)",
             "Shop / lubricant products sold at the outlet's store. Skip this tab entirely if the outlet only sells fuel.", 8)
 specs = [
     ("Product name\n(products.name)", 26, "req", None),
@@ -483,9 +516,9 @@ ws.freeze_panes = "A5"
 # ══════════════════════════════════════════════════════════════════════════
 # 13. CORPORATE DRIVERS (optional)
 # ══════════════════════════════════════════════════════════════════════════
-ws = wb.create_sheet("13. Corporate Drivers")
+ws = wb.create_sheet("14. Corporate Drivers")
 ws.sheet_view.showGridLines = False
-sheet_title(ws, "13 · Corporate Drivers / Vehicles  (OPTIONAL)",
+sheet_title(ws, "14 · Corporate Drivers / Vehicles  (OPTIONAL)",
             "Drivers and vehicles under a credit customer — used by RFID / FastTag fleet fuelling. "
             "The 'Company name' must match a row on the Credit Customers tab.", 6)
 specs = [
