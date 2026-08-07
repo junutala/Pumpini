@@ -11,6 +11,8 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, X, BookMarked, Search, AlertTriangle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
+import PhotoCapture from '../../components/shared/PhotoCapture';
+import ArtifactImage from '../../components/shared/ArtifactImage';
 import {
   getCreditSlipBooks, issueCreditSlipBook, updateCreditSlipBook,
   resolveCouponBook, getCorporates,
@@ -40,6 +42,10 @@ export default function CreditSlipBooksPage() {
   const [busy, setBusy]           = useState(false);
   const [err, setErr]             = useState('');
   const [form, setForm]           = useState({});
+  // Sample coupon photo — the slip format the parser reads and the dispute backup.
+  // { base64, media_type } or null. slipSlot remounts PhotoCapture after a save.
+  const [slip, setSlip]           = useState(null);
+  const [slipSlot, setSlipSlot]   = useState(0);
 
   // Coupon lookup — "who does number 17702 belong to?" Answers from the register
   // rather than by hunting through paper.
@@ -70,7 +76,7 @@ export default function CreditSlipBooksPage() {
   useEffect(() => { safeLoad(); }, [stationId]);
   useRefreshOnFocus(safeLoad);
 
-  const openForm = () => { setForm({ issued_on: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) }); setErr(''); setShowForm(true); };
+  const openForm = () => { setForm({ issued_on: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) }); setSlip(null); setErr(''); setShowForm(true); };
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   // Leaves this book will carry, shown live so a fat-fingered range is obvious
@@ -85,8 +91,12 @@ export default function CreditSlipBooksPage() {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setErr('');
     try {
-      await issueCreditSlipBook({ ...form, station_id: stationId });
-      setShowForm(false); setForm({});
+      await issueCreditSlipBook({
+        ...form, station_id: stationId,
+        image_base64: slip?.base64 || undefined,
+        media_type:   slip?.media_type || undefined,
+      });
+      setShowForm(false); setForm({}); setSlip(null); setSlipSlot(n => n + 1);
       safeLoad();
     } catch (e2) {
       setErr(e2.error || e2.response?.data?.error || tc('slipbook.errIssue', 'Could not issue the book.'));
@@ -162,13 +172,14 @@ export default function CreditSlipBooksPage() {
                 <th>{tc('slipbook.label', 'Book')}</th>
                 <th>{tc('slipbook.issuedOn', 'Issued')}</th>
                 <th>{tc('slipbook.issuedBy', 'Issued by')}</th>
+                <th>{tc('slipbook.sample', 'Sample')}</th>
                 <th>{tc('slipbook.status', 'Status')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {books.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>
                   <BookMarked size={28} style={{ margin: '0 auto 8px', opacity: .3 }} />
                   <div>{tc('slipbook.none', 'No coupon books recorded yet for this outlet.')}</div>
                 </td></tr>
@@ -190,6 +201,14 @@ export default function CreditSlipBooksPage() {
                     <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{b.book_label || '—'}</td>
                     <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{toIST(b.issued_on)}</td>
                     <td style={{ fontSize: 12, color: 'var(--text-3)' }}>{b.issued_by_name || '—'}</td>
+                    <td>
+                      {/* The sample coupon kept as slip format + dispute backup. A
+                          dash means none is on file for this book yet. */}
+                      {b.sample_artifact_id
+                        ? <ArtifactImage artifactId={b.sample_artifact_id} size={34}
+                            label={tc('slipbook.sample', 'Sample')} />
+                        : <span style={{ color: 'var(--text-3)' }}>—</span>}
+                    </td>
                     <td><span className={`badge ${badge.cls}`} style={{ fontSize: 11 }}>{tc(`slipbook.st_${b.status}`, badge.label)}</span></td>
                     <td>
                       {/* A book's RANGE is never editable — it records paper physically
@@ -264,6 +283,16 @@ export default function CreditSlipBooksPage() {
               <div style={{ marginTop: 10 }}>
                 <label className="label">{tc('slipbook.notes', 'Notes')}</label>
                 <input className="input" value={form.notes || ''} onChange={e => f('notes', e.target.value)} />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <PhotoCapture
+                  key={slipSlot}
+                  label={tc('slipbook.photoSlip', 'Photograph a coupon from this book')}
+                  retakeLabel={tc('setp.retakePhoto', 'Retake')}
+                  hint={tc('slipbook.photoHint', 'Optional but recommended — kept as the slip format and the backup if a bill is ever disputed.')}
+                  onCapture={setSlip}
+                  disabled={busy}
+                  removeLabel={tc('photo.remove', 'Remove')} />
               </div>
               {err && <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--danger)' }}>{err}</div>}
               <button className="btn btn-primary" type="submit" disabled={busy}

@@ -479,10 +479,10 @@ specs = [
     ("First unused #\n(opening_leaf)", 14, "opt", "Only if the book is handed over PART-USED — the first still-blank coupon. Blank = starts at series start."),
     ("Issued on\n(issued_on)", 14, "opt", "Date the book was handed over. Default = today."),
     ("Status\n(status)", 13, "opt", "active / exhausted / cancelled / lost. Default active."),
-    ("Sample coupon photo\n(slip format → coupon artifact)", 28, "img",
-     "One photo of a coupon from THIS booklet — records the slip format the parser reads (Coupon No, Date, Vehicle, "
-     "litres, seal). Put the file name (e.g. Coupon-ABC-sample.jpg) or a link here; picture goes in the shared folder. "
-     "Note: there is no dedicated store for a per-customer format sample yet — see the chat note."),
+    ("Sample coupon photo\n(→ credit_slip_books.sample_artifact_id)", 28, "img",
+     "One photo of a coupon from THIS booklet — the slip format the parser reads (Coupon No, Date, Vehicle, litres, "
+     "seal) AND the dispute backup a bill is checked against later. Stored against the booklet as a coupon artifact. "
+     "Put the file name (e.g. Coupon-ABC-sample.jpg) or a link here; the picture goes in the shared folder."),
 ]
 header_row(ws, 4, specs)
 example_row(ws, 5, ["ABC Logistics Pvt Ltd", "Book-A/26-27", 17701, 17800, "", "05-Aug-2026",
