@@ -56,6 +56,12 @@ export default function DeliveriesPage() {
   const [invoiceId, setInvoiceId] = useState(null); // shared across an invoice's compartments
   const [viewDoc,   setViewDoc]   = useState(null); // {media_type,url} for the viewer
 
+  // ── Accounts paid-prompt: only outlets running the optional Accounts module are asked,
+  // once per invoice after its products are saved, whether it was prepaid or on credit.
+  const [accountsOn,  setAccountsOn]  = useState(false);
+  const [sessionIds,  setSessionIds]  = useState([]);   // delivery rows created this open
+  const [paidPrompt,  setPaidPrompt]  = useState(false);
+
   // ── Split discharge: one product into >1 EXISTING tank (e.g. 6KL→tank1, 4KL→tank2).
   // Tanks are fixed infrastructure (defined in Settings), so we just show a litres
   // box against each tank that already exists for the fuel — nothing to add here.
@@ -86,7 +92,25 @@ export default function DeliveriesPage() {
     setForm(blankForm());
     setItems([]); setRecorded([]); setActiveItem(0); setScanMeta(null); setScanErr('');
     setScanFile(null); setInvoiceId(null); resetSplit();
+    setSessionIds([]); setPaidPrompt(false);
     setShowForm(true);
+  };
+
+  // Is the optional Accounts module on for this outlet? Only then do we ask paid/credit.
+  useEffect(() => {
+    if (!stationId) { setAccountsOn(false); return; }
+    api.get(`/stations/${stationId}/settings`)
+      .then(s => setAccountsOn(!!s?.accounts_enabled)).catch(() => setAccountsOn(false));
+  }, [stationId]);
+
+  // Record the paid status for the just-saved invoice, then refresh. Non-blocking.
+  const submitPaid = async (paid) => {
+    const ids = sessionIds;
+    setPaidPrompt(false);
+    try { if (ids.length) await api.patch('/deliveries/mark-paid', { station_id: stationId, ids, paid }); }
+    catch (e) { /* accounts flag is best-effort — never block the delivery flow */ }
+    setSessionIds([]);
+    load();
   };
 
   // Read a file as base64; downscale photos client-side so mobile uploads stay small.
@@ -295,6 +319,8 @@ export default function DeliveriesPage() {
       // A split returns an array of rows; a single delivery returns one object.
       const firstRow = Array.isArray(created) ? created[0] : created;
       if (firstRow?.invoice_id && !invoiceId) setInvoiceId(firstRow.invoice_id);
+      const createdRows = Array.isArray(created) ? created : [created];
+      setSessionIds(s => [...s, ...createdRows.map(r => r?.id).filter(Boolean)]);
       resetSplit();
 
       // Multi-product invoice: keep the modal open and tee up the next compartment.
@@ -310,6 +336,7 @@ export default function DeliveriesPage() {
       }
 
       setShowForm(false);
+      if (accountsOn) setPaidPrompt(true);   // ask paid/credit once, for the whole invoice
       setSaved(tc('deliv_page.delivery_recorded','Delivery recorded!'));
       setTimeout(()=>setSaved(''), 3000);
       load();
@@ -421,6 +448,29 @@ export default function DeliveriesPage() {
           </table>
         </div>
       </div>
+
+      {/* Accounts paid-prompt — one question per invoice, no way to dismiss without
+          answering, so the payment status can't be missed (crucial for accounting). */}
+      {paidPrompt && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:600,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,maxWidth:440,width:'100%',padding:'1.5rem',boxShadow:'0 12px 44px rgba(0,0,0,.35)'}}>
+            <div style={{fontWeight:800,fontSize:19,marginBottom:6}}>
+              {tc('deliv_page.paid_q','Was this delivery paid to the oil company?')}
+            </div>
+            <div style={{fontSize:13,color:'var(--text-2)',marginBottom:18,lineHeight:1.5}}>
+              {tc('deliv_page.paid_help','For your accounts. Prepaid = the money is already with the oil company (deposit / auto-debit). On credit = you will pay later.')}
+            </div>
+            <div style={{display:'grid',gap:10}}>
+              <button onClick={()=>submitPaid(true)} style={{padding:'15px',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+                ✓ {tc('deliv_page.paid_yes','Prepaid — already paid')}
+              </button>
+              <button onClick={()=>submitPaid(false)} style={{padding:'15px',borderRadius:12,border:'2px solid #FF6B00',background:'#fff',color:'#FF6B00',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+                {tc('deliv_page.paid_no','On credit — pay later')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Record Delivery */}
       {showForm && (

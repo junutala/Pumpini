@@ -316,4 +316,31 @@ router.post('/pay-supplier', authenticate, requireStationAccess({ required: true
     } finally { client.release(); }
   });
 
+// GET /api/accounts/fuel-purchases?station_id= — the HSD/MS delivery invoices behind the
+// Trade Payables balance, each with its prepaid/credit status (column-tolerant on `paid`).
+router.get('/fuel-purchases', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false, purchases: [] });
+      let hasPaid = false;
+      try {
+        const { rows } = await pool.query(
+          `SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='fuel_deliveries' AND column_name='paid' LIMIT 1`);
+        hasPaid = rows.length > 0;
+      } catch { hasPaid = false; }
+      const { rows } = await pool.query(
+        `SELECT fd.id, COALESCE(fd.dc_date, fd.received_at::date) AS date, fd.fuel_type,
+                fd.gross_volume_ltrs AS ltrs, fd.oil_company, fd.dc_number,
+                COALESCE(fd.total_value, fd.rate_per_ltr*fd.gross_volume_ltrs, 0) + COALESCE(fd.freight, 0) AS value,
+                ${hasPaid ? 'fd.paid' : 'NULL::boolean'} AS paid
+           FROM fuel_deliveries fd
+          WHERE fd.station_id = $1
+          ORDER BY COALESCE(fd.dc_date, fd.received_at::date) DESC, fd.received_at DESC
+          LIMIT 60`, [station_id]);
+      res.json({ enabled: true, purchases: rows });
+    } catch (err) { next(err); }
+  });
+
 module.exports = router;

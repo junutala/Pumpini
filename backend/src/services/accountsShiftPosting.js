@@ -160,9 +160,22 @@ async function materialize(db, stationId, { upto, created_by, reset } = {}) {
     } finally { client.release(); }
   }
 
+  // `paid` may not exist yet (pre-016) — read it tolerantly. A missing column (or NULL)
+  // means "unknown" → treated as on-credit (creditors) until the owner classifies it.
+  const hasPaid = await (async () => {
+    try {
+      const { rows } = await db.query(
+        `SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='fuel_deliveries' AND column_name='paid' LIMIT 1`);
+      return rows.length > 0;
+    } catch { return false; }
+  })();
+  const paidSel = hasPaid ? 'fd.paid' : 'NULL::boolean';
+
   const { rows: dels } = await db.query(
     `SELECT fd.id,
             COALESCE(fd.dc_date, fd.received_at::date) AS d,
+            ${paidSel} AS paid,
             COALESCE(fd.total_value, fd.rate_per_ltr * fd.gross_volume_ltrs, 0) + COALESCE(fd.freight, 0) AS value
        FROM fuel_deliveries fd
       WHERE fd.station_id = $1 AND COALESCE(fd.dc_date, fd.received_at::date) <= $2
@@ -174,13 +187,16 @@ async function materialize(db, stationId, { upto, created_by, reset } = {}) {
   let deliveriesPosted = 0;
   for (const d of dels) {
     if (!(Number(d.value) > 0)) continue;
+    const creditTo = d.paid === true ? 'bank' : 'creditors';   // prepaid → bank, else payable
     const client = await db.connect();
     try {
       await client.query('BEGIN');
       await engine.postEvent(client, {
         station_id: stationId, type: 'fuel_purchase', date: d.d,
         source: 'delivery_pull', source_ref: String(d.id), amount: round2(Number(d.value)),
-        narration: 'Fuel purchase (delivery)', created_by, party: { type: 'supplier' },
+        accounts: { credit_to: creditTo },
+        narration: d.paid === true ? 'Fuel purchase (prepaid)' : 'Fuel purchase (on credit)',
+        created_by, party: { type: 'supplier' },
       });
       await client.query('COMMIT');
       deliveriesPosted++;
