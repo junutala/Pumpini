@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
@@ -140,6 +141,18 @@ export default function Sidebar({ open, onClose }) {
   const { t }      = useTranslation();
   const pathname   = usePathname();
 
+  // Each page mounts its OWN AppShell, so the sidebar remounts on every
+  // navigation and its scrollable nav starts back at the top — the active item
+  // (e.g. Tally, Cash Integrity, far down the list) ends up below the fold and
+  // you can't tell which screen you're on. Pin the selection into view on each
+  // navigation. `block:'nearest'` only nudges the nav's own scroll when the
+  // item is actually off-screen and never moves the window, so a user who
+  // scrolls the sidebar by hand afterwards is left alone.
+  const activeRef = useRef(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [pathname]);
+
   // Group View has its own prominent outlet picker (the pill row on the page), so
   // the sidebar's outlet switcher is redundant there — hide it on that route.
   const onGroup = pathname === '/group-dashboard' || pathname.startsWith('/group-dashboard/');
@@ -251,6 +264,7 @@ export default function Sidebar({ open, onClose }) {
                   const active = pathname === item.href || pathname.startsWith(item.href+'/');
                   return (
                     <Link key={item.key} href={item.href}
+                      ref={active ? activeRef : null}
                       onClick={onClose}
                       style={{
                         display:'flex', alignItems:'center', gap:9,
