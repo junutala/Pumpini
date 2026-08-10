@@ -10,6 +10,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const engine = require('../services/accountingEngine');
+const shiftPosting = require('../services/accountsShiftPosting');
 
 // Is Accounts on for this outlet? Column-tolerant — a missing column (pre-Slice-1 DDL)
 // or a false value both read as disabled, never a 500.
@@ -41,6 +42,23 @@ router.get('/trial-balance', authenticate, requireStationAccess({ required: true
       if (!(await accountsEnabled(station_id))) return res.json({ enabled: false, rows: [] });
       const tb = await engine.trialBalance(pool, station_id, { from, to });
       res.json({ enabled: true, ...tb });
+    } catch (err) { next(err); }
+  });
+
+// POST /api/accounts/materialize { station_id, upto? }
+// Pulls settled-but-unposted shifts + deliveries into the journal. On-demand, idempotent,
+// touches no existing flow. accounts.manage gated; no-op refusal when the switch is off.
+router.post('/materialize', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.manage'), async (req, res, next) => {
+    try {
+      const station_id = req.body.station_id || req.query.station_id;
+      if (!(await accountsEnabled(station_id))) {
+        return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+      }
+      const summary = await shiftPosting.materialize(pool, station_id, {
+        upto: req.body.upto || undefined, created_by: req.user.id,
+      });
+      res.json({ ok: true, ...summary });
     } catch (err) { next(err); }
   });
 

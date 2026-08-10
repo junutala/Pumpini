@@ -207,7 +207,7 @@ cash, bank, receivables, payables) stays compute-on-read — the way `creditRepo
 |---|---|---|
 | **1** | **Foundation & flag** *(done)* | `accounts_enabled` switch, `accounts.view`/`accounts.manage` perms, sidebar "Accounts" group, Settings → Accounting toggle, landing scaffold |
 | **2** | **Posting engine + rulebook + journal** *(done)* | `accounting_accounts` (chart), `posting_rules`, `accounting_journal(_lines)`; the engine; a read surface (journal + trial balance) |
-| 3 | Auto-fed per-shift events | read ops → typed events → engine → journal; P&L base runs off real ops |
+| **3** | **Auto-fed operational events** *(done)* | pull settled shifts (sale/COGS/petty) + deliveries (purchase) → engine → journal; a verification console on the landing |
 | 4 | Bill & Payment (OCR) | expense / asset / supplier-payment capture; unpaid-invoice fetch; vendor learning |
 | 5 | Owner Money | drawings / funding events |
 | 6 | Suppliers & payables view | outstanding bills, record payment against a bill |
@@ -269,3 +269,38 @@ No event sources are wired yet (Slice 3), so the engine has no writers in produc
 ledger stays empty until an outlet is enabled *and* its shift/expense events are wired. The
 `accountsEnabled()` gate means a not-yet-migrated or switched-off outlet never touches the
 ledger tables. **Order of operations: run `011` before switching any outlet on.**
+
+---
+
+## 12. Slice 3 — what this contains (Auto-fed operational events)
+
+Reads ALREADY-SETTLED data and posts it through the engine on demand — never hooks into
+shift-close. Four idempotent auto-fed events (source_ref = shift/delivery id):
+
+| Event | Grain | Entry | Source |
+|---|---|---|---|
+| `fuel_sale` | per shift | Dr cash_in_hand / upi_clearing / debtors → Cr fuel_sales | `Σ shift_reconciliation` (manager_confirmed) |
+| `petty_cash` | per shift | Dr petty_cash_expense → Cr cash_in_hand | `Σ shift_reconciliation.petty_cash` |
+| `cogs_fuel` | per shift | Dr cogs_fuel → Cr closing_stock_fuel | litres from `dispense_events` × WAC |
+| `fuel_purchase` | per delivery | Dr closing_stock_fuel → Cr creditors | `fuel_deliveries` landed cost |
+
+- **Money identity** (`settlementService.js` cashPosition): `cash = total_sales − card −
+  upi − credit`, so the sale entry balances from `shift_reconciliation` alone (no
+  opening-float join). Both POS and blind-drop outlets populate `shift_reconciliation` and,
+  post-settlement, `dispense_events`.
+- **COGS** = Σ(litres sold per fuel × weighted-avg landed cost), WAC =
+  `Σ(total_value+freight)/Σ(gross_volume_ltrs)` from `fuel_deliveries` as of the trade date.
+- **Fuel purchase** posts so the COGS credit to stock has a matching debit — otherwise the
+  stock account would go negative. Booked to `creditors` (OMC payable); the payment side
+  comes with the payables slice.
+- `migration 012` adds the aggregate `fuel_sales` head + the `fuel_sale` / `fuel_purchase`
+  rules. `services/accountsShiftPosting.js` is the materialiser; `POST /api/accounts/
+  materialize` (accounts.manage, flag-gated) triggers it. The `/accounts` landing gains a
+  **verification console**: a "Post now" button, the trial balance (with a balanced check),
+  and the recent journal — so the pilot outlet can be eyeballed before the real screens land.
+
+**Not yet modelled** (later slices, and why the cash ledger isn't yet "counted cash"): cash
+variance/short-over, opening float, and bank deposits. Fuel-sale revenue is a single
+aggregate line; the per-fuel split (petrol vs diesel) is a reporting refinement.
+
+**Order of operations: run `011` then `012` before switching any outlet on.**

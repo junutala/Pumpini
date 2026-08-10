@@ -54,5 +54,31 @@ check('fractional amounts still balance to the paisa', () => {
 check('assertBalanced rejects a lopsided entry', () =>
   eq(throws(() => assertBalanced([{ debit: 100, credit: 0 }, { debit: 0, credit: 90 }])), true));
 
+// The per-shift fuel-sale rule: split debits by payment mode, one revenue credit.
+const fuelSaleRules = [
+  { leg_no: 1, side: 'debit',  account_code: 'cash_in_hand', amount_key: 'cash' },
+  { leg_no: 2, side: 'debit',  account_code: 'upi_clearing', amount_key: 'upi_card' },
+  { leg_no: 3, side: 'debit',  account_code: 'debtors',      amount_key: 'credit' },
+  { leg_no: 4, side: 'credit', account_code: 'fuel_sales',   amount_key: 'amount' },
+];
+
+check('fuel_sale splits debits by mode and balances', () => {
+  const lines = buildLines(fuelSaleRules, {
+    type: 'fuel_sale', amount: 10000, amounts: { cash: 6000, upi_card: 3000, credit: 1000 },
+  });
+  eq(lines.length, 4);
+  assertBalanced(lines);
+});
+
+check('fuel_sale skips zero legs (all-cash shift) and still balances', () => {
+  const lines = buildLines(fuelSaleRules, {
+    type: 'fuel_sale', amount: 5000, amounts: { cash: 5000, upi_card: 0, credit: 0 },
+  });
+  eq(lines.length, 2);                 // cash debit + revenue credit only
+  eq(lines[0].account_code, 'cash_in_hand');
+  eq(lines[1].account_code, 'fuel_sales');
+  assertBalanced(lines);
+});
+
 console.log(`\n${fail ? '✗ FAILED' : '✓ PASSED'} — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
