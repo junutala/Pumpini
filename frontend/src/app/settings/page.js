@@ -3,7 +3,7 @@ import ConfirmDialog from '../../components/shared/ConfirmDialog';
 import { useState, useEffect } from 'react';
 import { Save, Plus, X, Building2, IndianRupee, Wifi,
   Gauge, RefreshCw, Edit2, Trash2, CheckCircle, AlertCircle, MapPin,
-  ChevronDown, ChevronRight } from 'lucide-react';
+  ChevronDown, ChevronRight, Landmark } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
@@ -237,6 +237,7 @@ export default function SettingsPage() {
     {id:'rfid',    label:tc('setp.tabRfid', '5. RFID Tags'),         icon:<Wifi size={14}/>},
     {id:'shifts',  label:tc('setp.tabShifts', '6. Shift Timings'),   icon:<RefreshCw size={14}/>},
     {id:'geofence',label:tc('setp.tabGeofence', '7. Geo-Fencing'),   icon:<MapPin size={14}/>},
+    {id:'accounts',label:tc('setp.tabAccounts', '8. Accounting'),    icon:<Landmark size={14}/>},
   ];
 
   const [tab,   setTab]   = useState('station');
@@ -379,7 +380,68 @@ export default function SettingsPage() {
         <ShiftsTab stationId={stationId}
           onSaved={()=>showToast(tc('setp.toastShiftsSaved', 'Shift timings saved!'))}/>
       )}
+      {tab==='accounts' && (
+        <AccountsTab stationId={stationId}/>
+      )}
     </AppShell>
+  );
+}
+
+// ── Accounting Tab ─────────────────────────────────────────
+// The single on/off switch for the OPTIONAL Accounts module. Written through the
+// EXISTING settings endpoint — no route of its own (cardinal rule), mirroring the
+// self-settlement toggle. Owner-only: an accounts on/off decision is the owner's,
+// so a non-owner with settings access sees the state but can't flip it.
+function AccountsTab({ stationId }) {
+  const { station, user } = useAuth();
+  const { t } = useTranslation();
+  const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
+  const sid = stationId || (typeof station==='object'?station?.id:station);
+  const [on,setOn]     = useState(false);
+  const [busy,setBusy] = useState(false);
+  const isOwner = user?.role === 'owner';
+
+  useEffect(()=>{
+    if(!sid) return;
+    api.get(`/stations/${sid}/settings`).then(s=>setOn(!!s?.accounts_enabled)).catch(()=>{});
+  },[sid]);
+
+  const toggle = async () => {
+    if (!isOwner) return;
+    setBusy(true);
+    try {
+      const r = await api.post(`/stations/${sid}/settings`, { accounts_enabled: !on });
+      setOn(!!r?.accounts_enabled);
+    } catch(e){ alert(e.response?.data?.error || e.error || tc('setp.couldNotChangeMode', 'Could not change mode')); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{maxWidth:560}}>
+      <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{paddingRight:12}}>
+            <div style={{fontWeight:700,fontSize:15}}>{tc('setp.accountsEnable', 'Accounts module')}</div>
+            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+              {tc('setp.accountsEnableDesc', 'When ON, this outlet gets a bookkeeping layer — profit/loss, balance sheet and a finance dashboard, built from what Pumpini already records. When OFF, none of it shows and operations are unaffected. Switch it on one outlet at a time.')}
+            </div>
+            {!isOwner && (
+              <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
+                {tc('setp.accountsOwnerOnly', 'Only the outlet owner can switch this on or off.')}
+              </div>
+            )}
+          </div>
+          <button onClick={toggle} disabled={busy || !isOwner}
+            style={{background:'none',border:'none',cursor:(busy||!isOwner)?'not-allowed':'pointer',padding:0,flexShrink:0,opacity:isOwner?1:0.5}}>
+            <div style={{width:52,height:28,borderRadius:14,position:'relative',
+              background: on ? '#16a34a' : '#e5e3de', transition:'all .2s'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',top:3,
+                left: on ? 27 : 3, transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

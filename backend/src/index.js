@@ -125,6 +125,9 @@ app.use('/api/tally', require('./routes/tally'));
 app.use('/api/credit-reports', require('./routes/creditReports'));
 app.use('/api/credit-slip-books', require('./routes/creditSlipBooks'));
 app.use('/api/coupons', require('./routes/coupons'));
+// Optional Accounts module — read surface (journal, trial balance). New route, no
+// existing flow touched; every endpoint no-ops when the outlet's switch is off.
+app.use('/api/accounts', require('./routes/accounts'));
 // Stored document images (coupon, gauge screen, attendant photo) — read-only;
 // every artifact is written by the flow that produced it. See routes/artifacts.js.
 app.use('/api/artifacts', require('./routes/artifacts'));
