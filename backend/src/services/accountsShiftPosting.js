@@ -132,19 +132,32 @@ async function materialize(db, stationId, { upto, created_by, reset } = {}) {
         WHERE station_id = $1 AND source IN ('shift_pull','delivery_pull')`, [stationId]);
   }
 
+  // Go-live cutoff: if opening balances are set, everything up to & including the
+  // books-start date is captured in that opening balance sheet, so we post only shifts and
+  // deliveries STRICTLY AFTER it (no double-counting). Column/table-tolerant — absent →
+  // no cutoff (post all history, the pilot behaviour).
+  let goLive = null;
+  try {
+    const { rows } = await db.query(
+      `SELECT books_start_date FROM accounting_opening_balances WHERE station_id=$1`, [stationId]);
+    if (rows.length && rows[0].books_start_date) goLive = rows[0].books_start_date;
+  } catch { goLive = null; }
+  const cutoff = goLive ? ' AND sh.date > $3' : '';
+  const cutoffParams = goLive ? [goLive] : [];
+
   // Full-history WAC per fuel — the fallback for shifts predating a fuel's first delivery.
   const overallWac = await weightedAvgCostMap(db, stationId, '9999-12-31');
 
   const { rows: shifts } = await db.query(
     `SELECT sh.id, sh.date
        FROM shifts sh
-      WHERE sh.station_id = $1 AND sh.date <= $2 AND sh.status IN ('closed','reconciled')
+      WHERE sh.station_id = $1 AND sh.date <= $2 AND sh.status IN ('closed','reconciled')${cutoff}
         AND EXISTS (SELECT 1 FROM shift_reconciliation r
                      WHERE r.shift_id = sh.id AND r.manager_confirmed = true)
         AND NOT EXISTS (SELECT 1 FROM accounting_journal j
                      WHERE j.station_id = $1 AND j.event_type = 'fuel_sale'
                        AND j.source_ref = sh.id::text)
-      ORDER BY sh.date, sh.shift_number`, [stationId, asOf]);
+      ORDER BY sh.date, sh.shift_number`, [stationId, asOf, ...cutoffParams]);
 
   let shiftsPosted = 0;
   for (const sh of shifts) {
@@ -172,17 +185,18 @@ async function materialize(db, stationId, { upto, created_by, reset } = {}) {
   })();
   const paidSel = hasPaid ? 'fd.paid' : 'NULL::boolean';
 
+  const delCutoff = goLive ? ' AND COALESCE(fd.dc_date, fd.received_at::date) > $3' : '';
   const { rows: dels } = await db.query(
     `SELECT fd.id,
             COALESCE(fd.dc_date, fd.received_at::date) AS d,
             ${paidSel} AS paid,
             COALESCE(fd.total_value, fd.rate_per_ltr * fd.gross_volume_ltrs, 0) + COALESCE(fd.freight, 0) AS value
        FROM fuel_deliveries fd
-      WHERE fd.station_id = $1 AND COALESCE(fd.dc_date, fd.received_at::date) <= $2
+      WHERE fd.station_id = $1 AND COALESCE(fd.dc_date, fd.received_at::date) <= $2${delCutoff}
         AND NOT EXISTS (SELECT 1 FROM accounting_journal j
                      WHERE j.station_id = $1 AND j.event_type = 'fuel_purchase'
                        AND j.source_ref = fd.id::text)
-      ORDER BY d`, [stationId, asOf]);
+      ORDER BY d`, [stationId, asOf, ...cutoffParams]);
 
   let deliveriesPosted = 0;
   for (const d of dels) {

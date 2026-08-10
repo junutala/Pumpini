@@ -104,7 +104,7 @@ export default function OpeningBalancesPage() {
             <Sliders size={22} /> {tc('ob.title', 'Opening Balances')}
           </h1>
           <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
-            {tc('ob.subtitle', 'Your outlet’s position at a start date — the anchor for the balance sheet. Enter once.')}
+            {tc('ob.subtitle', 'Your outlet’s position at a go-live date — the anchor for the balance sheet. Pumpini counts only transactions AFTER this date, so enter today’s figures and start clean.')}
           </div>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function OpeningBalancesPage() {
           <div className="card" style={{ display: 'grid', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label className="label" style={{ display: 'block', marginBottom: 4, fontSize: 12, color: 'var(--text-3)' }}>{tc('ob.startDate', 'Books start date')}</label>
+                <label className="label" style={{ display: 'block', marginBottom: 4, fontSize: 12, color: 'var(--text-3)' }}>{tc('ob.startDate', 'Go-live date (position as of this day’s close)')}</label>
                 <input className="input" type="date" value={form.books_start_date || ''} onChange={e => set('books_start_date', e.target.value)} />
               </div>
               <div>
@@ -151,6 +151,9 @@ export default function OpeningBalancesPage() {
             <button onClick={save} disabled={saving} style={{ background: '#FF6B00', color: '#fff', fontWeight: 700, fontSize: 14, padding: '11px 20px', borderRadius: 9, border: 'none', cursor: saving ? 'wait' : 'pointer', justifySelf: 'start' }}>
               {saving ? tc('ob.saving', 'Saving…') : tc('ob.save', 'Save opening balances')}
             </button>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: -4 }}>
+              {tc('ob.afterSave', 'After saving, open Accounts → “Re-post from scratch” so only after-go-live activity is counted (no double-counting the history).')}
+            </div>
           </div>
 
           {/* Fixed assets */}
