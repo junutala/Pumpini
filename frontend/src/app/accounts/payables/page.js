@@ -11,6 +11,7 @@ import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
 
 export default function PayablesPage() {
   const { station } = useAuth();
@@ -38,10 +39,10 @@ export default function PayablesPage() {
     setFuel(fp && fp.enabled ? (fp.purchases || []) : []);
   }, [sid]);
 
-  const setFuelPaid = async (id, paid) => {
+  const setFuelPaid = async (ids, paid) => {
     setBusy(true);
     try {
-      await api.patch('/deliveries/mark-paid', { station_id: sid, ids: [id], paid });
+      await api.patch('/deliveries/mark-paid', { station_id: sid, ids, paid });
       await load();
       showToast(tc('pay.markedRepost', 'Updated — Re-post on the Accounts screen to apply.'));
     } catch (e) { showToast(e.response?.data?.error || tc('pay.failed', 'Could not update.')); }
@@ -157,16 +158,16 @@ export default function PayablesPage() {
                   </thead>
                   <tbody>
                     {fuel.map(p => (
-                      <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                        <td style={{ padding: '6px 8px' }}>{p.date}</td>
+                      <tr key={p.invoice_key} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{fmtDate(p.date)}</td>
                         <td style={{ padding: '6px 8px' }}>{[p.oil_company, p.dc_number].filter(Boolean).join(' ')}</td>
-                        <td style={{ padding: '6px 8px', textTransform: 'capitalize' }}>{p.fuel_type}</td>
+                        <td style={{ padding: '6px 8px', textTransform: 'capitalize' }}>{p.fuels}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(p.ltrs || 0).toLocaleString('en-IN')}</td>
                         <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(p.value)}</td>
                         <td style={{ padding: '6px 8px' }}>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => setFuelPaid(p.id, true)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.paid === true ? '#16a34a' : 'var(--border)'}`, background: p.paid === true ? '#16a34a' : '#fff', color: p.paid === true ? '#fff' : 'var(--text-2)' }}>{tc('pay.prepaid', 'Prepaid')}</button>
-                            <button onClick={() => setFuelPaid(p.id, false)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.paid === false ? '#FF6B00' : 'var(--border)'}`, background: p.paid === false ? 'rgba(255,107,0,.08)' : '#fff', color: p.paid === false ? '#FF6B00' : 'var(--text-2)' }}>{tc('pay.credit', 'Credit')}</button>
+                            <button onClick={() => setFuelPaid(p.ids, true)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.status === 'prepaid' ? '#16a34a' : 'var(--border)'}`, background: p.status === 'prepaid' ? '#16a34a' : '#fff', color: p.status === 'prepaid' ? '#fff' : 'var(--text-2)' }}>{tc('pay.prepaid', 'Prepaid')}</button>
+                            <button onClick={() => setFuelPaid(p.ids, false)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.status === 'credit' ? '#FF6B00' : 'var(--border)'}`, background: p.status === 'credit' ? 'rgba(255,107,0,.08)' : '#fff', color: p.status === 'credit' ? '#FF6B00' : 'var(--text-2)' }}>{tc('pay.credit', 'Credit')}</button>
                           </div>
                         </td>
                       </tr>

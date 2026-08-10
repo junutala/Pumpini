@@ -330,16 +330,35 @@ router.get('/fuel-purchases', authenticate, requireStationAccess({ required: tru
             WHERE table_schema='public' AND table_name='fuel_deliveries' AND column_name='paid' LIMIT 1`);
         hasPaid = rows.length > 0;
       } catch { hasPaid = false; }
+      // One line per INVOICE, not per compartment: a single tanker invoice carries
+      // petrol + diesel as separate rows sharing invoice_id (or the DC number). Group
+      // them so the manager sees — and toggles — one payment status for the document.
+      const paidCounts = hasPaid
+        ? `count(*) FILTER (WHERE fd.paid IS TRUE)  AS n_paid,
+           count(*) FILTER (WHERE fd.paid IS FALSE) AS n_credit`
+        : `0 AS n_paid, 0 AS n_credit`;
       const { rows } = await pool.query(
-        `SELECT fd.id, COALESCE(fd.dc_date, fd.received_at::date) AS date, fd.fuel_type,
-                fd.gross_volume_ltrs AS ltrs, fd.oil_company, fd.dc_number,
-                COALESCE(fd.total_value, fd.rate_per_ltr*fd.gross_volume_ltrs, 0) + COALESCE(fd.freight, 0) AS value,
-                ${hasPaid ? 'fd.paid' : 'NULL::boolean'} AS paid
+        `SELECT COALESCE(fd.invoice_id::text, NULLIF(fd.dc_number,''), fd.id::text) AS invoice_key,
+                MIN(COALESCE(fd.dc_date, fd.received_at::date)) AS date,
+                MAX(fd.oil_company) AS oil_company,
+                MAX(fd.dc_number)   AS dc_number,
+                string_agg(DISTINCT fd.fuel_type, ', ' ORDER BY fd.fuel_type) AS fuels,
+                SUM(fd.gross_volume_ltrs) AS ltrs,
+                SUM(COALESCE(fd.total_value, fd.rate_per_ltr*fd.gross_volume_ltrs, 0) + COALESCE(fd.freight, 0)) AS value,
+                array_agg(fd.id) AS ids,
+                count(*) AS n, ${paidCounts}
            FROM fuel_deliveries fd
           WHERE fd.station_id = $1
-          ORDER BY COALESCE(fd.dc_date, fd.received_at::date) DESC, fd.received_at DESC
-          LIMIT 60`, [station_id]);
-      res.json({ enabled: true, purchases: rows });
+          GROUP BY invoice_key
+          ORDER BY MIN(COALESCE(fd.dc_date, fd.received_at::date)) DESC
+          LIMIT 40`, [station_id]);
+      const purchases = rows.map(r => ({
+        ...r,
+        status: Number(r.n_paid) === Number(r.n) ? 'prepaid'
+              : Number(r.n_credit) === Number(r.n) ? 'credit'
+              : (Number(r.n_paid) === 0 && Number(r.n_credit) === 0) ? 'unknown' : 'mixed',
+      }));
+      res.json({ enabled: true, purchases });
     } catch (err) { next(err); }
   });
 
