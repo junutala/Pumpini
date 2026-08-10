@@ -15,6 +15,11 @@ const expenseService = require('../services/expenseService');
 const billScan = require('../services/billScan');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 
+const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+// Which ledger account a cash/bank choice maps to.
+const acctFor = (x) => (x === 'bank' ? 'bank' : 'cash_in_hand');
+const paidFromFor = (mode) => (mode === 'upi' ? 'upi_clearing' : 'bank');
+
 // Is Accounts on for this outlet? Column-tolerant — a missing column (pre-Slice-1 DDL)
 // or a false value both read as disabled, never a 500.
 async function accountsEnabled(stationId) {
@@ -164,6 +169,151 @@ router.get('/expenses', authenticate, requireStationAccess({ required: true }),
           LIMIT $2`, [station_id, limit]);
       res.json({ enabled: true, expenses: rows });
     } catch (err) { next(err); }
+  });
+
+// ── Owner Money (Slice 5) ──────────────────────────────────────────────────
+// Manager-recorded, in/out. IN = owner funds (capital or repayable loan) or other income
+// (scrap); OUT = owner drawings. Posts straight through the engine — the journal is the
+// record, no separate table. accounts.expense-gated.
+
+// POST /api/accounts/owner-money { station_id, direction:'in'|'out', kind, amount, account:'cash'|'bank', date, description }
+router.post('/owner-money', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    const b = req.body;
+    if (!(await accountsEnabled(b.station_id))) return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+    const amount = Number(b.amount);
+    if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount' });
+    const date = b.date || todayIST();
+    const acct = acctFor(b.account);
+
+    let type, accounts = {}, narration;
+    if (b.direction === 'out') {
+      type = 'owner_drawings'; accounts.paid_from = acct;
+      narration = 'Owner drawings' + (b.description ? ' — ' + b.description : '');
+    } else {
+      if (b.kind === 'loan')        { type = 'owner_funding_loan';    narration = 'Owner loan'; }
+      else if (b.kind === 'income') { type = 'other_income';          narration = 'Other income' + (b.description ? ' — ' + b.description : ''); }
+      else                          { type = 'owner_funding_capital'; narration = 'Owner capital'; }
+      accounts.received_in = acct;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { journal } = await engine.postEvent(client, {
+        station_id: b.station_id, type, date, amount, accounts,
+        source: 'owner_money', narration, created_by: req.user.id,
+      });
+      await client.query('COMMIT');
+      res.status(201).json({ ok: true, journal });
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch { /* noop */ }
+      res.status(400).json({ error: e.message || 'Could not save' });
+    } finally { client.release(); }
+  });
+
+// GET /api/accounts/owner-money?station_id=
+router.get('/owner-money', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false, entries: [] });
+      const { rows } = await pool.query(
+        `SELECT * FROM accounting_journal
+          WHERE station_id=$1 AND event_type IN
+            ('owner_drawings','owner_funding_capital','owner_funding_loan','other_income')
+          ORDER BY entry_date DESC, created_at DESC LIMIT 50`, [station_id]);
+      res.json({ enabled: true, entries: rows });
+    } catch (err) { next(err); }
+  });
+
+// ── Payables (Slice 6) ─────────────────────────────────────────────────────
+// Outstanding balances + the list of unpaid bills; pay an itemised bill, or record a
+// payment against a payable account (trade creditors / CNG-to-IOCL).
+
+async function payableBalance(stationId, code) {
+  const { rows } = await pool.query(
+    `SELECT COALESCE(SUM(credit) - SUM(debit), 0) AS bal
+       FROM accounting_journal_lines WHERE station_id=$1 AND account_code=$2`, [stationId, code]);
+  return Number(rows[0].bal);
+}
+
+// GET /api/accounts/payables?station_id=
+router.get('/payables', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false });
+      const [trade, cng, unpaid] = await Promise.all([
+        payableBalance(station_id, 'creditors'),
+        payableBalance(station_id, 'cng_payable'),
+        pool.query(
+          `SELECT e.*, v.name AS vendor_name, a.name AS category_name
+             FROM expenses e
+             LEFT JOIN accounting_vendors v ON v.id = e.vendor_id
+             LEFT JOIN accounting_accounts a ON a.code = e.category
+            WHERE e.station_id=$1 AND e.payment_status='unpaid'
+            ORDER BY e.expense_date LIMIT 100`, [station_id]).then(r => r.rows),
+      ]);
+      res.json({ enabled: true, trade_payables: trade, cng_payable: cng, unpaid_expenses: unpaid });
+    } catch (err) { next(err); }
+  });
+
+// POST /api/accounts/expenses/:id/pay { station_id, payment_mode, date }
+router.post('/expenses/:id/pay', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    const { station_id, payment_mode } = req.body;
+    if (!(await accountsEnabled(station_id))) return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+    const { rows: ex } = await pool.query(`SELECT * FROM expenses WHERE id=$1 AND station_id=$2`, [req.params.id, station_id]);
+    if (!ex.length) return res.status(404).json({ error: 'Bill not found' });
+    const e = ex[0];
+    if (e.payment_status === 'paid') return res.json({ ok: true, already: true });
+    const mode = ['bank', 'upi', 'cheque'].includes(payment_mode) ? payment_mode : 'bank';
+    const paidFrom = paidFromFor(mode);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await engine.postEvent(client, {
+        station_id, type: 'supplier_payment', date: req.body.date || todayIST(), amount: Number(e.amount),
+        accounts: { paid_from: paidFrom }, source: 'bill_payment', source_ref: 'pay_' + e.id,
+        narration: 'Paid bill', created_by: req.user.id, party: { type: 'supplier', id: e.vendor_id },
+      });
+      await client.query(`UPDATE expenses SET payment_status='paid', payment_mode=$2, paid_from=$3 WHERE id=$1`,
+        [e.id, mode, paidFrom]);
+      await client.query('COMMIT');
+      res.json({ ok: true });
+    } catch (err2) {
+      try { await client.query('ROLLBACK'); } catch { /* noop */ }
+      res.status(400).json({ error: err2.message || 'Could not record payment' });
+    } finally { client.release(); }
+  });
+
+// POST /api/accounts/pay-supplier { station_id, target:'creditors'|'cng_payable', amount, payment_mode, date, description }
+router.post('/pay-supplier', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.expense'), async (req, res, next) => {
+    const b = req.body;
+    if (!(await accountsEnabled(b.station_id))) return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+    const amount = Number(b.amount);
+    if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount' });
+    const mode = ['bank', 'upi', 'cheque'].includes(b.payment_mode) ? b.payment_mode : 'bank';
+    const type = b.target === 'cng_payable' ? 'cng_payment' : 'supplier_payment';
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await engine.postEvent(client, {
+        station_id: b.station_id, type, date: b.date || todayIST(), amount,
+        accounts: { paid_from: paidFromFor(mode) }, source: 'supplier_payment',
+        narration: (b.target === 'cng_payable' ? 'Paid IOCL (CNG)' : 'Paid supplier') + (b.description ? ' — ' + b.description : ''),
+        created_by: req.user.id,
+      });
+      await client.query('COMMIT');
+      res.json({ ok: true });
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch { /* noop */ }
+      res.status(400).json({ error: e.message || 'Could not record payment' });
+    } finally { client.release(); }
   });
 
 module.exports = router;

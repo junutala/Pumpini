@@ -209,8 +209,8 @@ cash, bank, receivables, payables) stays compute-on-read — the way `creditRepo
 | **2** | **Posting engine + rulebook + journal** *(done)* | `accounting_accounts` (chart), `posting_rules`, `accounting_journal(_lines)`; the engine; a read surface (journal + trial balance) |
 | **3** | **Auto-fed operational events** *(done)* | pull settled shifts (sale/COGS/petty) + deliveries (purchase) → engine → journal; a verification console on the landing |
 | **4** | **Bill & Payment (OCR)** *(done)* | scan → AI-suggested head → tick PAID → save; expense/asset capture, vendor learning. (Supplier-payment-against-unpaid-bill → Slice 6.) |
-| 5 | Owner Money | drawings / funding events |
-| 6 | Suppliers & payables view | outstanding bills, record payment against a bill |
+| **5** | **Owner Money** *(done)* | manager-recorded drawings / funding (capital or loan) / other income |
+| **6** | **Payables** *(done)* | outstanding balances (trade + CNG-to-IOCL), pay an itemised bill, record a payment against a payable |
 | 7 | Opening balances + fixed assets + Balance Sheet | the wizard, depreciation, adjustments journal, the tallying BS |
 | 8 | Finance Dashboard + report polish | P&L, BS, position, receivables/payables tiles + "Needs your attention" |
 
@@ -364,3 +364,28 @@ PAID → save.** The engine posts the double-entry; the manager never sees a deb
 paid-now, posts the payment; an unpaid bill posts to `creditors` and waits.
 
 **Order of operations: run `014` before using Bill & Payment on the enabled outlet.**
+
+---
+
+## 15. Slices 5 & 6 — Owner Money + Payables
+
+**Slice 5 — Owner Money** (manager-recorded, in/out). No new table — posts straight to the
+journal via the engine.
+- IN → owner **capital** (`owner_funding_capital`), a repayable **loan** (`owner_funding_loan`),
+  or **other income** like scrap (`other_income`); received in cash or bank.
+- OUT → owner **drawings** (`owner_drawings`, generalised over cash/bank — `migration 015`
+  retires the old cash-only rule).
+- Routes: `POST/GET /api/accounts/owner-money` (accounts.expense). Screen `/accounts/owner-money`.
+
+**Slice 6 — Payables** (close the loop on the big payable balances).
+- `GET /payables` — outstanding **trade payables** (creditors incl. OMC fuel) and **CNG
+  payable (IOCL)** balances (from journal lines), plus the list of **unpaid bills**.
+- `POST /expenses/:id/pay` — mark an itemised unpaid bill paid → `supplier_payment` (Dr
+  creditors, Cr bank/UPI) + flip the expense to paid.
+- `POST /pay-supplier` — record a payment against a payable account: `supplier_payment`
+  (trade creditors) or `cng_payment` (IOCL) — `migration 015` adds the CNG-payment rule.
+- Screen `/accounts/payables`: each payable with a "record payment", each unpaid bill with
+  "mark paid". Balances drop as they're paid — which is what makes the balance sheet's
+  liabilities real once opening balances land (Slice 7).
+
+**Order of operations: run `015` before using Owner Money / Payables on the enabled outlet.**
