@@ -13,6 +13,7 @@ const engine = require('../services/accountingEngine');
 const shiftPosting = require('../services/accountsShiftPosting');
 const expenseService = require('../services/expenseService');
 const billScan = require('../services/billScan');
+const reports = require('../services/accountsReports');
 const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
 
 const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -359,6 +360,98 @@ router.get('/fuel-purchases', authenticate, requireStationAccess({ required: tru
               : (Number(r.n_paid) === 0 && Number(r.n_credit) === 0) ? 'unknown' : 'mixed',
       }));
       res.json({ enabled: true, purchases });
+    } catch (err) { next(err); }
+  });
+
+// ── Slice 7: opening balances, fixed assets, balance sheet, P&L ─────────────
+// Owner/accountant (accounts.view read, accounts.manage write).
+
+// GET /api/accounts/opening-balances?station_id=
+router.get('/opening-balances', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.view'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false });
+      const [ob, fa] = await Promise.all([
+        pool.query(`SELECT * FROM accounting_opening_balances WHERE station_id=$1`, [station_id]).then(r => r.rows[0] || null),
+        pool.query(`SELECT COALESCE(SUM(cost - COALESCE(accum_depreciation,0)),0) AS net FROM fixed_assets WHERE station_id=$1 AND owned_by='outlet'`, [station_id]).then(r => Number(r.rows[0].net)),
+      ]);
+      res.json({ enabled: true, opening: ob, fixed_assets_net: fa });
+    } catch (err) { next(err); }
+  });
+
+// POST /api/accounts/opening-balances — save + (re)post the opening entry
+router.post('/opening-balances', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.manage'), async (req, res, next) => {
+    const b = req.body;
+    if (!(await accountsEnabled(b.station_id))) return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+    if (!b.books_start_date) return res.status(400).json({ error: 'Pick a books-start date' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = await reports.saveOpeningBalances(client, { ...b, updated_by: req.user.id });
+      await client.query('COMMIT');
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch { /* noop */ }
+      res.status(400).json({ error: e.message || 'Could not save opening balances' });
+    } finally { client.release(); }
+  });
+
+// GET /api/accounts/fixed-assets?station_id=
+router.get('/fixed-assets', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.view'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false, assets: [] });
+      const { rows } = await pool.query(
+        `SELECT * FROM fixed_assets WHERE station_id=$1 ORDER BY created_at DESC`, [station_id]);
+      res.json({ enabled: true, assets: rows });
+    } catch (err) { next(err); }
+  });
+
+// POST /api/accounts/fixed-assets
+router.post('/fixed-assets', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.manage'), async (req, res, next) => {
+    try {
+      const b = req.body;
+      if (!(await accountsEnabled(b.station_id))) return res.status(400).json({ error: 'Accounts is not enabled for this outlet' });
+      if (!b.name || !(Number(b.cost) > 0)) return res.status(400).json({ error: 'Name and cost are required' });
+      const { rows } = await pool.query(
+        `INSERT INTO fixed_assets(station_id, name, owned_by, cost, accum_depreciation, depreciation_rate, purchase_date, created_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [b.station_id, b.name, b.owned_by === 'omc' ? 'omc' : 'outlet', Number(b.cost),
+         Number(b.accum_depreciation || 0), Number(b.depreciation_rate || 0), b.purchase_date || null, req.user.id]);
+      res.status(201).json(rows[0]);
+    } catch (err) { next(err); }
+  });
+
+// DELETE /api/accounts/fixed-assets/:id?station_id=
+router.delete('/fixed-assets/:id', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.manage'), async (req, res, next) => {
+    try {
+      await pool.query(`DELETE FROM fixed_assets WHERE id=$1 AND station_id=$2`, [req.params.id, req.query.station_id || req.body.station_id]);
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  });
+
+// GET /api/accounts/balance-sheet?station_id=
+router.get('/balance-sheet', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.view'), async (req, res, next) => {
+    try {
+      const { station_id } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false });
+      res.json({ enabled: true, ...(await reports.balanceSheet(pool, station_id)) });
+    } catch (err) { next(err); }
+  });
+
+// GET /api/accounts/pnl?station_id=&from=&to=
+router.get('/pnl', authenticate, requireStationAccess({ required: true }),
+  requirePerm('accounts.view'), async (req, res, next) => {
+    try {
+      const { station_id, from, to } = req.query;
+      if (!(await accountsEnabled(station_id))) return res.json({ enabled: false });
+      res.json({ enabled: true, ...(await reports.pnl(pool, station_id, { from, to })) });
     } catch (err) { next(err); }
   });
 

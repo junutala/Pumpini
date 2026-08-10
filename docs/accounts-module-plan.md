@@ -211,7 +211,7 @@ cash, bank, receivables, payables) stays compute-on-read — the way `creditRepo
 | **4** | **Bill & Payment (OCR)** *(done)* | scan → AI-suggested head → tick PAID → save; expense/asset capture, vendor learning. (Supplier-payment-against-unpaid-bill → Slice 6.) |
 | **5** | **Owner Money** *(done)* | manager-recorded drawings / funding (capital or loan) / other income |
 | **6** | **Payables** *(done)* | outstanding balances (trade + CNG-to-IOCL), pay an itemised bill, record a payment against a payable |
-| 7 | Opening balances + fixed assets + Balance Sheet | the wizard, depreciation, adjustments journal, the tallying BS |
+| **7** | **Opening balances + fixed assets + Balance Sheet** *(done)* | the wizard, fixed assets (owned-vs-OMC), a tallying balance sheet + P&L |
 | 8 | Finance Dashboard + report polish | P&L, BS, position, receivables/payables tiles + "Needs your attention" |
 
 ---
@@ -415,3 +415,30 @@ saved**, with a modal that can't be dismissed without answering.
 
 **Order of operations: run `016`, deploy, mark past deliveries prepaid/credit (Payables →
 Fuel purchases, or they were captured at delivery), then Re-post from scratch on Accounts.**
+
+---
+
+## 17. Slice 7 — opening balances + fixed assets + the Balance Sheet
+
+The anchor that turns the journal into a real financial position.
+
+- `migration 017` — `accounting_opening_balances` (per-outlet position at a books-start date
+  + `land_ownership`) and `fixed_assets` (with `owned_by` outlet/OMC). Both RLS.
+- **Opening balances posted as ONE balanced journal entry** (`event_type='opening_balance'`,
+  re-posted on each save): Dr the assets, Cr the liabilities, and **capital is the plug**
+  (Σ assets − Σ liabilities) so it balances by construction. Fixed-assets opening is the
+  net book value of **outlet-owned** assets (OMC-owned excluded).
+- `services/accountsReports.js` — `saveOpeningBalances`, `balanceSheet` (Assets = Σ over
+  asset accounts, so contra-assets like accumulated depreciation net down; Equity = capital
+  − drawings + retained + **profit for the period**, where profit = income − expenses), and
+  `pnl`. Both statements are pure "sum the journal", so the sheet tallies whenever the
+  opening entry does.
+- Routes: `opening-balances` (GET/POST), `fixed-assets` (GET/POST/DELETE), `balance-sheet`,
+  `pnl`. Screens `/accounts/opening-balances` (owner) and `/accounts/balance-sheet` (P&L + BS).
+
+Not yet: automatic periodic depreciation posting (fixed assets sit at opening net book
+value), and an adjustments-journal UI (the opening entry + Owner Money cover the common
+cases). Both are follow-ups.
+
+**Order of operations: run `017`, then Accounts → Opening Balances → enter the outlet's
+start position → Save. Balance Sheet then tallies.**
