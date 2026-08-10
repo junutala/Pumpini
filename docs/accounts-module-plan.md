@@ -205,8 +205,8 @@ cash, bank, receivables, payables) stays compute-on-read — the way `creditRepo
 
 | # | Slice | Ships |
 |---|---|---|
-| **1** | **Foundation & flag** *(this PR)* | `accounts_enabled` switch, `accounts.view`/`accounts.manage` perms, sidebar "Accounts" group, Settings → Accounting toggle, landing scaffold |
-| 2 | Posting engine + rulebook + journal | the Pumpini-owned worker, `posting_rules`, `accounting_journal(_lines)`; seed the auto-fed rules |
+| **1** | **Foundation & flag** *(done)* | `accounts_enabled` switch, `accounts.view`/`accounts.manage` perms, sidebar "Accounts" group, Settings → Accounting toggle, landing scaffold |
+| **2** | **Posting engine + rulebook + journal** *(done)* | `accounting_accounts` (chart), `posting_rules`, `accounting_journal(_lines)`; the engine; a read surface (journal + trial balance) |
 | 3 | Auto-fed per-shift events | read ops → typed events → engine → journal; P&L base runs off real ops |
 | 4 | Bill & Payment (OCR) | expense / asset / supplier-payment capture; unpaid-invoice fetch; vendor learning |
 | 5 | Owner Money | drawings / funding events |
@@ -236,4 +236,36 @@ until an outlet turns it on. Rollback: flip the flag off / revert the PR / drop 
 
 *Known Slice-1 limitation:* the sidebar entry is gated by permission+role, not yet by the
 outlet's `accounts_enabled` flag (the page itself respects the flag). Flag-based nav
-hiding lands with the module's own client context in Slice 2.
+hiding lands with the module's own client context in a later slice.
+
+---
+
+## 11. Slice 2 — what this contains (Posting engine + rulebook + journal)
+
+- **DDL** `migrations/011_accounts_ledger.sql` — four new tables, each with its RLS/grant
+  in the same block:
+  - `accounting_accounts` — the chart of accounts (global, Pumpini-owned; `acct_type` +
+    `normal_side` + `statement` so reports classify P&L vs BS without hardcoding).
+    Permissive read policy; writes only on the BYPASSRLS owner role.
+  - `posting_rules` — the rulebook (global). One `event_type` → N legs; a leg's account is
+    a fixed `account_code` **or** pulled from the event via `account_key`; its amount via
+    `amount_key`. Adding a transaction type = adding rows here.
+  - `accounting_journal` + `accounting_journal_lines` — the per-outlet journal (station-
+    scoped RLS, copying the `credit_suspense_entries` shape; lines carry a denormalised
+    `station_id` for a direct-station policy). `UNIQUE(station_id, event_type, source_ref)`
+    is the idempotency key.
+  - Seeds the canonical chart + a starter rulebook (COGS, petty-cash, expense paid/unpaid,
+    asset purchase, supplier payment, owner drawings/funding, other income, OMC interest).
+- **Engine** `services/accountingEngine.js` — `postEvent` (rulebook-driven), `postJournal`
+  (low-level balanced writer, idempotent), `trialBalance`, `listJournal`. Line-building +
+  balance check are pure functions.
+- **Read API** `routes/accounts.js` mounted at `/api/accounts` — `GET /journal`,
+  `GET /trial-balance`. Gated by `accounts.view`; both no-op when the outlet's switch is
+  off. New route; no existing flow touched.
+- **Self-test** `scripts/accounts-engine-selftest.js` — pure-logic proof the engine
+  balances and fails correctly (no DB needed).
+
+No event sources are wired yet (Slice 3), so the engine has no writers in production — the
+ledger stays empty until an outlet is enabled *and* its shift/expense events are wired. The
+`accountsEnabled()` gate means a not-yet-migrated or switched-off outlet never touches the
+ledger tables. **Order of operations: run `011` before switching any outlet on.**
