@@ -10,7 +10,8 @@ import {
   Gauge, BarChart2, Settings, LogOut, Zap, ShoppingCart,
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
-  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical } from 'lucide-react';
+  Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical,
+  Landmark } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -64,6 +65,14 @@ const NAV_GROUPS = [
       { key:'pettycash',  href:'/petty-cash',      icon:Wallet,         perm:'pettycash.manage' },
       { key:'deposits',   href:'/deposits',        icon:Banknote,       perm:'deposits.manage' },
       { key:'cashintegrity', href:'/cash-integrity', icon:ShieldAlert,  perm:'cash.integrity', roles:['owner'] },
+    ]
+  },
+  {
+    label: 'Accounts',
+    items: [
+      // Optional bookkeeping module — the landing gates itself on the outlet's
+      // accounts_enabled switch (Settings → Accounting). Owner/accountant only.
+      { key:'accounts',   href:'/accounts',        icon:Landmark,       perm:'accounts.view', roles:['owner','accountant'] },
     ]
   },
   {
@@ -130,6 +139,7 @@ const NAV_LABELS = {
   users:'Users',             responsibilities:'Responsibilities',
   addattendant:'Add Attendant',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
+  accounts:'Accounts',
 };
 
 // Group header key is derived as nav.grp_<label> (e.g. Shift -> nav.grp_shift),

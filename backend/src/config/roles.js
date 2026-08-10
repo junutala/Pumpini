@@ -33,6 +33,10 @@ const MODULE_ROLE_AFFINITY = {
   'dispense.view':  ['attendant', 'rsa'],
   'group.view':     ['owner'],
   'users.manage':   ['owner'],
+  // Accounts is owner/accountant work (the optional bookkeeping module) — never
+  // assignable to a forecourt role. Owner also reaches it via the 'ALL' sentinel.
+  'accounts.view':   ['owner', 'accountant'],
+  'accounts.manage': ['owner', 'accountant'],
 };
 
 function isValidRole(role) {

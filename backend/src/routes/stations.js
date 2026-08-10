@@ -23,6 +23,24 @@ async function hasSelfSettleFlag() {
   return _hasSelfSettleFlag;
 }
 
+// Does the Accounts on/off switch exist yet? Same hot-read guard as the self-settle
+// flag above — GET /settings is called by POS, Shifts and Settings, so naming a
+// not-yet-migrated column here would 42703 all three at once. Probed, never
+// try-and-caught. Cached only once TRUE, so the first read after the owner runs the
+// DDL picks it up with no restart.
+let _hasAccountsFlag = false;
+async function hasAccountsFlag() {
+  if (_hasAccountsFlag) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='accounts_enabled' LIMIT 1`);
+    _hasAccountsFlag = rows.length > 0;
+  } catch { _hasAccountsFlag = false; }
+  return _hasAccountsFlag;
+}
+
 // Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
 // deploys first, so pump_id / slip_nozzle_no are named only once present. A catalog
 // probe, never a failing INSERT — inside a transaction that would abort the caller.
@@ -155,6 +173,20 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
       if (await hasSelfSettleFlag()) {
         const { rows: upd } = await pool.query(
           `UPDATE station_settings SET self_settlement_enabled=$2, updated_at=NOW()
+            WHERE station_id=$1 RETURNING *`, [req.params.id, on]);
+        if (upd.length) rows[0] = upd[0];
+      }
+    }
+
+    // The Accounts module on/off switch — same EXISTING settings endpoint (cardinal
+    // rule, no route of its own) and the same separate-guard reason: this code deploys
+    // before the owner runs the DDL, so an absent column just leaves the module OFF (its
+    // default) instead of 42703-ing the whole settings save, geofence tab included.
+    if (req.body.accounts_enabled !== undefined) {
+      const on = req.body.accounts_enabled === true || req.body.accounts_enabled === 'true';
+      if (await hasAccountsFlag()) {
+        const { rows: upd } = await pool.query(
+          `UPDATE station_settings SET accounts_enabled=$2, updated_at=NOW()
             WHERE station_id=$1 RETURNING *`, [req.params.id, on]);
         if (upd.length) rows[0] = upd[0];
       }
@@ -340,6 +372,11 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
     const selfSettleCol = (await hasSelfSettleFlag())
       ? ', COALESCE(ss.self_settlement_enabled, TRUE) AS self_settlement_enabled'
       : ', TRUE AS self_settlement_enabled';
+    // FALSE when the column is absent: an outlet that predates the switch reads as
+    // Accounts-off, which is what makes shipping this code before the DDL harmless.
+    const accountsCol = (await hasAccountsFlag())
+      ? ', COALESCE(ss.accounts_enabled, FALSE) AS accounts_enabled'
+      : ', FALSE AS accounts_enabled';
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
               ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
@@ -350,6 +387,7 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
               COALESCE(ss.deposit_alert_days, 2)       AS deposit_alert_days,
               COALESCE(ss.deposit_alert_amount, 0)     AS deposit_alert_amount
               ${selfSettleCol}
+              ${accountsCol}
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
