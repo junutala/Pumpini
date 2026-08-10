@@ -8,6 +8,24 @@ const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const { storageConfigured, uploadDocumentBase64, signedDocUrl } = require('../services/vaweStorage');
 
+// Does fuel_deliveries carry the `paid` column yet? This INSERT is a HOT WRITE inside a
+// transaction, so naming a not-yet-migrated column would 42703 and abort the whole
+// delivery save. Probed (never try-and-caught), cached once TRUE so the first save after
+// the owner runs 016 picks it up with no restart. (Owner-approved rule-#1 exception:
+// the Deliveries form now carries a Paid/prepaid checkbox for the Accounts module.)
+let _hasDeliveryPaidCol = false;
+async function hasDeliveryPaidCol() {
+  if (_hasDeliveryPaidCol) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='fuel_deliveries'
+          AND column_name='paid' LIMIT 1`);
+    _hasDeliveryPaidCol = rows.length > 0;
+  } catch { _hasDeliveryPaidCol = false; }
+  return _hasDeliveryPaidCol;
+}
+
 // Persist a scanned delivery invoice. Preferred: upload the bytes to the private
 // doc bucket and keep only the storage PATH in the DB (no base64 blob in Postgres).
 // Column-tolerant + additive: this code deploys BEFORE the owner runs the DDL, so
@@ -135,6 +153,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
       batch_number, seal_number,
       rate_per_ltr, freight, total_value, notes,
       invoice_id, invoice_base64, invoice_media_type,
+      paid,          // optional: true = prepaid at lift, false/absent = on credit (Accounts module)
       tank_splits,   // optional: [{ tank_id, gross_volume_ltrs }] — one product discharged into >1 tank
     } = req.body;
 
@@ -232,6 +251,12 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     // Insert one row per tank (splits share the DC/invoice/fuel/rate). All-or-nothing
     // in a transaction so a partial split can't leave a lopsided stock picture.
     const created = [];
+    // Include `paid` only once the column exists (probe, not try/catch — this runs in a
+    // transaction). Absent column → the delivery saves exactly as before, no payment flag.
+    const withPaid = await hasDeliveryPaidCol();
+    const paidCol  = withPaid ? ',paid' : '';
+    const paidVal  = withPaid ? ',$23' : '';
+    const paidBool = paid === true || paid === 'true';
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -242,8 +267,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
              fuel_type,oil_company,depot_name,tanker_number,compartment_no,
              gross_volume_ltrs,temperature_c,density,
              batch_number,seal_number,rate_per_ltr,freight,total_value,
-             received_by,notes,invoice_id
-           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+             received_by,notes,invoice_id${paidCol}
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22${paidVal})
            RETURNING *`,
           [
             station_id, l.tank_id || null, shift_id||null,
@@ -255,6 +280,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
             batch_number||null, seal_number||null,
             rate_per_ltr||null, l.freight, l.total_value,
             req.user.id, notes||null, invoiceId,
+            ...(withPaid ? [paidBool] : []),
           ]
         );
         created.push(r[0]);
