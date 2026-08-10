@@ -9,6 +9,26 @@ Owner-agreed design, Aug 2026. This doc is the living spec; keep it in step with
 
 ---
 
+## 🔴 The Accounts switch is a ONE-WAY, LIFETIME event (owner-set, 10-Aug-2026)
+
+`station_settings.accounts_enabled` is **not** a yo-yo. **Once an outlet is switched ON, it
+stays ON — there is no turning it off.** Accounting is a commitment: you are either keeping
+books or you are not. A toggle-off/toggle-on breaks the mental model ("is this counted?"),
+leaves gaps the system can't self-heal (the delivery paid-prompt only fires while on, so
+deliveries recorded during an off-spell come back `paid=unknown`), and quietly erodes trust
+in the P&L and balance sheet — the exact opposite of their purpose.
+
+- **The catch-up is real:** switching on back-fills every settled-but-unposted shift/delivery
+  (operations are always recorded; accounting is derived on demand). So *data* never goes
+  missing across an off→on. The problem is not lost data — it is the confusion and the
+  paid-prompt gap, which is why it must be one-way.
+- **Current state (pilot):** the switch is still toggleable so the owner can test on Kamala.
+  **TODO before real rollout:** enforce one-way — `accounts_enabled` may go false→true but a
+  true→false attempt is rejected at the settings endpoint (and the Settings toggle disabled
+  once on, with a clear "this cannot be turned off" note).
+
+---
+
 ## 0. The cardinal constraint (owner-set)
 
 1. **We do NOT touch any existing Pumpini flow.** Reading existing data is fine; changing
