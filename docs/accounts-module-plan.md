@@ -389,3 +389,29 @@ journal via the engine.
   liabilities real once opening balances land (Slice 7).
 
 **Order of operations: run `015` before using Owner Money / Payables on the enabled outlet.**
+
+---
+
+## 16. Slice 6.1 — fuel purchase payment status (prepaid vs credit)
+
+Verifying Kamala showed Trade Payables at ₹2.44Cr because *every* fuel delivery was booked
+as on-credit. In reality OMC fuel is often **prepaid** (deposit / auto-debit). The oil-company
+challan carries no payment flag (HPCL & IOCL checked), so the **manager** marks it — and
+because petrol+diesel arrive on one invoice, we ask **once, after the invoice's products are
+saved**, with a modal that can't be dismissed without answering.
+
+🔴 This is the owner's **explicit approved exception to rule #1** (10-Aug-2026): it adds a
+`paid` column to `fuel_deliveries` and a prompt to the Deliveries screen.
+
+- `migration 016` — `fuel_deliveries.paid boolean` (nullable = unknown) and the `fuel_purchase`
+  rule now credits **bank** (prepaid) or **creditors** (credit) via the event's `credit_to`.
+- **Deliveries** (`routes/deliveries.js`): `paid` added to the INSERT **column-tolerantly**
+  (probe, never a 42703 in the transaction); `PATCH /mark-paid` sets it after save. The
+  form's paid-prompt modal fires only when the outlet's Accounts switch is on.
+- **Accounts** (`accountsShiftPosting`): reads `paid` (tolerant) → prepaid credits bank, else
+  creditors; unknown (historical) defaults to creditors until classified.
+- **Payables** gains a **Fuel purchases** breakdown (the HSD/MS invoices behind Trade
+  Payables) with a Prepaid/Credit toggle to backfill history, then Re-post applies it.
+
+**Order of operations: run `016`, deploy, mark past deliveries prepaid/credit (Payables →
+Fuel purchases, or they were captured at delivery), then Re-post from scratch on Accounts.**

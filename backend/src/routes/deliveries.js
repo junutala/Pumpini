@@ -256,7 +256,11 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     const withPaid = await hasDeliveryPaidCol();
     const paidCol  = withPaid ? ',paid' : '';
     const paidVal  = withPaid ? ',$23' : '';
-    const paidBool = paid === true || paid === 'true';
+    // NULL when the caller didn't specify — the Accounts paid-prompt sets it right after
+    // the save (PATCH /mark-paid). An explicit true/false is honoured if sent inline.
+    const paidBool = (paid === true || paid === 'true') ? true
+                   : (paid === false || paid === 'false') ? false
+                   : null;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -324,6 +328,24 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
     q += ` ORDER BY fd.received_at DESC LIMIT $${p.length}`;
     const { rows } = await pool.query(q, p);
     res.json(rows);
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/deliveries/mark-paid { station_id, ids:[], paid:bool }
+// Sets the fuel-purchase payment status the Accounts module reads (prepaid → bank, else
+// → creditors). The Deliveries form asks once, after the invoice's products are saved.
+// Owner-approved rule-#1 exception (10-Aug-2026). Station-scoped; column-tolerant so it
+// no-ops cleanly before migration 016 adds the column.
+router.patch('/mark-paid', authenticate, requireStationAccess({ required: true }), requirePerm('deliveries.view'), async (req, res, next) => {
+  try {
+    const { station_id, ids, paid } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids are required' });
+    if (!(await hasDeliveryPaidCol())) return res.json({ ok: true, updated: 0, note: 'paid column not migrated yet' });
+    const p = paid === true || paid === 'true';
+    const { rowCount } = await pool.query(
+      `UPDATE fuel_deliveries SET paid=$1 WHERE id = ANY($2::uuid[]) AND station_id=$3`,
+      [p, ids, station_id]);
+    res.json({ ok: true, updated: rowCount });
   } catch (err) { next(err); }
 });
 

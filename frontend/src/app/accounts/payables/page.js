@@ -20,6 +20,7 @@ export default function PayablesPage() {
 
   const [enabled, setEnabled] = useState(null);
   const [data, setData] = useState(null);
+  const [fuel, setFuel] = useState([]);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [payMode, setPayMode] = useState({});    // per-row chosen mode
@@ -29,9 +30,23 @@ export default function PayablesPage() {
 
   const load = useCallback(async () => {
     if (!sid) return;
-    const r = await api.get(`/accounts/payables?station_id=${sid}`).catch(() => null);
+    const [r, fp] = await Promise.all([
+      api.get(`/accounts/payables?station_id=${sid}`).catch(() => null),
+      api.get(`/accounts/fuel-purchases?station_id=${sid}`).catch(() => null),
+    ]);
     setData(r && r.enabled ? r : null);
+    setFuel(fp && fp.enabled ? (fp.purchases || []) : []);
   }, [sid]);
+
+  const setFuelPaid = async (id, paid) => {
+    setBusy(true);
+    try {
+      await api.patch('/deliveries/mark-paid', { station_id: sid, ids: [id], paid });
+      await load();
+      showToast(tc('pay.markedRepost', 'Updated — Re-post on the Accounts screen to apply.'));
+    } catch (e) { showToast(e.response?.data?.error || tc('pay.failed', 'Could not update.')); }
+    setBusy(false);
+  };
 
   useEffect(() => {
     if (!sid) return;
@@ -121,6 +136,46 @@ export default function PayablesPage() {
         <div style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
           {AcctCard('trade_payables', tc('pay.trade', 'Trade Payables'), tc('pay.tradeHint', 'Suppliers & oil company (fuel bought on credit).'))}
           {AcctCard('cng_payable', tc('pay.cng', 'CNG Collections Payable (IOCL)'), tc('pay.cngHint', 'CNG cash collected on IOCL’s behalf.'))}
+
+          {fuel.length > 0 && (
+            <div className="card">
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{tc('pay.fuelPurchases', 'Fuel purchases (oil-company invoices)')}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>
+                {tc('pay.fuelHint', 'Prepaid invoices are paid from your bank; credit ones sit in Trade Payables. Fix any here, then Re-post on the Accounts screen.')}
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--text-3)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                      <th style={{ padding: '6px 8px' }}>{tc('pay.date', 'Date')}</th>
+                      <th style={{ padding: '6px 8px' }}>{tc('pay.invoice', 'Invoice')}</th>
+                      <th style={{ padding: '6px 8px' }}>{tc('pay.fuel', 'Fuel')}</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>{tc('pay.litres', 'Litres')}</th>
+                      <th style={{ padding: '6px 8px', textAlign: 'right' }}>{tc('pay.value', 'Value')}</th>
+                      <th style={{ padding: '6px 8px' }}>{tc('pay.status', 'Status')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fuel.map(p => (
+                      <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '6px 8px' }}>{p.date}</td>
+                        <td style={{ padding: '6px 8px' }}>{[p.oil_company, p.dc_number].filter(Boolean).join(' ')}</td>
+                        <td style={{ padding: '6px 8px', textTransform: 'capitalize' }}>{p.fuel_type}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(p.ltrs || 0).toLocaleString('en-IN')}</td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(p.value)}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={() => setFuelPaid(p.id, true)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.paid === true ? '#16a34a' : 'var(--border)'}`, background: p.paid === true ? '#16a34a' : '#fff', color: p.paid === true ? '#fff' : 'var(--text-2)' }}>{tc('pay.prepaid', 'Prepaid')}</button>
+                            <button onClick={() => setFuelPaid(p.id, false)} disabled={busy} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: busy ? 'wait' : 'pointer', border: `1px solid ${p.paid === false ? '#FF6B00' : 'var(--border)'}`, background: p.paid === false ? 'rgba(255,107,0,.08)' : '#fff', color: p.paid === false ? '#FF6B00' : 'var(--text-2)' }}>{tc('pay.credit', 'Credit')}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="card">
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{tc('pay.unpaidBills', 'Unpaid bills')}</div>
