@@ -25,6 +25,9 @@ const roleDefaults = {
     // split-out feature modules (were reachable via the umbrellas above)
     'lubes.manage','pettycash.manage','deposits.manage','stock.reconcile','tally.export','ai_chat.use',
     'attendant.add',
+    // Bill & Payment capture is manager work when an outlet runs the optional Accounts
+    // module (the screen/endpoints no-op when the outlet switch is off).
+    'accounts.expense',
   ],
   // Operators are locked to their own self-settlement screen. `settlement.enter` is
   // their one capability by default (it matches config/roles.js attendant.defaultResponsibility

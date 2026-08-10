@@ -208,7 +208,7 @@ cash, bank, receivables, payables) stays compute-on-read — the way `creditRepo
 | **1** | **Foundation & flag** *(done)* | `accounts_enabled` switch, `accounts.view`/`accounts.manage` perms, sidebar "Accounts" group, Settings → Accounting toggle, landing scaffold |
 | **2** | **Posting engine + rulebook + journal** *(done)* | `accounting_accounts` (chart), `posting_rules`, `accounting_journal(_lines)`; the engine; a read surface (journal + trial balance) |
 | **3** | **Auto-fed operational events** *(done)* | pull settled shifts (sale/COGS/petty) + deliveries (purchase) → engine → journal; a verification console on the landing |
-| 4 | Bill & Payment (OCR) | expense / asset / supplier-payment capture; unpaid-invoice fetch; vendor learning |
+| **4** | **Bill & Payment (OCR)** *(done)* | scan → AI-suggested head → tick PAID → save; expense/asset capture, vendor learning. (Supplier-payment-against-unpaid-bill → Slice 6.) |
 | 5 | Owner Money | drawings / funding events |
 | 6 | Suppliers & payables view | outstanding bills, record payment against a bill |
 | 7 | Opening balances + fixed assets + Balance Sheet | the wizard, depreciation, adjustments journal, the tallying BS |
@@ -334,3 +334,33 @@ Corrected Kamala gross profit: **~₹7.85L (~3.2%)** — a believable fuel margi
 
 **Order of operations: after deploying this code, run `013`, then Re-post from scratch on the
 enabled outlet.**
+
+---
+
+## 14. Slice 4 — what this contains (Bill & Payment capture)
+
+The manager's expense/asset screen. Ideal flow: **scan → confirm pre-filled details → tick
+PAID → save.** The engine posts the double-entry; the manager never sees a debit/credit.
+
+- **DDL** `migration 014` — `accounting_vendors` (born from a scan, remembered so the next
+  bill is pre-classified — vendor→head learning) and `expenses` (each row links to the
+  journal entry it posted). Both station-scoped RLS. Adds the **`accounts.expense`**
+  permission — the one Accounts capability that reaches the **manager** (reports stay
+  owner/accountant).
+- **`services/expenseService.js`** — the one writer: resolve/create vendor, insert the
+  expense, post via the engine (`expense_paid|unpaid`, `asset_purchase_paid|unpaid` — rules
+  from 011). Cash-drawer expenses stay on Petty Cash (owner's rule); this form is
+  bank/UPI/cheque or on-credit only.
+- **`services/billScan.js`** — OCR mirrors the delivery scanner (Google Vision pre-pass →
+  Claude Sonnet, else Claude vision). Extracts vendor/amount/GST/date/invoice + an
+  AI-suggested head from the real chart, and recognises known vendors.
+- **Routes** on `/api/accounts`: `expense-categories`, `scan-bill`, `expenses` (POST/GET),
+  all `accounts.expense`-gated and flag-guarded. Bill image → private doc bucket via
+  `vaweStorage` (best-effort).
+- **Frontend** `/accounts/bills` + a manager-visible sidebar entry.
+
+**Deferred to Slice 6 (payables):** paying an existing unpaid bill / OMC fuel payable
+(fetch-unpaid-invoices-and-tick-PAID), supplier balances. Slice 4 captures the bill and, if
+paid-now, posts the payment; an unpaid bill posts to `creditors` and waits.
+
+**Order of operations: run `014` before using Bill & Payment on the enabled outlet.**

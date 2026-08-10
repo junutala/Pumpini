@@ -73,6 +73,8 @@ const NAV_GROUPS = [
       // Optional bookkeeping module — the landing gates itself on the outlet's
       // accounts_enabled switch (Settings → Accounting). Owner/accountant only.
       { key:'accounts',   href:'/accounts',        icon:Landmark,       perm:'accounts.view', roles:['owner','accountant'] },
+      // Bill & Payment capture — the manager reaches this one (accounts.expense).
+      { key:'bills',      href:'/accounts/bills',  icon:Receipt,        perm:'accounts.expense', roles:['owner','accountant','manager'] },
     ]
   },
   {
@@ -140,6 +142,7 @@ const NAV_LABELS = {
   addattendant:'Add Attendant',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
   accounts:'Accounts',
+  bills:'Bill & Payment',
 };
 
 // Group header key is derived as nav.grp_<label> (e.g. Shift -> nav.grp_shift),
