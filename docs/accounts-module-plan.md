@@ -442,3 +442,15 @@ cases). Both are follow-ups.
 
 **Order of operations: run `017`, then Accounts → Opening Balances → enter the outlet's
 start position → Save. Balance Sheet then tallies.**
+
+### 17.1 Go-live cutoff (so the owner can enter *today's* balance sheet)
+
+Back-dating the opening to the first shift (~22 Jun) is impractical — the owner doesn't have
+that day's position. Instead the **books-start date is a go-live cutoff**: everything up to &
+including it is captured in the opening balance sheet, and the materialiser posts only shifts
+& deliveries **strictly after** it. So the owner enters **today's** figures (which they have),
+Re-posts, and the ledger = their opening + post-go-live activity — no double-count, and the
+historical fuel-invoice paid/credit fuss disappears (it's all pre-cutoff, netted into
+opening). Absent opening balances → no cutoff (post all history, the pilot behaviour). After
+saving opening balances, **Re-post from scratch** clears the pre-cutoff auto-fed postings
+(the opening entry, `source='opening'`, is not touched by a re-post).
