@@ -57,6 +57,7 @@ router.post('/materialize', authenticate, requireStationAccess({ required: true 
       }
       const summary = await shiftPosting.materialize(pool, station_id, {
         upto: req.body.upto || undefined, created_by: req.user.id,
+        reset: req.body.reset === true || req.body.reset === 'true',
       });
       res.json({ ok: true, ...summary });
     } catch (err) { next(err); }
