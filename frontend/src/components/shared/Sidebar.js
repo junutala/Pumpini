@@ -11,7 +11,7 @@ import {
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical,
-  Landmark } from 'lucide-react';
+  Landmark, Scale, Sliders } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -77,6 +77,8 @@ const NAV_GROUPS = [
       { key:'bills',      href:'/accounts/bills',  icon:Receipt,        perm:'accounts.expense', roles:['owner','accountant','manager'] },
       { key:'ownermoney', href:'/accounts/owner-money', icon:Wallet,    perm:'accounts.expense', roles:['owner','accountant','manager'] },
       { key:'payables',   href:'/accounts/payables', icon:CreditCard,   perm:'accounts.expense', roles:['owner','accountant','manager'] },
+      { key:'balancesheet', href:'/accounts/balance-sheet', icon:Scale, perm:'accounts.view', roles:['owner','accountant'] },
+      { key:'openingbal', href:'/accounts/opening-balances', icon:Sliders, perm:'accounts.manage', roles:['owner','accountant'] },
     ]
   },
   {
@@ -147,6 +149,8 @@ const NAV_LABELS = {
   bills:'Bill & Payment',
   ownermoney:'Owner Money',
   payables:'Payables',
+  balancesheet:'Balance Sheet',
+  openingbal:'Opening Balances',
 };
 
 // Group header key is derived as nav.grp_<label> (e.g. Shift -> nav.grp_shift),
