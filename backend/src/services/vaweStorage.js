@@ -107,8 +107,17 @@ async function signedUrl({ bucket, path, expiresIn }) {
       typeof res.data === 'string' ? res.data : JSON.stringify(res.data || '');
     throw new Error(`Supabase sign failed: HTTP ${res.status} ${String(detail).slice(0, 300)}`);
   }
-  // signedURL is a root-relative path like /storage/v1/object/sign/<bucket>/<path>?token=...
-  return `${apiBase()}${res.data.signedURL}`;
+  // Supabase returns signedURL relative to the STORAGE API, e.g.
+  // "/object/sign/<bucket>/<path>?token=..." — WITHOUT the /storage/v1 prefix (older
+  // versions included it). Prepending only the project URL drops /storage/v1, so the
+  // object resolves to <project>/object/sign/... which Storage rejects with
+  // {"error":"requested path is invalid"} and the document won't load. Normalise so the
+  // absolute URL always carries /storage/v1, whichever shape Supabase returns.
+  let rel = res.data.signedURL;
+  if (/^https?:\/\//i.test(rel)) return rel;          // already absolute
+  if (!rel.startsWith('/')) rel = '/' + rel;
+  if (!rel.startsWith('/storage/v1')) rel = '/storage/v1' + rel;
+  return `${apiBase()}${rel}`;
 }
 
 // Upload a VAWE proof artifact to the PUBLIC bucket and return its public URL.
