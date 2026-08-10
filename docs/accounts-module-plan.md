@@ -304,3 +304,33 @@ variance/short-over, opening float, and bank deposits. Fuel-sale revenue is a si
 aggregate line; the per-fuel split (petrol vs diesel) is a reporting refinement.
 
 **Order of operations: run `011` then `012` before switching any outlet on.**
+
+---
+
+## 13. Slice 3.1 — CNG commission + COGS fixes (found verifying Kamala)
+
+Verifying the first production post on Kamala showed a **22% blended margin** — impossibly
+high for fuel. The books balanced and the engine was correct; the cause was two COGS/revenue
+**cost-source** gaps:
+
+1. **CNG is a commission product, not a buy-sell.** The outlet never buys CNG — it sells
+   IOCL's CNG by the kg for a fixed commission (`marginService.CNG_COMMISSION_PER_KG`, a
+   Railway var). So CNG's gross sale isn't revenue; only the commission is, and the rest is
+   cash owed to IOCL. The original post booked CNG's full ₹49L gross as revenue (≈₹48L of
+   phantom margin).
+   - **Fix:** a `cng_passthrough` event per shift moves CNG's non-commission portion out of
+     `fuel_sales` into a new `cng_payable` (IOCL) liability. Net revenue = liquid gross +
+     CNG commission. CNG is excluded from COGS entirely. Reuses `marginService` (one writer).
+2. **Early shifts costed at zero.** COGS used weighted-avg cost *as of the shift date*, so
+   shifts predating a fuel's first delivery got ₹0 cost.
+   - **Fix:** fall back to the full-history WAC when the as-of-date window is empty.
+
+Corrected Kamala gross profit: **~₹7.85L (~3.2%)** — a believable fuel margin.
+
+- `migration 013` adds `cng_payable` + the `cng_passthrough` rule.
+- `POST /api/accounts/materialize { reset:true }` (and a "Re-post from scratch" link on the
+  console) clears the auto-fed journals and re-posts with the corrected logic — the
+  pilot-correction path; manual entries are never touched.
+
+**Order of operations: after deploying this code, run `013`, then Re-post from scratch on the
+enabled outlet.**

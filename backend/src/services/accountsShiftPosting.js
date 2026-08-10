@@ -17,6 +17,7 @@
 // modelled (later slices): cash variance/short-over, opening float, bank deposits — so
 // the cash_in_hand ledger balance is "book cash from sales", not physically-counted cash.
 const engine = require('./accountingEngine');
+const margin = require('./marginService');   // the ONE source for CNG commission
 const { round2 } = engine;
 
 const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -41,8 +42,10 @@ async function weightedAvgCostMap(db, stationId, asOf) {
   return map;
 }
 
-// Post one settled shift's three events. Safe to call repeatedly (engine is idempotent).
-async function postShift(db, { station_id, shift_id, date, created_by }) {
+// Post one settled shift's events. Safe to call repeatedly (engine is idempotent).
+// `overallWac` (fuel_type → cost) is the full-history fallback used when a shift predates
+// its fuel's delivery record, so early shifts aren't costed at zero.
+async function postShift(db, { station_id, shift_id, date, created_by, overallWac }) {
   const { rows: [m] } = await db.query(
     `SELECT COALESCE(SUM(total_sales),0)  AS total_sales,
             COALESCE(SUM(upi_total),0)    AS upi,
@@ -75,16 +78,24 @@ async function postShift(db, { station_id, shift_id, date, created_by }) {
     });
   }
 
-  // COGS = Σ (litres sold per fuel × weighted-avg cost of that fuel). Litres from the
-  // settled dispense_events (present in both POS and blind-drop modes after settlement).
-  const wac = await weightedAvgCostMap(db, station_id, date);
+  // Per-fuel litres + value for this shift, from the settled dispense_events (present in
+  // both POS and blind-drop modes after settlement).
   const { rows: fuel } = await db.query(
-    `SELECT fuel_type, COALESCE(SUM(quantity_ltrs),0) AS ltrs
+    `SELECT fuel_type, COALESCE(SUM(quantity_ltrs),0) AS ltrs, COALESCE(SUM(amount),0) AS amt
        FROM dispense_events
       WHERE shift_id = $1 AND NOT COALESCE(is_voided, false)
       GROUP BY fuel_type`, [shift_id]);
-  let cogs = 0;
-  for (const f of fuel) cogs += Number(f.ltrs) * (wac[f.fuel_type] || 0);
+
+  // COGS = Σ (litres sold per fuel × weighted-avg cost). CNG is EXCLUDED — it's a
+  // commission product the outlet never buys, so it has no cost of goods. WAC falls back
+  // to the full-history average when this shift predates the fuel's first delivery.
+  const wac = await weightedAvgCostMap(db, station_id, date);
+  const overall = overallWac || (await weightedAvgCostMap(db, station_id, '9999-12-31'));
+  let cogs = 0, cngKg = 0, cngGross = 0;
+  for (const f of fuel) {
+    if (margin.isCng(f.fuel_type)) { cngKg += Number(f.ltrs); cngGross += Number(f.amt); continue; }
+    cogs += Number(f.ltrs) * (wac[f.fuel_type] || overall[f.fuel_type] || 0);
+  }
   cogs = round2(cogs);
   if (cogs > 0) {
     out.cogs = await engine.postEvent(db, {
@@ -92,12 +103,37 @@ async function postShift(db, { station_id, shift_id, date, created_by }) {
       amount: cogs, narration: 'Cost of fuel sold (shift)', created_by,
     });
   }
+
+  // CNG reclassification: the fuel_sale above booked CNG gross into revenue (it's inside
+  // shift_reconciliation.total_sales). Only the commission (kg × CNG_COMMISSION_PER_KG) is
+  // the outlet's income; the rest is cash owed to IOCL. Move that pass-through out of
+  // revenue into the CNG payable, leaving fuel_sales = liquid gross + CNG commission.
+  const cngPassthrough = round2(cngGross - cngKg * margin.CNG_COMMISSION_PER_KG);
+  if (cngPassthrough > 0) {
+    out.cng = await engine.postEvent(db, {
+      station_id, type: 'cng_passthrough', date, source: 'shift_pull', source_ref: String(shift_id),
+      amount: cngPassthrough, narration: 'CNG collected, owed to IOCL (net of commission)',
+      created_by, party: { type: 'supplier' },
+    });
+  }
   return out;
 }
 
 // Enumerate + post everything settled-but-unposted for a station up to `upto` (IST date).
-async function materialize(db, stationId, { upto, created_by } = {}) {
+// `reset: true` first removes the auto-fed journals (source shift_pull / delivery_pull)
+// for this station and re-posts them from scratch — the pilot-correction path, used when
+// the posting logic changes. Manual entries (source 'manual', etc.) are never touched.
+async function materialize(db, stationId, { upto, created_by, reset } = {}) {
   const asOf = upto || todayIST();
+
+  if (reset) {
+    await db.query(
+      `DELETE FROM accounting_journal
+        WHERE station_id = $1 AND source IN ('shift_pull','delivery_pull')`, [stationId]);
+  }
+
+  // Full-history WAC per fuel — the fallback for shifts predating a fuel's first delivery.
+  const overallWac = await weightedAvgCostMap(db, stationId, '9999-12-31');
 
   const { rows: shifts } = await db.query(
     `SELECT sh.id, sh.date
@@ -115,7 +151,7 @@ async function materialize(db, stationId, { upto, created_by } = {}) {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
-      await postShift(client, { station_id: stationId, shift_id: sh.id, date: sh.date, created_by });
+      await postShift(client, { station_id: stationId, shift_id: sh.id, date: sh.date, created_by, overallWac });
       await client.query('COMMIT');
       shiftsPosted++;
     } catch (e) {

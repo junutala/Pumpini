@@ -48,10 +48,11 @@ export default function AccountsPage() {
 
   useEffect(() => { if (enabled) loadLedger(); }, [enabled, loadLedger]);
 
-  const materialize = async () => {
+  const materialize = async (reset = false) => {
+    if (reset && !window.confirm(tc('acc.resetConfirm', 'Re-post from scratch? This clears the auto-posted shift/delivery entries and posts them again with the current logic. Manual entries are kept.'))) return;
     setBusy(true); setMsg('');
     try {
-      const r = await api.post('/accounts/materialize', { station_id: sid });
+      const r = await api.post('/accounts/materialize', { station_id: sid, reset });
       setMsg(tc('acc.posted', 'Posted {s} shift(s) and {d} delivery(ies).')
         .replace('{s}', r.shifts_posted ?? 0).replace('{d}', r.deliveries_posted ?? 0));
       await loadLedger();
@@ -114,7 +115,7 @@ export default function AccountsPage() {
                 </div>
               </div>
               {isOwner && (
-                <button onClick={materialize} disabled={busy} style={{
+                <button onClick={() => materialize(false)} disabled={busy} style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8, background: '#FF6B00',
                   color: '#fff', fontWeight: 600, fontSize: 13, padding: '9px 16px', borderRadius: 8,
                   border: 'none', cursor: busy ? 'wait' : 'pointer', flexShrink: 0,
@@ -124,6 +125,14 @@ export default function AccountsPage() {
               )}
             </div>
             {msg && <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-2)' }}>{msg}</div>}
+            {isOwner && (
+              <button onClick={() => materialize(true)} disabled={busy} style={{
+                marginTop: 10, background: 'none', border: 'none', color: 'var(--text-3)',
+                fontSize: 12, cursor: busy ? 'wait' : 'pointer', textDecoration: 'underline', padding: 0,
+              }}>
+                {tc('acc.repost', 'Re-post from scratch')}
+              </button>
+            )}
           </div>
 
           {/* Trial balance — the correctness check */}
