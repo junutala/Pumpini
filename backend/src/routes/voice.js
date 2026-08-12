@@ -86,8 +86,8 @@ router.post('/speak', authenticate, async (req, res, next) => {
       body: JSON.stringify({
         text: text.slice(0, 1500),          // Bulbul per-request cap; long replies are clipped
         target_language_code: langCode,
-        speaker: 'anushka',
-        model: 'bulbul:v2',
+        speaker: 'shubh',                   // v3 voice catalog (v2's 'anushka' does not exist in v3)
+        model: 'bulbul:v3',
       }),
     });
     const data = await sarvamRes.json();
