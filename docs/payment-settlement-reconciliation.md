@@ -71,8 +71,10 @@ split payouts.
 - **Production MID / merchantId** — the merchant identifier (base API: `MID`; split
   API: `merchantId`; max 64 chars).
 - **Merchant Key** (for List/Split) — the secret used to build `checksumHash`.
-- **JWT credentials** (for Settlement Detail) — Paytm token-based auth; capture the
-  exact client id/secret + token endpoint from Paytm's JWT auth page.
+- **JWT credentials** (for Settlement Detail) — a **`clientId`** (sent as a header)
+  plus a client secret used to mint a **Bearer JWT** (sent as `Authorization:
+  Bearer`). Only the token-minting endpoint remains to capture from Paytm's JWT
+  auth page.
 - **Entitlement** — Paytm must enable the chosen settlement API on that MID (not on
   by default). Confirm with the Paytm account manager.
 - All secrets server-side only; store per station, encrypted.
@@ -95,11 +97,23 @@ split payouts.
   included so **gross sales reconcile to the net amount actually credited**; and
   `merchantBillId` (POS order id) + `posId`/`extSerialNo` (the EDC / Pinelabs machine)
   tie a settlement line to a specific terminal and sale. The list API can't do this.
-- **Endpoint URL + JWT token flow:** *TO CONFIRM* — the spec gives request/response
-  but not the exact URL or token endpoint. It sits under `merchant-settlement-service`
-  (prod host `secure.paytmpayments.com`); get the exact path plus the JWT auth
-  (`reqMsgId` generation + token issuance) from Paytm's "Merchant Authentication (JWT)"
-  page.
+- **Endpoint:** `POST https://secure.paytmpayments.com/merchant-settlement/SettlementDetail`
+- **Headers:** `Content-Type: application/json`, `clientId: <clientId>`,
+  `Authorization: Bearer <JWT>`.
+- **Request envelope** — fields from the tables below go inside `request.body`; the
+  body is nested under a `request` object with a `head`:
+  ```json
+  {
+    "request": {
+      "head": { "reqMsgId": "<uuid-v4>" },
+      "body": { "mid": "<MID>", "startDate": "2022-07-06" }
+    }
+  }
+  ```
+  Mode B swaps `startDate`/`endDate` for `"payoutId": "ALL2...911"`.
+- **Remaining TO CONFIRM:** how the **Bearer JWT is minted** — Paytm issues it from a
+  token endpoint using `clientId` + client secret; capture that token call (and the
+  `reqMsgId` generation rule) from Paytm's "Merchant Authentication (JWT)" page.
 
 **Request — Head:** `reqMsgId` (mandatory, UUID, one per request).
 
