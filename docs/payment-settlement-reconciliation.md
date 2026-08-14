@@ -1,4 +1,4 @@
-# Digital-payment settlement reconciliation — Paytm & PhonePe
+# Digital-payment verification & settlement reconciliation — Paytm & PhonePe
 
 _Started 15-Aug-2026. The assistant has no cross-session memory — this file is the
 memory. No prior PhonePe/Paytm integration write-up existed in the repo (main,
@@ -6,20 +6,27 @@ staging, history) or in Drive when this was created; this file starts the record
 
 ---
 
-## 1. The gap this closes
+## 1. The two objectives (don't confuse them)
 
 Outlets take digital payments (UPI / QR / card) through **Paytm** and **PhonePe**.
-That money does **not** arrive per-sale — the gateway sweeps a day's collections and
-pays it into the outlet's bank as a **settlement (payout)**, identified by a bank
-**UTR**. Today nothing ties that bank payout back to the sales Pumpini recorded, so:
+There are **two** distinct questions, and they need **different APIs**:
 
-- We cannot prove "the ₹X Paytm deposited on the 12th = these sales," and
-- A short-paid, delayed, or missing payout is invisible until someone eyeballs a
-  bank statement.
+**PRIMARY — settlement-time verification (this is the real goal).**
+When the attendant closes his shift and declares "I collected **₹XXXX by UPI**," we
+must **fetch and confirm that ₹XXXX of UPI was actually collected by the aggregator
+for this outlet during the shift** — **on any day, weekends and holidays included**.
+This is a **transaction-time** question ("did these payments happen?"), answered by a
+**transaction-list / order-status API** (Paytm: **Order List** + **Transaction
+Status**). It is **not** payout-bound, so it works every day.
 
-The goal: pull each day's **settlement lines** from the gateway, **match** them to
-Pumpini sales (by order id / UTR / amount), and **flag** anything unreconciled.
-This is the bank-deposit side of the money loop, not the shift/cash settlement.
+**SECONDARY — payout / bank reconciliation (owner-facing, optional).**
+Separately, the owner may want to confirm the gateway's **bank payout** matches the
+sales (UTR, net-of-fees). That is **payout-bound** (T+1, nothing on non-payout days)
+and is served by the **settlement APIs**. Useful, but it can never answer a
+Sunday-evening shift settlement — which is why it is **not** the primary path.
+
+> ⚠️ Earlier drafts of this doc led with the settlement APIs. That was the wrong tool
+> for the primary objective. The settlement APIs are kept below as SECONDARY only.
 
 ---
 
@@ -45,27 +52,34 @@ concrete endpoints, auth, and fields.
 6. **Reconciliation model.** A settlement line carries: a **UTR**, a **settled
    amount**, **fees/commission + GST**, a **payout date**, and **per-transaction
    references** (order id / txn id). Match those to Pumpini sales; unmatched → flag.
-7. **Settlement APIs are PAYOUT-BOUND.** No payout day (weekend / public holiday) →
-   **no data**. Weekend sales surface in the **next business-day payout's**
-   settlement. For same-day weekend *transaction* visibility you need a
-   transaction/order-status API — a different, non-payout-bound endpoint, out of
-   scope for settlement reconciliation.
+7. **Verification ≠ reconciliation.** The **PRIMARY** path (settlement-time
+   verification) uses **transaction-time** APIs (Order List / Transaction Status) —
+   **not payout-bound**, so a Sunday sale is confirmable Sunday. The **SECONDARY**
+   settlement APIs are **payout-bound** (no data on weekends/holidays; weekend sales
+   land in the next business-day payout). Never use a settlement API to answer a
+   same-day shift settlement.
 
 ---
 
-## 3. Paytm — **FROZEN**
+## 3. Paytm — **GTM APIs frozen**
 
-Paytm exposes **three** settlement APIs. For reconciliation we **target the
-Settlement Detail API** (richest — payout-centric, transaction-level, and it
-includes refunds & chargebacks). The **Settlement API (list)** is the fallback if
-Detail isn't entitled; the **Split Settlement API** is only for vendor/sub-merchant
-split payouts.
+Paytm serves **both** objectives, with **different** APIs. Match the API to the job:
 
-| API | Auth | Granularity | Filter | Page size | Fit |
+**Part A — settlement-time verification (PRIMARY).** Use the **Order List API** to pull
+the shift window's UPI transactions and sum them; use the **Transaction Status API** to
+drill into one order. Transaction-time based → works any day.
+
+**Part B — payout / bank reconciliation (SECONDARY).** The **Settlement Detail API** is
+richest (payout-level, incl. refunds/chargebacks); **Settlement API (list)** is the
+fallback; **Split Settlement** only for vendor split payouts. Payout-bound.
+
+| API | Part | Auth | Keyed by | Page size | Fit |
 |---|---|---|---|---|---|
-| **Settlement Detail** | JWT | txn-level, at **payout level**, incl. refunds/chargebacks | date range (≤1 wk) **or payout ID** | 20 | ★ primary |
-| Settlement (list) | checksumHash | txn-level per settled day | date range (max 1 day) | 20 | fallback |
-| Split Settlement | checksumHash | vendor/child-level | date range + `vendorId` | 50 | only if split payouts |
+| **Order List** | A | checksum **or** JWT | MID + **date/time range** (≤30 d) | default 20 | ★ **primary — shift verification** |
+| **Transaction Status** | A | checksum | MID + **`orderId`** | — | per-order confirm |
+| Settlement Detail | B | JWT | date range (≤1 wk) **or** payout ID | 20 | owner bank-recon (secondary) |
+| Settlement (list) | B | checksum | date range (≤1 day) | 20 | secondary fallback |
+| Split Settlement | B | checksum | date range + `vendorId` | 50 | only if split payouts |
 
 ### 3.1 Credentials required (per outlet)
 - **Production MID / merchantId** — the merchant identifier (base API: `MID`; split
@@ -86,7 +100,77 @@ split payouts.
 - **Settlement Detail API** → **JWT tokenization** (bearer token), *not* checksum —
   a different credential flow (token endpoint + client credentials to capture).
 
-### 3.3 API 1 — Settlement Detail API  *(PRIMARY — reconciliation target)*
+---
+
+## Part A — settlement-time verification  *(PRIMARY)*
+
+> **These two APIs — `Order List` + `Transaction Status` — are our GTM APIs** for the
+> objective (confirm the attendant's declared UPI at settlement, any day). Everything we
+> need is here; only two page-level details remain to copy (Order List's response-field
+> list and its endpoint URL). Part B (settlement APIs) is not on the critical path.
+
+### 3.3 Order List API  *(PRIMARY — the shift-verification workhorse)*
+- **Use case:** fetch **order-level details for a MID over a date/time range**. This is
+  how we confirm the attendant's declared UPI at settlement — **any day**, because it
+  keys on **transaction time, not payout**.
+- **Auth:** `tokenType` = **`CHECKSUM`** (signature over the body with the Merchant Key)
+  or `JWT`. Use checksum. `signature` mandatory.
+- **Endpoint:** *TO CONFIRM* — on the API page's REQUEST panel; same `…paytmpayments.com/theia/…`
+  family (prod `secure.paytmpayments.com`, staging `securestage.paytmpayments.com`).
+- **Request — Head:** `tokenType` (CHECKSUM|JWT, ✔), `signature` (✔), `requestTimestamp` (–).
+- **Request — Body:**
+  | Field | Req | Notes |
+  |---|---|---|
+  | `mid` | ✔ | the outlet's MID |
+  | `orderSearchType` | ✔ | `TRANSACTION` for forward sales (pipe-separate for many; others: REFUND, CHARGEBACK, …) |
+  | `orderSearchStatus` | ✔ | `SUCCESS` (only confirmed collections; also FAILURE, PENDING) |
+  | `fromDate` / `toDate` | ✔ | `YYYY-MM-DDTHH:MM:SS`; **max 30-day range**, within 18 months → the **shift window** |
+  | `payMode` | – | scope to UPI — value **`UPI`** (see §3.4) |
+  | `pageNumber` / `pageSize` | ✔ | paginate (default 20); `isSort=true` caps at 10 000 rows |
+  | `merchantOrderId`, `searchConditions` (VAN_ID, RRN_CODE) | – | optional |
+- **Response:** `resultInfo`, **`orders`** (per-order list), `pageNum`, `pageSize`.
+  ⚠️ **The `orders` / "Orders+" field list is TO CONFIRM** (expand it on the doc page) —
+  must include **amount, order id, transaction timestamp, status, payMode** for the sum
+  to be real. (By analogy to Transaction Status §3.4 it will.)
+- **Result codes:** `1001` SUCCESS · `4001` invalid signature · `4002` mandatory param
+  missing · `4003` invalid params · `4009` checksum failed · `4099` system error.
+
+### 3.4 Transaction Status API  *(verification — per order)*
+- **Use case:** real-time status of **one `orderId`** for a MID — the per-payment
+  confirm / drill-down (resolve a PENDING line, verify a disputed one).
+- **Auth:** checksum (`signature` ✔); optional `clientId` when the MID has multiple keys.
+- **Request — Body:** `mid` (✔), `orderId` (✔), `txnType` (–, for pre-auth/capture flows).
+- **Response (key fields):** `txnId`, `bankTxnId`, `orderId`, **`txnAmount`**,
+  **`paymentMode`** (**`PPI, UPI, CC, DC, NB`**), `txnDate`, `merchantUniqueReference`,
+  `utr` / `rrnCode` (bank-transfer), `resultInfo`.
+- **Result codes:** `01` TXN_SUCCESS · `400`/`402` PENDING · `331` NO_RECORD_FOUND ·
+  `334` Invalid Order ID · `335` Mid invalid · various `TXN_FAILURE`.
+
+### 3.5 The verification design  *(what we build)*
+At settlement, the attendant declares **₹XXXX UPI**:
+1. Call **Order List** for the outlet's **MID** with `orderSearchType=TRANSACTION`,
+   `orderSearchStatus=SUCCESS`, `payMode=UPI`, `fromDate/toDate` = **shift start/end**;
+   paginate; **sum the order amounts**.
+2. Compare the sum to **₹XXXX** → **confirmed**, or **flag** the difference.
+3. Use **Transaction Status** to drill into any specific or PENDING order.
+
+- **Weekend-proof:** keys on transaction time + `SUCCESS`, not payout — a Sunday sale is
+  returned Sunday.
+- **UPI vs PPI (decide with owner):** Paytm separates **`UPI`** from **`PPI`** (Paytm
+  wallet) and cards (`CC`/`DC`). An attendant saying "UPI" for QR collections may mean
+  **UPI + PPI** (both are scan-to-pay). Decide whether the verified figure sums `UPI`
+  only or `UPI+PPI`; cards are a separate bucket.
+- **PENDING at cut-off:** a just-completed txn can read `PENDING` (`400`/`402`); count
+  `SUCCESS` only and re-check shortly after (or via Transaction Status).
+- **Coverage — TO CONFIRM:** verify Order List returns **QR / Soundbox** collections
+  (all orders under the MID), not only merchant-initiated native-flow orders. The
+  Orders+ fields, or one live call, will settle this.
+
+---
+
+## Part B — payout / bank reconciliation  *(SECONDARY — owner-facing)*
+
+### 3.6 API — Settlement Detail API  *(SECONDARY — richest payout view)*
 - **Use case:** detailed transaction-level view of settled transactions **at payout
   level**, by **date range OR payout ID**. Includes **ACQUIRING (forward), REFUND,
   CHARGEBACK** (and REPAYMENT), with wide output (customer, fees, merchant bank,
@@ -166,7 +250,7 @@ _Mode B — by payout id_
 **Limits:** date-range mode **max 1 week per call**; data queryable up to **180 days**
 back (`12014162`); `pageSize` **max 20**; paginate on `pageNum`.
 
-### 3.4 API 2 — Settlement API (list)  *(FALLBACK)*
+### 3.7 API — Settlement API (list)  *(SECONDARY fallback)*
 - **Endpoint:** `POST https://secure.paytmpayments.com/merchant-settlement-service/settlement/list`
 - **Environment:** production only.
 - **Limits:** date range **max 1 day**; data retained **6 months**; **pageSize max 20**.
@@ -195,7 +279,7 @@ back (`12014162`); `pageSize` **max 20**; paginate on `pageNum`.
 Pumpini sale), **`utr` + `settleAmount` + `payoutDate`** (to match the bank credit),
 and **`commission` + `gst`** (the deduction, so gross sale ≠ net payout is explained).
 
-### 3.5 API 3 — Split Settlement API  *(OPTIONAL — vendor/child-level)*
+### 3.8 API — Split Settlement API  *(SECONDARY — vendor/child-level only)*
 Same `/settlement/list` family, but returns **vendor/child-level** data when a
 `vendorId` is passed. Use **only** where an outlet's payouts are split to
 sub-merchants/vendors (a franchisee/marketplace arrangement). A standalone outlet
@@ -207,14 +291,14 @@ does **not** need this now.
 - Paginator fields are named `pageNum`, `pageSize`, `totalPages`, `totalTransactions`
   (vs the `paginator*` names above) — the parser must handle both shapes.
 
-### 3.6 Weekend / holiday behaviour  *(answers the standing question)*
+### 3.9 Weekend / holiday behaviour  *(Part B only)*
 No settlement API returns data for a **non-payout day**. Paytm's recon runs on weekends
 but the **payout is not released** until the next business day, so a weekend date
 yields an empty response. Weekend sales appear under the **next business-day
 payout** (by `payoutDate` / `utrProcessedTime`). Same-day weekend *transaction* data
 needs a transaction/order-status API — not the settlement API.
 
-### 3.7 Result codes (List / Split — checksum APIs)
+### 3.10 Result codes (List / Split — checksum APIs)
 | resultCode | status | meaning |
 |---|---|---|
 | `00000000` | SUCCESS | SUCCESS |
@@ -224,7 +308,7 @@ needs a transaction/order-status API — not the settlement API.
 | `00000031` | FAILURE | FACADE_EXCEPTION |
 | `00000074` | FAILURE | Too many requests / TPS breached |
 
-### 3.8 Implementation notes (for when credentials arrive)
+### 3.11 Implementation notes — Part B (for when credentials arrive)
 - **Settlement Detail (primary):** query by **payout ID** where possible (one call
   per bank UTR); else by date range. Obtain/refresh the JWT before the call.
 - **List/Split (fallback):** loop **one call per day** (1-day cap), paginating on
@@ -438,17 +522,24 @@ paths/params/casing are TO CONFIRM against the live docs above.)_
 
 ## 5. Status & next steps
 
-- [ ] **Paytm (target = Settlement Detail):** obtain prod **`clientId` + client
-      secret** (JWT) for one outlet + the **token-minting endpoint**; confirm the
-      Settlement Detail API is **entitled** on that MID. *(MID + Merchant Key only if
-      we fall back to the checksum List/Split APIs.)*
-- [ ] **PhonePe:** obtain prod creds for the outlet's generation — **v2**:
-      `client_id`/`client_secret`/`client_version` (OAuth `O-Bearer`); **v1**:
-      `merchantId` + Salt Key + Salt Index. Confirm recon access, and resolve whether
-      a **payout-level/date-range API** exists or the Settlement Report is download-only
-      (§4.5).
-- [ ] One **live fetch each** → capture JSON **fixtures**.
-- [ ] Design the **per-station encrypted credential store** + the **reconciliation
-      schema** (settlement lines ↔ sales, with an "unreconciled" state).
-- [ ] Build the **fetch layer + matcher** (staging, against fixtures) before any
-      production wiring.
+**Paytm — PRIMARY (GTM):**
+- [x] APIs frozen: **Order List** (shift-window sum) + **Transaction Status** (per-order).
+- [ ] Copy the last two page details: **Order List response fields** ("Orders+") +
+      **endpoint URL**.
+- [ ] Obtain prod **MID + Merchant Key** for one outlet (checksum auth) and confirm
+      **which `paymentMode`s** count as the attendant's "UPI" (`UPI` only, or `UPI+PPI`).
+- [ ] Confirm Order List returns **QR/Soundbox** collections, not just native-flow orders.
+
+**PhonePe — SECONDARY (not on the critical path; still open):**
+- [ ] **Not frozen.** §4 is a *research draft* from search snippets (PhonePe docs were
+      egress-blocked), all marked TO CONFIRM. To close it, do the Paytm drill: paste
+      PhonePe's **transaction-status** API and any **transaction-list-by-date** API.
+- [ ] Resolve the key gap: does PhonePe expose a **time-window transaction list** (the
+      Order-List equivalent), or only per-transaction lookups + a download-only report?
+- [ ] Then obtain prod creds per generation (v2 OAuth `client_id/secret/version`, or v1
+      `merchantId`+Salt Key+Index).
+
+**Both:**
+- [ ] One **live call each** → capture JSON **fixtures** (staging where available).
+- [ ] Design the **per-station encrypted credential store** + the verification/matcher.
+- [ ] Build the **fetch + sum/compare** layer (staging, against fixtures) before prod.
