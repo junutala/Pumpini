@@ -63,7 +63,7 @@ split payouts.
 
 | API | Auth | Granularity | Filter | Page size | Fit |
 |---|---|---|---|---|---|
-| **Settlement Detail** | JWT | txn-level, at **payout level**, incl. refunds/chargebacks | date range **or payout ID** | tbc | ★ primary |
+| **Settlement Detail** | JWT | txn-level, at **payout level**, incl. refunds/chargebacks | date range (≤1 wk) **or payout ID** | 20 | ★ primary |
 | Settlement (list) | checksumHash | txn-level per settled day | date range (max 1 day) | 20 | fallback |
 | Split Settlement | checksumHash | vendor/child-level | date range + `vendorId` | 50 | only if split payouts |
 
@@ -86,18 +86,71 @@ split payouts.
 
 ### 3.3 API 1 — Settlement Detail API  *(PRIMARY — reconciliation target)*
 - **Use case:** detailed transaction-level view of settled transactions **at payout
-  level**, filtered by **date range OR payout ID**. Includes **forward (acquiring),
-  refunds and chargebacks**, plus wide output (customer details, merchant bank
-  details) — so a bank payout is fully explained down to each transaction.
-- **Environment:** production only. **Auth:** JWT.
-- **Why it fits us best:** querying **by payout ID** maps 1:1 to a bank-statement
-  line (the UTR); it breaks that payout into the transactions we match to Pumpini
-  sales; and refunds/chargebacks are included, so **gross sales reconcile to the net
-  amount actually credited**. The list API below cannot net those out.
-- ⚠️ **Spec still needed to finalise** — the source paste was truncated at "Request
-  Attributes". To complete this subsection: request params (`payoutId`, date range,
-  paging), the JWT token flow, and the full response field list (esp. their
-  UTR/payout id, `settleAmount`, fees/commission/GST, and per-txn order/txn refs).
+  level**, by **date range OR payout ID**. Includes **ACQUIRING (forward), REFUND,
+  CHARGEBACK** (and REPAYMENT), with wide output (customer, fees, merchant bank,
+  EDC/POS) — a bank payout fully explained down to each transaction.
+- **Environment:** production only. **Auth:** **JWT** (bearer token).
+- **Why it fits us best:** query **by `payoutId`** maps 1:1 to a bank-statement line;
+  it breaks that payout into transactions we match to sales; refunds/chargebacks are
+  included so **gross sales reconcile to the net amount actually credited**; and
+  `merchantBillId` (POS order id) + `posId`/`extSerialNo` (the EDC / Pinelabs machine)
+  tie a settlement line to a specific terminal and sale. The list API can't do this.
+- **Endpoint URL + JWT token flow:** *TO CONFIRM* — the spec gives request/response
+  but not the exact URL or token endpoint. It sits under `merchant-settlement-service`
+  (prod host `secure.paytmpayments.com`); get the exact path plus the JWT auth
+  (`reqMsgId` generation + token issuance) from Paytm's "Merchant Authentication (JWT)"
+  page.
+
+**Request — Head:** `reqMsgId` (mandatory, UUID, one per request).
+
+**Request — Body**, in one of two modes:
+
+_Mode A — by payout date_
+| Field | Req | Notes |
+|---|---|---|
+| `mid` | ✔ | Merchant ID |
+| `startDate` | ✔ | `YYYY-MM-DD` |
+| `endDate` | – | **Max range 1 week** |
+| `pageNum` / `pageSize` | – | `pageSize` **max 20** |
+
+_Mode B — by payout id_
+| Field | Req | Notes |
+|---|---|---|
+| `mid` | ✔ | Merchant ID |
+| `payoutId` | ✔ | The bank-transfer payout id |
+| `pageNum` / `pageSize` | – | `pageSize` **max 20** |
+
+**Response — Head:** `reqMsgId`, `respTime`.
+
+**Response — Body (per transaction)**, grouped by how we use each field:
+- **Match to a Pumpini sale:** `orderId`, `merchantUniqueRef`, `merchantBillId` (POS
+  order id), `merchantRefId`, `transactionId`, `referenceTransactionId`, `prn`.
+- **Match to the bank credit:** `payoutId`, `utrNo`, `settledAmount`, `payoutDate`,
+  `settledDate`, `bankTransactionId`, `ifscCode`, `bankName`, `beneficiaryName`.
+- **Explain gross → net:** `amount` (pre-settlement), `commission`, `gst`,
+  `acquiringFee`, `platformFee`, `acquiringTax`, `platformTax`, `commissionRate`,
+  `feeFactor`.
+- **Type / status:** `transactionType` (ACQUIRING / REFUND / CHARGEBACK / REPAYMENT),
+  `status` (SUCCESS / PENDING / FAILURE), `disputeId`, `rrnCode`.
+- **Instrument:** `paymentMode` (UPI / BALANCE / card…), `channel`, `issuingBank`,
+  `maskedCardNo`, `cardNetwork`, `gateway`, `requestType`, `productCode`, `van`.
+- **Terminal / EDC:** `posId`, `extSerialNo` (EDC serial), `merchantName`.
+- **Customer:** `customerId`, `nickName`, `customerPhoneNo`, `customerEmailId`,
+  `transactionDate`, `updatedDate`.
+
+**Result codes (Settlement Detail):**
+| resultCode | status | meaning |
+|---|---|---|
+| `00000000` | S | success |
+| `00000004` | F | parameter illegal |
+| `00000019` | F | process fail |
+| `00000900` | U | unknown system error |
+| `10010007` | F | no records found |
+| `12014162` | F | max query time is 180 days |
+| `12014163` | F | platform internal id does not exist |
+
+**Limits:** date-range mode **max 1 week per call**; data queryable up to **180 days**
+back (`12014162`); `pageSize` **max 20**; paginate on `pageNum`.
 
 ### 3.4 API 2 — Settlement API (list)  *(FALLBACK)*
 - **Endpoint:** `POST https://secure.paytmpayments.com/merchant-settlement-service/settlement/list`
