@@ -322,20 +322,20 @@ needs a transaction/order-status API — not the settlement API.
 
 _Fully grounded in PhonePe's official spec (endpoint, X-VERIFY, request/response) + PhonePe's
 own C#/Java/Python samples. **The raw spec and sample code are preserved verbatim in
-[Appendix A (§8)](#8-appendix-a--phonepe-comprehensive-transaction-recon-api-raw-spec--samples)**
-so we never lose them. This section is the curated design; §8 is the source._
+[Appendix A (§9)](#9-appendix-a--phonepe-comprehensive-transaction-recon-api-raw-spec--samples)**
+so we never lose them. This section is the curated design; §9 is the source._
 
 Mechanism (same as Paytm Part A): pull `/v1/transactions/details` for the shift window, sum
 the `COMPLETED` amounts (**paise → ÷100**), subtract nested refunds, compare to the
 attendant's figure. Transaction-time keyed → works any day.
 
-### 4.1 Endpoint & auth  *(confirmed — see §8)*
+### 4.1 Endpoint & auth  *(confirmed — see §9)*
 - **UAT:** `POST https://mercury-uat.phonepe.com/enterprise-sandbox/v1/transactions/details`
 - **Prod:** `POST https://mercury-t2.phonepe.com/v1/transactions/details`
 - **Body:** `{ "request": "<base64 of the JSON payload>" }`; `Content-Type: application/json`.
 - **X-VERIFY:** `SHA256(base64Payload + "/v1/transactions/details" + saltKey) + "###" + saltIndex`
   (lower-case hex). ⚠️ Use this concatenation order (base64 + apiPath + saltKey) — PhonePe's
-  C#/Python samples match it; the Java sample's variable order looks inconsistent (see §8).
+  C#/Python samples match it; the Java sample's variable order looks inconsistent (see §9).
 - **X-PROVIDER-ID:** for merchants onboarded via a provider.
 - Per-outlet **Salt Key + Salt Index** as tenant secrets (server-side only).
 
@@ -348,7 +348,7 @@ attendant's figure. Transaction-time keyed → works any day.
 | `storeId` | – | filter to a store (< 38 chars, no special chars) |
 | `searchAfter` | – | cursor `{ timestamp, transactionId }` of the last row; `{}` first call |
 
-### 4.3 Response (grounded — full sample in §8)
+### 4.3 Response (grounded — full sample in §9)
 `success`, `code`, `message`, `data.transactionDetails[]`, `data.totalResult`,
 `data.searchAfter` (cursor). **Per transaction:**
 - `transactionId` (= merchant txn id), `providerReferenceId`, `merchantOrderId`
@@ -397,7 +397,72 @@ verification.
 
 ---
 
-## 5. Status & next steps
+## 5. Integration architecture — PSP-agnostic core + per-outlet config
+
+**Principle: build each PSP once; configure per outlet forever after.** A new outlet on an
+already-supported PSP needs **zero code and zero deploy** — only configuration captured at
+outlet setup. (e.g. Adhoc + Highway → Paytm, Kamala → PhonePe — all three onboarded by config.)
+
+### 5.1 Two layers
+- **PSP-agnostic core (shared, built once).** One internal interface —
+  `fetchShiftTransactions(outlet, window) → NormalizedTxn[]` — returning a normalized model
+  `{ amount₹, status, timestamp, mode, storeId, terminalId, refunds[] }`. The verification logic
+  lives here and is **identical for every PSP**: sum the successful amounts, net refunds,
+  attribute `terminalId → pump → nozzles → attendant`, compare to the attendant's declared
+  figure. This layer never knows which PSP it is talking to.
+- **Per-PSP adapters (drivers, one per PSP).** Each PSP implements the interface: build + sign
+  the request, paginate, and **map the raw response into the normalized model**. Adapters absorb
+  every difference — auth (checksum / X-VERIFY / JWT), amount unit (paise vs rupees), timestamp
+  unit, success-state name (`COMPLETED` vs `SUCCESS`), pagination (cursor vs page-number),
+  UPI-vs-wallet. Per-PSP contracts: **Paytm** §3 + Appendix B (§10); **PhonePe** §4 + Appendix A (§9).
+
+### 5.2 Per-outlet configuration (set at onboarding — no code, no deploy)
+Stored **per station**, secrets **encrypted**:
+
+| Config | Example / notes |
+|---|---|
+| `psp` | `paytm` / `phonepe` / `gpay` |
+| `environment` | `prod` / `uat` |
+| credentials (encrypted) | MID/merchantId, merchant-key / salt-key + index / clientId, `storeId` |
+| terminal ↔ pump map | `terminalId` → pump → its nozzles → attendant |
+| policy | does "UPI" include wallet? |
+
+Onboarding a new outlet on Paytm/PhonePe is **filling these in during outlet setup** — the
+`New-Outlet-Setup` workbook gains a **"Payment Provider"** section, and the values land in the
+per-station config. No engineering touch.
+
+### 5.3 Runtime
+**One multi-tenant Pumpini backend serves all outlets.** At shift verification it reads the
+outlet's `psp` + variables, selects the matching adapter, fetches → normalizes → sums →
+compares. Shared code, per-outlet variables.
+
+### 5.4 Admin screen — what it owns (and what it can't)
+- **Owns (config-driven, per outlet):** PSP choice, environment, credentials, terminal↔pump
+  map, and the UPI-vs-wallet policy. Secrets are write-only/encrypted, never shown in plaintext.
+- **Does NOT own:** the request/response shape, signing, pagination, field mapping — those are
+  bespoke per PSP and live in the adapter (code). Getting them wrong is a **money-accuracy
+  risk** (we already caught a concat-order bug in PhonePe's own Java sample). So the screen
+  manages PSP *instances*; adding a new PSP *type* is a contained code adapter — deliberately
+  **not** a full "declarative PSP engine."
+
+### 5.5 The PSPs
+- **Paytm** — adapter grounded (§3 + Appendix B §10): Order List + Transaction Status.
+- **PhonePe** — adapter grounded (§4 + Appendix A §9): `/v1/transactions/details`.
+- **Google Pay for Business (GPay)** — ⚠️ **does not fit the pull-recon model.** The Google
+  Pay for Business API is a **collection SDK** (`isReadyToPay`, `loadPaymentData`) that accepts
+  **one payment in-app** and returns a signed per-transaction response at that moment — there is
+  **no "list a shift's transactions" recon API** like Paytm/PhonePe (confirmed from the spec —
+  Appendix C §11). So GPay cannot be verified by pulling a window after the fact. Routes to
+  reconcile GPay instead: **(a)** if GPay is processed through a **Payment Gateway**
+  (`PAYMENT_GATEWAY` type), that **PG owns the recon** — reconcile via the PG's API (which may be
+  Paytm/PhonePe/Razorpay/etc.); **(b)** the **bank / UPI settlement statement**; or **(c)**
+  **capture each payment's SDK response at collection time** — only viable if Pumpini or the POS
+  app is *in* the GPay payment flow (not a static-QR / soundbox setup). Decide the GPay route
+  with the owner before building any adapter.
+
+---
+
+## 6. Status & next steps
 
 **Paytm — PRIMARY (GTM):**
 - [x] APIs frozen: **Order List** (shift-window sum) + **Transaction Status** (per-order).
@@ -407,9 +472,9 @@ verification.
       **which `paymentMode`s** count as the attendant's "UPI" (`UPI` only, or `UPI+PPI`).
 - [ ] Confirm Order List returns **QR/Soundbox** collections, not just native-flow orders.
 
-**PhonePe — FROZEN (Comprehensive Transaction Recon API, §4; raw spec §8):**
+**PhonePe — FROZEN (Comprehensive Transaction Recon API, §4; raw spec §9):**
 - [x] **Frozen on `/v1/transactions/details`** — endpoint, X-VERIFY, request/response all
-      **confirmed** (raw spec + PhonePe C#/Java/Python samples, preserved in §8).
+      **confirmed** (raw spec + PhonePe C#/Java/Python samples, preserved in §9).
 - [ ] Confirm the **timestamp unit** (seconds vs millis) during the outside-first test.
 - [ ] Ask PhonePe to enable **`includePaymentModes`** + **`return_merchantorderId`** on the MID.
 - [ ] Obtain per outlet: **`merchantId` + `storeId`** (+ `terminalId`) and **Salt Key + Salt Index**.
@@ -422,7 +487,7 @@ verification.
 
 ---
 
-## 6. Deployment strategy — prove outside first
+## 7. Deployment strategy — prove outside first
 
 The integration is gated on the numbers proving out against a **real shift**, before any
 production code is written:
@@ -439,12 +504,12 @@ The standalone run's raw JSON becomes the **test fixture** for the eventual buil
 
 ---
 
-## 7. What we need from the customer (per gateway)
+## 8. What we need from the customer (per gateway)
 
-To run the outside-first test (§6), we need the following. Keys are secrets — have them sent
+To run the outside-first test (§7), we need the following. Keys are secrets — have them sent
 directly into the secure store, **not** pasted into chat or email where avoidable.
 
-### 7.1 Paytm — to test first (per outlet)
+### 8.1 Paytm — to test first (per outlet)
 - **Production MID** (merchant id).
 - **Merchant Key** — the secret used to build the checksum/signature. If the MID has more
   than one key, the **`clientId`** for the key to use.
@@ -469,7 +534,7 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
 7. "Is the Order List API date range limited to **30 days** per call, with data available for
    **18 months** — can you confirm?"
 
-### 7.2 PhonePe — next (per outlet)
+### 8.2 PhonePe — next (per outlet)
 - **`merchantId`** and **`storeId`** (and **`terminalId`** per pump, if terminals are used).
 - **Salt Key + Salt Index** (for the X-VERIFY signature).
 - Enable **`includePaymentModes`** (returns `paymentMode`) and **`return_merchantorderId`**
@@ -488,7 +553,7 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
 
 ---
 
-## 8. Appendix A — PhonePe Comprehensive Transaction Recon API: raw spec & samples
+## 9. Appendix A — PhonePe Comprehensive Transaction Recon API: raw spec & samples
 
 _Preserved verbatim because PhonePe's docs are unreachable from this environment; the pasted
 spec is our source of truth. Curated design: [§4](#4-phonepe--frozen-comprehensive-transaction-recon-api)._
@@ -632,7 +697,7 @@ for (byte b : md.digest()) checksum.append(String.format("%02x", b));
 
 ---
 
-## 9. Appendix B — Paytm Order List & Transaction Status APIs: raw spec
+## 10. Appendix B — Paytm Order List & Transaction Status APIs: raw spec
 
 _Preserved verbatim (Paytm docs unreachable here). Curated design:
 [§3 Part A](#part-a--settlement-time-verification-primary). The settlement-family raw detail
@@ -705,3 +770,40 @@ _Preserved verbatim (Paytm docs unreachable here). Curated design:
 | 400 | PENDING | Transaction status not confirmed yet |
 | 402 | PENDING | Payment not complete; confirming with bank |
 | 501 | TXN_FAILURE | Server Down |
+
+---
+
+## 11. Appendix C — Google Pay for Business (Merchant SDK): raw spec
+
+> ⚠️ **This is a COLLECTION SDK, not a reconciliation/transaction-list API** (see §5.5). It
+> accepts one payment in-app and returns a signed per-transaction response; it cannot list a
+> shift's transactions after the fact. Preserved verbatim as provided.
+
+**Version (all APIs):** `apiVersion = 2`, `apiVersionMinor = 0` (required).
+
+**`isReadyToPay`** — check GPay availability + registered methods on the device.
+- Request: `allowedPaymentMethods` — `[{ type: "UPI" }, { type: "CARD", parameters: { allowedCardNetworks: ["VISA","MASTERCARD"] } }]`.
+- Response: **boolean** (false → don't attempt payment).
+
+**`loadPaymentData`** — async; collects ONE payment; result in `onActivityResult` as `PaymentDataResponse`.
+- Request:
+  - `allowedPaymentMethods[]` — UPI: `payeeVpa` (req), `payeeName` (req), `mcc` (req, 4-digit),
+    `transactionReferenceId` (req, = `tr`, merchant order id), `referenceUrl` (opt), optional GST
+    (`gstIdentificationNumber`, `gstBreakup{gst,cgst,sgst,igst,cess}`, `invoiceNumber`, `invoiceDate`);
+    `transactionId` (`tid`) is **deprecated — keep unset**.
+  - `tokenizationSpecification.type` — **`DIRECT`** (merchant handles credentials) or
+    **`PAYMENT_GATEWAY`** (`gateway`, `gatewayMerchantId`, `gatewayTransactionId` → *the PG owns
+    processing & recon*).
+  - `transactionInfo` — `totalPrice`, `currencyCode` ("INR"), `totalPriceStatus` ("FINAL"),
+    `transactionNote` (opt).
+- Response: `paymentMethodData { type, tokenizationData { type: "DIRECT", token } }`, where
+  `token` is a **signed** blob:
+  - Outer: `protocolVersion` ("ECv1"), `signature` (ECDSA), `signedMessage`.
+  - UPI `signedMessage`: `messageExpiration`, `paymentMethod` ("UPI"),
+    `paymentMethodDetails { payeeVpa, status: SUCCESS|SUBMITTED|FAILURE, transactionId (tid),
+    transactionReferenceId (tr = PSP txn id), transactionInfo }`.
+  - CARD `signedMessage`: `paymentMethodDetails { status, gatewayTransactionId, gatewayResponse }`.
+
+**Why it doesn't reconcile a shift:** the only transaction data GPay returns is this per-payment
+`PaymentDataResponse` at collection time. There is no MID+window query. To reconcile GPay, see the
+three routes in §5.5.
