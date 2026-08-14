@@ -320,85 +320,80 @@ needs a transaction/order-status API — not the settlement API.
 
 ## 4. PhonePe — **FROZEN: Comprehensive Transaction Recon API**
 
-_Grounded in a real recon request/response sample. This is the PhonePe API we rely on for
-shift verification. Chosen over the QR Transaction List because its per-transaction state is
-**authoritative**, it **nets refunds**, and it carries the settlement **UTR** — whereas the
-QR List flags its own `paymentState` as unreliable and shows no refunds/settlement (kept only
-as a lighter real-time note in §4.5)._
+_Fully grounded in PhonePe's official spec (endpoint, X-VERIFY, request/response) + PhonePe's
+own C#/Java/Python samples. **The raw spec and sample code are preserved verbatim in
+[Appendix A (§8)](#8-appendix-a--phonepe-comprehensive-transaction-recon-api-raw-spec--samples)**
+so we never lose them. This section is the curated design; §8 is the source._
 
-Mechanism (same as Paytm Part A): pull the recon API for the shift window, sum the
-`COMPLETED` amounts (**paise → ÷100**), subtract nested refunds, compare to the attendant's
-figure. Transaction-time keyed → works any day.
+Mechanism (same as Paytm Part A): pull `/v1/transactions/details` for the shift window, sum
+the `COMPLETED` amounts (**paise → ÷100**), subtract nested refunds, compare to the
+attendant's figure. Transaction-time keyed → works any day.
 
-### 4.1 Auth
-- **X-VERIFY:** `SHA256(base64(payload) + apiPath + saltKey) + "###" + saltIndex`.
-- Header **`X-PROVIDER-ID`** when a merchant has multiple MIDs.
+### 4.1 Endpoint & auth  *(confirmed — see §8)*
+- **UAT:** `POST https://mercury-uat.phonepe.com/enterprise-sandbox/v1/transactions/details`
+- **Prod:** `POST https://mercury-t2.phonepe.com/v1/transactions/details`
+- **Body:** `{ "request": "<base64 of the JSON payload>" }`; `Content-Type: application/json`.
+- **X-VERIFY:** `SHA256(base64Payload + "/v1/transactions/details" + saltKey) + "###" + saltIndex`
+  (lower-case hex). ⚠️ Use this concatenation order (base64 + apiPath + saltKey) — PhonePe's
+  C#/Python samples match it; the Java sample's variable order looks inconsistent (see §8).
+- **X-PROVIDER-ID:** for merchants onboarded via a provider.
 - Per-outlet **Salt Key + Salt Index** as tenant secrets (server-side only).
-- Body = the base64 of the JSON payload, wrapped `{ "request": "<base64>" }`;
-  `Content-Type: application/json`.
 
-### 4.2 Endpoint
-- **Host (confirmed from the QR API):** prod `https://mercury-t2.phonepe.com`, UAT
-  `https://mercury-uat.phonepe.com/enterprise-sandbox`.
-- **Exact recon path — TO CONFIRM** with PhonePe (a sibling of `/v3/qr/transaction/list`
-  under the same host).
-
-### 4.3 Request (JSON, before base64)
+### 4.2 Request (JSON, before base64)
 | Field | Req | Notes |
 |---|---|---|
 | `merchantId` | ✔ | the outlet's PhonePe MID |
-| `startTimestamp` / `endTimestamp` | ✔ | **EPOCH seconds** — the shift window (start < end) |
+| `startTimestamp` / `endTimestamp` | ✔ | **Epoch** shift window. ⚠️ *unit:* request sample is **10-digit (seconds)**, response `transactionDate`/`searchAfter.timestamp` are **13-digit (millis)** — confirm the request unit in the outside-first test |
 | `size` | ✔ | page size |
-| `searchAfter` | – | cursor; `{}` on first call, echoed back for the next page |
+| `storeId` | – | filter to a store (< 38 chars, no special chars) |
+| `searchAfter` | – | cursor `{ timestamp, transactionId }` of the last row; `{}` first call |
 
-```json
-{ "merchantId": "MERCHANTPROD", "size": 10,
-  "startTimestamp": 1739301380, "endTimestamp": 1739387780, "searchAfter": {} }
-```
-
-### 4.4 Response (grounded — real sample)
-Top level: `success`, `code`, `message`, `data.transactionDetails[]`, `data.totalResult`,
-`data.searchAfter` (cursor).
-
-**Per transaction:**
-- `transactionId`, `merchantOrderId`, `providerReferenceId`
+### 4.3 Response (grounded — full sample in §8)
+`success`, `code`, `message`, `data.transactionDetails[]`, `data.totalResult`,
+`data.searchAfter` (cursor). **Per transaction:**
+- `transactionId` (= merchant txn id), `providerReferenceId`, `merchantOrderId`
+  (**only if `return_merchantorderId` on** — §4.5)
 - **`amount`** — **paise** (`4200` = ₹42.00) → ÷100
-- **`paymentState`** — sum **`COMPLETED`**; `payResponseCode` = SUCCESS (treat as a string)
-- **Attribution:** `storeId`, `terminalId` (also under `transactionContext`)
+- **`paymentState`** — sum **`COMPLETED`**; `payResponseCode` = SUCCESS (string)
+- **Attribution:** top-level `storeId`/`terminalId` + `transactionContext`
+  (`qrCodeId`, `posDeviceId`, `storeId`, `terminalId`) — **only for QR/SQR txns** (our case)
+- `paymentMode` — **only if the MID has `includePaymentModes` on** (§4.5)
 - `transactionDate` — **epoch millis**
 - `transactionLevelSettlement` → `transactionSettlementDetails[]`: **`utr`**, `status`
-  (`SETTLED`), `settlementDate`, `settlementAmount`
+  (`SETTLED`), `settlementDate`, `settlementAmount`; + `status`, `settlementText`, `toBeSettledDate`
 - `instrumentLevelSettlementDetails` (e.g. `ACCOUNT`: `totalAmount`, `settlementAmount`, `utr`)
 - **`refundTransactionDetails[]`** — `amount` (paise), `transactionType=REFUND`,
-  `originalTransactionId` → **net = amount − Σ refunds**
+  `originalTransactionId`, `paymentState`, `transactionDate` → **net = amount − Σ refunds**
 
-### 4.5 The verification design (PhonePe)
-1. Call recon for the outlet's `merchantId`, `startTimestamp`/`endTimestamp` = shift window
-   (epoch **seconds**); page with `size` + `searchAfter` until the cursor is exhausted.
+### 4.4 The verification design (PhonePe)
+1. Call `/v1/transactions/details` for the outlet's `merchantId` (+ `storeId`), the shift
+   window; page with `size` + `searchAfter` until the cursor is exhausted.
 2. Keep `paymentState = COMPLETED`; **sum `amount`/100**; **subtract** each row's
    `refundTransactionDetails`.
 3. Compare to **₹XXXX** → **confirmed**, or **flag** the difference.
 
-- **Attribution (pump pivot) + honest limit:** `terminalId` (and `storeId`) per txn → pump →
-  its nozzles → the attendant. Per **pump, not per nozzle**: one attendant on a pump → clean
+- **Attribution (pump pivot) + honest limit:** `terminalId`/`storeId` per txn → pump → its
+  nozzles → the attendant. Per **pump, not per nozzle**: one attendant on a pump → clean
   per-attendant number; **shared pump → pump-level only, never an invented split**;
   **single-VPA outlet → shift-total match only**. Guardrail against a wrong accusation.
 - **Weekend-proof:** keys on transaction time, not payout.
 - **Lighter alternative (not the source of truth):** the **QR Transaction List**
-  (`/v3/qr/transaction/list`, endpoints confirmed UAT `.../enterprise-sandbox/...` + prod
-  `mercury-t2.phonepe.com/...`) gives a real-time per-store list, but PhonePe says to ignore
-  its `paymentState` and it has no refunds/settlement — use it only for a live glance.
+  (`/v3/qr/transaction/list`) — real-time per-store list, but PhonePe says ignore its
+  `paymentState` and it has no refunds/settlement.
+
+### 4.5 Config to request from PhonePe (so the response carries what we need)
+- **`includePaymentModes`** on the MID → returns `paymentMode` (UPI vs wallet).
+- **`return_merchantorderId`** flag → returns `merchantOrderId` (to match our sale).
 
 ### 4.6 Phase-2 lever (later, optional)
 `/v3/qr/init` takes a per-request **`x-callback-url`** + **`invoiceDetails`** — the real-time
 per-sale binding lever if we ever attack personal-QR diversion. Not needed for the sum-based
 verification.
 
-### 4.7 Open items (small)
-- Exact recon **endpoint path** (host is known).
-- The full **`paymentState` set** (is `COMPLETED` the only success state?).
-- Per-outlet **`merchantId` + `storeId`** (+ `terminalId` per pump) and **Salt Key + Salt
-  Index** (prod creds).
+### 4.7 Open items (now small)
+- Confirm the **timestamp unit** for request `start/endTimestamp` (seconds vs millis).
+- Ask PhonePe to enable **`includePaymentModes`** + **`return_merchantorderId`** on the MID.
+- Per-outlet **`merchantId` + `storeId`** + **Salt Key + Salt Index** (prod creds).
 
 ---
 
@@ -412,17 +407,12 @@ verification.
       **which `paymentMode`s** count as the attendant's "UPI" (`UPI` only, or `UPI+PPI`).
 - [ ] Confirm Order List returns **QR/Soundbox** collections, not just native-flow orders.
 
-**PhonePe — FROZEN (Comprehensive Transaction Recon API, §4):**
-- [x] **QR Transaction List** (§4.2) — endpoints **confirmed** (UAT
-      `.../enterprise-sandbox/v3/qr/transaction/list`, prod
-      `mercury-t2.phonepe.com/v3/qr/transaction/list`); per-store list, `amount` paise ÷100,
-      `storeId`/`terminalId` attribution, X-VERIFY auth. The primary shift-sum API.
-- [x] **Comprehensive Txn Recon** (§4.3) — settlement (UTR) + nested refunds + attribution,
-      grounded on a real sample; endpoint **path/prod host still TBD**.
-- [x] Key gap resolved: PhonePe **does** expose a time-window transaction list.
-- [ ] Confirm: QR-List **pagination** across a full shift; Comprehensive-Recon **path/host**.
-- [ ] Obtain per outlet: **`merchantId` + `storeId`** (+ `terminalId` per pump) and
-      **Salt Key + Salt Index** (X-VERIFY, prod).
+**PhonePe — FROZEN (Comprehensive Transaction Recon API, §4; raw spec §8):**
+- [x] **Frozen on `/v1/transactions/details`** — endpoint, X-VERIFY, request/response all
+      **confirmed** (raw spec + PhonePe C#/Java/Python samples, preserved in §8).
+- [ ] Confirm the **timestamp unit** (seconds vs millis) during the outside-first test.
+- [ ] Ask PhonePe to enable **`includePaymentModes`** + **`return_merchantorderId`** on the MID.
+- [ ] Obtain per outlet: **`merchantId` + `storeId`** (+ `terminalId`) and **Salt Key + Salt Index**.
 
 **Both:**
 - [ ] One **live call each** → capture JSON **fixtures** (staging where available).
@@ -482,14 +472,236 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
 ### 7.2 PhonePe — next (per outlet)
 - **`merchantId`** and **`storeId`** (and **`terminalId`** per pump, if terminals are used).
 - **Salt Key + Salt Index** (for the X-VERIFY signature).
-- The **exact Comprehensive Transaction Recon endpoint path** (prod host
-  `mercury-t2.phonepe.com`) and confirmation the **recon API is enabled** for the merchant.
+- Enable **`includePaymentModes`** (returns `paymentMode`) and **`return_merchantorderId`**
+  (returns `merchantOrderId`) on the MID.
+- Endpoint is known: prod `https://mercury-t2.phonepe.com/v1/transactions/details`.
 
 **Exact questions to ask the PhonePe executive** (copy-paste):
-1. "Please share our **`merchantId`** and **`storeId`** (and **`terminalId`** per device, if
-   we use terminals) for the outlet *<outlet name>*."
+1. "Please share our **`merchantId`** and **`storeId`** (and **`terminalId`** per device, if we
+   use terminals) for the outlet *<outlet name>*."
 2. "Please share the **Salt Key** and **Salt Index** for X-VERIFY on this merchant."
-3. "Please **enable the Comprehensive Transaction Recon API** and share its **exact endpoint
-   path** on the production host `mercury-t2.phonepe.com`."
-4. "Does the recon response return the **`storeId`/`terminalId`, settlement `utr`, and
-   `refundTransactionDetails`** per transaction for our account? (We rely on these.)"
+3. "Please **enable the Transaction Details recon API** (`/v1/transactions/details`) for this
+   MID, and turn on **`includePaymentModes`** and **`return_merchantorderId`** so the response
+   carries `paymentMode` and `merchantOrderId`."
+4. "Please confirm the request **`startTimestamp`/`endTimestamp` unit** — epoch **seconds** or
+   **milliseconds**?"
+
+---
+
+## 8. Appendix A — PhonePe Comprehensive Transaction Recon API: raw spec & samples
+
+_Preserved verbatim because PhonePe's docs are unreachable from this environment; the pasted
+spec is our source of truth. Curated design: [§4](#4-phonepe--frozen-comprehensive-transaction-recon-api)._
+
+**Endpoints**
+- UAT: `POST https://mercury-uat.phonepe.com/enterprise-sandbox/v1/transactions/details`
+- Prod: `POST https://mercury-t2.phonepe.com/v1/transactions/details`
+
+**Request Headers**
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/json` |
+| `X-VERIFY` | `SHA256(base64 encoded payload + "/v1/transactions/details" + salt key) + ### + salt index` |
+| `X-PROVIDER-ID` | Used where merchants are onboarded via their Providers |
+
+**Sample Request — Payload**
+```json
+{
+  "merchantId": "MERCHANTPROD",
+  "size": 10,
+  "startTimestamp": 1739387780,
+  "endTimestamp": 1739301380,
+  "searchAfter": {}
+}
+```
+**Sample Request — Base64 encoded**
+```json
+{ "request": "ewogICJtZXJjaGFudElkIjogIk1FUkNIQU5UUFJPRCIsCiAgInNpemUiOiAxMCwKICAic3RhcnRUaW1lc3RhbXAiOiAxNzM5Mzg3NzgwLAogICJlbmRUaW1lc3RhbXAiOiAxNzM5MzAxMzgwLAogICJzZWFyY2hBZnRlciI6IHsKICAgIH0KfQ==" }
+```
+
+**Request Parameters**
+| Name | Type | Description | Mandatory |
+|---|---|---|---|
+| `merchantId` | STRING | Unique MerchantID assigned by PhonePe | Yes |
+| `storeId` | STRING | Store Id; unique; no special chars; < 38 chars | No |
+| `startTimestamp` | LONG | Epoch base timestamp | Yes |
+| `endTimestamp` | LONG | Epoch base timestamp | Yes |
+| `size` | Integer | page size | Yes |
+| `searchAfter` | object | `{ timestamp: last-txn-timestamp, transactionId: PhonePe txn id of last txn }` | No |
+
+**Response Codes**
+| Field | Mandatory | Type | Comments |
+|---|---|---|---|
+| `success` | Yes | boolean | true if 2xx else false |
+| `code` | No | String | failure code, else null |
+| `message` | Yes | — | null if 2xx |
+| `data` | Yes | Json | Transaction List Response |
+
+**Response Parameters (TransactionStatusResponse, per transaction)**
+- `merchantId` (Yes)
+- `transactionId` (Yes) — maps to Merchant TransactionId
+- `providerReferenceId` (Yes)
+- `amount` (Yes) — paise
+- `merchantOrderId` (No) — returned only if `return_merchantorderId` flag is on
+- `paymentState` (Yes)
+- `transactionContext` (No) — returned **only when a QR code is present (SQR transactions)**:
+  `qrCodeId`, `posDeviceId`, `storeId`, `terminalId`
+- `storeId` (No), `terminalId` (No)
+- `paymentMode` (No) — returned only if the MID is in `transactionStatusConfiguration.includePaymentModes`
+- `transactionLevelSettlement` (Yes): `settlementText` (Yes), `toBeSettledDate` (No),
+  `transactionSettlementDetails[]` → `utr`, `status`, `settlementDate`, `settlementAmount` (all No),
+  `status` (Yes, settlement status)
+- `instrumentLevelSettlementDetails` (No): `totalAmount`, `settlementAmount`, `utr` (all No)
+- `transactionDate` (Yes) — forward transaction date, epoch
+- `refundTransactionDetails` (No): `transactionId`, `providerReferenceId`, `amount`,
+  `merchantorderId`, `paymentState`, `payResponseCode` (default "SUCCESS"), `paymentMode`,
+  `transactionDate`
+
+**Sample Success Response**
+```json
+{
+  "success": true, "code": null, "message": null,
+  "data": {
+    "transactionDetails": [
+      {
+        "merchantId": "PUKHRAJP2M",
+        "transactionId": "674d8fc7d63ec5d848fc2b6b",
+        "providerReferenceId": "T2412021615439790985396",
+        "amount": 4200,
+        "merchantOrderId": "674d8fc7d63ec5d848fc2b6b",
+        "paymentState": "COMPLETED",
+        "payResponseCode": "SUCCESS",
+        "paymentModes": [],
+        "transactionContext": { "qrCodeId": null, "posDeviceId": null, "storeId": "A2BTEST", "terminalId": "KSTESTDEMO" },
+        "storeId": "A2BTEST", "terminalId": "KSTESTDEMO",
+        "transactionDate": 1734620679192,
+        "transactionLevelSettlement": {
+          "settlementText": "", "toBeSettledDate": null,
+          "transactionSettlementDetails": [
+            { "utr": "241202161543", "status": "SETTLED", "settlementDate": 1734621056000, "settlementAmount": 4200 }
+          ],
+          "status": "SETTLED"
+        },
+        "instrumentLevelSettlementDetails": { "ACCOUNT": { "totalAmount": 4200, "settlementAmount": 4200, "utr": "241202161543" } },
+        "refundTransactionDetails": [
+          { "merchantId": "M101VERXHLTR5M", "transactionId": "T2404101100287911939130", "transactionType": "REFUND",
+            "paymentState": "COMPLETED", "amount": 4200, "merchantTransactionId": "OMR2404101100184735499130",
+            "merchantOrderId": "OMR2404101100184735499130", "providerReferenceId": "T2404101100287911939130",
+            "payResponseCode": "SUCCESS", "originalTransactionId": "674d8fc7d63ec5d848fc2b6b" }
+        ]
+      }
+    ],
+    "totalResult": 2,
+    "searchAfter": { "timestamp": 1734620679192, "transactionId": "674d8fc7d63ec5d848fc2b6b" }
+  }
+}
+```
+
+**X-VERIFY signing — from PhonePe's sample code (checksum = SHA256(base64 + apiPath + saltKey), hex, then `###` + keyIndex).** PhonePe supplied C#/Java/Python samples for `/v3/qr/init`; the only change for this API is `apiPath = "/v1/transactions/details"`.
+
+_Python (Django) — clearest, self-contained:_
+```python
+# base64-encode the JSON payload
+encodeddata = base64.b64encode(json.dumps(payload).encode('UTF-8')).decode('UTF-8')
+data = { "request": encodeddata }
+# X-VERIFY
+str_forSha256 = encodeddata + '/v1/transactions/details' + saltkey
+x_verify = hashlib.sha256(str_forSha256.encode('UTF-8')).hexdigest() + '###' + keyindex
+headers = { "Content-Type": "application/json", "X-VERIFY": x_verify }   # + "X-PROVIDER-ID" if applicable
+res = requests.post(url=baseUrl + '/v1/transactions/details', data=json.dumps(data), headers=headers)
+```
+
+_C# — checksum function (verbatim shape):_
+```csharp
+// jsonSuffixString = apiPath + merchantKey;  checksumString = base64JsonString + jsonSuffixString
+byte[] checksumBytes = SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes(checksumString));
+string checksum = ""; foreach (byte b in checksumBytes) checksum += $"{b:x2}";
+checksum = checksum + "###1";
+```
+
+_Java — checksum function (verbatim shape):_
+```java
+// checksumString = base64Encoded + urlEndpoint;   md = SHA-256
+// NOTE: PhonePe's Java sample sets urlEndpoint = saltKey + apiPath, i.e. base64 + saltKey + apiPath —
+// this differs from the header spec (base64 + apiPath + saltKey) and from the C#/Python samples.
+// Follow the HEADER SPEC order (base64 + apiPath + saltKey); verify during the outside-first test.
+StringBuilder checksum = new StringBuilder();
+for (byte b : md.digest()) checksum.append(String.format("%02x", b));
+// + "###1"
+```
+
+---
+
+## 9. Appendix B — Paytm Order List & Transaction Status APIs: raw spec
+
+_Preserved verbatim (Paytm docs unreachable here). Curated design:
+[§3 Part A](#part-a--settlement-time-verification-primary). The settlement-family raw detail
+(Settlement Detail / list / Split) is captured in §3.6–§3.11._
+
+### B.1 Order List API
+**Use case:** fetch order-level details for a given MID and date range.
+
+**Request — Head**
+| Attr | Type | Mand | Notes |
+|---|---|---|---|
+| `requestTimestamp` | string(15) | optional | EPOCH |
+| `tokenType` | string(10) | mandatory | `CHECKSUM` or `JWT` |
+| `signature` | string | mandatory | checksum over the body params |
+
+**Request — Body**
+| Attr | Type | Mand | Notes |
+|---|---|---|---|
+| `mid` | string(64) | Yes | merchant id |
+| `orderSearchType` | string | Yes | `TRANSACTION`, `REFUND`, `M2B`, `TRANSFER_FOR_SETTLEMENT`, `CANCEL`, `REPAYMENT`, `TRANSFER_TO_BANK`, `CHARGEBACK`, `ALL` (pipe-separated) |
+| `orderSearchStatus` | string | Yes | `SUCCESS`, `FAILURE`, `PENDING` (pipe-separated) |
+| `merchantOrderId` | string | optional | |
+| `fromDate` | string | Yes | `YYYY-MM-DDTHH:MM:SS`; **max range 30 days**; within 18 months |
+| `toDate` | string | Yes | same |
+| `payMode` | string(64) | optional | e.g. `BANK_TRANSFER` |
+| `isSort` | string | optional | `true`→caps total to 10 000; `false`→no cap |
+| `pageNumber` | Integer | Yes | default 1 |
+| `pageSize` | Integer | Yes | default 20 |
+| `searchConditions` | object | optional | `VAN_ID`, `RRN_CODE` |
+
+**Response — Head:** `responseTimestamp`, `version`, `signature`.
+**Response — Body:** `resultInfo`, `orders`, `pageNum`, `pageSize`.
+
+**Response Codes**
+| ResultStatus | ResultCodeId | ResultCode | ResultMsg |
+|---|---|---|---|
+| SUCCESS | 1001 | SUCCESS | Success |
+| INVALID_SIGNATURE | 4001 | FAILURE | Provided Signature is invalid |
+| MANDATORY_PARAM_MISSING | 4002 | FAILURE | Mandatory Param Missing |
+| REQUEST_PARAMS_INVALID | 4003 | FAILURE | Invalid Request Params |
+| SYSTEM_ERROR | 4099 | FAILURE | System Error |
+| CHECKSUM_VALIDATION_FAILED | 4009 | FAILURE | Checksum validation failed |
+
+### B.2 Transaction Status API
+**Use case:** transaction status for a given `orderId` for a MID.
+
+**Request — Head:** `version`, `channelId` (`WEB`|`WAP`), `requestTimestamp`,
+`clientId` (only if the MID has multiple keys), `signature` (mandatory).
+**Request — Body:** `mid` (mandatory), `orderId` (mandatory),
+`txnType` (optional: `PREAUTH`, `RELEASE`, `CAPTURE`, `WITHDRAW`).
+
+**Response — Body (key fields):** `resultInfo`, `txnId`, `bankTxnId`, `orderId`, `txnAmount`,
+`txnType`, `gatewayName`, `gatewayInfo`, `bankName`, `mid`, **`paymentMode`
+(`PPI, UPI, CC, DC, NB`)**, `refundAmt`, `txnDate`, `merchantUniqueReference`;
+(bank transfer) `vanInfo`, `sourceAccountDetails`, `transferMode` (`IMPS/NEFT/RTGS/XFER`),
+`utr`, `bankTransactionDate`, `rrnCode`, `arnCode`, `authCode`;
+(cards) `cardScheme`, `lastFourDigit`, `maskedCardNo`, `cardNetwork`; plus pre-auth fields
+(`preAuthId`, `blockedAmount`, `cardPreAuthType`, `authRefId`).
+
+**Response Codes**
+| resultCode | resultStatus | resultMsg |
+|---|---|---|
+| 01 | TXN_SUCCESS | Txn Success |
+| 227 / 401 / 810 / 843 / 820 / 267 | TXN_FAILURE | bank declines (various) |
+| 235 | TXN_FAILURE | Wallet balance insufficient |
+| 295 | TXN_FAILURE | invalid UPI VPA |
+| 331 | NO_RECORD_FOUND | No Record Found |
+| 334 | TXN_FAILURE | Invalid Order ID |
+| 335 | TXN_FAILURE | Mid is invalid |
+| 400 | PENDING | Transaction status not confirmed yet |
+| 402 | PENDING | Payment not complete; confirming with bank |
+| 501 | TXN_FAILURE | Server Down |
