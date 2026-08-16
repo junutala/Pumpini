@@ -434,6 +434,59 @@ router.post('/:id/assign-rfid', authenticate, async (req, res, next) => {
 // PATCH /api/shifts/:id/close
 router.patch('/:id/close', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), requirePerm('shifts.manage'), async (req, res, next) => {
   try {
+    // 🔴 EVERY DIPPABLE TANK MUST BE READ BEFORE THE SHIFT CLOSES. (owner-set
+    // 16-Aug-2026.) The mirror of the rule the settlement has always enforced on
+    // meters: computeLegs refuses to settle an operator with a nozzle unaccounted
+    // for. Tanks had no equivalent — the close never looked at dips at all, and the
+    // wet-stock reconciliation below is explicitly best-effort — so a closing dip
+    // was in practice optional. That is how Highway and Adhoc Highway ran three
+    // days with opening dips and no closing ones.
+    //
+    // A closing dip is also the NEXT shift's opening, so a missing one does not
+    // just lose today's stock figure; it puts the following shift on an invented
+    // one. Hence server-side and absolute: there is deliberately NO force flag
+    // here, unlike the POS check below. The owner asked for no override.
+    //
+    // GASES ARE EXCLUDED, and this is not a softening of "every tank" — it is a
+    // physical fact. CNG is sold and stocked in KILOGRAMS; no dipstick measures a
+    // mass, and there is no calibration chart to convert one. The data says the
+    // same thing unprompted: across the whole estate every CNG tank has zero
+    // charts and zero closing dips ever recorded, while the liquid tanks have 510
+    // between them. Kamala's tank 4 is CNG, so counting it would have made that
+    // outlet's shifts permanently unclosable — the rule meant to protect the
+    // stock record would have taken down the close path at the biggest real
+    // outlet instead.
+    //
+    // Kept as a SET rather than `<> 'cng'` because the exception belongs to gases,
+    // not to one product name: LPG would arrive with exactly the same problem and
+    // should be a one-word change here, not a rediscovery of this whole argument.
+    // This mirrors the dip screen's own filter, so the screen and the server
+    // cannot drift apart on what "every tank" means.
+    const NON_DIPPABLE_FUELS = ['cng'];
+    const { rows: unread } = await pool.query(
+      `SELECT t.tank_number, t.fuel_type
+         FROM tanks t
+         JOIN shifts s ON s.id = $1
+        WHERE t.station_id = s.station_id
+          AND LOWER(COALESCE(t.fuel_type,'')) <> ALL($2::text[])
+          AND NOT EXISTS (
+            SELECT 1 FROM dipstick_readings d
+             WHERE d.tank_id = t.id
+               AND d.shift_id = $1
+               AND d.reading_type = 'closing'
+          )
+        ORDER BY t.tank_number`,
+      [req.params.id, NON_DIPPABLE_FUELS]
+    );
+    if (unread.length) {
+      const names = unread.map(t => `Tank ${t.tank_number}`).join(', ');
+      return res.status(409).json({
+        error: 'missing_closing_dip',
+        tanks: unread,
+        message: `Closing dip missing for ${names}. Every tank must be read before this shift can close.`,
+      });
+    }
+
     // Count attendants who have NOT yet submitted reconciliation for this shift
     const { rows: pending } = await pool.query(
       `SELECT COUNT(*) AS cnt

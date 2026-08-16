@@ -538,7 +538,20 @@ export default function ShiftEndPage() {
   const closeShift = async () => {
     setBusy('close'); setDipWarn(null);
     try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
-    catch(e){ setErr(e.response?.data?.error||e.error||tc('send.closeFailed', 'Close failed')); }
+    catch(e){
+      const d = e.response?.data;
+      // The server is the authority on whether every tank has been read — the
+      // screen can be out of date (a second manager, another device, a reading
+      // entered from the Dipstick screen). When it refuses, reopen the dialog on
+      // ITS list of tanks rather than the one this page happened to compute.
+      if (d?.error === 'missing_closing_dip' && Array.isArray(d.tanks) && d.tanks.length) {
+        setDipWarn({ missing: d.tanks.map(t => ({ id:`srv-${t.tank_number}`, tank_number:t.tank_number })) });
+      }
+      // Prefer the server's sentence over its error CODE: `error` here is a
+      // machine string ('missing_closing_dip', 'active_pos') and showing it to a
+      // manager explains nothing.
+      setErr(d?.message || d?.error || e.error || tc('send.closeFailed', 'Close failed'));
+    }
     setBusy('');
   };
 
@@ -910,9 +923,11 @@ export default function ShiftEndPage() {
       )}
 
       {/* MISSING closing dip. A typed figure is no longer a reason to stop — Close
-          Shift saves it. This fires only for a tank with no closing reading at all,
-          which is a real hole in the stock record (today's closing is tomorrow's
-          opening) and worth one question before it is accepted. */}
+          Shift saves it. This fires only for a tank with no closing reading at all.
+          There is NO "close anyway": the server refuses that close outright
+          (missing_closing_dip), so offering the button here would only produce a
+          409 the manager cannot act on. The dialog now tells him what to go and
+          read instead of asking him to choose. */}
       {dipWarn && (
         <div role="presentation" onClick={()=>setDipWarn(null)}
           style={{position:'fixed',inset:0,background:'rgba(15,23,42,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
@@ -924,14 +939,12 @@ export default function ShiftEndPage() {
             <div style={{fontSize:13,color:'#555',marginBottom:8}}>
               {tc('send.dipWarnMissing','No closing reading yet: {list}.').replace('{list}', dipWarn.missing.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
             </div>
-            <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:12}}>{tc('send.dipWarnWhy','This is today’s closing stock and tomorrow’s opening. Closing the shift without it leaves a gap in the stock record.')}</div>
+            <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:12}}>{tc('send.dipWarnWhyBlocking','This is today’s closing stock and tomorrow’s opening — the next shift starts from it. Read these tanks and enter them here; the shift cannot close without them.')}</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-              <button onClick={()=>setDipWarn(null)} style={{flex:1,minWidth:110,height:40,background:'#fff',border:'1.5px solid #e5e3de',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
-                {tc('send.dipWarnBack','Go back')}
-              </button>
-              {/* Still saves anything typed on the OTHER tanks before closing. */}
-              <button onClick={saveAndClose} style={{flex:1,minWidth:110,height:40,background:'#dc2626',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
-                {tc('send.dipWarnCloseAnyway','Close anyway')}
+              {/* Anything typed on the OTHER tanks is saved on blur already, so
+                  going back loses nothing. */}
+              <button onClick={()=>setDipWarn(null)} style={{flex:1,minWidth:110,height:40,background:'#dc2626',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+                {tc('send.dipWarnEnterThem','Enter the readings')}
               </button>
             </div>
           </div>
