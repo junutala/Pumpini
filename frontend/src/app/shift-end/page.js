@@ -144,7 +144,12 @@ export default function ShiftEndPage() {
   // was optional — and it is exactly how Highway and Adhoc Highway went three days
   // with opening dips and no closing ones at all.
   const [shiftDips, setShiftDips] = useState({});
-  const [dipWarn, setDipWarn] = useState(null);   // { dirty:[tank], missing:[tank] } | null
+  const [dipWarn, setDipWarn] = useState(null);   // { missing:[tank] } | null
+  // The scanned pump slips kept against THIS shift. They were already being
+  // stored (reconcile.js saves the picture as a `nozzle_slip` artifact on the
+  // shift) — nothing ever showed them, so the evidence behind every closing
+  // meter was write-only. Metadata only; ArtifactImage fetches the bytes.
+  const [slips, setSlips] = useState([]);
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
   const [done, setDone]   = useState(false);
@@ -174,6 +179,17 @@ export default function ShiftEndPage() {
       })
       .catch(()=>setOpen([]));
   }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Slips kept against this shift. Best-effort on purpose: an outlet whose
+  // artifact table predates the migration, or one that has never scanned a
+  // slip, must render an empty strip rather than break the close screen.
+  const loadSlips = async (shiftId) => {
+    if (!shiftId) { setSlips([]); return; }
+    try {
+      const rows = await api.get('/artifacts', { params: { entity_type: 'shift', entity_id: shiftId } });
+      setSlips((Array.isArray(rows) ? rows : []).filter(r => r.kind === 'nozzle_slip'));
+    } catch { setSlips([]); }
+  };
 
   const pickShift = async (s) => {
     setBusy('pick'); setErr('');
@@ -217,6 +233,7 @@ export default function ShiftEndPage() {
       // Dip state belongs to the shift being closed — switching shift must not
       // carry a half-typed reading across.
       setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
+      loadSlips(d?.id);
       const stored = {};
       (Array.isArray(dr)?dr:[]).forEach(x => { if (x.reading_type === 'closing') stored[x.tank_id] = x; });
       setShiftDips(stored);
@@ -305,6 +322,9 @@ export default function ShiftEndPage() {
         if (r.hint)      msg += ' ⚠ ' + r.hint;
         setErr(msg);
       }
+      // The server kept the picture against the shift — pull it back so the strip
+      // below shows it immediately, not only after a reload.
+      loadSlips(shift.id);
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipFailed', 'Slip scan failed')); }
     setScanning('');
   };
@@ -355,7 +375,8 @@ export default function ShiftEndPage() {
   // fills the LITRES box only, never the dip. That is deliberate: saveDip below
   // treats "dip entered" as a physical check and "litres only" as a system (ATG)
   // reading, keeping dip_cm null — which is exactly what a console reading is.
-  // Nothing is saved by scanning; the manager still presses Save per tank.
+  // Nothing is written by scanning — the figures land in the boxes, and Close
+  // Shift is what saves them.
   //
   // The image is downscaled here rather than through PhotoCapture: a console
   // screen full of small digits needs far more pixels (2600px) than a face does,
@@ -404,7 +425,7 @@ export default function ShiftEndPage() {
       setGaugeMsg(
         (pairs.length === 0
           ? tc('send.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
-          : tc('send.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
+          : tc('send.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure before closing.').replace('{n}', pairs.length))
         + (skipped.length ? ' ' + tc('send.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
         // Advisory only — these rows ARE filled.
         + (renumbered.length ? ' ' + tc('send.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
@@ -477,11 +498,29 @@ export default function ShiftEndPage() {
   // told his tanks are unread.
   const hasReading = (tk) => !!savedDips[tk.id] || !!shiftDips[tk.id];
 
+  // Persist a tank the moment the manager leaves its box. This is what replaces
+  // the per-tank Save button: he dips tank 1, walks to tank 2, and tank 1 is
+  // already in — the progressive save the button gave him, without the button,
+  // and without a half-walked forecourt being lost if the phone locks. Silent by
+  // design (saveDip surfaces its own error banner); a failure here simply leaves
+  // the row dirty, and Close Shift will try it again.
+  const autoSaveDip = (tk) => {
+    if (!shift || !isDirty(tk) || busy === 'dip' + tk.id) return;
+    saveDip(tk);
+  };
+
+  // A TYPED READING IS A READING. Closing the shift saves whatever is in the
+  // boxes and then closes — the manager is never told that the figures he just
+  // entered are "not saved", which is what the per-tank Save button used to do
+  // and what confused Highway into thinking the close had failed.
+  //
+  // The warning survives for the case it was actually written for: a tank with
+  // NO closing reading at all, typed or stored. That is a real gap in the stock
+  // record (today's closing is tomorrow's opening), so it still stops and asks.
   const requestCloseShift = () => {
-    const dirty   = dipTanks.filter(isDirty);
     const missing = dipTanks.filter(tk => !isDirty(tk) && !hasReading(tk));
-    if (dirty.length || missing.length) { setDipWarn({ dirty, missing }); return; }
-    closeShift();
+    if (missing.length) { setDipWarn({ missing }); return; }
+    saveAndClose();
   };
   // Save everything still pending, then close. Stops on the first failure — the
   // error banner explains, and closing over a failed save is exactly the loss the
@@ -586,6 +625,23 @@ export default function ShiftEndPage() {
               📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
               <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
             </label>
+
+            {/* The slips scanned for this shift. These are the printed evidence
+                behind every closing meter below — kept since the scan shipped, but
+                never shown until now, so nobody could check a reading against the
+                paper it came from. Read-only; the strip simply disappears on a
+                shift where no slip was scanned. */}
+            {slips.length>0 && (
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}>
+                <span style={{fontSize:12,fontWeight:700,color:'#475569'}}>
+                  {tc('send.slipsOnShift','Slips scanned')} <span style={{fontWeight:400,color:'#94a3b8'}}>· {slips.length}</span>
+                </span>
+                {slips.map(s => (
+                  <ArtifactImage key={s.id} artifactId={s.id} size={44}
+                    label={`${tc('send.slipLabel','Pump slip')}${s.meta?.pump_id ? ` · ${tc('send.pumpWord','Pump')} ${s.meta.pump_id}` : ''}${s.captured_at ? ` · ${fmtWhen(s.captured_at)}` : ''}`}/>
+                ))}
+              </div>
+            )}
 
             {/* THE WORKING CARD — one operator at a time. */}
             {unsettled.length>0 ? (
@@ -789,7 +845,7 @@ export default function ShiftEndPage() {
               // ALREADY READ — usually at the handover, where one scan closed this
               // shift and became the next one's opening. Show the figure; do not ask
               // for it a second time. (Not locked when he has just saved it in this
-              // sitting: that row already says "✓ Saved" and re-rendering it as a
+              // sitting: that row already shows "✓ Saved" and re-rendering it as a
               // summary mid-entry would be disorienting.)
               const st = !savedDips[tk.id] && shiftDips[tk.id];
               if (st) return (
@@ -807,18 +863,22 @@ export default function ShiftEndPage() {
                   <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                     <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('send.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
                     <input style={{...inp,width:110}} type="number" step="0.1" placeholder={hasChart?tc('send.dipExample','dip e.g. 58.3'):tc('send.dipCm','dip cm')}
-                      value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                      value={dips[tk.id]||''} onBlur={()=>autoSaveDip(tk)}
+                      onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                     <span style={{fontSize:12,color:'#94a3b8'}}>{tc('send.orWord','or')}</span>
                     <input style={{...inp,width:130,...(dipOwnsLitres?{background:'#f1f5f9',color:'#0369a1',fontWeight:600}:{})}}
                       type="number" step="0.01" placeholder={tc('send.litresSystem','litres (system)')}
                       readOnly={dipOwnsLitres}
                       value={dipOwnsLitres ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
+                      onBlur={()=>autoSaveDip(tk)}
                       onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                    <button onClick={()=>saveDip(tk)} disabled={busy==='dip'+tk.id||savedDips[tk.id]}
-                      style={{padding:'8px 12px',borderRadius:8,border:'none',fontSize:12.5,fontWeight:700,cursor:savedDips[tk.id]?'default':'pointer',
-                        background:savedDips[tk.id]?'#dcfce7':'#475569',color:savedDips[tk.id]?'#166534':'#fff'}}>
-                      {savedDips[tk.id]?tc('send.saved','✓ Saved'):tc('send.save','Save')}
-                    </button>
+                    {/* No per-tank Save button. Close Shift writes every typed
+                        reading itself; a button that must be pressed before the
+                        one you actually want is a second route to the same place,
+                        and it taught managers that typing was not enough. */}
+                    {busy==='dip'+tk.id && <span style={{fontSize:12,color:'#64748b'}}>{tc('send.savingEllipsis','Saving…')}</span>}
+                    {savedDips[tk.id] && busy!=='dip'+tk.id &&
+                      <span style={{fontSize:11.5,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'3px 10px',fontWeight:700}}>{tc('send.saved','✓ Saved')}</span>}
                   </div>
                   {/* Last saved reading — so a blank entry box never looks like lost data. */}
                   {tk.last_reading_at
@@ -849,38 +909,28 @@ export default function ShiftEndPage() {
         </div>
       )}
 
-      {/* Unsaved / missing closing dip — the last thing between a typed reading and
-          losing it. Closing over an unsaved figure would bin today's closing stock,
-          which is also tomorrow's opening, so it is worth stopping for. */}
+      {/* MISSING closing dip. A typed figure is no longer a reason to stop — Close
+          Shift saves it. This fires only for a tank with no closing reading at all,
+          which is a real hole in the stock record (today's closing is tomorrow's
+          opening) and worth one question before it is accepted. */}
       {dipWarn && (
         <div role="presentation" onClick={()=>setDipWarn(null)}
           style={{position:'fixed',inset:0,background:'rgba(15,23,42,.55)',zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div role="presentation" onClick={e=>e.stopPropagation()} className="card" style={{maxWidth:430,width:'100%'}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
               <AlertTriangle size={18} color="#b45309"/>
-              <span style={{fontWeight:800,fontSize:15}}>{tc('send.dipWarnTitle','Closing dip not saved')}</span>
+              <span style={{fontWeight:800,fontSize:15}}>{tc('send.dipWarnTitleMissing','Closing dip missing')}</span>
             </div>
-            {dipWarn.dirty.length>0 && (
-              <div style={{fontSize:13,color:'#555',marginBottom:8}}>
-                {tc('send.dipWarnUnsaved','Typed but not saved: {list}.').replace('{list}', dipWarn.dirty.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
-              </div>
-            )}
-            {dipWarn.missing.length>0 && (
-              <div style={{fontSize:13,color:'#555',marginBottom:8}}>
-                {tc('send.dipWarnMissing','No closing reading yet: {list}.').replace('{list}', dipWarn.missing.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
-              </div>
-            )}
+            <div style={{fontSize:13,color:'#555',marginBottom:8}}>
+              {tc('send.dipWarnMissing','No closing reading yet: {list}.').replace('{list}', dipWarn.missing.map(tk=>`${tc('send.tank','Tank')} ${tk.tank_number}`).join(', '))}
+            </div>
             <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:12}}>{tc('send.dipWarnWhy','This is today’s closing stock and tomorrow’s opening. Closing the shift without it leaves a gap in the stock record.')}</div>
             <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
               <button onClick={()=>setDipWarn(null)} style={{flex:1,minWidth:110,height:40,background:'#fff',border:'1.5px solid #e5e3de',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 {tc('send.dipWarnBack','Go back')}
               </button>
-              {dipWarn.dirty.length>0 && (
-                <button onClick={saveAndClose} style={{flex:1,minWidth:130,height:40,background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
-                  {tc('send.dipWarnSaveClose','Save these & close')}
-                </button>
-              )}
-              <button onClick={closeShift} style={{flex:1,minWidth:110,height:40,background:'#dc2626',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
+              {/* Still saves anything typed on the OTHER tanks before closing. */}
+              <button onClick={saveAndClose} style={{flex:1,minWidth:110,height:40,background:'#dc2626',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:13,cursor:'pointer'}}>
                 {tc('send.dipWarnCloseAnyway','Close anyway')}
               </button>
             </div>
