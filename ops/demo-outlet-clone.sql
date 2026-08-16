@@ -501,3 +501,35 @@ BEGIN
   ON CONFLICT DO NOTHING;
 END
 $post$;
+
+-- ---------------------------------------------------------------------
+-- 8. Repoint polymorphic references
+-- ---------------------------------------------------------------------
+-- station_artifacts.(entity_type, entity_id) is a POLYMORPHIC reference with no
+-- FK constraint. The generic cloner remaps a uuid only if it is already in the
+-- id_map, and station_artifacts is copied at position 4 — before pumps (6) and
+-- long before shift_attendants (26) — so entity_id had nothing to resolve
+-- against and silently kept the SOURCE outlet's id.
+--
+-- Caught on 16-Aug: all 9 demo slip artifacts still pointed at real outlets'
+-- pumps. The FK-driven leak scan in the verify script could not see it, because
+-- there is no constraint to walk. Any future polymorphic column needs the same
+-- treatment — run this AFTER every table is cloned, when the map is complete.
+DO $poly$
+DECLARE
+  pairs text[][] := ARRAY[
+    ARRAY['p1','d5429a43-999d-40cb-9be9-27694572bc1f'],
+    ARRAY['p2','2d339e99-85e1-4b42-a2c0-f460ae10a960'],
+    ARRAY['p3','dce3a039-e314-4078-b621-a894242a1d3c']];
+  p text[];
+BEGIN
+  FOREACH p SLICE 1 IN ARRAY pairs LOOP
+    UPDATE station_artifacts a
+       SET entity_id = m.dst_id
+      FROM demo_clone.id_map m
+     WHERE a.station_id = p[2]::uuid
+       AND m.pair = p[1]
+       AND m.src_id = a.entity_id;
+  END LOOP;
+END
+$poly$;

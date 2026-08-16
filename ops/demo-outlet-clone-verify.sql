@@ -97,6 +97,27 @@ SELECT * FROM demo_clone.findings ORDER BY check_kind, child, col;   -- must be 
 
 
 -- ---------------------------------------------------------------------
+-- (1b) Polymorphic references — NOT covered by the FK scan above
+-- ---------------------------------------------------------------------
+-- station_artifacts.(entity_type, entity_id) has no FK, so check (1) is blind to
+-- it. On 16-Aug all 9 demo slip artifacts were found still pointing at REAL
+-- outlets' pumps. Add any future polymorphic column here.
+SELECT s.name AS demo_outlet, a.entity_type, count(*) AS pointing_outside_own_outlet
+FROM station_artifacts a
+JOIN stations s ON s.id = a.station_id
+WHERE a.station_id IN ('d5429a43-999d-40cb-9be9-27694572bc1f',
+                       '2d339e99-85e1-4b42-a2c0-f460ae10a960',
+                       'dce3a039-e314-4078-b621-a894242a1d3c')
+  AND a.entity_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM pumps p WHERE p.id = a.entity_id AND p.station_id = a.station_id)
+  AND NOT EXISTS (SELECT 1 FROM shift_attendants sa JOIN shifts sh ON sh.id = sa.shift_id
+                   WHERE sa.id = a.entity_id AND sh.station_id = a.station_id)
+  AND NOT EXISTS (SELECT 1 FROM tanks t WHERE t.id = a.entity_id AND t.station_id = a.station_id)
+  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = a.entity_id)
+GROUP BY 1, 2;                                                       -- must be empty
+
+
+-- ---------------------------------------------------------------------
 -- (2) Meter integrity on the one meter store that counts
 -- ---------------------------------------------------------------------
 -- shift_attendant_nozzles is the single meter store (CLAUDE.md, 01-Aug-2026).
