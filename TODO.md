@@ -227,3 +227,43 @@ FUTURE: with more outlets, anonymized cross-owner peer-benchmarking (network-eff
 > session: `shift_attendant_nozzles` joined to itself via `LATERAL` on the previous leg
 > by `shifts.start_time`, filtered to the three real outlets and `abs(gap) > 0.0005`.
 > Re-deriving it invites a different filter and a different answer.
+
+---
+
+## 17. Capture the pump's RUPEE totalizer alongside the litre one (NEW 2026-08-16)
+
+Owner-requested, deliberately deferred: **capture only, build nothing on it yet.**
+Raised out of Srinivas Yarramada's (Sri Balaji) round-amount rounding claim — the
+analysis of that claim is `docs/round-amount-rounding-drift.md` and is settled; this
+item is the *useful* half that came out of it.
+
+**Already true, no work needed.** `parse-slip` reads the ETOT slip's `A:` (rupees) line
+as well as `V:` (litres) and stores both in the `nozzle_slip` artifact's `ocr` JSON,
+per nozzle, with the photograph and the pump serial. It also guards the swap where the
+rupee figure is mistaken for the volume. Nothing is being thrown away today — it is
+simply in a JSON blob rather than a queryable column, and no outlet has scanned a slip
+in prod yet, so there is no history.
+
+- [ ] **Add the two columns** to the ONE meter store, so the rupee register lives beside
+      the litres and never becomes a second home for the same fact:
+      ```sql
+      ALTER TABLE public.shift_attendant_nozzles
+        ADD COLUMN IF NOT EXISTS opening_amount numeric(14,3),
+        ADD COLUMN IF NOT EXISTS closing_amount numeric(14,3);
+      ```
+      Additive and nullable, so code may ship either side of the DDL. Owner-run, one step.
+- [ ] **Populate from `parse-slip`** on scan. Written by that path only; **read by nothing.**
+      No settlement change, no screen change, no behaviour change.
+- [ ] **Backfill** from `station_artifacts.ocr` for any slip already scanned before the
+      columns existed — the JSON holds `cumulative_amount` per nozzle, so the history is
+      recoverable rather than lost.
+- [ ] **Only then** consider the actual prize: settle the operator on the money the pump
+      says it took, instead of inferring it as `(closing V − opening V) × rate`. Two
+      independent totalizers give a cross-check that no amount of volume arithmetic can —
+      a rate changed mid-shift, a misread slip, a tampered meter. That is the enhancement
+      worth building, and it is a control argument, **not** a recover-lost-money argument.
+
+> **Do not justify this on the rounding.** It was measured: ₹1.26 across three outlets in
+> two months, order of ₹8 a year, and the bias runs opposite to the way it was reported.
+> `docs/round-amount-rounding-drift.md` carries the working and both queries so the
+> conclusion can be re-run rather than re-argued.
