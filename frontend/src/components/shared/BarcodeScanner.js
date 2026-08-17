@@ -4,11 +4,14 @@
 // Uses the native BarcodeDetector API (Android Chrome). Falls back to a clear
 // message where unsupported (e.g. iOS Safari) so the user types the code.
 import { useRef, useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Camera, CameraOff } from 'lucide-react';
 
 const FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'];
 
 export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
+  const { t } = useTranslation();
+  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const videoRef  = useRef(null);
   const streamRef = useRef(null);
   const onScanRef = useRef(onScan);
@@ -95,7 +98,7 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
         style={{ padding: '9px 14px', background: scanning ? '#dc2626' : '#1A5F7A', color: '#fff',
           border: 'none', borderRadius: 8, cursor: 'pointer', display: 'inline-flex',
           alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, ...style }}>
-        {scanning ? <><CameraOff size={15}/>Stop</> : <><Camera size={15}/>{label}</>}
+        {scanning ? <><CameraOff size={15}/>{tc('scan.stop','Stop')}</> : <><Camera size={15}/>{label}</>}
       </button>
 
       {err && <div style={{ marginTop: 6, fontSize: 12, color: '#dc2626' }}>{err}</div>}
@@ -108,10 +111,10 @@ export default function BarcodeScanner({ onScan, label = 'Scan', style }) {
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
               border: '3px solid #FF6B00', width: '72%', height: 96, borderRadius: 6, pointerEvents: 'none' }}/>
           </div>
-          <div style={{ color: '#fff', marginTop: 14, fontSize: 14 }}>Point the camera at the barcode</div>
+          <div style={{ color: '#fff', marginTop: 14, fontSize: 14 }}>{tc('scan.aim','Point the camera at the barcode')}</div>
           <button onClick={stop} style={{ marginTop: 16, padding: '10px 24px', background: '#dc2626', color: '#fff',
             border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CameraOff size={16}/>Cancel
+            <CameraOff size={16}/>{tc('common.cancel','Cancel')}
           </button>
         </div>
       )}

@@ -144,6 +144,12 @@ const NAV_LABELS = {
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',
   addattendant:'Add Attendant',
+  // The operator's ONLY nav item, and it had no entry here: with nav.settlement
+  // absent from the locale files too, navLabel() fell through to `|| key` and
+  // the attendant's single sidebar link read the raw string "settlement", in
+  // every language including English. te and en now carry the key; this line is
+  // what covers hi/ta/mr/kn, which are still partial locale files.
+  settlement:'Settlement',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
   accounts:'Accounts',
   bills:'Bill & Payment',

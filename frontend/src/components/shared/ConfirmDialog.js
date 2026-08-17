@@ -1,8 +1,11 @@
 'use client';
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function ConfirmDialog({ message, detail, onConfirm, onCancel, confirmLabel='Confirm', danger=false }) {
+  const { t } = useTranslation();
+  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   // Prevent background scroll when dialog open
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -44,7 +47,7 @@ export default function ConfirmDialog({ message, detail, onConfirm, onCancel, co
             padding: '10px 20px', border: '1.5px solid #ddd', borderRadius: 8,
             background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#444',
           }}>
-            Cancel
+            {tc('common.cancel','Cancel')}
           </button>
           <button onClick={onConfirm} style={{
             padding: '10px 20px', border: 'none', borderRadius: 8,

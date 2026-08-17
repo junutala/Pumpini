@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Calendar, ChevronDown } from 'lucide-react';
 
 const toIST = d => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -18,6 +19,8 @@ const label = (from, to) => {
 };
 
 export default function DateRangePicker({ from, to, onChange }) {
+  const { t } = useTranslation();
+  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState(false);
 
@@ -90,13 +93,13 @@ export default function DateRangePicker({ from, to, onChange }) {
             {custom && (
               <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 11, color: 'var(--text-3)', width: 30 }}>From</label>
+                  <label style={{ fontSize: 11, color: 'var(--text-3)', width: 30 }}>{tc('daterange.from','From')}</label>
                   <input type="date" className="input" style={{ flex: 1, fontSize: 12 }}
                     value={from} max={today}
                     onChange={e => onChange(e.target.value, to)} />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <label style={{ fontSize: 11, color: 'var(--text-3)', width: 30 }}>To</label>
+                  <label style={{ fontSize: 11, color: 'var(--text-3)', width: 30 }}>{tc('daterange.to','To')}</label>
                   <input type="date" className="input" style={{ flex: 1, fontSize: 12 }}
                     value={to} max={today}
                     onChange={e => onChange(from, e.target.value)} />

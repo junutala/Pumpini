@@ -4,12 +4,15 @@
 // any real interaction (move/key/touch/scroll/click) resets the countdown.
 // A short warning toast appears before the logout fires.
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../lib/auth';
 
 const IDLE_MS    = 20 * 60 * 1000; // log out after 20 min idle
 const WARN_MS    = 60 * 1000;      // show warning 60s before logout
 
 export default function IdleTimer() {
+  const { t } = useTranslation();
+  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const { user, logout } = useAuth();
   const idleRef = useRef(null);
   const warnRef = useRef(null);
@@ -53,7 +56,7 @@ export default function IdleTimer() {
       <button onClick={() => setWarning(false)}
         style={{ background: '#FF6B00', color: '#fff', border: 'none', borderRadius: 7,
           padding: '6px 12px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-        Stay signed in
+        {tc('idle.staySignedIn','Stay signed in')}
       </button>
     </div>
   );

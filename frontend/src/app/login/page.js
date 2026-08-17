@@ -21,6 +21,7 @@ const landingFor = (u) => (
 
 export default function LoginPage() {
   const { t, i18n } = useTranslation();
+  const tc = (k,d) => { const v=t(k); return v===k?d:v; };
   const { login }   = useAuth();
   const router      = useRouter();
 
@@ -171,7 +172,7 @@ export default function LoginPage() {
           {regDone ? (
             <>
               <CheckCircle size={48} color="#16a34a" style={{margin:'0 auto 1rem'}}/>
-              <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800}}>Fingerprint Enabled!</h2>
+              <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800}}>{tc('login_page.fp_enabled','Fingerprint Enabled!')}</h2>
               <p style={{color:'#666',fontSize:14}}>Redirecting to dashboard…</p>
             </>
           ) : (
@@ -180,7 +181,7 @@ export default function LoginPage() {
                 display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 1.25rem'}}>
                 <Fingerprint size={32} color="#FF6B00"/>
               </div>
-              <h2 style={{margin:'0 0 10px',fontSize:20,fontWeight:800}}>Enable Fingerprint Login?</h2>
+              <h2 style={{margin:'0 0 10px',fontSize:20,fontWeight:800}}>{tc('login_page.fp_enable_q','Enable Fingerprint Login?')}</h2>
               <p style={{color:'#666',fontSize:14,marginBottom:'1.5rem',lineHeight:1.6}}>
                 Next time you can log in instantly with your fingerprint — no password needed.
               </p>
@@ -198,13 +199,13 @@ export default function LoginPage() {
                   display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:10}}>
                 {regLoading
                   ? <><Loader2 size={18} style={{animation:'spin .7s linear infinite'}}/> Setting up…</>
-                  : <><Fingerprint size={18}/> Enable Fingerprint</>}
+                  : <><Fingerprint size={18}/> {tc('login_page.fp_enable','Enable Fingerprint')}</>}
               </button>
 
               <button onClick={() => { window.location.href = '/dashboard'; }}
                 style={{width:'100%',height:44,background:'transparent',color:'#888',
                   border:'1px solid #ddd',borderRadius:10,fontSize:14,cursor:'pointer'}}>
-                Maybe Later
+                {tc('login_page.maybe_later','Maybe Later')}
               </button>
             </>
           )}
@@ -246,7 +247,7 @@ export default function LoginPage() {
               }}>
               {bioLoading
                 ? <><Loader2 size={18} style={{animation:'spin .7s linear infinite'}}/> Verifying…</>
-                : <><Fingerprint size={20} color="#FF6B00"/> Login with Fingerprint</>}
+                : <><Fingerprint size={20} color="#FF6B00"/> {tc('login_page.fp_login','Login with Fingerprint')}</>}
             </button>
 
             {bioError && (
@@ -268,7 +269,7 @@ export default function LoginPage() {
           {/* Mobile number */}
           <div style={{marginBottom:'1rem'}}>
             <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:6,color:'#333'}}>
-              Mobile Number
+              {tc('login_page.mobile','Mobile Number')}
             </label>
             <div style={{display:'flex',alignItems:'center',border:'1.5px solid #ddd',
               borderRadius:10,overflow:'hidden',transition:'border-color .2s',
@@ -303,7 +304,7 @@ export default function LoginPage() {
           {/* Password */}
           <div style={{marginBottom:'1.5rem'}}>
             <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:6,color:'#333'}}>
-              Password
+              {tc('login_page.password','Password')}
             </label>
             <div style={{display:'flex',alignItems:'center',border:'1.5px solid #ddd',
               borderRadius:10,overflow:'hidden',transition:'border-color .2s',
@@ -328,7 +329,7 @@ export default function LoginPage() {
           {/* Language */}
           <div style={{marginBottom:'1.5rem'}}>
             <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:6,color:'#333'}}>
-              Language
+              {tc('login_page.language','Language')}
             </label>
             <select
               value={i18n.language}

@@ -72,7 +72,15 @@
     "credit_reports": "Credit Reports",
     "slipbooks": "Coupon Books",
     "coupons": "Credit Coupons",
-    "testing": "Testing"
+    "testing": "Testing",
+    "settlement": "Settlement",
+    "grp_accounts": "Accounts",
+    "accounts": "Accounts",
+    "bills": "Bill & Payment",
+    "ownermoney": "Owner Money",
+    "payables": "Payables",
+    "balancesheet": "Balance Sheet",
+    "openingbal": "Opening Balances"
   },
   "roles": {
     "owner": "Owner",
@@ -243,7 +251,10 @@
     "mobile": "Mobile",
     "optional": "Optional",
     "required_field": "Required",
-    "failed": "Failed"
+    "failed": "Failed",
+    "cancel": "Cancel",
+    "customers": "Customers",
+    "loading": "Loading…"
   },
   "corp_page": {
     "title": "Credit Customers",
@@ -347,7 +358,27 @@
     "voice_listening": "Listening... speak now",
     "voice_processing": "Processing...",
     "voice_stop": "Stop Recording",
-    "voice_done": "Got it!"
+    "voice_done": "Got it!",
+    "lube_sale": "Lube Sale",
+    "meter_scan": "Meter readings",
+    "meter_scan_hint": "Snap your nozzle’s totalizer at shift start and end — it’s recorded and cross-checked against the previous shift.",
+    "shift_ended": "Shift Ended",
+    "locked_msg": "Your POS has been locked. Cash submission is complete.",
+    "cash_submitted": "Cash Submitted",
+    "next_step": "Next step:",
+    "bring_cash": "Please bring the cash to your manager for confirmation.",
+    "th_note": "Note",
+    "th_qty": "Quantity",
+    "th_value": "Value",
+    "total_cash": "Total Cash",
+    "submitting": "Submitting...",
+    "end_shift_q": "End Your Shift?",
+    "yes_end_shift": "Yes, End Shift",
+    "mgr_recon": "Manager-driven reconciliation",
+    "pos_locked": "POS Locked",
+    "outside_boundary": "Outside Station Boundary",
+    "outside_boundary_btn": "🚫 Outside Station Boundary",
+    "loc_denied": "Location access denied. Please enable location to use POS."
   },
   "shifts_page": {
     "title": "Shifts",
@@ -389,7 +420,8 @@
     "mode_consolidated": "Consolidated",
     "mode_pos": "POS live",
     "mode_consolidated_hint": "Sales entered as one consolidated total per attendant by the manager at close",
-    "mode_pos_hint": "Each fill recorded live on the POS in the bay"
+    "mode_pos_hint": "Each fill recorded live on the POS in the bay",
+    "end_shift": "End Shift"
   },
   "users_page": {
     "title": "Users",
@@ -629,7 +661,37 @@
     "volume_l": "Volume (L)",
     "stock_vol": "Volume booked to stock (L)",
     "as_per_challan": "As per challan",
-    "thermal_hint": "As per challan. May settle ~{n}L lower once cooled."
+    "thermal_hint": "As per challan. May settle ~{n}L lower once cooled.",
+    "scan_title": "Scan the invoice / DC",
+    "scan_sub": "Photo or PDF — we pre-fill the fields for you to verify.",
+    "take_photo": "Take photo",
+    "upload": "Upload",
+    "download": "Download",
+    "reading": "Reading the invoice…",
+    "scan_fail": "Could not read the invoice — enter the details manually.",
+    "bad_file": "Upload a photo (JPG/PNG) or a PDF.",
+    "invoice_fail": "Could not load the invoice.",
+    "scanned_invoice": "Scanned Invoice",
+    "view_invoice": "View scanned invoice",
+    "detected": "Detected products — pick one to record:",
+    "confidence": "confidence",
+    "verify_warn": "Auto-filled from the scan — verify every field against the paper before you confirm.",
+    "saved_next": "Saved — now review the next product from this invoice.",
+    "total_hint": "\"Total for material\" incl. taxes — from the invoice, editable",
+    "reconcile_nums": "Invoice total ₹{g} · scanned sum ₹{s}",
+    "reconcile_warn": "Scanned amounts don't add up to the invoice total — re-check each Total Value against the paper before saving.",
+    "allocated": "Allocated",
+    "over": "over",
+    "short": "short",
+    "split_tanks": "Split across tanks",
+    "split_title": "Litres discharged into each tank",
+    "split_below": "Set tanks below",
+    "split_min": "Enter litres against at least one tank, or turn off split.",
+    "split_sum": "⚠ The tank quantities ({a}L) must add up to the gross volume ({g}L).",
+    "paid_q": "Was this delivery paid to the oil company?",
+    "paid_yes": "Prepaid — already paid",
+    "paid_no": "On credit — pay later",
+    "paid_help": "For your accounts. Prepaid = the money is already with the oil company (deposit / auto-debit). On credit = you will pay later."
   },
   "live_page": {
     "title": "Live Events",
@@ -653,7 +715,8 @@
     "amount": "Amount",
     "mode": "Mode",
     "vehicle": "Vehicle",
-    "no_events": "No events yet. Transactions will appear here in real time."
+    "no_events": "No events yet. Transactions will appear here in real time.",
+    "hidden_open": "Hidden during open shift"
   },
   "group_page": {
     "title": "Group Dashboard",
@@ -803,7 +866,10 @@
     "dip_mm": "Dip (mm)",
     "net_volume": "Net Vol (L)",
     "water_l": "Water (L)",
-    "ullage": "Ullage (L)"
+    "ullage": "Ullage (L)",
+    "dip_reading": "Dip Reading",
+    "marks_hint": "4 marks/cm",
+    "set_type": "Set tank type…"
   },
   "support_page": {
     "access_denied": "Access denied. Owner or SuperAdmin only.",
@@ -2207,7 +2273,20 @@
     "dipWarnCloseAnyway": "Close anyway",
     "slipNoMatch2": "Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.",
     "dipLabel": "dip",
-    "closingAlreadyRead": "Closing already read"
+    "closingAlreadyRead": "Closing already read",
+    "pumpWord": "Pump",
+    "slipLabel": "Pump slip",
+    "slipsOnShift": "Slips scanned",
+    "savingEllipsis": "Saving…",
+    "dipWarnTitleMissing": "Closing dip missing",
+    "dipWarnEnterThem": "Enter the readings",
+    "dipWarnWhyBlocking": "This is today’s closing stock and tomorrow’s opening — the next shift starts from it. Read these tanks and enter them here; the shift cannot close without them.",
+    "faceReading": "Reading the face…",
+    "faceStrong": "This looks like {name} — selected below. Check it before you settle him.",
+    "faceLikely": "This is probably {name} — selected below. Worth a second look.",
+    "faceUnsure": "Not sure who this is — closest is {name}. Pick him from the list.",
+    "faceMany": "More than one face in frame — pick him from the list.",
+    "faceUnread": "Could not read the face — pick him from the list."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2413,7 +2492,13 @@
     "readFailed": "Could not read that slip — type the serial and model from it.",
     "noSlipPrinted": "This pump prints no slip (CNG)",
     "needSlipTitle": "Photograph a slip, or tick \"prints no slip\"",
-    "needSlipHint": "Photograph a slip from this pump, or tick \"prints no slip\" above."
+    "needSlipHint": "Photograph a slip from this pump, or tick \"prints no slip\" above.",
+    "tabAccounts": "8. Accounting",
+    "accountsEnable": "Accounts module",
+    "accountsEnableDesc": "When ON, this outlet gets a bookkeeping layer — profit/loss, balance sheet and a finance dashboard, built from what Pumpini already records. When OFF, none of it shows and operations are unaffected. Switch it on one outlet at a time.",
+    "accountsOwnerOnly": "Only the outlet owner can switch this on or off.",
+    "selfSettle": "Operators settle their own line",
+    "selfSettleDesc": "When ON, an operator closes his own line from the Settlement screen. When OFF, only the manager settles him at Shift Close, and an operator who opens Settlement is told so. Manager-led close works either way — this only decides whether the operator may do it himself."
   },
   "sstart": {
     "dashboard": "Dashboard",
@@ -2557,7 +2642,15 @@
     "handoverDipReadings": "Handover dip readings",
     "dipHelpHandover": "Read the gauge ONCE. This reading closes Shift {n} — the shift still running — and becomes this shift’s opening automatically. You will not be asked for it again at shift close.",
     "handoverBanner": "Closing Shift {n} of {d} as you open this one.",
-    "closedAndCarries": "Closes Shift {n} · carries to this opening"
+    "closedAndCarries": "Closes Shift {n} · carries to this opening",
+    "faceReading": "Reading the face…",
+    "faceStrong": "This looks like {name} — selected below. Check it before you start him.",
+    "faceLikely": "This is probably {name} — selected below. Worth a second look.",
+    "faceUnsure": "Not sure who this is — closest is {name}. Pick him from the list.",
+    "faceMany": "More than one face in frame — pick him from the list.",
+    "faceNone": "No face found in that photo — pick him from the list.",
+    "faceUnread": "Could not read the face — pick him from the list.",
+    "faceNoRefs": "No reference photos on file yet — add them under Add Attendant and the camera will start naming him."
   },
   "streco": {
     "title": "Stock Reconciliation",
@@ -2805,7 +2898,10 @@
     "errIssue": "Could not issue the book.",
     "errUpdate": "Could not update the book.",
     "noCustomers": "No active credit customers are linked to this outlet — add one under Credit Customers first.",
-    "errLoad": "Could not load coupon books for this outlet."
+    "errLoad": "Could not load coupon books for this outlet.",
+    "photoSlip": "Photograph a coupon from this book",
+    "photoHint": "Optional but recommended — kept as the slip format and the backup if a bill is ever disputed.",
+    "sample": "Sample"
   },
   "coupon": {
     "title": "Credit Coupons",
@@ -2885,5 +2981,78 @@
     "ytd": "Year to date · financial year",
     "borrowedOne": "{p} at {o} is costed on {from}’s rate (₹{r}/L) — estimated until its own delivery rate is entered.",
     "anotherOutlet": "another outlet"
+  },
+  "settle": {
+    "title": "Shift settlement",
+    "settlement": "Settlement",
+    "slipTitle": "Shift Settlement",
+    "operator": "Operator",
+    "shift": "Shift",
+    "shiftStart": "Shift start",
+    "shiftEnd": "Shift end",
+    "meters": "Closing meters",
+    "nozzle": "Nozzle",
+    "opening": "opening",
+    "closing": "Closing meter",
+    "test": "Test L",
+    "scan": "Scan",
+    "scanFail": "Could not read the meter — enter it manually.",
+    "badClosing": "Closing meter cannot be less than the opening.",
+    "needClosing": "Enter the closing meter for every nozzle.",
+    "noNoz": "No nozzles are assigned to you.",
+    "noShift": "You have no open shift assigned. Start your shift first, then settle here at close.",
+    "totalSales": "Total sales",
+    "totalSettled": "Total settled",
+    "amount": "Amount",
+    "amountDue": "Amount due",
+    "remaining": "Remaining",
+    "variance": "Variance",
+    "balanced": "Balanced",
+    "offBy": "You appear to be {d} m away. Move to {outlet} and reopen this screen.",
+    "cash": "Cash",
+    "cash_adj": "Cash Adj",
+    "adjHint": "Cash + Cash Adj is recorded as the cash you accounted for.",
+    "card_total": "Card",
+    "upi_total": "UPI",
+    "petty_cash": "Petty",
+    "credit": "Credit customers",
+    "creditLbl": "Credit",
+    "creditInvoiceHint": "Each line auto-generates a credit invoice for that customer.",
+    "addCustomer": "Add customer",
+    "pickCustomer": "Select customer…",
+    "confirm": "Confirm & print slip",
+    "print": "Print slip",
+    "printed": "Printed",
+    "doneBtn": "Done",
+    "saving": "Settling…",
+    "loading": "Loading…",
+    "failed": "Could not settle — try again.",
+    "locating": "Getting your location…",
+    "recheck": "Re-check location",
+    "mustBeOnsite": "You must be at the outlet to settle",
+    "needLocation": "Turn on location for this app and reopen — settlement is allowed on-site only.",
+    "offsite": "You are outside the outlet — settlement is allowed on-site only.",
+    "offsiteBanner": "You appear to be off-site. Settlement is allowed at the outlet only."
+  },
+  "daterange": {
+    "from": "From",
+    "to": "To"
+  },
+  "idle": {
+    "staySignedIn": "Stay signed in"
+  },
+  "scan": {
+    "stop": "Stop",
+    "aim": "Point the camera at the barcode"
+  },
+  "login_page": {
+    "mobile": "Mobile Number",
+    "password": "Password",
+    "language": "Language",
+    "fp_enabled": "Fingerprint Enabled!",
+    "fp_enable_q": "Enable Fingerprint Login?",
+    "fp_enable": "Enable Fingerprint",
+    "fp_login": "Login with Fingerprint",
+    "maybe_later": "Maybe Later"
   }
 }

@@ -340,21 +340,21 @@ export default function POSPage() {
             <Lock size={36} color="#64748b"/>
           </div>
           <div>
-            <h2 style={{fontSize:22,fontWeight:700,margin:'0 0 8px'}}>Shift Ended</h2>
+            <h2 style={{fontSize:22,fontWeight:700,margin:'0 0 8px'}}>{tc('pos_page.shift_ended','Shift Ended')}</h2>
             <p style={{color:'var(--text-2)',margin:0,fontSize:15}}>
-              Your POS has been locked. Cash submission is complete.
+              {tc('pos_page.locked_msg','Your POS has been locked. Cash submission is complete.')}
             </p>
           </div>
           {submittedCash !== null && (
             <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:12,padding:'1.25rem 2rem'}}>
-              <div style={{fontSize:13,color:'#15803d',fontWeight:600,marginBottom:4}}>Cash Submitted</div>
+              <div style={{fontSize:13,color:'#15803d',fontWeight:600,marginBottom:4}}>{tc('pos_page.cash_submitted','Cash Submitted')}</div>
               <div style={{fontSize:32,fontWeight:900,color:'#166534'}}>
                 ₹{Number(submittedCash).toLocaleString('en-IN', {minimumFractionDigits:2})}
               </div>
             </div>
           )}
           <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:10,padding:'1rem 1.5rem',maxWidth:360,fontSize:14,color:'#9a3412'}}>
-            <strong>Next step:</strong> Please bring the cash to your manager for confirmation.
+            <strong>{tc('pos_page.next_step','Next step:')}</strong> {tc('pos_page.bring_cash','Please bring the cash to your manager for confirmation.')}
           </div>
           {shiftEndedAt && (
             <div style={{fontSize:12,color:'var(--text-3)'}}>
@@ -384,9 +384,9 @@ export default function POSPage() {
             <table style={{width:'100%',borderCollapse:'collapse'}}>
               <thead>
                 <tr style={{borderBottom:'1px solid var(--border)'}}>
-                  <th style={{textAlign:'left',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>Note</th>
-                  <th style={{textAlign:'center',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>Quantity</th>
-                  <th style={{textAlign:'right',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>Value</th>
+                  <th style={{textAlign:'left',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>{tc('pos_page.th_note','Note')}</th>
+                  <th style={{textAlign:'center',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>{tc('pos_page.th_qty','Quantity')}</th>
+                  <th style={{textAlign:'right',padding:'8px 0',fontSize:12,color:'var(--text-3)',fontWeight:600}}>{tc('pos_page.th_value','Value')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -415,7 +415,7 @@ export default function POSPage() {
               </tbody>
               <tfoot>
                 <tr style={{borderTop:'2px solid var(--border)'}}>
-                  <td colSpan={2} style={{padding:'12px 0',fontWeight:700,fontSize:15}}>Total Cash</td>
+                  <td colSpan={2} style={{padding:'12px 0',fontWeight:700,fontSize:15}}>{tc('pos_page.total_cash','Total Cash')}</td>
                   <td style={{padding:'12px 0',textAlign:'right',fontWeight:900,fontSize:20,color:'var(--brand)'}}>
                     ₹{denomTotal.toLocaleString('en-IN', {minimumFractionDigits:2})}
                   </td>
@@ -432,7 +432,7 @@ export default function POSPage() {
                 onClick={handleShiftEndSubmit}
                 disabled={submitLoading || denomTotal <= 0}>
                 {submitLoading
-                  ? <><Loader size={15} style={{animation:'spin 1s linear infinite'}}/> Submitting...</>
+                  ? <><Loader size={15} style={{animation:'spin 1s linear infinite'}}/> {tc('pos_page.submitting','Submitting...')}</>
                   : `Submit ₹${denomTotal.toLocaleString('en-IN')} & End Shift`}
               </button>
             </div>
@@ -452,7 +452,7 @@ export default function POSPage() {
               display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 1.25rem'}}>
               <LogOut size={28} color="#dc2626"/>
             </div>
-            <h2 style={{fontSize:20,fontWeight:700,margin:'0 0 10px'}}>End Your Shift?</h2>
+            <h2 style={{fontSize:20,fontWeight:700,margin:'0 0 10px'}}>{tc('pos_page.end_shift_q','End Your Shift?')}</h2>
             <p style={{color:'var(--text-2)',fontSize:14,margin:'0 0 1.5rem',lineHeight:1.6}}>
               You will <strong>not be able to record any more sales</strong> after this.
               You will then count and submit your cash collection to the manager.
@@ -472,7 +472,7 @@ export default function POSPage() {
               <button className="btn btn-primary"
                 style={{flex:1,justifyContent:'center',background:'#dc2626',borderColor:'#dc2626'}}
                 onClick={() => setPosPhase('denomination')}>
-                Yes, End Shift
+                {tc('pos_page.yes_end_shift','Yes, End Shift')}
               </button>
             </div>
           </div>
@@ -492,7 +492,7 @@ export default function POSPage() {
             <Lock size={32} color="#FF6B00"/>
           </div>
           <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800,color:'var(--text-1)'}}>
-            Manager-driven reconciliation
+            {tc('pos_page.mgr_recon','Manager-driven reconciliation')}
           </h2>
           <p style={{margin:'0 0 1.5rem',fontSize:14,color:'var(--text-2)',maxWidth:340,lineHeight:1.6}}>
             This station reconciles sales at shift end via the manager. No POS entry is needed during
@@ -514,7 +514,7 @@ export default function POSPage() {
             <Lock size={32} color="#dc2626"/>
           </div>
           <h2 style={{margin:'0 0 8px',fontSize:20,fontWeight:800,color:'var(--text-1)'}}>
-            POS Locked
+            {tc('pos_page.pos_locked','POS Locked')}
           </h2>
           <p style={{margin:'0 0 1.5rem',fontSize:14,color:'var(--text-2)',maxWidth:320,lineHeight:1.6}}>
             No shift is currently open at this station. Ask your manager to open a shift before you can record transactions.
@@ -581,7 +581,7 @@ export default function POSPage() {
             display:'flex',alignItems:'flex-start',gap:10}}>
             <span style={{fontSize:20}}>🚫</span>
             <div>
-              <div style={{fontWeight:700}}>Outside Station Boundary</div>
+              <div style={{fontWeight:700}}>{tc('pos_page.outside_boundary','Outside Station Boundary')}</div>
               <div>You are {geoDistance}m from the station. POS is restricted to within the allowed radius.</div>
             </div>
           </div>
@@ -590,7 +590,7 @@ export default function POSPage() {
           <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:10,
             padding:'0.75rem 1rem',marginBottom:'1rem',fontSize:13,color:'#9a3412',
             display:'flex',alignItems:'center',gap:8}}>
-            <span>⚠️</span> Location access denied. Please enable location to use POS.
+            <span>⚠️</span> {tc('pos_page.loc_denied','Location access denied. Please enable location to use POS.')}
           </div>
         )}
         {geoStatus === 'ok' && (
@@ -825,7 +825,7 @@ export default function POSPage() {
             <button className="btn btn-primary btn-lg" type="submit"
               style={{width:'100%',justifyContent:'center'}}
               disabled={loading || !activeShift || !nozzle || geoStatus==='outside'}>
-              {loading ? tc('pos_page.recording','Recording...') : geoStatus==='outside' ? '🚫 Outside Station Boundary' : tc('pos_page.record_txn','✓ Record Transaction')}
+              {loading ? tc('pos_page.recording','Recording...') : geoStatus==='outside' ? tc('pos_page.outside_boundary_btn','🚫 Outside Station Boundary') : tc('pos_page.record_txn','✓ Record Transaction')}
             </button>
 
           </form>
