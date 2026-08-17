@@ -239,6 +239,44 @@ hands the number back, and the settlement writes it. One writer.
    Precondition the owner set: **VAWE live and staging at parity with production**,
    then demos run on staging and prod holds only real outlets.
 
+## 🔴 GitHub Actions STORAGE is metered — minutes are not the thing to watch
+
+Learned 17-Aug-2026, when the account hit 100% of its included Actions storage.
+
+**Minutes and storage are two different meters.** Actions *minutes* are free and
+unlimited on a public repository, and this repo is public — so the minutes bill
+is genuinely zero and always will be. Actions *storage* is neither free nor
+per-repository: the allowance is **0.5 GB, shared across every repository on the
+account**. That is the meter that filled.
+
+Two things had filled it, and neither was commits:
+
+- **This repo: workflow run LOGS.** `ci.yml` produces ~2.2 MB of console output
+  per run and was firing ~8.5 times a day, about 18 MB/day, so the allowance
+  refilled roughly every four weeks on its own. Fixed by deleting the old logs,
+  cutting retention from 90 days to 7 in **Settings → Actions → General**,
+  quieting the two `npm install` steps with `--loglevel=error`, and skipping CI
+  on docs-only pushes. `prune-actions-logs.yml` now sweeps monthly.
+- **The `pharma` repo: build ARTIFACTS.** Ten copies of a ~104 MB Windows
+  installer, 1.04 GB — twice the whole account allowance, from one workflow.
+
+Things worth knowing before chasing this meter again:
+
+- **Deleting is the only thing that frees storage.** Lowering retention applies
+  only to objects created after the change; GitHub never applies it
+  retroactively. The monthly billing reset resets the counter, not the bytes.
+- **The figure lags and is averaged over the billing cycle**, so it drifts down
+  after a cleanup rather than dropping. The clean reading is after the reset.
+- **Read it at Settings → Billing → Overview**, not the Usage page. Usage shows
+  metered spend in dollars — which is $0 here, because public-repo usage is
+  fully discounted — and tells you nothing about the included allowance.
+- **The $0 budgets with "Stop usage: Yes" are correct and should stay.** They cap
+  paid overage at zero. Their `100%` badges are `$0 ÷ $0`, a display artifact,
+  not a measurement. They never blocked anything: with public-repo usage
+  discounted to $0 there is no billable usage for them to stop.
+- **Commit frequency is not the lever.** Small, individually-revertable PRs are
+  worth far more here than the megabytes batching them would save.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
