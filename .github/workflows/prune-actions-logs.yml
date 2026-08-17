@@ -1,0 +1,76 @@
+name: Prune Actions logs
+
+# WHY THIS EXISTS
+# ---------------
+# GitHub meters Actions *storage* separately from Actions *minutes*. Minutes are
+# free and unlimited on a public repo; storage is not — the free plan includes
+# 0.5 GB and this account hit 90% of it (0.45 GB) on 17-Aug-2026, within a month
+# of ci.yml landing on 23-Jul.
+#
+# The whole 0.45 GB is workflow run LOGS. ci.yml uploads no artifacts; it just
+# produces ~2.2 MB of console output per run (two `npm install` runs plus a
+# Next.js build, across two jobs) and CI fires ~8.5 times a day. That is roughly
+# 18 MB/day, i.e. the 0.5 GB allowance refills in about four weeks whatever we do.
+#
+# Lowering the retention period in Settings -> Actions -> General stops NEW logs
+# from accumulating, but GitHub applies retention only to objects created after
+# the change — it never reclaims what is already stored. Nor does the monthly
+# billing reset: that resets the counter, not the bytes. Deleting is the only
+# thing that actually frees the space, so it has to be done on a schedule.
+#
+# Runs themselves (and their pass/fail status, which is the audit trail that
+# matters after the 22-Jul truncated-route outage) are NOT deleted — only the
+# console logs attached to them.
+
+on:
+  # Run it on demand, e.g. the next time a usage alert arrives.
+  workflow_dispatch:
+    inputs:
+      older_than_days:
+        description: 'Delete logs for runs older than this many days'
+        required: true
+        default: '14'
+  # Monthly sweep so the alert stops recurring without anyone remembering.
+  schedule:
+    - cron: '0 3 1 * *' # 03:00 UTC on the 1st
+
+# Least privilege: actions:write is the one permission the delete endpoint needs.
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  prune:
+    name: Delete logs for runs older than N days
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow run logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: ${{ github.event.inputs.older_than_days || '14' }}
+        run: |
+          set -euo pipefail
+          cutoff="$(date -u -d "-${DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Cutoff: deleting logs for runs created before $cutoff"
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | "\(.id) \(.created_at)"' > runs.txt
+          echo "Found $(wc -l < runs.txt) run(s) in total."
+
+          deleted=0
+          skipped=0
+          while read -r id created; do
+            # ISO-8601 UTC strings sort lexicographically, so a plain string
+            # comparison is a correct date comparison here.
+            [[ "$created" < "$cutoff" ]] || continue
+            # Never delete the logs of the run doing the deleting.
+            [[ "$id" != "${GITHUB_RUN_ID}" ]] || continue
+            if gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/logs" --silent 2>/dev/null; then
+              deleted=$((deleted + 1))
+            else
+              # Already pruned, or the run is still in progress. Not an error.
+              skipped=$((skipped + 1))
+            fi
+          done < runs.txt
+
+          echo "Deleted logs for ${deleted} run(s); skipped ${skipped}."
