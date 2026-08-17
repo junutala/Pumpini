@@ -5,10 +5,35 @@ name: CI
 # 2026-07-22 a truncated route file (stations.js lost `module.exports = router`)
 # shipped to main and crash-looped the backend for every outlet. These jobs
 # catch that class of failure without needing a database.
+#
+# Documentation-only changes are skipped, to stop a markdown edit spending a
+# full Next.js build. GitHub skips a run only when EVERY changed path matches,
+# so a commit touching both a doc and a route still runs the full gate — the
+# outage guard is never weakened by this. The listed paths are inert: none is
+# read by the Next.js build or required by a backend route, and `marketing/` is
+# collateral no build references. Anything that can actually break a deploy
+# (frontend/, backend/, package.json, vercel.json) is deliberately absent from
+# the list and always triggers CI.
+#
+# ⚠️ If these jobs are ever made REQUIRED status checks in branch protection,
+# delete the two paths-ignore blocks first. A required check that never runs
+# stays pending forever, so every docs-only PR would become unmergeable.
+# (Safe today: neither main nor staging is a protected branch.)
+#
+# (The two lists below are duplicated on purpose: the Actions parser does not
+# support YAML anchors, so they cannot be shared. Keep them in step.)
 on:
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'marketing/**'
+      - '**/*.md'
   push:
     branches: [main, staging]
+    paths-ignore:
+      - 'docs/**'
+      - 'marketing/**'
+      - '**/*.md'
 
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:
@@ -33,7 +58,11 @@ jobs:
       # cannot run — use `npm install`. If a package-lock.json is added later,
       # switch this to `npm ci` for reproducible installs.
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        # --loglevel=error silences the per-package progress and the "added N
+        # packages" summary, which is the bulk of the ~1.1 MB of log each job
+        # stored. Errors and the install's exit code are unaffected, so a failed
+        # install still fails the job and still says why.
+        run: npm install --no-audit --no-fund --loglevel=error
 
       # A real compile/import break must fail here. Provide safe dummy env so
       # that a *missing runtime env var* can never mask a genuine build error:
@@ -60,7 +89,11 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        # --loglevel=error silences the per-package progress and the "added N
+        # packages" summary, which is the bulk of the ~1.1 MB of log each job
+        # stored. Errors and the install's exit code are unaffected, so a failed
+        # install still fails the job and still says why.
+        run: npm install --no-audit --no-fund --loglevel=error
 
       # Cheap syntax guard across ALL backend source: catches unbalanced
       # braces / partial edits that would throw only when the file is loaded.
