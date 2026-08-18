@@ -2199,7 +2199,9 @@
     "dipWarnBack": "Go back",
     "dipWarnSaveClose": "Save these & close",
     "dipWarnCloseAnyway": "Close anyway",
-    "slipNoMatch2": "Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}."
+    "slipNoMatch2": "Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.",
+    "dipLabel": "dip",
+    "closingAlreadyRead": "Closing already read"
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2545,7 +2547,11 @@
     "slipSays": "slip",
     "slipTicked": "Ticked {n} nozzle(s) from the slip.",
     "dipShort": "Dip",
-    "litresShort": "Litres"
+    "litresShort": "Litres",
+    "handoverDipReadings": "Handover dip readings",
+    "dipHelpHandover": "Read the gauge ONCE. This reading closes Shift {n} — the shift still running — and becomes this shift’s opening automatically. You will not be asked for it again at shift close.",
+    "handoverBanner": "Closing Shift {n} of {d} as you open this one.",
+    "closedAndCarries": "Closes Shift {n} · carries to this opening"
   },
   "streco": {
     "title": "Stock Reconciliation",

@@ -98,6 +98,26 @@ export default function ShiftStartPage() {
   const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> gauge photo it was read off
   const [dipWarn, setDipWarn] = useState(null);     // [tank numbers] with no opening reading at all
 
+  // ── THE HANDOVER READING ──────────────────────────────────────────────
+  // The shift still running when the manager arrives to start the next one, and the
+  // closings already recorded against it.
+  //
+  // 🔴 ONE SCAN, ONE READING. At a handover the manager walks up and reads the gauge
+  // ONCE. The system used to ask for that same measurement twice — as this shift's
+  // OPENING here, and as the outgoing shift's CLOSING over on Shift End — and the
+  // second ask is the one that gets skipped. Highway and Adhoc Highway recorded
+  // eight and six opening dips over 02–04 Aug and not one closing, so those outlets
+  // had no wet-stock variance at all for three days. Nothing was broken; they were
+  // simply asked for the same number twice and did it once.
+  //
+  // So when a shift is still open, the reading taken here IS that shift's closing,
+  // written against it — and the carry-forward rule then makes it this shift's
+  // opening, server-side, exactly as it does for any other close. One reading, one
+  // record, one number, and the boundary cannot drift because there is no second
+  // figure for it to drift from.
+  const [outgoing, setOutgoing] = useState(null);
+  const [outClosings, setOutClosings] = useState({});   // tank_id -> closing row on `outgoing`
+
   // The manager touching the slot picker must win over the clock-derived default,
   // which otherwise re-asserts itself the moment defs/openShifts arrive.
   const slotTouched = useRef(false);
@@ -121,11 +141,15 @@ export default function ShiftStartPage() {
     if (!file) return;
     setGaugeBusy(true); setGaugeMsg(''); setErr('');
     try {
-      // The screen photo is filed against the shift, so create it first if this is
-      // the manager's opening move. A failure here must not lose the photograph, so
-      // the scan still runs unfiled rather than aborting.
-      let shiftId = shift?.id || null;
-      try { shiftId = (await ensureShift()).id; } catch { /* file it later; read the screen now */ }
+      // The screen photo files against the shift the READING belongs to. At a
+      // handover that is the shift still running — the photo is the evidence for its
+      // closing — and no new shift need exist yet. Otherwise it is the shift being
+      // opened, so create it first. A failure must not lose the photograph, so the
+      // scan still runs unfiled rather than aborting.
+      let shiftId = outgoing ? outgoing.id : (shift?.id || null);
+      if (!outgoing) {
+        try { shiftId = (await ensureShift()).id; } catch { /* file it later; read the screen now */ }
+      }
 
       const img = new Image(); const url = URL.createObjectURL(file);
       const { base64, media_type } = await new Promise((resolve, reject) => {
@@ -142,7 +166,7 @@ export default function ShiftStartPage() {
       });
       const res = await parseGaugeScreen({
         station_id: stationId, file_base64: base64, media_type,
-        shift_id: shiftId, reading_type: 'opening',
+        shift_id: shiftId, reading_type: outgoing ? 'closing' : 'opening',
       });
       const rows = Array.isArray(res.tanks) ? res.tanks : [];
       // FUEL DECIDES WHICH TANK; THE TANK NUMBER ONLY VERIFIES. The rule lives in
@@ -154,8 +178,10 @@ export default function ShiftStartPage() {
       // the one control that stops a shift boundary drifting — and the manager would
       // see a locked green row while it happened. Offer only the tanks he can
       // actually enter, and tell him the rest were left alone.
-      const openTanks  = dipTanks.filter(t => !carriedDips[t.id]);
-      const heldByRule = dipTanks.filter(t =>  carriedDips[t.id]).map(t => t.tank_number);
+      // A tank already read at this handover is not a candidate either — its closing
+      // is recorded and a second photo would only re-open the same question.
+      const openTanks  = dipTanks.filter(t => !carriedDips[t.id] && !outClosings[t.id]);
+      const heldByRule = dipTanks.filter(t =>  carriedDips[t.id] || outClosings[t.id]).map(t => t.tank_number);
       const { pairs, dropped, unplaced, ambiguous, renumbered, capacityOff } =
         matchGaugeRows(rows, openTanks);
 
@@ -358,6 +384,29 @@ export default function ShiftStartPage() {
         shiftRef.current = Promise.resolve(mine[0]);
         setResumed(true);
         refreshShift(mine[0].id).catch(()=>{ shiftRef.current = null; setResumed(false); });
+        return;
+      }
+
+      // A FRESH START WITH A SHIFT STILL RUNNING — the handover. Whatever he reads
+      // off the gauge now closes THAT shift; the server then carries it into this
+      // one's opening. See the note on `outgoing` above for why this is one reading
+      // and not two. Only here: resuming his own shift (the two branches above) is
+      // not a handover, and its dips are already settled.
+      const handover = openList
+        .slice()
+        .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))[0] || null;
+      if (handover) {
+        setOutgoing(handover);
+        // What it has ALREADY had closed — if he did Shift End first, the reading
+        // exists and this screen must show it, not ask for it again.
+        api.get('/dipstick', { params:{ station_id: stationId, shift_id: handover.id } })
+          .then(rows => {
+            const done = {};
+            (Array.isArray(rows)?rows:[]).forEach(x => { if (x.reading_type === 'closing') done[x.tank_id] = x; });
+            setOutClosings(done);
+            setSavedDips(p => { const n = { ...p }; Object.keys(done).forEach(k => { n[k] = true; }); return n; });
+          })
+          .catch(()=>{ /* no closings visible → the boxes ask, which is the safe default */ });
       }
     });
   }, [stationId]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -440,17 +489,30 @@ export default function ShiftStartPage() {
     // reading: dip_cm stays null, which is how we tell the two apart.
     const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
     try {
-      const sid = shiftId || (await ensureShift()).id;
+      // WHERE THIS READING GOES. With a shift still running it is that shift's
+      // CLOSING — one physical measurement, filed once, and the server's
+      // carry-forward turns it into this shift's opening. Note it does NOT need the
+      // new shift to exist, so no shift is created just to record it.
+      //
+      // With nothing running it is a genuine opening: the outlet's first shift, or
+      // one started after the previous was properly closed and its carry already
+      // taken. Then the reading belongs to the shift being opened, as before.
+      const asClosing = !!outgoing && !outClosings[tank.id];
+      const sid = asClosing ? outgoing.id : (shiftId || (await ensureShift()).id);
+      const type = asClosing ? 'closing' : 'opening';
       await recordDipstick({
         station_id: stationId, tank_id: tank.id, shift_id: sid,
-        reading_type: 'opening', dip_cm, volume_ltrs: vol,
+        reading_type: type, dip_cm, volume_ltrs: vol,
         artifact_id: dipArtifact[tank.id] || null,
       });
       setSavedDips(p => ({ ...p, [tank.id]: true }));
+      if (asClosing) {
+        setOutClosings(p => ({ ...p, [tank.id]: { tank_id: tank.id, dip_cm, volume_ltrs: vol } }));
+      }
       // Reflect the save inline immediately (so the "last saved" line updates without a reload).
       setTanks(ts => ts.map(t => t.id === tank.id
         ? { ...t, last_dip_cm: dip_cm, last_reading: vol,
-            last_reading_at: new Date().toISOString(), last_reading_type: 'opening' }
+            last_reading_at: new Date().toISOString(), last_reading_type: type }
         : t));
       return true;
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); return false; }
@@ -467,6 +529,8 @@ export default function ShiftStartPage() {
       // without the manager seeing it — which is precisely the drift the
       // carry-forward rule exists to stop. Belt and braces with the scan filter.
       if (carriedDips[tk.id]) continue;
+      // Already closed on the outgoing shift — the one reading is taken.
+      if (outClosings[tk.id]) continue;
       if (!isDirty(tk)) continue;
       const ok = await persistDip(tk, shiftId);
       if (!ok) return false;
@@ -480,8 +544,24 @@ export default function ShiftStartPage() {
   const goToAttendants = async () => {
     setBusy(true); setErr('');
     try {
-      const s = await ensureShift();
-      if (!await flushDips(s.id)) return;
+      // DIPS FIRST AT A HANDOVER. They close the shift that is still running and do
+      // not need this one to exist; writing them before it is created means the
+      // server carries them into the opening as the shift is opened, rather than
+      // opening it empty and back-filling a moment later. Both orders are correct —
+      // the back-fill exists precisely because the manager may open first — but this
+      // one puts the carried figure on screen straight away.
+      //
+      // The two paths are kept apart rather than flushing twice: flushDips reads
+      // savedDips/outClosings from this render, so a second call in the same tick
+      // would still see them empty and re-post every tank.
+      if (outgoing) {
+        if (!await flushDips(null)) return;
+        const s = await ensureShift();
+        await refreshShift(s.id).catch(()=>{ /* the next screen still opens */ });
+      } else {
+        const s = await ensureShift();
+        if (!await flushDips(s.id)) return;
+      }
       // A tank with nothing entered anywhere. Blocking rather than a toast: the
       // opening stock is what the whole day's wet-stock variance is measured from.
       const missing = dipTanks.filter(tk => !savedDips[tk.id] && !hasReading(tk)).map(tk => tk.tank_number);
@@ -691,8 +771,20 @@ export default function ShiftStartPage() {
       {/* ── SCREEN 1 — Gauge & opening dip ───────────────────────────── */}
       {step===0 && (
         <div className="card" style={{maxWidth:640}}>
-          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('sstart.openingDipReadings','Opening dip readings')}</div>
-          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('sstart.dipHelpCarried','The opening stock is whatever the last shift closed at — it is carried across automatically so no litre can go missing between two shifts. You only enter a reading for a tank that has no previous close.')}</div>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>
+            {outgoing ? tc('sstart.handoverDipReadings','Handover dip readings') : tc('sstart.openingDipReadings','Opening dip readings')}
+          </div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>
+            {outgoing
+              ? tc('sstart.dipHelpHandover','Read the gauge ONCE. This reading closes Shift {n} — the shift still running — and becomes this shift’s opening automatically. You will not be asked for it again at shift close.').replace('{n}', outgoing.shift_number)
+              : tc('sstart.dipHelpCarried','The opening stock is whatever the last shift closed at — it is carried across automatically so no litre can go missing between two shifts. You only enter a reading for a tank that has no previous close.')}
+          </div>
+          {outgoing && (
+            <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:9,padding:'9px 11px',marginBottom:'1rem',fontSize:12,color:'#9a3412'}}>
+              {tc('sstart.handoverBanner','Closing Shift {n} of {d} as you open this one.')
+                .replace('{n}', outgoing.shift_number).replace('{d}', fmtDay(outgoing.date))}
+            </div>
+          )}
 
           {/* The photograph is the headline action now: one picture fills every tank
               below. Outlets with no console (e.g. IOCL) simply take a physical dip
@@ -719,6 +811,20 @@ export default function ShiftStartPage() {
             // Carried from the last close by the server. Nothing to do, nothing to
             // type — showing entry boxes here would invite a manager to "correct"
             // the very figure the rule exists to keep fixed.
+            // Already read at this handover — the closing is on the outgoing shift
+            // and the carry will bring it here. Locked for the same reason as a
+            // carried tank: asking twice is what lost the closings in the first place.
+            const oc = outClosings[tk.id];
+            if (oc && !carriedDips[tk.id]) return (
+              <div key={tk.id} style={{marginBottom:10,paddingBottom:10,borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                <div style={{width:120,fontSize:13,fontWeight:600}}>{tc('sstart.tank','Tank')} {tk.tank_number} <span style={{color:'#888',fontWeight:400}}>{tk.fuel_type}</span></div>
+                <div style={{fontSize:14,fontWeight:800,color:'#0f172a'}}>{fmtL(oc.volume_ltrs)} L</div>
+                {oc.dip_cm != null && <div style={{fontSize:12,color:'#64748b'}}>{tc('sstart.dipLabel','dip')} {oc.dip_cm} cm</div>}
+                <span style={{fontSize:11.5,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'3px 10px',fontWeight:700}}>
+                  🔒 {tc('sstart.closedAndCarries','Closes Shift {n} · carries to this opening').replace('{n}', outgoing?.shift_number ?? '')}
+                </span>
+              </div>
+            );
             const cd = carriedDips[tk.id];
             if (cd) return (
               <div key={tk.id} style={{marginBottom:10,paddingBottom:10,borderBottom:'1px solid #f1f5f9',display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
