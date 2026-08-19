@@ -64,14 +64,26 @@ export default function SettlementPage() {
       const active = await api.get('/shifts/active', { params: { station_id: stationId } });
       if (!active) { setShift(null); setLoading(false); return; }
       setShift(active);
-      const [full, pr, cs, st] = await Promise.all([
+      const [full, pr, cs, st, sm] = await Promise.all([
         api.get(`/shifts/${active.id}`).catch(() => null),
         api.get(`/prices/${stationId}/current`).catch(() => []),
         api.get('/corporate', { params: { station_id: stationId } }).catch(() => []),
         api.get(`/stations/${stationId}/settings`).catch(() => ({})),
+        // The closing meters the manager may have scanned off the composite slip photo.
+        // Empty (or no draft yet) → the boxes start blank, exactly as before.
+        api.get('/reconcile/scan-meters', { params: { shift_id: active.id } }).catch(() => []),
       ]);
       const mine = (full?.attendants || []).find(a => a.attendant_id === user.id);
-      setNoz((mine?.nozzles || []).map(n => ({ ...n, closing: '', test: '' })));
+      // Pre-fill each of MY nozzles' closing from the manager's scan draft, still fully
+      // editable. The self-settle still sends whatever is in the box — the draft is a
+      // convenience, not the record.
+      const draft = {}; (Array.isArray(sm) ? sm : []).forEach(d => { if (d.closing_volume != null) draft[d.nozzle_id] = d.closing_volume; });
+      setNoz((mine?.nozzles || []).map(n => ({
+        ...n,
+        closing: draft[n.nozzle_id] != null ? String(draft[n.nozzle_id]) : '',
+        fromScan: draft[n.nozzle_id] != null,
+        test: '',
+      })));
       const rm = {}; (Array.isArray(pr) ? pr : []).forEach(p => { rm[p.fuel_type] = Number(p.price); }); setRates(rm);
       setCorps(Array.isArray(cs) ? cs : []);
       setOutlet((typeof station === 'object' ? station?.name : '') || st?.name || '');
@@ -189,7 +201,9 @@ export default function SettlementPage() {
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{tc('settle.meters', 'Closing meters')}</div>
           {noz.map((n, i) => (
             <div key={n.nozzle_id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < noz.length - 1 ? '0.5px solid var(--border,#eee)' : 'none' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tc('settle.nozzle', 'Nozzle')} {n.nozzle_number} · {n.fuel_type} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>· {tc('settle.opening', 'opening')} {fmtL(n.opening_reading)}</span></div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tc('settle.nozzle', 'Nozzle')} {n.nozzle_number} · {n.fuel_type} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>· {tc('settle.opening', 'opening')} {fmtL(n.opening_reading)}</span>
+                {n.fromScan && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#0f766e', background: '#ccfbf1', borderRadius: 99, padding: '1px 7px', fontWeight: 700 }}>{tc('settle.fromScan', "manager's scan — check")}</span>}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 8, alignItems: 'center' }}>
                 <input style={inp} type="number" inputMode="decimal" placeholder={tc('settle.closing', 'Closing meter')} value={n.closing} onChange={e => setN(i, 'closing', e.target.value)} />
                 <input style={inp} type="number" inputMode="decimal" placeholder={tc('settle.test', 'Test L')} value={n.test} onChange={e => setN(i, 'test', e.target.value)} />

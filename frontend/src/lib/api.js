@@ -68,8 +68,13 @@ export const getReco     = (sid)  => api.get(`/reconcile/${sid}`);
 // The caller reads its base64 the same way those flows do (file_base64), which is
 // mapped to the endpoint's image_base64 here. Generous timeout: vision on several
 // slips plus a possible Railway cold start can outrun the default.
-export const parseSlips  = (shiftId, { file_base64, media_type }) =>
-  api.post('/reconcile/parse-slips', { shift_id: shiftId, image_base64: file_base64, media_type }, { timeout: 90000 });
+// `persist:true` (used at shift CLOSE) also stores each resolved closing as a draft
+// in shift_scan_meters, so the operators' self-settlement screens can read the meters
+// the manager scanned. Off by default — a shift-OPEN scan must never persist a closing.
+export const parseSlips  = (shiftId, { file_base64, media_type, persist }) =>
+  api.post('/reconcile/parse-slips', { shift_id: shiftId, image_base64: file_base64, media_type, persist: persist === true }, { timeout: 90000 });
+// The draft closings a manager scanned off the composite slip photo, keyed to nozzles.
+export const getScanMeters = (shiftId) => api.get('/reconcile/scan-meters', { params: { shift_id: shiftId } });
 
 // Corporate
 // station_id is REQUIRED by the route guard — without it the endpoint 400s rather

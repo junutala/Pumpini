@@ -350,7 +350,10 @@ export default function ShiftEndPage() {
     setScanning('all-slips'); setErr('');
     try {
       const b64 = await readB64(file);
-      const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg' });
+      // persist:true — this is the CLOSE scan, so store each closing as a draft the
+      // operators' self-settlement can read. Harmless in manager-led mode (the manager
+      // fills his own boxes below); the source of truth for attendant-led self-settle.
+      const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg', persist: true });
       const slips = Array.isArray(res.slips) ? res.slips : [];
       let matched = 0; const unmatched = []; const verify = [];
       slips.forEach(s => (s.lines || []).forEach(l => {
