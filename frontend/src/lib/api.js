@@ -60,6 +60,16 @@ export const recordDispense    = (data)   => api.post('/dispense', data);
 // Reconcile
 export const submitReco  = (data) => api.post('/reconcile', data);
 export const getReco     = (sid)  => api.get(`/reconcile/${sid}`);
+// Composite slip scan — ONE photo holding SEVERAL dispenser slips. The server
+// reads every slip in the frame and returns each nozzle's cumulative volume
+// already matched to a nozzle_id, so the caller drops the reading straight onto
+// the matching nozzle. Complements the per-nozzle scan (/reconcile/pos-meter)
+// and the single-slip scan (/reconcile/parse-slip) — it does not replace either.
+// The caller reads its base64 the same way those flows do (file_base64), which is
+// mapped to the endpoint's image_base64 here. Generous timeout: vision on several
+// slips plus a possible Railway cold start can outrun the default.
+export const parseSlips  = (shiftId, { file_base64, media_type }) =>
+  api.post('/reconcile/parse-slips', { shift_id: shiftId, image_base64: file_base64, media_type }, { timeout: 90000 });
 
 // Corporate
 // station_id is REQUIRED by the route guard — without it the endpoint 400s rather
