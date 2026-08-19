@@ -11,6 +11,7 @@ const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweSto
 const artifacts  = require('../services/artifactService');
 const settlement = require('../services/settlementService');
 const testDraws  = require('../services/testDrawService');
+const { closeShiftIfReady } = require('../services/shiftCloseService');
 
 // Does the outlet-level self-settlement switch exist yet? Cached only once TRUE, so
 // the first settle after the owner runs the DDL honours it without a restart.
@@ -25,6 +26,23 @@ async function hasSelfSettleFlag(client = pool) {
     _hasSelfSettleFlag = rows.length > 0;
   } catch { _hasSelfSettleFlag = false; }
   return _hasSelfSettleFlag;
+}
+
+// Does the outlet-level attendant-led auto-close switch exist yet? Same catalog-first,
+// cache-once-TRUE pattern as hasSelfSettleFlag: the column ships in prod but a missing
+// one (other envs) must just read FALSE, and the probe is a plain catalog SELECT so it
+// is safe to call inside a transaction (see CLAUDE.md — never try/catch 42703 in a tx).
+let _hasAutocloseFlag = false;
+async function hasAutocloseFlag(client = pool) {
+  if (_hasAutocloseFlag) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='attendant_led_autoclose' LIMIT 1`);
+    _hasAutocloseFlag = rows.length > 0;
+  } catch { _hasAutocloseFlag = false; }
+  return _hasAutocloseFlag;
 }
 const slipParser = require('../services/slipParser');
 const attendance = require('../services/attendanceService');
@@ -428,6 +446,21 @@ router.post('/self-settle', authenticate,
         }
       }
 
+      // ATTENDANT-LED AUTO-CLOSE (opt-in per outlet). When ON, an operator's self
+      // settlement is written PENDING (manager_confirmed=FALSE) — the manager accepts
+      // each via PATCH /:id/confirm, and the shift auto-closes on the last accept.
+      // When OFF the row is FINAL exactly as before. Probed inside the transaction
+      // (catalog SELECT, never try/catch), column-tolerant: a missing column reads
+      // FALSE, so an outlet without it keeps today's auto-final behaviour.
+      let autocloseFlagOn = false;
+      if (await hasAutocloseFlag(client)) {
+        const { rows: ac } = await client.query(
+          `SELECT COALESCE(attendant_led_autoclose, FALSE) AS on
+             FROM station_settings WHERE station_id=$1`, [sa.station_id]);
+        autocloseFlagOn = ac.length ? ac[0].on === true : false;
+      }
+      const pending = autocloseFlagOn === true;
+
       // Server-side geofence — authoritative. If the outlet has geofencing on, the
       // operator's device coords (sent with the request) must be within the radius.
       // Enforced here so a crafted/jailbroken client can't bypass it; respects the
@@ -499,23 +532,33 @@ router.post('/self-settle', authenticate,
         invoices.push(inv[0]);
       }
 
-      // Write the operator's reconciliation row as FINAL (manager_confirmed=TRUE, no
-      // separate manager confirm). mode='operator' marks the source; the shift-end
+      // Write the operator's reconciliation row. In the default (auto-final) mode it is
+      // FINAL — manager_confirmed=TRUE, manager_id=self, confirmed_at=NOW() — exactly as
+      // before. Under attendant-led auto-close ($13 = pending = TRUE) the three confirm
+      // columns become PENDING (manager_confirmed=FALSE, manager_id=NULL, confirmed_at=
+      // NULL) so the manager must accept via PATCH /:id/confirm. ONE insert covers both
+      // via the bound boolean; everything else (sales math, operator_ack, mode='operator',
+      // test/price/petty) is unchanged. mode='operator' marks the source; the shift-end
       // screen and settlement tile read it exactly as a manager-entered line.
       const { rows: recoRows } = await client.query(
         `INSERT INTO shift_reconciliation(
            shift_id, attendant_id, total_sales, cash_expected, cash_actual,
            upi_total, credit_total, card_total, remarks, manager_confirmed, manager_id,
            confirmed_at, reconciled_at, mode, operator_ack, test_ltrs, price_per_ltr, petty_cash)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,TRUE,$2,NOW(),NOW(),'operator',TRUE,$10,$11,$12)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,
+                NOT $13, CASE WHEN $13 THEN NULL ELSE $2 END, CASE WHEN $13 THEN NULL ELSE NOW() END,
+                NOW(),'operator',TRUE,$10,$11,$12)
          ON CONFLICT(shift_id,attendant_id) DO UPDATE SET
            total_sales=$3, cash_expected=$4, cash_actual=$5, upi_total=$6, credit_total=$7,
-           card_total=$8, remarks=$9, manager_confirmed=TRUE, manager_id=$2, confirmed_at=NOW(),
+           card_total=$8, remarks=$9,
+           manager_confirmed=NOT $13,
+           manager_id=CASE WHEN $13 THEN NULL ELSE $2 END,
+           confirmed_at=CASE WHEN $13 THEN NULL ELSE NOW() END,
            reconciled_at=NOW(), mode='operator', operator_ack=TRUE, test_ltrs=$10,
            price_per_ltr=$11, petty_cash=$12
          RETURNING *`,
         [shift_id, attendant_id, salesValue, expectedCash, cashActual, upiVal, creditVal, cardVal,
-         remarks || null, totalTest, legs[0]?.price || 0, pettyVal]);
+         remarks || null, totalTest, legs[0]?.price || 0, pettyVal, pending]);
 
       if (denomination) {
         const d = denomination;
@@ -648,9 +691,96 @@ router.patch('/:id/confirm', authenticate, requireStationVia('SELECT s.station_i
       }
     }
 
-    // Return full reco with variance — only now is it revealed
-    res.json({ ...reco, variance });
+    // ATTENDANT-LED AUTO-CLOSE. When the outlet runs this mode and this confirm was
+    // the LAST operator still pending, close the shift automatically — no manual
+    // "close" tap. force:true because "every operator confirmed" IS the all-reconciled
+    // condition here; the mandatory closing-dip gate inside closeShiftIfReady still
+    // applies and is NOT forced, so a shift with a missing dip comes back
+    // {closed:false, reason:'missing_dip'} and the UI tells the manager to enter it.
+    // Best-effort and flag-gated: when the flag is OFF nothing here runs and the
+    // response is byte-for-byte the old { ...reco, variance }. These queries run on
+    // pool (autocommit), so the try/catch is safe (not inside a transaction).
+    let auto_close;
+    try {
+      if (await hasAutocloseFlag()) {
+        const { rows: pol } = await pool.query(
+          `SELECT COALESCE(ss.attendant_led_autoclose, FALSE) AS on
+             FROM station_settings ss
+             JOIN shifts s ON s.station_id = ss.station_id
+            WHERE s.id=$1`, [reco.shift_id]);
+        if (pol.length && pol[0].on === true) {
+          // Any operator on this shift still without a manager-confirmed reco row?
+          const { rows: outstanding } = await pool.query(
+            `SELECT COUNT(*) AS cnt
+               FROM shift_attendants sa
+              WHERE sa.shift_id=$1
+                AND NOT EXISTS (
+                  SELECT 1 FROM shift_reconciliation r
+                   WHERE r.shift_id=sa.shift_id AND r.attendant_id=sa.attendant_id
+                     AND r.manager_confirmed=TRUE
+                )`,
+            [reco.shift_id]);
+          if (parseInt(outstanding[0]?.cnt || 0) === 0) {
+            const result = await closeShiftIfReady(pool, reco.shift_id, {
+              force: true, io: req.io, user_id: req.user.id });
+            auto_close = { closed: result.closed, ...(result.reason ? { reason: result.reason } : {}) };
+          }
+        }
+      }
+    } catch (e) { /* auto-close is best-effort — the confirm itself already succeeded */ }
+
+    // Return full reco with variance — only now is it revealed. auto_close is present
+    // ONLY when the outlet runs attendant-led mode and this was the last accept.
+    res.json({ ...reco, variance, ...(auto_close ? { auto_close } : {}) });
   } catch(err) { next(err); }
+});
+
+// POST /api/reconcile/autoclose-check — the manager's progress screen calls this after
+// entering the last closing dip, to finalize the auto-close once every operator has
+// been accepted. It applies the SAME rules as the last-accept path (closeShiftIfReady
+// with force:true — the dip gate still applies and is not forced). Guards mirror the
+// confirm route: station-scoped via the shift + reconcile.manage.
+//   -> { closed:false, reason:'not_enabled' }         outlet is not in attendant-led mode
+//   -> { closed:false, reason:'awaiting_confirm', pending_count }   operators not all accepted
+//   -> whatever closeShiftIfReady returns (closed:true | missing_dip | active_pos | not_open)
+router.post('/autoclose-check', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
+  async (req, res, next) => {
+  try {
+    const { shift_id } = req.body;
+    if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
+
+    // Flag on for this outlet? Column-tolerant probe; off/absent → not enabled.
+    let flagOn = false;
+    if (await hasAutocloseFlag()) {
+      const { rows } = await pool.query(
+        `SELECT COALESCE(ss.attendant_led_autoclose, FALSE) AS on
+           FROM station_settings ss
+           JOIN shifts s ON s.station_id = ss.station_id
+          WHERE s.id=$1`, [shift_id]);
+      flagOn = rows.length ? rows[0].on === true : false;
+    }
+    if (!flagOn) return res.json({ closed: false, reason: 'not_enabled' });
+
+    // Every operator accepted (manager-confirmed reco row)?
+    const { rows: outstanding } = await pool.query(
+      `SELECT COUNT(*) AS cnt
+         FROM shift_attendants sa
+        WHERE sa.shift_id=$1
+          AND NOT EXISTS (
+            SELECT 1 FROM shift_reconciliation r
+             WHERE r.shift_id=sa.shift_id AND r.attendant_id=sa.attendant_id
+               AND r.manager_confirmed=TRUE
+          )`,
+      [shift_id]);
+    const pending_count = parseInt(outstanding[0]?.cnt || 0);
+    if (pending_count > 0) return res.json({ closed: false, reason: 'awaiting_confirm', pending_count });
+
+    const result = await closeShiftIfReady(pool, shift_id, {
+      force: true, io: req.io, user_id: req.user.id });
+    res.json(result);
+  } catch (err) { next(err); }
 });
 
 // ── Collections + meter close (simplified manager-driven flow) ───────────────
