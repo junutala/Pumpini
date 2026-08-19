@@ -1069,6 +1069,9 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
 function PumpDetails({ stationId, pump, tc, onChanged }) {
   const [d, setD] = useState({ pump_number:'', serial:'', model:'' });
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [readMsg, setReadMsg] = useState('');
+  const [slipSlot, setSlipSlot] = useState(0);
 
   useEffect(() => {
     setD({ pump_number: pump.pump_number || '', serial: pump.serial || '', model: pump.model || '' });
@@ -1085,9 +1088,50 @@ function PumpDetails({ stationId, pump, tc, onChanged }) {
     finally { setBusy(false); }
   };
 
+  // Fix a serial on an EXISTING pump by photographing its slip — the same reader the
+  // Add-pump form uses (parse-pump-slip). Typing a serial off a thermal printout is
+  // the step most likely to be got wrong, and a mis-typed serial silently breaks every
+  // future slip match on that machine. Read → prefilled → saved, then shown so the
+  // owner verifies it against the paper. Model fills only when it is currently blank,
+  // so a scan never overwrites a model the owner has already set by hand.
+  const onSlip = async (img) => {
+    setReadMsg('');
+    if (!img?.base64) return;
+    setReading(true);
+    try {
+      const r = await parsePumpSlip(stationId, { file_base64: img.base64, media_type: img.media_type });
+      const got = []; const patch = {};
+      if (r?.pump_serial) { patch.serial = r.pump_serial; got.push(tc('setp.gotSerial', 'serial')); }
+      if (r?.model && !d.model) { patch.model = r.model; got.push(tc('setp.gotModel', 'model')); }
+      if (Object.keys(patch).length) {
+        setD(p => ({ ...p, ...patch }));
+        try { await updatePump(stationId, pump.id, patch); onChanged(); }
+        catch (err) { alert(err?.error || tc('setp.failed', 'Failed')); }
+      }
+      setReadMsg(got.length
+        ? tc('setp.readOk', 'Read the {x} off the slip — check them against the paper.').replace('{x}', got.join(' and '))
+        : tc('setp.readNothing', 'Could not find a serial on that slip — type it from the paper.'));
+    } catch (e) {
+      setReadMsg(e?.error || tc('setp.readFailed', 'Could not read that slip — type the serial and model from it.'));
+    } finally { setReading(false); setSlipSlot(n => n + 1); }
+  };
+
   return (
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',
-      gap:10,paddingTop:12}}>
+    <div style={{ paddingTop:12 }}>
+      <div style={{ marginBottom:12 }}>
+        <PhotoCapture
+          key={slipSlot}
+          label={tc('setp.scanSerial', 'Scan a slip to read the serial')}
+          retakeLabel={tc('setp.retakePhoto', 'Retake')}
+          hint={tc('setp.scanSerialHint', 'Reads the serial (and model) off the slip and saves it — check it against the paper below.')}
+          onCapture={onSlip}
+          disabled={busy || reading}
+          removeLabel={tc('photo.remove', 'Remove')}/>
+        {reading && <div style={{fontSize:12.5,color:'var(--text-3)',marginTop:8}}>{tc('setp.readingSlip', 'Reading the slip…')}</div>}
+        {!reading && readMsg && <div style={{fontSize:12.5,color:'#b45309',marginTop:8}}>{readMsg}</div>}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',
+        gap:10}}>
       <div>
         <label style={MICRO_LABEL}>{tc('setp.pumpNumber', 'Pump number')}</label>
         <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={16} disabled={busy}
@@ -1107,6 +1151,7 @@ function PumpDetails({ stationId, pump, tc, onChanged }) {
           placeholder={tc('setp.egModel', 'e.g. Gilbarco SK700')}
           value={d.model} onChange={e=>setD(p=>({...p,model:e.target.value}))}
           onBlur={()=>commit('model')}/>
+      </div>
       </div>
     </div>
   );
