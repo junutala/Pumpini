@@ -26,7 +26,7 @@ import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock, Drop
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, getLatestArtifacts, parseSlips } from '../../lib/api';
+import api, { parseGaugeScreen, getLatestArtifacts, parseSlips, getReco, confirmReco, autocloseCheck } from '../../lib/api';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
@@ -169,6 +169,16 @@ export default function ShiftEndPage() {
   const [err, setErr]     = useState('');
   const [done, setDone]   = useState(false);
 
+  // ── Attendant-led auto-close (per-outlet flag) ──────────────────────────
+  // `st` holds the station settings; the flag lives on it. When ON the operators
+  // self-settle their own cash and the manager ACCEPTS each row rather than settling
+  // it — a progress + accept view replaces the settle stack. When OFF (or the column
+  // is absent, which the backend reports as FALSE) the screen is exactly as today.
+  const [settings, setSettings] = useState(null);  // station settings (holds the flag)
+  const [recoRows, setRecoRows] = useState([]);   // reconciliation rows for the shift
+  const [accepting, setAccepting] = useState('');  // reco id being accepted
+  const [autoState, setAutoState] = useState(null);// last confirm/autoclose-check result
+
   // Auto-pick fires once per mount only — a manager who deliberately switched to
   // another open shift must not have the list yank him back.
   const autoPicked = useRef(false);
@@ -194,6 +204,14 @@ export default function ShiftEndPage() {
       })
       .catch(()=>setOpen([]));
   }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Station settings — the attendant-led flag rides on them. Station-scoped, so it is
+  // loaded once per outlet, not per shift. Best-effort: a failed read leaves `st` null,
+  // which reads as the flag OFF and keeps today's manager-led behaviour.
+  useEffect(() => {
+    if (!stationId) { setSettings(null); return; }
+    api.get(`/stations/${stationId}/settings`).then(setSettings).catch(()=>setSettings(null));
+  }, [stationId]);
 
   // Slips kept against this shift. Best-effort on purpose: an outlet whose
   // artifact table predates the migration, or one that has never scanned a
@@ -229,6 +247,8 @@ export default function ShiftEndPage() {
       // Re-hydrate operators already settled server-side, so a pause/refresh/remount
       // never wipes a recorded settlement and forces the manager to re-enter it.
       const byAtt = {}; (Array.isArray(reco)?reco:[]).forEach(r => { byAtt[r.attendant_id] = r; });
+      // Keep the raw rows too — the attendant-led progress bars/rows read them directly.
+      setRecoRows(Array.isArray(reco)?reco:[]); setAutoState(null);
       const seed = {}; const closedSeed = {};
       (d?.attendants||[]).forEach(a => {
         const r = byAtt[a.attendant_id];
@@ -354,6 +374,9 @@ export default function ShiftEndPage() {
       // From here the per-nozzle cameras are disabled until Retake / clear — the
       // reading boxes stay hand-editable, only the competing camera is turned off.
       setCompositeScanned(true);
+      // Attendant-led: the persisted drafts are what the operators self-settle from, so
+      // pull the reconciliation rows back to move the progress bars as they come in.
+      if (attendantLed) loadReco();
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipsFailed','Could not read the slips — enter the readings manually.')); }
     setScanning('');
   };
@@ -396,6 +419,77 @@ export default function ShiftEndPage() {
   // An empty shift (opened by mistake, no operators) has nothing to reconcile —
   // allow closing it directly so it doesn't sit open as an eyesore.
   const emptyShift = !!shift && attendants.length === 0;
+
+  // ── Attendant-led auto-close: derived state + handlers ──────────────────
+  // The flag lives on the station settings. FALSE (or absent) ⇒ everything below is
+  // inert and the screen behaves exactly as today.
+  const attendantLed = settings?.attendant_led_autoclose === true;
+  const recoByAtt = {}; recoRows.forEach(r => { if (r?.attendant_id) recoByAtt[r.attendant_id] = r; });
+  // "Settled" = the operator submitted a self-settlement row; "Confirmed" = the manager
+  // accepted it. N = every operator assigned to the shift.
+  const settledCount   = attendants.filter(a => recoByAtt[a.attendant_id]).length;
+  const confirmedCount = attendants.filter(a => recoByAtt[a.attendant_id]?.manager_confirmed === true).length;
+
+  // Pull the reconciliation rows fresh — after an accept, and after a slip scan that
+  // persists operator drafts — so the bars and rows reflect the server.
+  const loadReco = async () => {
+    if (!shift) return;
+    try { const rows = await getReco(shift.id); setRecoRows(Array.isArray(rows)?rows:[]); } catch {}
+  };
+
+  // Auto-close outcome, from either a confirm response's auto_close or an autoclose-check.
+  // closed → the shift is out; show the closed summary. Otherwise stash the reason so the
+  // banner can say what is still outstanding.
+  const applyAutoClose = (ac) => {
+    if (!ac) return;
+    setAutoState(ac);
+    if (ac.closed) { setActiveShift(null); setDone(true); setStep(1); }
+  };
+
+  // Manager accepts one self-settled operator. The confirm may itself close the shift
+  // (the accept was the last thing it waited on) — honour any auto_close it returns.
+  const acceptOperator = async (a) => {
+    const r = recoByAtt[a.attendant_id];
+    if (!r) return;
+    setAccepting(r.id); setErr('');
+    try {
+      const res = await confirmReco(r.id);
+      if (res?.auto_close) applyAutoClose(res.auto_close);
+      await loadReco();
+      // Mirror the acceptance into `closed` too, so the shared summary + step gating agree.
+      setClosed(p => ({ ...p, [a.attendant_id]: {
+        variance: num(res?.variance ?? (num(r.cash_actual) - num(r.cash_expected))),
+        total_sales: num(r.total_sales), at: new Date().toISOString() } }));
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.couldNotAccept','Could not accept operator')); }
+    setAccepting('');
+  };
+
+  // Finish & close (attendant-led): save any pending dips, then ask the server whether
+  // the shift can auto-close. It refuses with a reason (missing_dip / awaiting_confirm)
+  // which the banner surfaces; on closed it moves to the closed summary.
+  const finishAndClose = async () => {
+    setDipWarn(null); setBusy('close'); setErr('');
+    try {
+      if (!(await flushDips())) { setBusy(''); return; }
+      const res = await autocloseCheck(shift.id);
+      if (res?.closed) applyAutoClose(res); else { setAutoState(res); await loadReco(); }
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.closeFailed','Close failed')); }
+    setBusy('');
+  };
+
+  // One-line state banner for the attendant-led view.
+  const autoBannerText = () => {
+    const N = attendants.length;
+    const parts = [
+      tc('send.alSettled','{s} of {n} settled').replace('{s}', settledCount).replace('{n}', N),
+      tc('send.alAccepted','{c} of {n} accepted').replace('{c}', confirmedCount).replace('{n}', N),
+    ];
+    if (autoState?.reason === 'missing_dip' && Array.isArray(autoState.tanks) && autoState.tanks.length)
+      parts.push(tc('send.alWaitingDip','waiting on Tank {t} dip').replace('{t}', autoState.tanks.map(x => x.tank_number ?? x).join(', ')));
+    else if (autoState?.reason === 'awaiting_confirm')
+      parts.push(tc('send.alAwaitingAccept','{p} operator(s) still to accept').replace('{p}', autoState.pending_count ?? (N - confirmedCount)));
+    return parts.join(' · ');
+  };
 
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
   const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
@@ -697,12 +791,13 @@ export default function ShiftEndPage() {
               </div>
             )}
 
-            {/* THE OPERATOR STACK — every unsettled operator, one block each, laid
-                out top to bottom and scrolled through. Each block settles on its OWN
-                button: the money maker-checker stays per operator, nobody is settled
-                in bulk. A settled man drops out of `unsettled` and reappears in the
-                "Settled" list below. */}
-            {unsettled.length>0 ? (<>
+            {/* MANAGER-LED (flag OFF) — THE OPERATOR STACK — every unsettled operator,
+                one block each, laid out top to bottom and scrolled through. Each block
+                settles on its OWN button: the money maker-checker stays per operator,
+                nobody is settled in bulk. A settled man drops out of `unsettled` and
+                reappears in the "Settled" list below. Unchanged from today; the whole
+                stack is gated behind !attendantLed. */}
+            {!attendantLed && (unsettled.length>0 ? (<>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
                 <div style={{fontWeight:700,fontSize:15}}>{tc('send.settleOperators','Settle operators')}</div>
                 <span style={{fontSize:12,fontWeight:700,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'2px 10px'}}>
@@ -806,13 +901,13 @@ export default function ShiftEndPage() {
                 <CheckCircle size={18} color="#16a34a"/>
                 <span style={{fontSize:13.5,fontWeight:700,color:'#166534'}}>{tc('send.allOperatorsSettled','Every operator on this shift is settled.')}</span>
               </div>
-            )}
+            ))}
 
             {/* Settled so far — the running record, with the man's start and close
                 photographs side by side. Both artifact ids may be null on a
                 database where the DDL has not run; ArtifactImage draws a
-                placeholder rather than an error. */}
-            {settled.length>0 && (
+                placeholder rather than an error. Manager-led only. */}
+            {!attendantLed && settled.length>0 && (
               <div className="card" style={{marginBottom:'0.85rem'}}>
                 <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>
                   {tc('send.settledSoFar','Settled')} <span style={{fontWeight:400,color:'#888',fontSize:12.5}}>· {settled.length}/{attendants.length}</span>
@@ -834,6 +929,71 @@ export default function ShiftEndPage() {
                 })}
               </div>
             )}
+
+            {/* ATTENDANT-LED (flag ON) — the operators self-settle their own cash. The
+                manager feeds their closings (Scan all slips, above), ACCEPTS each row and
+                dips the tanks; the shift auto-closes once every operator is accepted AND
+                every non-CNG tank has a closing dip. This replaces the settle stack only;
+                the composite scan and the slip strip above are shared with the flag-off
+                path, and the tank dips live unchanged on the Closing-dip step. */}
+            {attendantLed && (<>
+              {/* Two progress bars — Settled (red) and Accepted (teal), each X / N. */}
+              <div className="card" style={{marginBottom:'0.85rem'}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>{tc('send.alProgressTitle','Operator self-settlement')}</div>
+                {[
+                  { label: tc('send.alSettledBar','Settled'),   value: settledCount,   color:'#dc2626' },
+                  { label: tc('send.alAcceptedBar','Accepted'), value: confirmedCount, color:'#0f766e' },
+                ].map(b => (
+                  <div key={b.label} style={{marginBottom:8}}>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:12.5,fontWeight:700,marginBottom:4}}>
+                      <span style={{color:b.color}}>{b.label}</span>
+                      <span style={{color:'#475569'}}>{b.value} / {attendants.length}</span>
+                    </div>
+                    <div style={{height:8,borderRadius:99,background:'#eef0f2',overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${attendants.length ? Math.round(100*b.value/attendants.length) : 0}%`,background:b.color,borderRadius:99,transition:'width .2s'}}/>
+                    </div>
+                  </div>
+                ))}
+                <div style={{fontSize:12.5,color:'#475569',marginTop:6}}>{autoBannerText()}</div>
+              </div>
+
+              {/* Per-operator rows — waiting / self-settled-awaiting-accept / accepted. */}
+              <div style={{display:'flex',flexDirection:'column',gap:'0.6rem',marginBottom:'0.85rem'}}>
+                {attendants.map(a => {
+                  const r = recoByAtt[a.attendant_id];
+                  const confirmed = r?.manager_confirmed === true;
+                  const variance = r ? num(r.cash_actual) - num(r.cash_expected) : 0;
+                  return (
+                    <div key={a.attendant_id} className="card">
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        <div style={{fontWeight:700,fontSize:14.5}}>{a.attendant_name}</div>
+                        {confirmed ? (
+                          <span style={{display:'inline-flex',alignItems:'center',gap:5,fontSize:12.5,fontWeight:700,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'3px 10px'}}>
+                            <CheckCircle size={14}/> {tc('send.alAcceptedState','Accepted')}
+                          </span>
+                        ) : r ? (
+                          <button onClick={()=>acceptOperator(a)} disabled={accepting===r.id}
+                            style={{height:34,padding:'0 14px',background:'#0f766e',color:'#fff',border:'none',borderRadius:8,fontWeight:700,fontSize:12.5,cursor:accepting===r.id?'default':'pointer'}}>
+                            {accepting===r.id?tc('send.alAccepting','Accepting…'):tc('send.alAccept','Accept')}
+                          </button>
+                        ) : (
+                          <span style={{fontSize:12.5,color:'#94a3b8',display:'inline-flex',alignItems:'center',gap:4}}>
+                            <Clock size={13}/> {tc('send.alWaitingOp','Waiting for operator')}
+                          </span>
+                        )}
+                      </div>
+                      {r && (
+                        <div style={{fontSize:12.5,color:'#555',marginTop:8,display:'flex',gap:14,flexWrap:'wrap',alignItems:'center'}}>
+                          <span>{tc('send.sales','Sales')} <b>{fmt(r.total_sales)}</b></span>
+                          <span>{tc('send.cash','Cash')} <b>{fmt(r.cash_actual)}</b></span>
+                          <span>→ {vBadge(variance)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>)}
           </>)}
 
           {emptyShift ? (
@@ -951,9 +1111,21 @@ export default function ShiftEndPage() {
               ))}
             </div>
 
-            <button onClick={requestCloseShift} disabled={busy==='close' || !allClosed}
+            {/* Attendant-led: the server is the authority on whether the shift may
+                auto-close (every operator accepted AND every non-CNG tank dipped). When
+                it refuses, its reason rides here so the manager knows what is left. */}
+            {attendantLed && autoState && !autoState.closed && (
+              <div style={{background:'#fff7ed',color:'#9a3412',borderRadius:8,padding:'9px 12px',fontSize:12.5,fontWeight:600,marginTop:'0.75rem'}}>
+                {autoState.reason === 'missing_dip'
+                  ? tc('send.alDipStillNeeded','Waiting on closing dip: {list}.').replace('{list}', (Array.isArray(autoState.tanks)?autoState.tanks:[]).map(x=>`${tc('send.tank','Tank')} ${x.tank_number ?? x}`).join(', '))
+                  : autoState.reason === 'awaiting_confirm'
+                    ? tc('send.alAwaitingAccept','{p} operator(s) still to accept').replace('{p}', autoState.pending_count ?? (attendants.length - confirmedCount))
+                    : autoBannerText()}
+              </div>
+            )}
+            <button onClick={attendantLed ? finishAndClose : requestCloseShift} disabled={busy==='close' || !allClosed}
               style={{width:'100%',height:48,marginTop:'1rem',background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>
-              {busy==='close'?tc('send.closingEllipsis','Closing…'):tc('send.closeShift','Close Shift')}
+              {busy==='close'?tc('send.closingEllipsis','Closing…'):(attendantLed?tc('send.finishAndClose','Finish & close shift'):tc('send.closeShift','Close Shift'))}
             </button>
           </>)}
         </div>

@@ -41,6 +41,24 @@ async function hasAccountsFlag() {
   return _hasAccountsFlag;
 }
 
+// Does the attendant-led auto-close switch exist yet? Same hot-read guard as the two
+// flags above — GET /settings is called by POS, Shifts, Settings and now the shift-close
+// screen, so naming a not-yet-migrated column here would 42703 all of them at once.
+// Probed, never try-and-caught. Cached only once TRUE, so the first read after the owner
+// runs the DDL picks it up with no restart.
+let _hasAttendantLedFlag = false;
+async function hasAttendantLedFlag() {
+  if (_hasAttendantLedFlag) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='attendant_led_autoclose' LIMIT 1`);
+    _hasAttendantLedFlag = rows.length > 0;
+  } catch { _hasAttendantLedFlag = false; }
+  return _hasAttendantLedFlag;
+}
+
 // Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
 // deploys first, so pump_id / slip_nozzle_no are named only once present. A catalog
 // probe, never a failing INSERT — inside a transaction that would abort the caller.
@@ -377,6 +395,12 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
     const accountsCol = (await hasAccountsFlag())
       ? ', COALESCE(ss.accounts_enabled, FALSE) AS accounts_enabled'
       : ', FALSE AS accounts_enabled';
+    // FALSE when the column is absent: an outlet that predates the switch reads as
+    // manager-led (today's behaviour), which is what makes shipping this before the DDL
+    // harmless.
+    const attendantLedCol = (await hasAttendantLedFlag())
+      ? ', COALESCE(ss.attendant_led_autoclose, FALSE) AS attendant_led_autoclose'
+      : ', FALSE AS attendant_led_autoclose';
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
               ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
@@ -388,6 +412,7 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
               COALESCE(ss.deposit_alert_amount, 0)     AS deposit_alert_amount
               ${selfSettleCol}
               ${accountsCol}
+              ${attendantLedCol}
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
