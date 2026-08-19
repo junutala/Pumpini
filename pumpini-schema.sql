@@ -1277,3 +1277,60 @@ ALTER TABLE public.shift_attendants DROP COLUMN IF EXISTS closing_reading;
 -- operator may also do it himself.
 -- ══════════════════════════════════════════════════════════════════════════════
 ALTER TABLE station_settings ADD COLUMN IF NOT EXISTS self_settlement_enabled BOOLEAN DEFAULT TRUE;
+
+-- ⚠️ RUN THIS SQL — DRAFT SCAN METERS for the attendant-led close (2026-08-19)
+-- ══════════════════════════════════════════════════════════════════════════════
+-- When a manager scans the COMPOSITE photo of all pump slips at shift close
+-- (POST /reconcile/parse-slips), each nozzle's closing volume + amount is resolved.
+-- This table lets those resolved closings be PERSISTED as DRAFTS, so that later each
+-- attendant's self-settlement screen can read the closings the manager scanned for
+-- HIS nozzles and pre-fill them. One draft per nozzle per shift, upserted.
+--
+-- 🔴 THIS IS DELIBERATELY NOT shift_attendant_nozzles. A draft closing written into
+-- that table would be read by the carry-forward (openingService) as a REAL close and
+-- corrupt the next shift's opening. These are scanner drafts, trusted by nothing that
+-- touches money — the settlement remains the ONE writer into shift_attendant_nozzles.
+-- Nothing consumes this table for money; it is a convenience pre-fill only.
+--
+-- Additive and table-tolerant: the persist-on-scan and read paths probe
+-- information_schema for this table first (owner-run DDL lands AFTER the code
+-- deploys), so a missing table degrades to "no draft" rather than an error.
+--
+-- RLS ships in the SAME block as the table — same shape as every other
+-- station-scoped table here (see shift_attendance / station_artifacts above).
+-- ══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.shift_scan_meters (
+  id              uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id      uuid NOT NULL REFERENCES public.stations(id),
+  shift_id        uuid NOT NULL REFERENCES public.shifts(id),
+  nozzle_id       uuid NOT NULL REFERENCES public.nozzles(id),
+  closing_volume  numeric,
+  closing_amount  numeric,
+  scanned_by      uuid,
+  scanned_at      timestamptz DEFAULT now(),
+  CONSTRAINT uq_shift_scan_meters_shift_nozzle UNIQUE (shift_id, nozzle_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shift_scan_meters_shift
+  ON public.shift_scan_meters(shift_id);
+CREATE INDEX IF NOT EXISTS idx_shift_scan_meters_station
+  ON public.shift_scan_meters(station_id);
+
+-- 🔴 RLS ships in the SAME block as the table. New tables get RLS enabled
+-- automatically on this project, and RLS-on-with-no-policy denies everything —
+-- silently returning zero rows on SELECT while INSERT raises. Same shape as every
+-- other station-scoped table here.
+ALTER TABLE public.shift_scan_meters ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='shift_scan_meters'
+                   AND policyname='shift_scan_meters_station_isolation') THEN
+    CREATE POLICY shift_scan_meters_station_isolation ON public.shift_scan_meters
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.shift_scan_meters TO app_authenticated;

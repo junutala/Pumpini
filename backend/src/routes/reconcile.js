@@ -44,6 +44,22 @@ async function hasSlipMapping() {
   } catch { _hasSlipMapping = false; }
   return _hasSlipMapping;
 }
+
+// Does the draft scan-meter table exist yet? Owner-run DDL means this code deploys
+// FIRST, so persist-on-scan and the read endpoint stay table-tolerant: a catalog
+// SELECT on pool (autocommit) that cannot poison anything, cached only once TRUE so
+// the first scan after the migration picks it up without an app restart.
+let _hasScanMeters = false;
+async function hasScanMeters(client = pool) {
+  if (_hasScanMeters) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.tables
+        WHERE table_schema='public' AND table_name='shift_scan_meters' LIMIT 1`);
+    _hasScanMeters = rows.length > 0;
+  } catch { _hasScanMeters = false; }
+  return _hasScanMeters;
+}
 const Anthropic = require('@anthropic-ai/sdk');
 
 // Store a meter/totalizer audit photo. Preferred: upload the bytes to the private
@@ -526,6 +542,33 @@ router.post('/self-settle', authenticate,
     }
     finally { client.release(); }
   });
+
+// GET /api/reconcile/scan-meters?shift_id=... — read the DRAFT closings the manager
+// scanned off the composite slip photo (persisted by POST /parse-slips with persist).
+// Read-only convenience for a later slice that pre-fills the operator's self-settlement;
+// nothing money-facing reads it. Both the operator (settlement.enter) and the manager
+// (reconcile.manage) may read; station scoping is enforced by the guard + RLS.
+//
+// Registered BEFORE GET /:shift_id so the catch-all param route below does not shadow
+// "/scan-meters" as a shift_id. TABLE-TOLERANT: probe first and return [] when the
+// owner-run DDL has not created shift_scan_meters yet.
+router.get('/scan-meters', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requireAnyPerm('settlement.enter', 'reconcile.manage'),
+  async (req, res, next) => {
+  try {
+    const { shift_id } = req.query;
+    if (!shift_id) return res.status(400).json({ error: 'shift_id is required' });
+    if (!await hasScanMeters()) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT nozzle_id, closing_volume, closing_amount, scanned_at
+         FROM shift_scan_meters
+        WHERE shift_id = $1
+        ORDER BY scanned_at`,
+      [shift_id]);
+    res.json(rows);
+  } catch (err) { next(err); }
+});
 
 // GET /api/reconcile/:shift_id — manager gets list of submissions
 // Returns data but hides totals for unconfirmed entries
@@ -1023,7 +1066,7 @@ router.post('/parse-slips', authenticate,
   requirePerm('reconcile.manage'),
   async (req, res, next) => {
   try {
-    const { shift_id, image_base64, media_type = 'image/jpeg' } = req.body;
+    const { shift_id, image_base64, media_type = 'image/jpeg', persist = false } = req.body;
     if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
 
     // ONE READER. parseCompositeSlips returns null on any failure and has already
@@ -1123,10 +1166,43 @@ router.post('/parse-slips', authenticate,
       });
     } catch { /* store failed — parse + resolve already done and returned */ }
 
+    // OPTIONAL: persist each resolved closing as a DRAFT into shift_scan_meters, so a
+    // later slice can pre-fill each operator's self-settlement with the closings the
+    // manager scanned. Off by default — the read-only behaviour above is unchanged
+    // when persist is falsy.
+    //
+    // 🔴 NOT shift_attendant_nozzles: a draft there would be read by the carry-forward
+    // as a real close and corrupt the next shift's opening. This is a scanner draft,
+    // trusted by nothing that touches money.
+    //
+    // TABLE-TOLERANT and on `pool` (autocommit), never a shared transaction: the table
+    // arrives via owner-run DDL AFTER this code deploys, so probe first and, on a
+    // missing table or any failure, skip silently and return persisted:false — the
+    // parsed result is still returned exactly as before.
+    let persisted = false;
+    if (persist === true && await hasScanMeters()) {
+      try {
+        for (const s of slips) {
+          for (const l of (s.lines || [])) {
+            if (!l.nozzle_id || l.cumulative_volume == null) continue;
+            await pool.query(
+              `INSERT INTO shift_scan_meters
+                 (station_id, shift_id, nozzle_id, closing_volume, closing_amount, scanned_by)
+               VALUES ($1,$2,$3,$4,$5,$6)
+               ON CONFLICT (shift_id, nozzle_id) DO UPDATE SET
+                 closing_volume=$4, closing_amount=$5, scanned_by=$6, scanned_at=now()`,
+              [req.stationId, shift_id, l.nozzle_id, l.cumulative_volume, l.cumulative_amount ?? null, req.user.id]);
+          }
+        }
+        persisted = true;
+      } catch { persisted = false; /* draft persist failed — parsed result still returned */ }
+    }
+
     res.json({
       slips,
       legible: parsed.legible,
       notes: parsed.notes,
+      persisted,
     });
   } catch (err) { next(err); }
 });
