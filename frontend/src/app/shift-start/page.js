@@ -647,58 +647,9 @@ export default function ShiftStartPage() {
     setScanning('');
   };
 
-  // Scan the whole printed pump slip (Slip A/B) — fills the OPENING meter for
-  // every nozzle on it, matched by label = "{pump}.{nozzle}" (e.g. 1.1).
-  const scanSlip = async (file) => {
-    if (!file || !shift) return;
-    setScanning('slip'); setErr('');
-    try {
-      const b64 = await readB64(file);
-      const r = await api.post('/reconcile/parse-slip', { shift_id: shift.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
-      let matched = 0; const miss = []; const locked = [];
-      (r.nozzles || []).forEach(n => {
-        if (n.cumulative_volume == null) return;
-        // The server resolves the slip line to a real nozzle now — it accepts both
-        // "3.1" and plain "3" numbering, and returns nothing rather than guessing
-        // when several nozzles share a number. The label match is kept only as a
-        // fallback for a backend that has not deployed yet.
-        const noz = n.nozzle_id
-          ? nozzles.find(x => x.id === n.nozzle_id)
-          : nozzles.find(x => String(x.nozzle_number) === n.label);
-        if (!noz) { if (n.label) miss.push(n.label); return; }
-        // A nozzle whose opening is carried from the last close is left alone. Writing
-        // the slip's number into a figure the server will overwrite would tell the
-        // manager his reading was accepted when it was not. If the slip and the last
-        // close genuinely disagree that is a discrepancy to investigate, not an
-        // opening to adjust — so it is surfaced, never applied.
-        if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
-          if (Math.abs(Number(n.cumulative_volume) - Number(openings[noz.id])) > 1) {
-            locked.push(`${n.label} (${tc('sstart.slipSays','slip')} ${n.cumulative_volume} vs ${openings[noz.id]})`);
-          }
-          matched++;
-          return;
-        }
-        setReading(noz.id, n.cumulative_volume);
-        matched++;
-      });
-      // The server's hint names the serial and the screen that fixes it, so prefer
-      // it over the generic wording whenever it is present.
-      if (!matched) setErr(r.hint || tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
-      else {
-        let msg = tc('sstart.slipTicked','Read {n} nozzle(s) from the slip.').replace('{n}', matched);
-        if (miss.length)  msg += ' ' + tc('sstart.slipNoMatchSome','No app nozzle for: {x}.').replace('{x}', miss.join(', '));
-        if (locked.length) msg += ' ' + tc('sstart.slipDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
-        if (!r.legible)   msg += ' ' + tc('sstart.slipVerify','⚠ Some digits unclear — verify.');
-        // The server's own warning — chiefly an unrecognised pump serial, which
-        // means these readings may have been matched on the pump number the slip
-        // prints rather than on the machine's identity. Shown verbatim: it names
-        // the serial and the screen that fixes it, which no client wording can.
-        if (r.hint)       msg += ' ⚠ ' + r.hint;
-        setErr(msg);
-      }
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipFailed','Slip scan failed')); }
-    setScanning('');
-  };
+  // (The single-slip "Scan pump slip" flow was retired — "Scan all slips" reads one
+  // or many slips in one photo and supersedes it. The per-nozzle camera covers a
+  // single re-scan.)
 
   // Scan ONE photo holding SEVERAL pump slips at once — the server reads every slip
   // in the frame and returns each nozzle's cumulative VOLUME already matched to a
@@ -1024,10 +975,6 @@ export default function ShiftStartPage() {
               opening. While in force the per-nozzle cameras below are disabled so the
               two capture paths cannot fight; the boxes stay hand-editable and
               Retake / clear re-arms the cameras. */}
-          <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:8,padding:'8px 12px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
-            📄 {scanning==='slip' ? tc('sstart.slipReading','Reading slip…') : tc('sstart.scanSlip','Scan pump slip → fill all nozzles')}
-            <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
-          </label>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}>
             <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 12px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
               📸 {scanning==='all-slips' ? tc('sstart.slipsReading','Reading slips…') : tc('sstart.scanAllSlips','Scan all slips (one photo)')}
