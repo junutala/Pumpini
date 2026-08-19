@@ -1012,4 +1012,123 @@ router.post('/parse-slip', authenticate,
   } catch (err) { next(err); }
 });
 
+// POST /api/reconcile/parse-slips — READ-ONLY. The composite sibling of /parse-slip:
+// ONE photograph carrying SEVERAL slips (several serials) at once, for the "scan all
+// slips at shift open/close" flow. It PARSES, RESOLVES each line to one of our nozzles,
+// STORES the image as evidence, and RETURNS both cumulative volume and amount per line.
+// It writes NO meter reading anywhere — the settlement form still does the writing.
+// Same guards as /parse-slip so it scopes to the shift's station and needs the same perm.
+router.post('/parse-slips', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
+  async (req, res, next) => {
+  try {
+    const { shift_id, image_base64, media_type = 'image/jpeg' } = req.body;
+    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
+
+    // ONE READER. parseCompositeSlips returns null on any failure and has already
+    // applied the rupee/litre cross-check per nozzle, so each cumulative_volume is
+    // litres or null.
+    const parsed = await slipParser.parseCompositeSlips({ file_base64: image_base64, media_type });
+    if (!parsed || !Array.isArray(parsed.slips)) {
+      return res.status(422).json({ error: 'Could not read the slips — enter the readings manually.' });
+    }
+
+    // The station's active nozzles, with the pump serial joined in. Column-tolerant:
+    // slip_nozzle_no / pump columns arrive with owner-run DDL, so they are named only
+    // once hasSlipMapping() confirms them present.
+    const slipCols = await hasSlipMapping();
+    const extraCols = slipCols ? ', p.serial AS pump_serial, n.slip_nozzle_no' : '';
+    const extraJoin = slipCols ? 'LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL' : '';
+    const { rows: known } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.fuel_type${extraCols}
+         FROM nozzles n
+         ${extraJoin}
+        WHERE n.is_active
+          AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
+      [shift_id]
+    );
+
+    // SERIAL + PRINTED-NOZZLE-NUMBER -> our nozzle. The key is
+    // `${UPPER(serial)}|${printedNo}`, where printedNo is the explicit slip mapping if
+    // set, else the part of nozzle_number after '.' (Highway's "3.1" -> "1"), else the
+    // bare nozzle_number. Verified unique per outlet, so each key maps to exactly one
+    // nozzle — no `.find()` picking the first of several equal candidates.
+    const bySerialNo = {};
+    const serialsKnown = new Set();
+    if (slipCols) {
+      for (const k of known) {
+        if (!k.pump_serial) continue;
+        const serial = String(k.pump_serial).trim().toUpperCase();
+        serialsKnown.add(serial);
+        const nn = String(k.nozzle_number).trim();
+        const printedNo = k.slip_nozzle_no != null && String(k.slip_nozzle_no).trim() !== ''
+          ? String(k.slip_nozzle_no).trim()
+          : (nn.includes('.') ? nn.split('.').pop() : nn);
+        bySerialNo[`${serial}|${printedNo}`] = k;
+      }
+    }
+
+    // Resolve each parsed slip group and its nozzles. A line we could not place simply
+    // has no nozzle_id — same shape as a resolved one, so the screen needs no special
+    // case and the manager types that figure.
+    const slips = parsed.slips.map(s => {
+      const serial = String(s.pump_serial ?? '').trim().toUpperCase();
+      const lines = (s.nozzles || []).map(n => {
+        const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
+        const hit = serial && no ? bySerialNo[`${serial}|${no}`] : null;
+        return {
+          nozzle_id: hit ? hit.id : null,
+          nozzle_number: hit ? hit.nozzle_number : null,
+          fuel_type: hit ? hit.fuel_type : null,
+          slip_no: no || null,
+          cumulative_volume: n.cumulative_volume ?? null,
+          cumulative_amount: n.cumulative_amount ?? null,
+          swapped_amount_for_volume: n.swapped_amount_for_volume || undefined,
+          legible: n.legible === true,
+        };
+      });
+      return {
+        pump_serial: serial || null,
+        model: s.model ?? null,
+        slip_type: ['A', 'B', 'C'].includes(s.slip_type) ? s.slip_type : (s.slip_type ?? null),
+        // Is this machine registered at all? Any of its nozzles present in our map.
+        serial_known: !!(serial && serialsKnown.has(serial)),
+        lines,
+      };
+    });
+
+    // Keep the composite image as printed evidence behind the shift's meters, exactly
+    // as /parse-slip keeps a single slip. Best-effort — a store failure must never fail
+    // the response.
+    try {
+      await artifacts.save({
+        station_id: req.stationId,
+        entity_type: 'shift',
+        entity_id: shift_id,
+        kind: 'nozzle_slip',
+        file_base64: image_base64,
+        media_type,
+        ocr: {
+          composite: true,
+          slips: slips.map(s => ({
+            pump_serial: s.pump_serial,
+            slip_type: s.slip_type,
+            serial_known: s.serial_known,
+            lines: s.lines,
+          })),
+        },
+        meta: { composite: true, slip_count: slips.length },
+        uploaded_by: req.user.id,
+      });
+    } catch { /* store failed — parse + resolve already done and returned */ }
+
+    res.json({
+      slips,
+      legible: parsed.legible,
+      notes: parsed.notes,
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
