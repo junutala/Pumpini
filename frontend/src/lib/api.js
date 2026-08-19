@@ -60,6 +60,16 @@ export const recordDispense    = (data)   => api.post('/dispense', data);
 // Reconcile
 export const submitReco  = (data) => api.post('/reconcile', data);
 export const getReco     = (sid)  => api.get(`/reconcile/${sid}`);
+// Attendant-led auto-close (per-outlet `attendant_led_autoclose`). When the operators
+// self-settle their own cash, the manager ACCEPTS each self-settled row instead of
+// settling it — this reveals the totals and, in slice 3a, may return an
+// `auto_close:{closed,reason}` when the accept was the last thing the shift was waiting
+// on. Body is optional (a dispute can ride along); default {} for a plain accept.
+export const confirmReco   = (id, body) => api.patch(`/reconcile/${id}/confirm`, body || {});
+// Ask the server whether the shift can auto-close now: every operator accepted AND
+// every non-CNG tank dipped. Returns { closed } or { closed:false, reason, tanks?,
+// pending_count? }. Called after the manager finishes the closing dips.
+export const autocloseCheck = (shiftId) => api.post('/reconcile/autoclose-check', { shift_id: shiftId });
 // Composite slip scan — ONE photo holding SEVERAL dispenser slips. The server
 // reads every slip in the frame and returns each nozzle's cumulative volume
 // already matched to a nozzle_id, so the caller drops the reading straight onto
