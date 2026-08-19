@@ -617,10 +617,25 @@ export default function ShiftStartPage() {
     const m = String(n.nozzle_number ?? '').match(/\.(\d+)$/);
     return m ? m[1] : String(n.nozzle_number ?? '');
   };
-  const nozName = (n) => {
-    const serial = pumpSerial[n.id];
-    return serial ? `${serial}.${slipNoOf(n)}` : String(n.nozzle_number ?? '');
+  // Group a nozzle list by pump: a small SERIAL header before each machine's run of
+  // nozzles, so two near-identical serials (…927 vs …908) stop interleaving and reading
+  // as scrambled. The serial — the slip's own identity — sits in the header once; each
+  // row then shows just its nozzle number, so serial.nozzleNo is still the whole truth,
+  // it just isn't repeated on every line. Nozzles are already ordered pump.nozzle, so a
+  // group is a contiguous run and the header fires when the serial changes.
+  const pumpGroupHeader = (list, i) => {
+    const serial = pumpSerial[list[i]?.id];
+    const prev = i > 0 ? pumpSerial[list[i-1]?.id] : null;
+    if (!serial || serial === prev) return null;
+    return (
+      <div key={`hdr-${serial}`} style={{fontSize:11.5,fontWeight:800,color:'#0f766e',letterSpacing:'.03em',margin:'12px 0 4px 2px',display:'flex',alignItems:'center',gap:6}}>
+        <ScanLine size={12}/> {serial}
+      </div>
+    );
   };
+  // Row label: the nozzle number within its pump when a serial header carries the
+  // machine; the bare stored name when no serial is on file (then there's no header).
+  const nozLabel = (n) => (pumpSerial[n.id] ? `${tc('sstart.nozzleWord','Nozzle')} ${slipNoOf(n)}` : String(n.nozzle_number ?? ''));
 
   // ONE writer for a captured opening. nozReadings is the source of truth the Nozzles
   // step edits; if the nozzle is already ticked for an attendant we keep its pick in
@@ -989,17 +1004,18 @@ export default function ShiftStartPage() {
           </div>
 
           {nozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.noNozzles','No active nozzles configured.')}</div>}
-          {nozzles.map(n=>{
+          {nozzles.flatMap((n,i)=>{
+            const _hdr = pumpGroupHeader(nozzles, i);
             // The last close, which the server will use regardless — shown locked.
             const carried = openSrc[n.id] === 'carried' && openings[n.id] != null;
             // Not carried because the prior shift is not settled yet — a different
             // thing from a nozzle that has never run.
             const pendingOn = !carried && openSrc[n.id] === 'pending' ? openPending[n.id] : null;
-            return (
+            const _row = (
               <div key={n.id} style={{border:'1px solid #eef0f2',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'space-between',flexWrap:'wrap'}}>
                   <div style={{fontSize:13,fontWeight:700,minWidth:0}}>
-                    {nozName(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{String(n.fuel_type||'').replace('_',' ')}</span>
+                    {nozLabel(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{String(n.fuel_type||'').replace('_',' ')}</span>
                   </div>
                   {carried ? (
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1035,6 +1051,7 @@ export default function ShiftStartPage() {
                 )}
               </div>
             );
+            return _hdr ? [_hdr, _row] : [_row];
           })}
 
           <button onClick={goToAttendants} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
@@ -1091,7 +1108,8 @@ export default function ShiftStartPage() {
               <div>
                 <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint2','(tick each; the opening comes from the Nozzle readings step)')}</span></label>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
-                {availNozzles.map(n=>{
+                {availNozzles.flatMap((n,i)=>{
+                  const _hdr = pumpGroupHeader(availNozzles, i);
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
                   const sug = openings[n.id];
                   // Carried = the last close, and the server will use it regardless.
@@ -1105,11 +1123,11 @@ export default function ShiftStartPage() {
                   // writes back through setReading so the two steps cannot diverge.
                   const fromStep1 = carried ? sug : (nozReadings[n.id] ?? '');
                   const cur = carried ? sug : (pick?.opening ?? '');
-                  return (
+                  const _row = (
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                         <input type="checkbox" checked={sel} onChange={e=>{ if(e.target.checked) pickNoz(n.id,{selected:true, opening: fromStep1}); else setNozPick(p=>({...p,[n.id]:{...(p[n.id]||{}),selected:false}})); }}/>
-                        {nozName(n)} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
+                        {nozLabel(n)} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
                       </label>
                       {sel && (
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
@@ -1147,6 +1165,7 @@ export default function ShiftStartPage() {
                       )}
                     </div>
                   );
+                  return _hdr ? [_hdr, _row] : [_row];
                 })}
               </div>
 
