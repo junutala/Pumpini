@@ -20,7 +20,7 @@ import { Check, ChevronRight, ArrowLeft, Droplets, X, ScanLine, AlertTriangle } 
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts } from '../../lib/api';
+import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
@@ -300,6 +300,11 @@ export default function ShiftStartPage() {
   const [openSrc, setOpenSrc] = useState({});
   const [openPending, setOpenPending] = useState({}); // nozzle_id -> the unsettled shift
   const [scanning, setScanning] = useState('');
+  // A composite "scan all slips" photo has been read this session. While true the
+  // per-nozzle totalizer cameras are DISABLED so the two capture paths cannot fight
+  // over the same opening box — but the reading fields stay hand-editable, and the
+  // "Retake / clear" affordance flips this back to re-enable the per-nozzle cameras.
+  const [compositeScanned, setCompositeScanned] = useState(false);
   // PhotoCapture holds its own preview; remounting it is the only way to clear that
   // preview after a successful Start, so the next attendant never inherits a face.
   const [formKey, setFormKey] = useState(0);
@@ -644,6 +649,67 @@ export default function ShiftStartPage() {
     setScanning('');
   };
 
+  // Scan ONE photo holding SEVERAL pump slips at once — the server reads every slip
+  // in the frame and returns each nozzle's cumulative VOLUME already matched to a
+  // nozzle_id, which we drop onto that nozzle's OPENING through the same pickNoz the
+  // rest of the screen uses. Complements the per-nozzle camera and the single-slip
+  // scan; it does not replace either. A line with nozzle_id null could not be matched
+  // (e.g. an unregistered pump serial) — it is SURFACED, never silently applied.
+  const scanAllSlips = async (file) => {
+    if (!file || !shift) return;
+    setScanning('all-slips'); setErr('');
+    try {
+      const b64 = await readB64(file);
+      const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg' });
+      const slips = Array.isArray(res.slips) ? res.slips : [];
+      let matched = 0; const unmatched = []; const verify = []; const locked = [];
+      slips.forEach(s => (s.lines || []).forEach(l => {
+        // Not matched to one of our nozzles — surface the printed number/serial so
+        // the manager can register the pump in Settings, but do not apply it.
+        if (l.nozzle_id == null) { unmatched.push(l.nozzle_number || l.slip_no || '?'); return; }
+        const noz = nozzles.find(x => x.id === l.nozzle_id);
+        if (!noz) { unmatched.push(l.nozzle_number || String(l.nozzle_id)); return; }
+        if (l.cumulative_volume == null) return;
+        // A nozzle whose opening is carried from the last close is TICKED but its
+        // figure is left alone — the server uses the carried close regardless, and
+        // writing the slip's number in would falsely say the reading was accepted.
+        // Same rule as scanSlip; a real disagreement is a discrepancy to report.
+        if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
+          pickNoz(noz.id, { selected: true });
+          if (Math.abs(Number(l.cumulative_volume) - Number(openings[noz.id])) > 1) {
+            locked.push(`${noz.nozzle_number} (${tc('sstart.slipSays','slip')} ${l.cumulative_volume} vs ${openings[noz.id]})`);
+          }
+          matched++;
+          return;
+        }
+        pickNoz(noz.id, { selected: true, opening: l.cumulative_volume });
+        matched++;
+        // A rupee/litre swap was corrected server-side for this line — flag it so
+        // the manager eyeballs the number before it becomes an opening.
+        if (l.swapped_amount_for_volume) verify.push(noz.nozzle_number);
+      }));
+      // Slips whose printed serial is not a registered pump — name the serial so the
+      // manager knows to add the machine in Settings.
+      const unknownSerials = slips
+        .filter(s => s.serial_known === false)
+        .map(s => s.pump_serial || tc('sstart.unknownSerial','unknown serial'));
+
+      let msg = tc('sstart.slipsFilled','Filled {n} nozzle(s) from {m} slip(s).')
+        .replace('{n}', matched).replace('{m}', slips.length);
+      if (unmatched.length)     msg += ' ' + tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
+      if (unknownSerials.length) msg += ' ' + tc('sstart.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
+      if (verify.length)        msg += ' ' + tc('sstart.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
+      if (locked.length)        msg += ' ' + tc('sstart.slipsDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
+      if (res.legible === false) msg += ' ' + tc('sstart.slipsVerify','⚠ Some digits unclear — verify.');
+      if (res.notes)            msg += ' ' + res.notes;
+      setErr(msg);
+      // From here the per-nozzle cameras are disabled until Retake / clear — the
+      // reading boxes stay hand-editable, only the competing camera is turned off.
+      setCompositeScanned(true);
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.')); }
+    setScanning('');
+  };
+
   // ONE button on this screen. It photographs, assigns and clocks the attendant in
   // in a single press, then clears itself for the next man — the manager comes back
   // here as each attendant arrives, until every nozzle is manned.
@@ -935,6 +1001,23 @@ export default function ShiftStartPage() {
                   📄 {scanning==='slip' ? tc('sstart.slipReading','Reading slip…') : tc('sstart.scanSlip','Scan pump slip → fill all nozzles')}
                   <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
                 </label>
+                {/* Composite — ONE photo of SEVERAL slips fills every matched
+                    nozzle's opening at once. While a composite is in force the
+                    per-nozzle cameras below are disabled so they cannot overwrite
+                    it; the reading boxes stay hand-editable. Retake / clear re-arms
+                    the per-nozzle cameras. */}
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
+                  <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 12px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
+                    📸 {scanning==='all-slips' ? tc('sstart.slipsReading','Reading slips…') : tc('sstart.scanAllSlips','Scan all slips (one photo)')}
+                    <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning==='all-slips'} style={{display:'none'}} onChange={e=>{ scanAllSlips(e.target.files?.[0]); e.target.value=''; }}/>
+                  </label>
+                  {compositeScanned && (
+                    <button type="button" onClick={()=>{ setCompositeScanned(false); setErr(''); }}
+                      style={{padding:'8px 12px',background:'#fff',color:'#6d28d9',border:'1.5px solid #ddd6fe',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                      {tc('sstart.retakeSlips','Retake / clear')}
+                    </button>
+                  )}
+                </div>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
@@ -961,9 +1044,10 @@ export default function ShiftStartPage() {
                               to carry. Elsewhere it could only produce a figure that is
                               then discarded, which reads as the app losing the reading. */}
                           {!carried && (
-                            <label title={tc('sstart.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===n.id?'default':'pointer',fontSize:16}}>
+                            <label title={compositeScanned ? tc('sstart.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('sstart.scanTotalizer','Scan the totalizer')}
+                              style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:(compositeScanned||scanning===n.id)?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning===n.id)?'not-allowed':'pointer',fontSize:16,opacity:compositeScanned?0.5:1}}>
                               {scanning===n.id?'…':'📷'}
-                              <input type="file" accept="image/*" capture="environment" disabled={scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+                              <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
                             </label>
                           )}
                         </div>

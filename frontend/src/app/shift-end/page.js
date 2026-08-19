@@ -26,7 +26,7 @@ import { Check, ChevronRight, ArrowLeft, AlertTriangle, CheckCircle, Clock, Drop
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, getLatestArtifacts } from '../../lib/api';
+import api, { parseGaugeScreen, getLatestArtifacts, parseSlips } from '../../lib/api';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
@@ -127,6 +127,11 @@ export default function ShiftEndPage() {
     }
   };
   const [scanning, setScanning] = useState('');   // nozzle_id being OCR'd
+  // A composite "scan all slips" photo has been read this session. While true the
+  // per-nozzle totalizer cameras are DISABLED so the two capture paths cannot fight
+  // over the same closing box — but the reading fields stay hand-editable, and the
+  // "Retake / clear" affordance flips this back to re-enable the per-nozzle cameras.
+  const [compositeScanned, setCompositeScanned] = useState(false);
   const [tanks, setTanks] = useState([]);
   const [dips, setDips]   = useState({});         // tank_id -> entered mark-ordinal (a physical dip)
   const [dipVol, setDipVol] = useState({});       // tank_id -> litres (a system/ATG reading)
@@ -233,6 +238,8 @@ export default function ShiftEndPage() {
       // Dip state belongs to the shift being closed — switching shift must not
       // carry a half-typed reading across.
       setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
+      // A composite scanned for one shift must not carry its camera-lock into another.
+      setCompositeScanned(false);
       loadSlips(d?.id);
       const stored = {};
       (Array.isArray(dr)?dr:[]).forEach(x => { if (x.reading_type === 'closing') stored[x.tank_id] = x; });
@@ -326,6 +333,60 @@ export default function ShiftEndPage() {
       // below shows it immediately, not only after a reload.
       loadSlips(shift.id);
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipFailed', 'Slip scan failed')); }
+    setScanning('');
+  };
+
+  // Scan ONE photo holding SEVERAL pump slips at once — the server reads every slip
+  // in the frame and returns each nozzle's cumulative VOLUME already matched to a
+  // nozzle_id, which we drop onto that nozzle's CLOSING through the same setCl the
+  // rest of the screen uses. Shift-wide, exactly like the single-slip scan, because
+  // the slips are shift-wide. Complements the per-nozzle camera and the single-slip
+  // scan; it does not replace either. A line with nozzle_id null could not be matched
+  // (e.g. an unregistered pump serial) — it is SURFACED, never silently applied.
+  const scanAllSlips = async (file) => {
+    if (!file || !shift) return;
+    setScanning('all-slips'); setErr('');
+    try {
+      const b64 = await readB64(file);
+      const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg' });
+      const slips = Array.isArray(res.slips) ? res.slips : [];
+      let matched = 0; const unmatched = []; const verify = [];
+      slips.forEach(s => (s.lines || []).forEach(l => {
+        // Not matched to one of our nozzles — surface the printed number/serial so
+        // the manager can register the pump in Settings, but do not apply it.
+        if (l.nozzle_id == null) { unmatched.push(l.nozzle_number || l.slip_no || '?'); return; }
+        if (l.cumulative_volume == null) return;
+        let found = false;
+        attendants.forEach(a => (a.nozzles || []).forEach(nz => {
+          if (nz.nozzle_id === l.nozzle_id) {
+            setCl(a.attendant_id, nz.nozzle_id, l.cumulative_volume);
+            matched++; found = true;
+            // A rupee/litre swap was corrected server-side — flag it for a look
+            // before this figure becomes a settled closing meter.
+            if (l.swapped_amount_for_volume) verify.push(nz.nozzle_number);
+          }
+        }));
+        // Matched to a nozzle_id that no operator on this shift is manning.
+        if (!found) unmatched.push(l.nozzle_number || String(l.nozzle_id));
+      }));
+      // Slips whose printed serial is not a registered pump — name the serial so the
+      // manager knows to add the machine in Settings.
+      const unknownSerials = slips
+        .filter(s => s.serial_known === false)
+        .map(s => s.pump_serial || tc('send.unknownSerial','unknown serial'));
+
+      let msg = tc('send.slipsFilled','Filled {n} closing reading(s) from {m} slip(s).')
+        .replace('{n}', matched).replace('{m}', slips.length);
+      if (unmatched.length)     msg += ' ' + tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
+      if (unknownSerials.length) msg += ' ' + tc('send.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
+      if (verify.length)        msg += ' ' + tc('send.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
+      if (res.legible === false) msg += ' ' + tc('send.slipsVerify','⚠ Some digits unclear — verify.');
+      if (res.notes)            msg += ' ' + res.notes;
+      setErr(msg);
+      // From here the per-nozzle cameras are disabled until Retake / clear — the
+      // reading boxes stay hand-editable, only the competing camera is turned off.
+      setCompositeScanned(true);
+    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipsFailed','Could not read the slips — enter the readings manually.')); }
     setScanning('');
   };
 
@@ -634,10 +695,27 @@ export default function ShiftEndPage() {
 
           {shift && attendants.length>0 && (<>
             {/* One slip covers every nozzle on the pump, so this stays shift-wide. */}
-            <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:12,padding:'9px 14px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
-              📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
-              <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
-            </label>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}>
+              <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'9px 14px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
+                📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
+                <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
+              </label>
+              {/* Composite — ONE photo of SEVERAL slips fills every matched nozzle's
+                  closing at once. While a composite is in force the per-nozzle
+                  cameras below are disabled so they cannot overwrite it; the reading
+                  boxes stay hand-editable. Retake / clear re-arms the per-nozzle
+                  cameras. */}
+              <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'9px 14px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
+                📸 {scanning==='all-slips' ? tc('send.slipsReading','Reading slips…') : tc('send.scanAllSlips','Scan all slips (one photo)')}
+                <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning==='all-slips'} style={{display:'none'}} onChange={e=>{ scanAllSlips(e.target.files?.[0]); e.target.value=''; }}/>
+              </label>
+              {compositeScanned && (
+                <button type="button" onClick={()=>{ setCompositeScanned(false); setErr(''); }}
+                  style={{padding:'9px 14px',background:'#fff',color:'#6d28d9',border:'1.5px solid #ddd6fe',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                  {tc('send.retakeSlips','Retake / clear')}
+                </button>
+              )}
+            </div>
 
             {/* The slips scanned for this shift. These are the printed evidence
                 behind every closing meter below — kept since the scan shipped, but
@@ -736,9 +814,10 @@ export default function ShiftEndPage() {
                             <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
                             <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
                               value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
-                            <label title={tc('send.scanTotalizer','Scan the totalizer')} style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:scanning===nz.nozzle_id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanning===nz.nozzle_id?'default':'pointer',fontSize:15}}>
+                            <label title={compositeScanned ? tc('send.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('send.scanTotalizer','Scan the totalizer')}
+                              style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:(compositeScanned||scanning===nz.nozzle_id)?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning===nz.nozzle_id)?'not-allowed':'pointer',fontSize:15,opacity:compositeScanned?0.5:1}}>
                               {scanning===nz.nozzle_id?'…':'📷'}
-                              <input type="file" accept="image/*" capture="environment" disabled={scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
+                              <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
                             </label>
                           </div>
                         ))}
