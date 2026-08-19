@@ -67,16 +67,18 @@ export default function ShiftEndPage() {
   const [prices, setPrices] = useState({});       // fuel_type -> price
   const [forms, setForms] = useState({});         // attendant_id -> { closings:{nozzle_id:val}, cash, card, upi, credit, petty }
   const [closed, setClosed] = useState({});       // attendant_id -> { variance, total_sales, at }
-  const [sel, setSel]     = useState('');         // attendant_id in the working area
-  const [photo, setPhoto] = useState(null);       // { base64, media_type } for the operator being closed
-  const [photoSlot, setPhotoSlot] = useState(0);  // bumps to remount PhotoCapture between operators
-  // PHASE 1 OF FACIAL RECOGNITION, close side. Same contract as shift start:
-  // the picture PROPOSES which operator is handing over and the list confirms.
-  // Candidates here are only the men still unsettled on THIS shift, so it cannot
-  // propose somebody who was never on it.
+  // Every unsettled operator has his OWN block in the stack, so his handover photo
+  // is his own — a map keyed by attendant_id, never one shared slot. N blocks on
+  // screen at once cannot share a single photo state.
+  const [photos, setPhotos] = useState({});       // attendant_id -> { base64, media_type }
+  // PHASE 1 OF FACIAL RECOGNITION, close side. The picture is evidence stored with
+  // the settlement; the match now CONFIRMS the operator whose block it is (or flags
+  // that the face looks like a different unsettled man), rather than picking him
+  // from a list. Per-operator, like the photo — candidates are still only the men
+  // still unsettled on THIS shift, so it cannot propose somebody who was never on it.
   const [faceRefs, setFaceRefs] = useState({});
-  const [faceMsg, setFaceMsg]   = useState('');
-  const [faceVerdict, setFaceVerdict] = useState(null);
+  const [faceMsgs, setFaceMsgs]         = useState({}); // attendant_id -> message
+  const [faceVerdicts, setFaceVerdicts] = useState({}); // attendant_id -> verdict (rides on settlement as face_match)
 
   // Warm the weights as the close screen opens, so the handover photo does not wait.
   useEffect(() => { preloadFace(); }, []);
@@ -95,35 +97,43 @@ export default function ShiftEndPage() {
     } catch { /* the list is right there; a missing suggestion costs nothing */ }
   };
 
-  const onFacePhoto = async (shot) => {
-    setPhoto(shot);
-    setFaceMsg(''); setFaceVerdict(null);
+  const onFacePhoto = async (a, shot) => {
+    const aid = a.attendant_id;
+    setPhotos(p => ({ ...p, [aid]: shot }));
+    setFaceMsgs(p => ({ ...p, [aid]: '' }));
+    setFaceVerdicts(p => ({ ...p, [aid]: null }));
     if (!shot?.base64) return;
+    const put = (msg) => setFaceMsgs(p => ({ ...p, [aid]: msg }));
     const candidates = (shift?.attendants || [])
-      .filter(a => !closed[a.attendant_id] && faceRefs[a.attendant_id])
-      .map(a => ({ user_id: a.attendant_id, name: a.attendant_name, descriptor: faceRefs[a.attendant_id] }));
+      .filter(x => !closed[x.attendant_id] && faceRefs[x.attendant_id])
+      .map(x => ({ user_id: x.attendant_id, name: x.attendant_name, descriptor: faceRefs[x.attendant_id] }));
     if (!candidates.length) return;          // nobody enrolled — stay silent, this is the close screen
-    setFaceMsg(tc('send.faceReading','Reading the face…'));
+    put(tc('send.faceReading','Reading the face…'));
     const { descriptor, error } = await describeFace(
       `data:${shot.media_type || 'image/jpeg'};base64,${shot.base64}`);
     if (error || !descriptor) {
-      setFaceMsg(error === 'many-faces'
-        ? tc('send.faceMany','More than one face in frame — pick him from the list.')
-        : tc('send.faceUnread','Could not read the face — pick him from the list.'));
+      put(error === 'many-faces'
+        ? tc('send.faceMany2','More than one face in frame — check who you are settling.')
+        : tc('send.faceUnread2','Could not read the face — check who you are settling.'));
       return;
     }
     const m = bestMatch(descriptor, candidates);
-    if (!m) { setFaceMsg(''); return; }
-    setFaceVerdict(m);
-    if (m.verdict === 'strong' || m.verdict === 'likely') {
-      setSel(m.user_id);
-      setFaceMsg((m.verdict === 'strong'
-        ? tc('send.faceStrong','This looks like {name} — selected below. Check it before you settle him.')
-        : tc('send.faceLikely','This is probably {name} — selected below. Worth a second look.')
+    if (!m) { put(''); return; }
+    // The block already IS this operator, so the match no longer selects anyone — it
+    // CONFIRMS him, or FLAGS that the face looks more like a different unsettled man.
+    // The verdict still rides on his settlement as face_match evidence.
+    setFaceVerdicts(p => ({ ...p, [aid]: m }));
+    const strong = m.verdict === 'strong' || m.verdict === 'likely';
+    if (strong && m.user_id === aid) {
+      put((m.verdict === 'strong'
+        ? tc('send.faceConfirm','Face matches {name}.')
+        : tc('send.faceLikelyThis','Probably {name} — worth a second look.')
       ).replace('{name}', m.name));
-    } else {
-      setFaceMsg(tc('send.faceUnsure','Not sure who this is — closest is {name}. Pick him from the list.')
+    } else if (strong && m.user_id !== aid) {
+      put(tc('send.faceMismatch','⚠ This looks more like {name} — check you are settling the right operator.')
         .replace('{name}', m.name));
+    } else {
+      put(tc('send.faceUnsure2','Not sure who this is — closest is {name}.').replace('{name}', m.name));
     }
   };
   const [scanning, setScanning] = useState('');   // nozzle_id being OCR'd
@@ -240,6 +250,8 @@ export default function ShiftEndPage() {
       setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
       // A composite scanned for one shift must not carry its camera-lock into another.
       setCompositeScanned(false);
+      // Captured handover photos and face verdicts belong to the shift being closed.
+      setPhotos({}); setFaceMsgs({}); setFaceVerdicts({});
       loadSlips(d?.id);
       const stored = {};
       (Array.isArray(dr)?dr:[]).forEach(x => { if (x.reading_type === 'closing') stored[x.tank_id] = x; });
@@ -252,16 +264,6 @@ export default function ShiftEndPage() {
   const attendants = shift?.attendants || [];
   const setF  = (aid, k, v) => setForms(p => ({ ...p, [aid]: { ...p[aid], [k]: v } }));
   const setCl = (aid, nid, v) => setForms(p => ({ ...p, [aid]: { ...p[aid], closings: { ...(p[aid]?.closings||{}), [nid]: v } } }));
-
-  // The working area always holds ONE operator. When he is settled (or the shift
-  // is reloaded) it moves on to the next one still open, so the manager never has
-  // to hunt for where to carry on.
-  useEffect(() => {
-    const list = shift?.attendants || [];
-    if (sel && !closed[sel] && list.some(a => a.attendant_id === sel)) return;
-    const next = list.find(a => !closed[a.attendant_id]);
-    setSel(next ? next.attendant_id : '');
-  }, [shift, closed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Live tally for one operator
   const opSales = (a) => {
@@ -408,10 +410,12 @@ export default function ShiftEndPage() {
         card_total: num(fm.card), upi_total: num(fm.upi), cash_actual: num(fm.cash),
         credit_total: num(fm.credit), petty_cash: num(fm.petty),
       };
-      if (photo?.base64) { body.photo_base64 = photo.base64; body.photo_media_type = photo.media_type; body.face_match = faceVerdict; }
+      const shot = photos[a.attendant_id];
+      if (shot?.base64) { body.photo_base64 = shot.base64; body.photo_media_type = shot.media_type; body.face_match = faceVerdicts[a.attendant_id] || null; }
       const r = await api.post('/reconcile/manager', body);
       setClosed(p => ({ ...p, [a.attendant_id]: { variance: num(r.variance), total_sales: num(r.total_sales), at: new Date().toISOString() } }));
-      setPhoto(null); setPhotoSlot(n => n + 1);   // fresh camera for the next operator
+      // His block leaves the stack once he is settled; drop his captured photo/verdict.
+      setPhotos(p => { const n = { ...p }; delete n[a.attendant_id]; return n; });
       // Pull the shift back so the settled list can show his stored photo and the
       // close time the server actually recorded. Best-effort: a failed refresh is
       // cosmetic, the settlement is already banked.
@@ -422,7 +426,6 @@ export default function ShiftEndPage() {
 
   const unsettled = attendants.filter(a => !closed[a.attendant_id]);
   const settled   = attendants.filter(a =>  closed[a.attendant_id]);
-  const selA      = attendants.find(a => a.attendant_id === sel) || null;
   const allClosed = attendants.length > 0 && unsettled.length === 0;
   // An empty shift (opened by mistake, no operators) has nothing to reconcile —
   // allow closing it directly so it doesn't sit open as an eyesore.
@@ -734,70 +737,35 @@ export default function ShiftEndPage() {
               </div>
             )}
 
-            {/* THE WORKING CARD — one operator at a time. */}
-            {unsettled.length>0 ? (
-              <div className="card" style={{marginBottom:'0.85rem'}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
-                  <div style={{fontWeight:700,fontSize:15}}>{tc('send.settleAnOperator','Settle an operator')}</div>
-                  <span style={{fontSize:12,fontWeight:700,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'2px 10px'}}>
-                    {tc('send.stillOpenCount','{n} still open').replace('{n}', unsettled.length)}
-                  </span>
-                </div>
+            {/* THE OPERATOR STACK — every unsettled operator, one block each, laid
+                out top to bottom and scrolled through. Each block settles on its OWN
+                button: the money maker-checker stays per operator, nobody is settled
+                in bulk. A settled man drops out of `unsettled` and reappears in the
+                "Settled" list below. */}
+            {unsettled.length>0 ? (<>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+                <div style={{fontWeight:700,fontSize:15}}>{tc('send.settleOperators','Settle operators')}</div>
+                <span style={{fontSize:12,fontWeight:700,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'2px 10px'}}>
+                  {tc('send.stillOpenCount','{n} still open').replace('{n}', unsettled.length)}
+                </span>
+              </div>
 
-                {/* 1 — HIS PHOTOGRAPH FIRST. Phase 0 of facial recognition: today it
-                    is proof of who was released and when; later the picture will
-                    fetch the operator and the picker below becomes the fallback.
-                    Keyed on photoSlot so it clears between operators — but NOT on
-                    the selection, or picking the man after taking his photo (the
-                    intended order) would wipe the photo. */}
-                <PhotoCapture key={`op-photo-${photoSlot}`}
-                  label={tc('send.photoOfOperator','Photo of the operator')}
-                  hint={tc('send.photoOfOperatorHint','Taken as he hands over. Optional — a dead camera never blocks a settlement.')}
-                  onCapture={onFacePhoto}
-                  disabled={!!busy}
-          removeLabel={tc('photo.remove', 'Remove')}/>
-                {faceMsg && (
-                  <div style={{marginTop:6,fontSize:12.5,lineHeight:1.45,padding:'7px 10px',borderRadius:8,
-                    background: faceVerdict?.verdict === 'strong' ? '#ecfdf5'
-                              : faceVerdict?.verdict === 'likely' ? '#fff7ed' : '#f8fafc',
-                    color:     faceVerdict?.verdict === 'strong' ? '#065f46'
-                              : faceVerdict?.verdict === 'likely' ? '#9a3412' : 'var(--text-3)'}}>
-                    {faceMsg}
-                  </div>
-                )}
-
-                {/* 2 — WHO HE IS. A plain list of the operators still open on this
-                    shift; a settled man disappears from it, so he cannot be settled
-                    twice by mistake. */}
-                <div style={{marginTop:12}}>
-                  <label className="label">{tc('send.operator','Operator')}</label>
-                  <select style={inp} value={sel} onChange={e=>setSel(e.target.value)}>
-                    <option value="">{tc('send.selectOperator','Select…')}</option>
-                    {unsettled.map(a => <option key={a.attendant_id} value={a.attendant_id}>{a.attendant_name}</option>)}
-                  </select>
-                </div>
-
-                {selA && (()=>{
-                  const a = selA; const fm = forms[a.attendant_id]||{};
+              <div style={{display:'flex',flexDirection:'column',gap:'0.85rem',marginBottom:'0.85rem'}}>
+                {unsettled.map(a => {
+                  const fm = forms[a.attendant_id]||{};
                   const sales = opSales(a), expected = opExpected(a), variance = opVariance(a);
+                  const fv = faceVerdicts[a.attendant_id];
+                  // Only tint the face line green/amber when the match confirms THIS
+                  // operator; a mismatch (best match is someone else) stays neutral so
+                  // its ⚠ reads as caution, not a pass.
+                  const tone = fv && fv.user_id === a.attendant_id ? fv.verdict : 'unsure';
                   return (
-                    <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
+                    <div key={a.attendant_id} className="card">
+                      {/* HIS NAME + the span he is being released from. started_at is
+                          null until the attendance DDL has run — say so rather than
+                          print a blank. */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
-                        <div style={{fontSize:12.5,color:'#555'}}>
-                          {/* Shown only when there IS a float. Outlets do not give one,
-                              so shift start no longer asks and every new shift reads
-                              ₹0.00 — a line that always says zero is noise the eye
-                              learns to skip. Older shifts and any outlet that does hand
-                              a float still show it, because it is real money and the
-                              expected-cash maths below depends on it. */}
-                          {Number(a.opening_cash||0) !== 0 && (
-                            <>{tc('send.float','float')} <b>{fmt(a.opening_cash)}</b>{' · '}</>
-                          )}
-                          {(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}
-                        </div>
-                        {/* The span he is being released from. started_at is null
-                            until the attendance DDL has run — say so rather than
-                            print a blank. */}
+                        <div style={{fontWeight:700,fontSize:15}}>{a.attendant_name}</div>
                         <div style={{fontSize:12,color:'#888',display:'flex',alignItems:'center',gap:4}}>
                           <Clock size={12}/>
                           {a.started_at
@@ -805,24 +773,54 @@ export default function ShiftEndPage() {
                             : tc('send.startTimeNotRecorded','start time not recorded')}
                         </div>
                       </div>
+                      {/* Float shown only when there IS one — a line that always says
+                          ₹0.00 is noise. The expected-cash maths still uses it. */}
+                      <div style={{fontSize:12.5,color:'#555',marginBottom:10}}>
+                        {Number(a.opening_cash||0) !== 0 && (
+                          <>{tc('send.float','float')} <b>{fmt(a.opening_cash)}</b>{' · '}</>
+                        )}
+                        {(a.nozzles||[]).length} {(a.nozzles||[]).length===1?tc('send.nozzle','nozzle'):tc('send.nozzles','nozzles')}
+                      </div>
 
-                      {/* 3 — his nozzles' closing meters */}
-                      {(a.nozzles||[]).length===0
-                        ? <div style={{fontSize:12.5,color:'#b45309',marginBottom:8}}>{tc('send.noNozzlesAssigned','No nozzles assigned to this operator — fix at shift start.')}</div>
-                        : (a.nozzles||[]).map(nz=>(
-                          <div key={nz.nozzle_id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                            <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
-                            <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
-                              value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
-                            <label title={compositeScanned ? tc('send.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('send.scanTotalizer','Scan the totalizer')}
-                              style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:(compositeScanned||scanning===nz.nozzle_id)?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning===nz.nozzle_id)?'not-allowed':'pointer',fontSize:15,opacity:compositeScanned?0.5:1}}>
-                              {scanning===nz.nozzle_id?'…':'📷'}
-                              <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
-                            </label>
-                          </div>
-                        ))}
+                      {/* 1 — HIS PHOTOGRAPH. His own slot, keyed by attendant_id so N
+                          blocks never share one photo; the capture lands in
+                          photos[attendant_id] and is sent with HIS settlement only. */}
+                      <PhotoCapture key={`op-photo-${a.attendant_id}`}
+                        label={tc('send.photoOfOperator','Photo of the operator')}
+                        hint={tc('send.photoOfOperatorHint','Taken as he hands over. Optional — a dead camera never blocks a settlement.')}
+                        onCapture={(shot)=>onFacePhoto(a, shot)}
+                        disabled={!!busy}
+                        removeLabel={tc('photo.remove', 'Remove')}/>
+                      {faceMsgs[a.attendant_id] && (
+                        <div style={{marginTop:6,fontSize:12.5,lineHeight:1.45,padding:'7px 10px',borderRadius:8,
+                          background: tone === 'strong' ? '#ecfdf5' : tone === 'likely' ? '#fff7ed' : '#f8fafc',
+                          color:     tone === 'strong' ? '#065f46' : tone === 'likely' ? '#9a3412' : 'var(--text-3)'}}>
+                          {faceMsgs[a.attendant_id]}
+                        </div>
+                      )}
 
-                      {/* 4 — the settlement breakup */}
+                      {/* 2 — HIS NOZZLES' closing meters. The composite scan writes
+                          these through the same setCl; the per-nozzle camera is
+                          disabled while a composite is in force. */}
+                      <div style={{marginTop:12}}>
+                        {(a.nozzles||[]).length===0
+                          ? <div style={{fontSize:12.5,color:'#b45309',marginBottom:8}}>{tc('send.noNozzlesAssigned','No nozzles assigned to this operator — fix at shift start.')}</div>
+                          : (a.nozzles||[]).map(nz=>(
+                            <div key={nz.nozzle_id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                              <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
+                              <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
+                                value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
+                              <label title={compositeScanned ? tc('send.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('send.scanTotalizer','Scan the totalizer')}
+                                style={{flexShrink:0,width:38,height:34,display:'flex',alignItems:'center',justifyContent:'center',background:(compositeScanned||scanning===nz.nozzle_id)?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning===nz.nozzle_id)?'not-allowed':'pointer',fontSize:15,opacity:compositeScanned?0.5:1}}>
+                                {scanning===nz.nozzle_id?'…':'📷'}
+                                <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning===nz.nozzle_id} style={{display:'none'}} onChange={e=>{ scanMeter(a, nz, e.target.files?.[0]); e.target.value=''; }}/>
+                              </label>
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* 3 — the settlement breakup. Cash is his OWN declaration —
+                          the per-operator maker-checker that must stay per operator. */}
                       <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginTop:10}}>
                         <div><label className="label">{tc('send.cash','Cash')} ₹</label><input style={inp} type="number" step="0.01" value={fm.cash||''} onChange={e=>setF(a.attendant_id,'cash',e.target.value)}/></div>
                         <div><label className="label">{tc('send.card','Card')} ₹</label><input style={inp} type="number" step="0.01" value={fm.card||''} onChange={e=>setF(a.attendant_id,'card',e.target.value)}/></div>
@@ -831,19 +829,19 @@ export default function ShiftEndPage() {
                         <div><label className="label">{tc('send.pettySkim','Petty/Skim')} ₹</label><input style={inp} type="number" step="0.01" value={fm.petty||''} onChange={e=>setF(a.attendant_id,'petty',e.target.value)}/></div>
                       </div>
 
-                      {/* 5 — live tally, 6 — close him */}
+                      {/* 4 — live tally, 5 — his OWN settle button */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:10,paddingTop:10,borderTop:'1px solid #eef0f2'}}>
                         <div style={{fontSize:12,color:'#555'}}>{tc('send.sales','Sales')} <b>{fmt(sales)}</b> · {tc('send.expectedCash','Expected cash')} <b>{fmt(expected)}</b> → {vBadge(variance)}</div>
                         <button onClick={()=>closeOperator(a)} disabled={busy==='op'+a.attendant_id}
                           style={{height:38,padding:'0 16px',background:'#16a34a',color:'#fff',border:'none',borderRadius:8,fontWeight:700,cursor:'pointer',fontSize:13}}>
-                          {busy==='op'+a.attendant_id?tc('send.closingEllipsis','Closing…'):tc('send.closeOperator','Close operator')}
+                          {busy==='op'+a.attendant_id?tc('send.closingEllipsis','Closing…'):tc('send.settleOperator','Settle operator')}
                         </button>
                       </div>
                     </div>
                   );
-                })()}
+                })}
               </div>
-            ) : (
+            </>) : (
               <div className="card" style={{marginBottom:'0.85rem',background:'#f0fdf4',display:'flex',alignItems:'center',gap:8}}>
                 <CheckCircle size={18} color="#16a34a"/>
                 <span style={{fontSize:13.5,fontWeight:700,color:'#166534'}}>{tc('send.allOperatorsSettled','Every operator on this shift is settled.')}</span>
