@@ -297,46 +297,9 @@ export default function ShiftEndPage() {
     setScanning('');
   };
 
-  // Scan the whole printed pump slip (Slip A/B) — fills the CLOSING meter for
-  // every nozzle on it across ALL operators, matched by label "{pump}.{nozzle}".
-  // It stays a shift-wide action (not per-operator) because the slip itself is
-  // shift-wide: one print-out covers every nozzle on the pump.
-  const scanSlip = async (file) => {
-    if (!file || !shift) return;
-    setScanning('slip'); setErr('');
-    try {
-      const b64 = await readB64(file);
-      const r = await api.post('/reconcile/parse-slip', { shift_id: shift.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
-      let matched = 0; const miss = [];
-      (r.nozzles || []).forEach(n => {
-        if (n.cumulative_volume == null) return;
-        let found = false;
-        // Prefer the nozzle the SERVER resolved: it accepts both "3.1" and plain
-        // "3" numbering, and deliberately resolves to nothing when several nozzles
-        // share a number rather than filling the wrong fuel's meter. The label
-        // comparison is only a fallback for a backend that has not deployed yet.
-        attendants.forEach(a => (a.nozzles || []).forEach(nz => {
-          const hit = n.nozzle_id ? nz.nozzle_id === n.nozzle_id : String(nz.nozzle_number) === n.label;
-          if (hit) { setCl(a.attendant_id, nz.nozzle_id, n.cumulative_volume); matched++; found = true; }
-        }));
-        if (!found) miss.push(n.label || n.nozzle_no || '?');
-      });
-      if (!matched) setErr(r.hint || tc('send.slipNoMatch2', 'Slip read, but none of its nozzles could be matched to this outlet. Check the nozzle numbers under Settings — the slip prints {x}.').replace('{x}', (r.nozzles||[]).map(n=>n.nozzle_no).filter(Boolean).join(', ') || '—'));
-      else {
-        let msg = tc('send.slipFilled', 'Filled {n} closing reading(s) from the slip.').replace('{n}', matched);
-        if (miss.length) msg += ' ' + tc('send.slipNoMatchSome', 'No operator nozzle for: {x}.').replace('{x}', miss.join(', '));
-        if (!r.legible)  msg += ' ' + tc('send.slipVerify', '⚠ Some digits unclear — verify.');
-        // See shift-start: the server's warning about an untrusted match is shown
-        // verbatim on the close side too, where a wrong meter becomes money.
-        if (r.hint)      msg += ' ⚠ ' + r.hint;
-        setErr(msg);
-      }
-      // The server kept the picture against the shift — pull it back so the strip
-      // below shows it immediately, not only after a reload.
-      loadSlips(shift.id);
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipFailed', 'Slip scan failed')); }
-    setScanning('');
-  };
+  // (The single-slip "Scan pump slip" flow was retired — "Scan all slips" reads one
+  // or many slips in one photo and supersedes it. The per-nozzle camera covers a
+  // single re-scan.)
 
   // Scan ONE photo holding SEVERAL pump slips at once — the server reads every slip
   // in the frame and returns each nozzle's cumulative VOLUME already matched to a
@@ -700,17 +663,11 @@ export default function ShiftEndPage() {
           )}
 
           {shift && attendants.length>0 && (<>
-            {/* One slip covers every nozzle on the pump, so this stays shift-wide. */}
+            {/* ONE photo of all the pump slips fills every nozzle's closing meter.
+                While a composite is in force the per-nozzle cameras below are disabled
+                so they cannot overwrite it; the boxes stay hand-editable, and
+                Retake / clear re-arms the per-nozzle cameras. */}
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}>
-              <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'9px 14px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
-                📄 {scanning==='slip' ? tc('send.slipReading','Reading slip…') : tc('send.scanSlip','Scan pump slip → fill all closing meters')}
-                <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
-              </label>
-              {/* Composite — ONE photo of SEVERAL slips fills every matched nozzle's
-                  closing at once. While a composite is in force the per-nozzle
-                  cameras below are disabled so they cannot overwrite it; the reading
-                  boxes stay hand-editable. Retake / clear re-arms the per-nozzle
-                  cameras. */}
               <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'9px 14px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
                 📸 {scanning==='all-slips' ? tc('send.slipsReading','Reading slips…') : tc('send.scanAllSlips','Scan all slips (one photo)')}
                 <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning==='all-slips'} style={{display:'none'}} onChange={e=>{ scanAllSlips(e.target.files?.[0]); e.target.value=''; }}/>
