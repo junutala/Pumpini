@@ -20,7 +20,7 @@ import { Check, ChevronRight, ArrowLeft, Droplets, X, ScanLine, AlertTriangle } 
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips } from '../../lib/api';
+import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips, getPumps } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
@@ -29,7 +29,7 @@ import { describe as describeFace, bestMatch, preload as preloadFace } from '../
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const fmtL = n => Number(n||0).toFixed(2);
-const STEPS = ['Gauge', 'Attendants'];
+const STEPS = ['Gauge', 'Nozzles', 'Attendants'];
 
 // India reads DD/MM and the outlet clock is IST — never the browser's locale, which
 // on a laptop bought abroad would print MM/DD against a money record.
@@ -288,6 +288,16 @@ export default function ShiftStartPage() {
   };
   const [nozPick, setNozPick] = useState({});       // nozzle_id -> { selected, opening }
   const [openings, setOpenings] = useState({});     // nozzle_id -> the prior close
+  // THE OPENING READINGS, captured on the new Nozzles step BEFORE any attendant is
+  // picked. One entry per NON-carried nozzle (carried ones read from `openings` and
+  // are never written here). This is the source of truth the Nozzles step edits; a
+  // scan, a manual type or a per-nozzle camera all land here, and when a nozzle is
+  // ticked for an attendant its pick copies from this map so the two steps agree.
+  const [nozReadings, setNozReadings] = useState({}); // nozzle_id -> opening string
+  // nozzle_id -> the SERIAL of the pump this nozzle hangs off, so the Nozzles step
+  // can name each nozzle "SERIAL.slipNo" (e.g. 17EH2900V.1). Loaded once from
+  // getPumps; the /nozzles read does not carry the serial, only pump_id.
+  const [pumpSerial, setPumpSerial] = useState({});
   // nozzle_id -> 'carried' | 'pending' | 'entered'. THE OPENING IS THE LAST CLOSE
   // (owner rule, 01-Aug): where one exists the server uses it whatever this screen
   // sends, so the box is shown READ-ONLY rather than as an editable field whose value
@@ -350,7 +360,8 @@ export default function ShiftStartPage() {
       api.get('/shifts', { params:{ station_id: stationId, status:'open' } }).catch(()=>[]),
       api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
       api.get(`/prices/${stationId}/current`).catch(()=>[]),
-    ]).then(([d,u,n,os,tk,pr]) => {
+      getPumps(stationId).catch(()=>({ pumps:[], unassigned:[] })),
+    ]).then(([d,u,n,os,tk,pr,pm]) => {
       const defList = Array.isArray(d)?d:[];
       const openList = Array.isArray(os)?os:[];
       setDefs(defList);
@@ -362,6 +373,12 @@ export default function ShiftStartPage() {
       // suggestion, never the screen.
       loadFaceRefs(staff);
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
+      // nozzle_id -> pump serial, for the "SERIAL.slipNo" nozzle names on the
+      // Nozzles step. A failed pumps read just falls the name back to nozzle_number.
+      const pmap = {};
+      ((pm && Array.isArray(pm.pumps)) ? pm.pumps : []).forEach(p =>
+        (p.nozzles||[]).forEach(nz => { if (p.serial) pmap[nz.id] = p.serial; }));
+      setPumpSerial(pmap);
       setOpenShifts(openList);
       setTanks(Array.isArray(tk)?tk:[]);
       setPrices(Array.isArray(pr)?pr:[]);
@@ -369,14 +386,15 @@ export default function ShiftStartPage() {
 
       // ?shift=<id> — the Shifts screen sends "Add Attendant" here rather than
       // carrying its own assign form (retired 01-Aug). The shift is already named,
-      // so resume THAT one and go straight to the attendant screen: the dips of a
-      // running shift are settled and re-presenting them would be busywork.
+      // so resume THAT one and go straight to the attendant screen (step 2): the
+      // dips and openings of a running shift are settled and re-presenting them
+      // would be busywork.
       const wanted = openList.find(s => s.id === wantShift);
       if (wanted) {
         shiftRef.current = Promise.resolve(wanted);
         setResumed(true);
         refreshShift(wanted.id)
-          .then(() => setStep(1))
+          .then(() => setStep(2))
           .catch(()=>{ shiftRef.current = null; setResumed(false); });
         return;
       }
@@ -546,7 +564,9 @@ export default function ShiftStartPage() {
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
   const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
 
-  const goToAttendants = async () => {
+  // Step 0 → step 1 (Nozzles). Saves the dips exactly as before, then lands on the
+  // Nozzle-readings step (which now sits between the gauge and the attendants).
+  const goToNozzles = async () => {
     setBusy(true); setErr('');
     try {
       // DIPS FIRST AT A HANDOVER. They close the shift that is still running and do
@@ -577,11 +597,40 @@ export default function ShiftStartPage() {
     } finally { setBusy(false); }
   };
 
+  // Step 1 (Nozzles) → step 2 (Attendants). The dips are already saved and the
+  // openings are captured in nozReadings, so this is a plain advance — the copy from
+  // nozReadings into each attendant's pick happens as nozzles are ticked.
+  const goToAttendants = () => setStep(2);
+
   // ── Attendant assignment ──────────────────────────────────────────
   const assignedIds      = new Set(attendants.map(a => a.attendant_id));
   const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[]).map(nz => nz.nozzle_id)));
   const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
+
+  // The slip number the machine prints for a nozzle, and the display name that pairs
+  // it with the pump SERIAL. slip_nozzle_no is the explicit column; where it is unset
+  // the suffix of "pump.nozzle" (e.g. "3.1" -> "1") is the same figure. No serial on
+  // file (pumps not migrated, or the read failed) → fall back to the raw nozzle name.
+  const slipNoOf = (n) => {
+    if (n.slip_nozzle_no != null && String(n.slip_nozzle_no) !== '') return String(n.slip_nozzle_no);
+    const m = String(n.nozzle_number ?? '').match(/\.(\d+)$/);
+    return m ? m[1] : String(n.nozzle_number ?? '');
+  };
+  const nozName = (n) => {
+    const serial = pumpSerial[n.id];
+    return serial ? `${serial}.${slipNoOf(n)}` : String(n.nozzle_number ?? '');
+  };
+
+  // ONE writer for a captured opening. nozReadings is the source of truth the Nozzles
+  // step edits; if the nozzle is already ticked for an attendant we keep its pick in
+  // sync so the reading cannot diverge between the two steps. It does NOT tick a
+  // nozzle — assignment stays a deliberate act on the Attendants step — and it must
+  // never be called for a carried nozzle (the server owns that opening).
+  const setReading = (id, value) => {
+    setNozReadings(p => ({ ...p, [id]: value }));
+    setNozPick(p => (p[id]?.selected ? { ...p, [id]: { ...p[id], opening: value } } : p));
+  };
 
   const scanMeter = async (nozzle, file) => {
     if (!file || !shift) return;
@@ -589,7 +638,10 @@ export default function ShiftStartPage() {
     try {
       const b64 = await readB64(file);
       const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
-      if (r.reading) pickNoz(nozzle.id, { selected:true, opening: r.reading });
+      // The per-nozzle camera is only ever offered on a NON-carried nozzle, so the
+      // reading goes straight to the shared writer — nozReadings, and the pick if it
+      // is already assigned.
+      if (r.reading) setReading(nozzle.id, r.reading);
       if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozzle.nozzle_number) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errScanFailed','Scan failed')); }
     setScanning('');
@@ -614,27 +666,26 @@ export default function ShiftStartPage() {
           ? nozzles.find(x => x.id === n.nozzle_id)
           : nozzles.find(x => String(x.nozzle_number) === n.label);
         if (!noz) { if (n.label) miss.push(n.label); return; }
-        // A nozzle whose opening is carried from the last close is TICKED but its
-        // figure is left alone. Writing the slip's number into a box the server
-        // will overwrite would tell the manager his reading was accepted when it
-        // was not. If the slip and the last close genuinely disagree that is a
-        // discrepancy to investigate, not an opening to adjust.
+        // A nozzle whose opening is carried from the last close is left alone. Writing
+        // the slip's number into a figure the server will overwrite would tell the
+        // manager his reading was accepted when it was not. If the slip and the last
+        // close genuinely disagree that is a discrepancy to investigate, not an
+        // opening to adjust — so it is surfaced, never applied.
         if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
-          pickNoz(noz.id, { selected: true });
           if (Math.abs(Number(n.cumulative_volume) - Number(openings[noz.id])) > 1) {
             locked.push(`${n.label} (${tc('sstart.slipSays','slip')} ${n.cumulative_volume} vs ${openings[noz.id]})`);
           }
           matched++;
           return;
         }
-        pickNoz(noz.id, { selected: true, opening: n.cumulative_volume });
+        setReading(noz.id, n.cumulative_volume);
         matched++;
       });
       // The server's hint names the serial and the screen that fixes it, so prefer
       // it over the generic wording whenever it is present.
       if (!matched) setErr(r.hint || tc('sstart.slipNoMatch','Slip read, but no nozzle matched. Label nozzles as pump.nozzle (e.g. {ex}).').replace('{ex}', `${r.pump_id||'1'}.1`));
       else {
-        let msg = tc('sstart.slipTicked','Ticked {n} nozzle(s) from the slip.').replace('{n}', matched);
+        let msg = tc('sstart.slipTicked','Read {n} nozzle(s) from the slip.').replace('{n}', matched);
         if (miss.length)  msg += ' ' + tc('sstart.slipNoMatchSome','No app nozzle for: {x}.').replace('{x}', miss.join(', '));
         if (locked.length) msg += ' ' + tc('sstart.slipDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
         if (!r.legible)   msg += ' ' + tc('sstart.slipVerify','⚠ Some digits unclear — verify.');
@@ -670,19 +721,18 @@ export default function ShiftStartPage() {
         const noz = nozzles.find(x => x.id === l.nozzle_id);
         if (!noz) { unmatched.push(l.nozzle_number || String(l.nozzle_id)); return; }
         if (l.cumulative_volume == null) return;
-        // A nozzle whose opening is carried from the last close is TICKED but its
-        // figure is left alone — the server uses the carried close regardless, and
-        // writing the slip's number in would falsely say the reading was accepted.
-        // Same rule as scanSlip; a real disagreement is a discrepancy to report.
+        // A nozzle whose opening is carried from the last close is left alone — the
+        // server uses the carried close regardless, and writing the slip's number in
+        // would falsely say the reading was accepted. Same rule as scanSlip; a real
+        // disagreement is a discrepancy to report, not an opening to apply.
         if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
-          pickNoz(noz.id, { selected: true });
           if (Math.abs(Number(l.cumulative_volume) - Number(openings[noz.id])) > 1) {
             locked.push(`${noz.nozzle_number} (${tc('sstart.slipSays','slip')} ${l.cumulative_volume} vs ${openings[noz.id]})`);
           }
           matched++;
           return;
         }
-        pickNoz(noz.id, { selected: true, opening: l.cumulative_volume });
+        setReading(noz.id, l.cumulative_volume);
         matched++;
         // A rupee/litre swap was corrected server-side for this line — flag it so
         // the manager eyeballs the number before it becomes an opening.
@@ -769,17 +819,24 @@ export default function ShiftStartPage() {
         </div>
       )}
 
-      {/* Stepper — TWO steps. Moving forward goes through goToAttendants so the dips
-          are saved and checked on the way, exactly as the Next button does. */}
+      {/* Stepper — THREE steps: Gauge & dip → Nozzle readings → Attendants. Going
+          BACK (or to the current pill) is free; going FORWARD from the gauge always
+          passes through goToNozzles so the dips are saved and checked on the way,
+          exactly as the Next button does. */}
       <div style={{display:'flex',gap:6,marginBottom:'1.25rem',flexWrap:'wrap'}}>
         {STEPS.map((s,i)=>(
-          <button key={s} onClick={()=>{ if (i===0) setStep(0); else if (!busy) goToAttendants(); }} disabled={busy}
+          <button key={s} onClick={()=>{
+              if (busy) return;
+              if (i<=step) { setStep(i); return; }   // back / same — no gate
+              if (step===0) { goToNozzles(); return; } // forward from gauge saves dips, lands on Nozzles
+              if (i===2) setStep(2);                   // Nozzles → Attendants
+            }} disabled={busy}
             style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:99,fontSize:13,fontWeight:600,
               border:'1.5px solid '+(i===step?'#FF6B00':'#e5e3de'),
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
               color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:busy?'default':'pointer'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
-            {tc('sstart.step'+s, s === 'Gauge' ? 'Gauge & dip' : 'Attendants')}
+            {tc('sstart.step'+s, s === 'Gauge' ? 'Gauge & dip' : s === 'Nozzles' ? 'Nozzle readings' : 'Attendants')}
           </button>
         ))}
       </div>
@@ -944,14 +1001,103 @@ export default function ShiftStartPage() {
               </div>
             );
           })}
-          <button onClick={goToAttendants} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
-            {busy ? tc('sstart.savingReadings','Saving…') : tc('sstart.nextAttendants','Next: Attendant assignment →')}
+          <button onClick={goToNozzles} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
+            {busy ? tc('sstart.savingReadings','Saving…') : tc('sstart.nextNozzles','Next: Nozzle readings →')}
           </button>
         </div>
       )}
 
-      {/* ── SCREEN 2 — Attendant assignment ──────────────────────────── */}
+      {/* ── SCREEN 2 — Nozzle readings (NEW) ──────────────────────────────
+          Every active nozzle gets its opening HERE, decoupled from who mans it. A
+          carried nozzle shows its last close locked; the rest are captured into
+          nozReadings by a slip scan, the per-nozzle totalizer camera, or by hand. */}
       {step===1 && (
+        <div className="card" style={{maxWidth:640}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><ScanLine size={16} color="#0f766e"/>
+            {tc('sstart.nozzleReadingsTitle','Nozzle opening readings')}
+          </div>
+          <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>
+            {tc('sstart.nozzleReadingsHelp','Capture the opening meter for every nozzle. A nozzle carried from the last close is locked to that figure — the rest take a scan or a typed reading.')}
+          </div>
+
+          {/* Composite — ONE photo of SEVERAL slips fills every matched nozzle's
+              opening. While in force the per-nozzle cameras below are disabled so the
+              two capture paths cannot fight; the boxes stay hand-editable and
+              Retake / clear re-arms the cameras. */}
+          <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:8,padding:'8px 12px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
+            📄 {scanning==='slip' ? tc('sstart.slipReading','Reading slip…') : tc('sstart.scanSlip','Scan pump slip → fill all nozzles')}
+            <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
+          </label>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:12}}>
+            <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 12px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
+              📸 {scanning==='all-slips' ? tc('sstart.slipsReading','Reading slips…') : tc('sstart.scanAllSlips','Scan all slips (one photo)')}
+              <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning==='all-slips'} style={{display:'none'}} onChange={e=>{ scanAllSlips(e.target.files?.[0]); e.target.value=''; }}/>
+            </label>
+            {compositeScanned && (
+              <button type="button" onClick={()=>{ setCompositeScanned(false); setErr(''); }}
+                style={{padding:'8px 12px',background:'#fff',color:'#6d28d9',border:'1.5px solid #ddd6fe',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                {tc('sstart.retakeSlips','Retake / clear')}
+              </button>
+            )}
+          </div>
+
+          {nozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.noNozzles','No active nozzles configured.')}</div>}
+          {nozzles.map(n=>{
+            // The last close, which the server will use regardless — shown locked.
+            const carried = openSrc[n.id] === 'carried' && openings[n.id] != null;
+            // Not carried because the prior shift is not settled yet — a different
+            // thing from a nozzle that has never run.
+            const pendingOn = !carried && openSrc[n.id] === 'pending' ? openPending[n.id] : null;
+            return (
+              <div key={n.id} style={{border:'1px solid #eef0f2',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'space-between',flexWrap:'wrap'}}>
+                  <div style={{fontSize:13,fontWeight:700,minWidth:0}}>
+                    {nozName(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{String(n.fuel_type||'').replace('_',' ')}</span>
+                  </div>
+                  {carried ? (
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div style={{fontSize:14,fontWeight:800,color:'#0f172a'}}>{openings[n.id]}</div>
+                      <span style={{fontSize:11,color:'#166534',background:'#dcfce7',borderRadius:99,padding:'2px 9px',fontWeight:700}}>🔒 {tc('sstart.carriedFromLastClose','Carried from last close')}</span>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <input style={{...inp,width:150}}
+                        type="number" step="0.001" inputMode="decimal"
+                        placeholder={tc('sstart.openingMeter','Opening meter')}
+                        value={nozReadings[n.id] ?? ''} onChange={e=>setReading(n.id, e.target.value)}/>
+                      {/* Per-nozzle totalizer camera — off while a composite photo is
+                          in force so the two paths cannot overwrite each other. */}
+                      <label title={compositeScanned ? tc('sstart.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('sstart.scanTotalizer','Scan the totalizer')}
+                        style={{flexShrink:0,width:40,height:36,display:'flex',alignItems:'center',justifyContent:'center',background:(compositeScanned||scanning===n.id)?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning===n.id)?'not-allowed':'pointer',fontSize:16,opacity:compositeScanned?0.5:1}}>
+                        {scanning===n.id?'…':'📷'}
+                        <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning===n.id} style={{display:'none'}} onChange={e=>{ scanMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
+                      </label>
+                    </div>
+                  )}
+                </div>
+                {pendingOn && (
+                  <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
+                    ⚠ {tc('sstart.priorShiftUnsettled','Shift {n} has this nozzle and has not been settled, so there is no close to carry yet — read the meter and enter it. Settle that shift at the same figure.')
+                          .replace('{n}', pendingOn.shift_number ?? '—')}
+                  </div>
+                )}
+                {!carried && !pendingOn && (
+                  <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
+                    ⚠ {tc('sstart.noPriorClose','No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <button onClick={goToAttendants} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
+            {tc('sstart.nextAttendants','Next: Attendants →')}
+          </button>
+        </div>
+      )}
+
+      {/* ── SCREEN 3 — Attendant assignment ──────────────────────────── */}
+      {step===2 && (
         <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'1.25rem',alignItems:'start'}}>
           <div className="card">
             <div style={{fontWeight:700,fontSize:15,marginBottom:'0.75rem'}}>{tc('sstart.attendantAssignment','Attendant assignment')}</div>
@@ -996,28 +1142,7 @@ export default function ShiftStartPage() {
               {/* Opening float is deliberately absent — see startAttendant(). */}
 
               <div>
-                <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint','(tick each; opening auto-carries from last close)')}</span></label>
-                <label style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:8,padding:'8px 12px',background:scanning==='slip'?'#94a3b8':'#0f766e',color:'#fff',borderRadius:8,cursor:scanning==='slip'?'default':'pointer',fontSize:13,fontWeight:600}}>
-                  📄 {scanning==='slip' ? tc('sstart.slipReading','Reading slip…') : tc('sstart.scanSlip','Scan pump slip → fill all nozzles')}
-                  <input type="file" accept="image/*" capture="environment" disabled={scanning==='slip'} style={{display:'none'}} onChange={e=>{ scanSlip(e.target.files?.[0]); e.target.value=''; }}/>
-                </label>
-                {/* Composite — ONE photo of SEVERAL slips fills every matched
-                    nozzle's opening at once. While a composite is in force the
-                    per-nozzle cameras below are disabled so they cannot overwrite
-                    it; the reading boxes stay hand-editable. Retake / clear re-arms
-                    the per-nozzle cameras. */}
-                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
-                  <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'8px 12px',background:(compositeScanned||scanning==='all-slips')?'#94a3b8':'#7c3aed',color:'#fff',borderRadius:8,cursor:(compositeScanned||scanning==='all-slips')?'default':'pointer',fontSize:13,fontWeight:600}}>
-                    📸 {scanning==='all-slips' ? tc('sstart.slipsReading','Reading slips…') : tc('sstart.scanAllSlips','Scan all slips (one photo)')}
-                    <input type="file" accept="image/*" capture="environment" disabled={compositeScanned||scanning==='all-slips'} style={{display:'none'}} onChange={e=>{ scanAllSlips(e.target.files?.[0]); e.target.value=''; }}/>
-                  </label>
-                  {compositeScanned && (
-                    <button type="button" onClick={()=>{ setCompositeScanned(false); setErr(''); }}
-                      style={{padding:'8px 12px',background:'#fff',color:'#6d28d9',border:'1.5px solid #ddd6fe',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                      {tc('sstart.retakeSlips','Retake / clear')}
-                    </button>
-                  )}
-                </div>
+                <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint2','(tick each; the opening comes from the Nozzle readings step)')}</span></label>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
@@ -1027,19 +1152,24 @@ export default function ShiftStartPage() {
                   // Not carried because the shift before this one has not been settled
                   // yet — a different thing from a nozzle that has never run.
                   const pendingOn = !carried && openSrc[n.id] === 'pending' ? openPending[n.id] : null;
+                  // The opening the manager captured on the Nozzle-readings step —
+                  // the last close for a carried nozzle, else whatever went into
+                  // nozReadings there. Ticking copies it onto the pick; editing here
+                  // writes back through setReading so the two steps cannot diverge.
+                  const fromStep1 = carried ? sug : (nozReadings[n.id] ?? '');
                   const cur = carried ? sug : (pick?.opening ?? '');
                   return (
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
-                        <input type="checkbox" checked={sel} onChange={e=>{ if(e.target.checked) pickNoz(n.id,{selected:true}); else setNozPick(p=>({...p,[n.id]:{...(p[n.id]||{}),selected:false}})); }}/>
-                        {tc('sstart.nozzle','Nozzle')} {n.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
+                        <input type="checkbox" checked={sel} onChange={e=>{ if(e.target.checked) pickNoz(n.id,{selected:true, opening: fromStep1}); else setNozPick(p=>({...p,[n.id]:{...(p[n.id]||{}),selected:false}})); }}/>
+                        {nozName(n)} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
                       </label>
                       {sel && (
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
                           <input style={{...inp,flex:1,...(carried?{background:'#f1f5f9',color:'#0f172a',fontWeight:700}:{})}}
                             type="number" step="0.001" readOnly={carried}
                             placeholder={tc('sstart.openingMeter','Opening meter')}
-                            value={cur} onChange={e=>{ if(!carried) pickNoz(n.id,{opening:e.target.value}); }}/>
+                            value={cur} onChange={e=>{ if(!carried) setReading(n.id, e.target.value); }}/>
                           {/* The totalizer scan is offered only where there is no close
                               to carry. Elsewhere it could only produce a figure that is
                               then discarded, which reads as the app losing the reading. */}
