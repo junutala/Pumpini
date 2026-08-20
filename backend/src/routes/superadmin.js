@@ -13,7 +13,7 @@ const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles'
 const { createUser, linkUserToStation } = require('../services/userService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
 // backfill below. Degrades safely: the backfill 400s if storage isn't configured.
-const { storageConfigured, uploadDocumentBase64 } = require('../services/vaweStorage');
+const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('../services/vaweStorage');
 // Retired multi-tier plans map to the binary access ceiling: only 'lite' caps to
 // the SO tile; everything else is uncapped 'pumpini'. Keeps the admin Plan toggle
 // as the thing that actually drives `stations.entitlement` (the real gate).
@@ -1138,6 +1138,73 @@ async function runBackfill({ table, blobCol, scopeCol, prefix, limit, res, order
 }
 
 // POST /api/superadmin/backfill/delivery-invoices?limit=25
+// ─────────────────────────────────────────────────────────────────────────────
+// PRUNE — drop the inline copy, but only after proving the bucket copy is good.
+//
+// runBackfill deliberately leaves file_base64 in place: it uploads and records the
+// path, so for a while a row has TWO copies. That is the safe half. This is the
+// other half, and it is the only irreversible step in the whole exercise — once the
+// base64 is gone the object in the bucket is the sole copy of that photograph.
+//
+// So it is never taken on trust. For every row: download what was actually stored,
+// compare it byte for byte against the base64 we are about to delete, and clear the
+// column ONLY on an exact match. A row that fails to download, or comes back
+// different, is reported and LEFT COMPLETELY ALONE. The worst outcome is that some
+// rows keep both copies — never that a photograph stops existing.
+//
+// Table/column names are server constants (never request input) — no injection.
+// ─────────────────────────────────────────────────────────────────────────────
+async function runPrune({ table, blobCol, limit, res }) {
+  if (!storageConfigured()) {
+    return res.status(400).json({ error: 'Object storage not configured (SUPABASE_* env missing).' });
+  }
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const { rows } = await pool.query(
+    `SELECT id, storage_path FROM ${table}
+      WHERE storage_path IS NOT NULL AND ${blobCol} IS NOT NULL
+      LIMIT $1`, [lim]);
+
+  let pruned = 0, freed = 0;
+  const errors = [];
+  for (const r of rows) {
+    try {
+      // One row's bytes at a time — a 100-row batch must never hold 100 images.
+      const { rows: [full] } = await pool.query(
+        `SELECT ${blobCol} AS blob FROM ${table} WHERE id = $1`, [r.id]);
+      if (!full || !full.blob) continue;
+
+      const stored = (await downloadDocument(r.storage_path)).toString('base64');
+      if (stored !== full.blob) {
+        errors.push({ id: r.id, error: 'bucket copy differs from the inline bytes — left untouched' });
+        continue;
+      }
+      await pool.query(`UPDATE ${table} SET ${blobCol} = NULL WHERE id = $1`, [r.id]);
+      pruned++; freed += full.blob.length;
+    } catch (e) {
+      errors.push({ id: r.id, error: String(e.message || e).slice(0, 200) });
+    }
+  }
+  const { rows: rem } = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM ${table} WHERE storage_path IS NOT NULL AND ${blobCol} IS NOT NULL`);
+  res.json({ table, pruned, errored: errors.length, remaining: rem[0].n,
+             freed_mb: +(freed / 1024 / 1024).toFixed(2), errors });
+}
+
+router.post('/prune-inline/station-artifacts', authAdmin, async (req, res, next) => {
+  try { await runPrune({ table: 'station_artifacts', blobCol: 'file_base64', limit: req.query.limit, res }); }
+  catch (err) { next(err); }
+});
+
+router.post('/prune-inline/delivery-invoices', authAdmin, async (req, res, next) => {
+  try { await runPrune({ table: 'delivery_invoices', blobCol: 'file_base64', limit: req.query.limit, res }); }
+  catch (err) { next(err); }
+});
+
+router.post('/prune-inline/meter-photos', authAdmin, async (req, res, next) => {
+  try { await runPrune({ table: 'meter_photos', blobCol: 'image_base64', limit: req.query.limit, res }); }
+  catch (err) { next(err); }
+});
+
 router.post('/backfill/delivery-invoices', authAdmin, async (req, res, next) => {
   try {
     await runBackfill({ table: 'delivery_invoices', blobCol: 'file_base64', scopeCol: 'station_id', prefix: 'delivery-invoices', limit: req.query.limit, res });

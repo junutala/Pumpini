@@ -346,6 +346,73 @@ Things worth knowing before chasing this meter again:
 - No serial on file → the name falls back to the internal number. That is a gap to
   fill in Settings, not a licence to invent a name for it.
 
+## 🔴 WHERE A PHOTOGRAPH LIVES — Supabase Storage, not Railway, not Postgres
+### owner-set 2026-08-20, after 31 artifacts were found sitting inline
+
+> *"I dont want this to be repeated again. Another build assuming that the artifacts
+> exists in railways."*
+
+**Three different things get confused, so name them separately every time:**
+
+| Thing | Where |
+|---|---|
+| The image BYTES | **Supabase Storage**, private bucket `pumpini-docs` (`PUMPINI_DOC_BUCKET`) |
+| The POINTER to them | the row's `storage_path` column |
+| The KEY that authorises the write | `SUPABASE_SERVICE_KEY`, a **Railway** env var on the backend |
+
+**Railway hosts the backend and holds the credential. Railway stores nothing.** A job
+that moves images has to RUN on Railway because that is where the key is — that is
+the only reason Railway is ever mentioned in the same breath. Do not conclude from
+it that anything is stored there.
+
+**THE ONE WRITER is `artifactService.save()`.** It uploads to the bucket itself. No
+caller should ever upload first and pass a `storage_path` in.
+
+- It only uploads **on autocommit**. `save()` is called inside the settlement
+  transaction for the operator's close photograph, and awaiting a 30-second upload
+  there would hold a money transaction and its locks open for the length of
+  somebody's mobile upload. Inside a caller's transaction the bytes stay inline.
+  `storeMeterPhoto` carries the same rule for the same reason.
+- A failed or unconfigured upload **falls back to inline and never throws**. A
+  photograph in a slow place beats one that does not exist.
+- `getImage()` resolves either home, so no screen knows about storage.
+
+**WHAT WENT WRONG, AND THE HABIT THAT PREVENTS IT.** `artifactService.save()` had
+always ACCEPTED a `storage_path` from its caller but never PRODUCED one, and no
+caller uploaded first — so the upload on that path never existed. Nobody noticed
+because the code *looked* storage-aware. Meanwhile:
+
+    delivery_invoices   78 rows   78 in the bucket
+    meter_photos        39 rows   39 in the bucket
+    station_artifacts   31 rows    0 in the bucket, 39 MB inline
+
+**A column named `storage_path` is not evidence that anything reaches storage.**
+After adding or changing any image writer, run the only check that counts:
+
+```sql
+SELECT count(*) FILTER (WHERE storage_path IS NOT NULL) AS in_bucket,
+       count(*) FILTER (WHERE file_base64 IS NOT NULL)  AS inline
+  FROM station_artifacts;
+```
+
+**SEARCH BEFORE YOU BUILD — this bit me the same afternoon.** I wrote a standalone
+`scripts/artifacts-to-bucket.js` to move the rows, then found `superadmin.js` had
+carried `runBackfill()` for months and that it is precisely how the other two tables
+got there. `station_artifacts` had simply never been given a route. The script was
+deleted and a three-line route added instead. The mechanism you need usually exists.
+
+**The two owner-gated steps, in order, never merged into one:**
+
+1. `POST /api/superadmin/backfill/<table>?limit=N` — upload and record the path.
+   Keeps the base64. Idempotent, resumable; repeat until `remaining` is 0.
+2. `POST /api/superadmin/prune-inline/<table>?limit=N` — the **only irreversible**
+   step. Downloads the stored object, compares it byte-for-byte against the base64
+   it is about to delete, and clears the column ONLY on an exact match. A row that
+   differs or fails to download is reported and left completely alone.
+
+Reclaiming the disk afterwards needs `VACUUM FULL` — Postgres does not hand it back
+on its own, and it takes an exclusive lock, so off-peak only.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
