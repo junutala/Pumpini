@@ -66,7 +66,7 @@ router.post('/parse', authenticate, requireStationAccess({ required: true }), re
     if (!read.parsed) {
       return res.status(422).json({ error: 'Could not read the coupon — enter the details manually.' });
     }
-    res.json(read.parsed);
+    res.json({ ...read.parsed, engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null });
   } catch (err) { next(err); }
 });
 

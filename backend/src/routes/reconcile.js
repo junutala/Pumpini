@@ -818,13 +818,14 @@ router.post('/pos-meter', authenticate,
     // runs on claude-haiku-4-5, the smallest model we use, against a mechanical
     // counter that is routinely photographed mid-roll and under glare. Reading
     // characters is Vision's job; deciding what they mean is the model's.
-    let reading = '', legible = false, notes = '';
+    let reading = '', legible = false, notes = '', ocrEngine = null;
     try {
       const read = await readImageAsJson({
         file_base64: image_base64, media_type, model: 'claude-haiku-4-5', max_tokens: 300,
         prompt: 'This image is a fuel dispenser cumulative totalizer (the counter showing total litres dispensed for one nozzle). Read its digits exactly, left to right, ignoring separators (keep a decimal only if clearly shown). Respond with ONLY a JSON object: {"reading":"<digits>","legible":<true|false>,"notes":"<short>"}. legible=false if any digit is unclear, mid-roll, glare-obscured, or you are unsure.',
       });
       const parsed = read.parsed || {};
+      ocrEngine = read.engine ?? null;
       reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
       legible = parsed.legible === true && reading !== '';
       notes   = String(parsed.notes ?? '');
@@ -864,7 +865,7 @@ router.post('/pos-meter', authenticate,
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* store failed — OCR + reading already saved and returned */ }
-    res.json({ reading, legible, notes, opening_reading, below_opening });
+    res.json({ reading, legible, notes, opening_reading, below_opening, engine: ocrEngine });
   } catch (e) { await client.query('ROLLBACK'); next(e); }
   finally { client.release(); }
 });
@@ -1115,7 +1116,13 @@ router.post('/parse-slip', authenticate,
       // Without them a scan that resolved to the wrong pump cannot be explained
       // after the fact — which is exactly the position we were in on 02-Aug, when
       // the stored ocr held no serial and the only clue was matched_on.
-      ocr: { pump_id: pump, pump_serial: serialRaw || null, serial_mapped: serialKnown, nozzles },
+      // WHICH ENGINE READ IT. Recorded on every scan so a later argument about
+      // whether Vision or the direct vision call produced a figure is settled by the
+      // row, not by inference from how the notes are phrased. That is exactly the
+      // position we were in at 11:42 on 20-Aug: a scan went from 0/5 serials to 4/4
+      // on an identical image and the only evidence of why was a turn of phrase.
+      ocr: { pump_id: pump, pump_serial: serialRaw || null, serial_mapped: serialKnown, nozzles,
+             engine: parsed.engine ?? null, ocr_chars: parsed.ocr_chars ?? null },
       meta: { pump_id: pump, slip_type: parsed.slip_type ?? null },
       uploaded_by: req.user.id,
     });
@@ -1277,6 +1284,10 @@ router.post('/parse-slips', authenticate,
         media_type,
         ocr: {
           composite: true,
+          // Which engine read it, and how many characters Vision returned — see the
+          // single-slip save above for why this is recorded rather than inferred.
+          engine: parsed.engine ?? null,
+          ocr_chars: parsed.ocr_chars ?? null,
           slips: slips.map(s => ({
             pump_serial: s.pump_serial,
             slip_type: s.slip_type,

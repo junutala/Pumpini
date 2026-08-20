@@ -412,7 +412,11 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
       return res.status(422).json({ error: 'Could not read the screen — enter the reading manually.' });
     }
     if (!Array.isArray(parsed.tanks)) parsed.tanks = [];
-    const out = withGaugeChecks(parsed);
+    // Which engine read this screen, kept on the artifact for the same reason it is
+    // kept on a slip: so a question about a figure is answered by the row rather
+    // than by inference. A gauge screen is the hardest read we do, which makes it
+    // the one most worth being able to explain afterwards.
+    const out = { ...withGaugeChecks(parsed), engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null };
 
     // Keep the screen. A gauge screen photographed inside a shift hangs off that
     // shift; one taken for the plain dip register belongs to the outlet.
