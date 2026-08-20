@@ -2287,7 +2287,10 @@
     "faceUnsure": "Not sure who this is — closest is {name}. Pick him from the list.",
     "faceMany": "More than one face in frame — pick him from the list.",
     "faceUnread": "Could not read the face — pick him from the list.",
-    "slipsRefused": "⚠ Not filled — enter by hand: {x}."
+    "slipsRefused": "⚠ Not filled — enter by hand: {x}.",
+    "gaugeOverCapacity": "⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.",
+    "gaugeLowConfidence": "⚠ The screen was hard to read — check every figure against the console before saving.",
+    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2653,7 +2656,10 @@
     "faceNone": "No face found in that photo — pick him from the list.",
     "faceUnread": "Could not read the face — pick him from the list.",
     "faceNoRefs": "No reference photos on file yet — add them under Add Attendant and the camera will start naming him.",
-    "slipsRefused": "⚠ Not filled — enter by hand: {x}."
+    "slipsRefused": "⚠ Not filled — enter by hand: {x}.",
+    "gaugeOverCapacity": "⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.",
+    "gaugeLowConfidence": "⚠ The screen was hard to read — check every figure against the console before saving.",
+    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings."
   },
   "streco": {
     "title": "Stock Reconciliation",

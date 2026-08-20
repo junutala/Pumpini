@@ -184,7 +184,7 @@ export default function ShiftStartPage() {
       // is recorded and a second photo would only re-open the same question.
       const openTanks  = dipTanks.filter(t => !carriedDips[t.id] && !outClosings[t.id]);
       const heldByRule = dipTanks.filter(t =>  carriedDips[t.id] || outClosings[t.id]).map(t => t.tank_number);
-      const { pairs, dropped, unplaced, ambiguous, renumbered, capacityOff } =
+      const { pairs, dropped, mismatched, overCapacity, capacityOff } =
         matchGaugeRows(rows, openTanks);
 
       pairs.forEach(([tank, r]) => {
@@ -199,7 +199,7 @@ export default function ShiftStartPage() {
         if (res.artifact_id) setDipArtifact(p => ({ ...p, [tank.id]: res.artifact_id }));
       });
 
-      const skipped = [...unplaced, ...ambiguous, ...dropped];
+      const skipped = [...dropped];
       setGaugeMsg(
         (pairs.length === 0
           ? tc('sstart.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
@@ -208,10 +208,20 @@ export default function ShiftStartPage() {
         // Not an error and not a failure to match — the rule holds these.
         + (heldByRule.length ? ' ' + tc('sstart.gaugeCarriedHeld','Tank {list} kept its carried opening from the last close — a photo cannot change it.')
             .replace('{list}', heldByRule.join(', ')) : '')
-        // Advisory only — these rows ARE filled. The note tells the manager the
-        // Settings numbering has slipped, without standing between him and the shift.
-        + (renumbered.length ? ' ' + tc('sstart.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
-            .replace('{list}', renumbered.map(x => `${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
+        // NOT advisory. Tank number AND fuel must both agree with the master; a
+        // disagreement in either leaves that tank blank for manual entry, because
+        // a wrong figure in a right-looking box is worse than an empty one.
+        + (mismatched.length ? ' ' + tc('sstart.gaugeMismatch','⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.')
+            .replace('{list}', mismatched.map(x => `console tank ${x.console} (${x.reason})`).join(', ')) : '')
+        // NOT advisory. A volume above the installed capacity is physically
+        // impossible, so the figure was misread and is not offered at all.
+        + (overCapacity.length ? ' ' + tc('sstart.gaugeOverCapacity','⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.')
+            .replace('{list}', overCapacity.map(x => `Tank ${x.tank}: ${x.vol}L read against ${x.cap}L installed`).join(', ')) : '')
+        // The reader's OWN verdict on the photograph. This screen used to throw it
+        // away: on 20-Aug a console scan came back "confidence: low — treat all
+        // values as approximate" and the boxes filled in silence.
+        + (res.confidence === 'low' ? ' ' + tc('sstart.gaugeLowConfidence','⚠ The screen was hard to read — check every figure against the console before saving.') : '')
+        + (res.notes ? ' ' + res.notes : '')
         + (capacityOff.length ? ' ' + tc('sstart.gaugeCapacity','Capacity differs for {list} — filled anyway, check the tank capacity in Settings.')
             .replace('{list}', capacityOff.map(x => `Tank ${x.tank} (${x.readCap}L vs ${x.ourCap}L)`).join(', ')) : '')
       );

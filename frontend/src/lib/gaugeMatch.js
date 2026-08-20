@@ -3,92 +3,103 @@
 // shift-close — they were carrying identical copies, which is exactly how the
 // two drift apart.
 //
-// 🔴 FUEL DECIDES. TANK NUMBER ONLY VERIFIES, AND ONLY ADVISES. (Owner-set.)
+// 🔴 THE MASTER RECORD IS THE GOLDEN DATA. BOTH FIELDS MUST AGREE, OR WE DO NOT
+// 🔴 FILL. (Owner-set 2026-08-20.)
 //
-// It used to be the other way round: the tank number picked the tank and the
-// fuel was a veto, so a console numbered 1=HSD, 3=MS, 4=Power against an outlet
-// numbered 1=premium, 2=petrol, 3=diesel filled almost nothing — every row was
-// refused for "different fuel", which is a true statement about a mismatch the
-// manager cannot fix from the forecourt at 6am. The numbering is a Settings
-// detail; the fuel on the screen is a physical fact. So:
+//   "the tank number and fuel type are stored in the master during setup. This is
+//    the golden data. If either record mismatches, we should not proceed and let
+//    the user enter manually rather than giving wrong data."
 //
-//   - The PRODUCT chooses the tank. A diesel reading can only ever land in a
-//     diesel tank — that guard is absolute and is what actually protects the
-//     stock figure.
-//   - The TANK NUMBER is a second layer of verification, used first to pick
-//     between two tanks of the same fuel (which fuel alone cannot separate),
-//     and otherwise only to raise an advisory note. It never blocks a fill.
-//   - CAPACITY is the tie-break of last resort between same-fuel tanks, and
-//     advisory otherwise. An unmaintained capacity in Settings must not be
-//     able to refuse a good reading.
+// So a console row is placed ONLY when its tank number AND its product both match
+// the same tank in Settings. Any disagreement — either field — leaves that tank
+// blank and names it, and the manager reads it off the console himself.
 //
-// The only rows left empty are ones where there is genuinely no answer: no tank
-// of that fuel at this outlet, or several of that fuel with nothing at all to
-// tell them apart. Guessing between two diesel tanks is worse than asking.
+// THIS REPLACES AN EARLIER RULE, deliberately. It used to be "fuel decides, the
+// number only advises", written when an outlet whose Settings numbering disagreed
+// with its console filled almost nothing. Matching on fuel alone rescued those
+// rows — but it cannot separate an outlet's TWO DIESEL TANKS (Highway has two),
+// and there it was choosing between them on capacity or on nothing at all.
+// Crossing two diesel tanks is not fatal to the fuel's total, but it is still a
+// wrong number in a named tank, and the owner's call is that a blank box beats it.
+// The right fix for a numbering disagreement is to correct Settings, not to guess
+// past it.
+//
+// A BLANK IS NOT A FAILURE. It is the honest answer, and it is visible — a wrong
+// figure filled into the right-looking box is not.
 
 const norm = v => String(v ?? '').toLowerCase().trim();
 const pos  = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : null; };
-const rowLabel  = r => (r.tank_label == null || r.tank_label === '' ? '?' : String(r.tank_label));
-const rowFuel   = r => (r.product_raw || r.product || '?');
+const rowLabel = r => (r.tank_label == null || r.tank_label === '' ? '?' : String(r.tank_label));
+const rowFuel  = r => (r.product_raw || r.product || '?');
+
+// A volume above the installed capacity is not a disagreement to note, it is a
+// physical impossibility — a digit was misread. The tolerance is not zero because
+// nominal capacity is not a physical ceiling: a tank filled to its nameplate can
+// gauge slightly over on a warm afternoon, and refusing a manager at 6am over half
+// a percent would be the wrong trade. No digit error survives 2%.
+const OVER_CAPACITY = 1.02;
 
 // rows  — parsed console rows: { tank_label, product, product_raw, net_volume_ltrs, capacity_ltrs, ... }
-// tanks — this outlet's dip tanks: { id, tank_number, fuel_type, capacity_ltrs }
+// tanks — this outlet's dip tanks (THE MASTER): { id, tank_number, fuel_type, capacity_ltrs }
 //
 // Returns
-//   pairs      [[tank, row]]  fill these
-//   dropped    [label]        the console showed no volume
-//   unplaced   [label]        no tank of that fuel here
-//   ambiguous  [label]        several tanks of that fuel, nothing to choose by
-//   renumbered [{ console, tank, fuel }]  filled, but the tank number disagrees
-//   capacityOff [{ console, tank, readCap, ourCap }]  filled, capacity disagrees
+//   pairs        [[tank, row]]        fill these — number AND fuel both agree
+//   dropped      [label]              the console showed no volume
+//   mismatched   [{ console, fuel, reason }]   left blank on purpose, with why
+//   overCapacity [{ console, tank, vol, cap }] left blank — exceeds installed capacity
+//   capacityOff  [{ console, tank, readCap, ourCap }]  filled, screen capacity disagrees
 export function matchGaugeRows(rows, tanks) {
-  const all     = Array.isArray(rows) ? rows : [];
-  const mine    = Array.isArray(tanks) ? tanks : [];
+  const all   = Array.isArray(rows) ? rows : [];
+  const mine  = Array.isArray(tanks) ? tanks : [];
   const usable  = all.filter(r => r.net_volume_ltrs != null);
   const dropped = all.filter(r => r.net_volume_ltrs == null).map(rowLabel);
 
-  const claimed = new Set();   // tank ids already filled — one row per tank
-  const placed  = new Set();   // indices of usable[] already dealt with
-  const pairs = [], unplaced = [], ambiguous = [], renumbered = [], capacityOff = [];
+  const claimed = new Set();
+  const pairs = [], mismatched = [], overCapacity = [], capacityOff = [];
 
-  const freeSameFuel = r => mine.filter(t => norm(t.fuel_type) === norm(r.product) && !claimed.has(t.id));
-  const take = (i, t, r) => { claimed.add(t.id); placed.add(i); pairs.push([t, r]); };
+  usable.forEach(r => {
+    const byNumber = mine.filter(t => String(t.tank_number) === String(rowLabel(r)));
 
-  // PASS 1 — fuel agrees AND the number agrees. Run it over every row before
-  // pass 2 touches anything: otherwise a row that matches only on fuel could
-  // claim the tank that a later, perfectly numbered row belongs in.
-  usable.forEach((r, i) => {
-    const t = freeSameFuel(r).find(t => String(t.tank_number) === String(r.tank_label));
-    if (t) take(i, t, r);
-  });
-
-  // PASS 2 — fuel agrees, the number does not (or the console prints none).
-  // This is the case the old rule threw away.
-  usable.forEach((r, i) => {
-    if (placed.has(i)) return;
-    let cands = freeSameFuel(r);
-    if (cands.length === 0) { unplaced.push(rowLabel(r)); return; }
-
-    if (cands.length > 1) {
-      // Two tanks of the same fuel. Capacity is the only signal left, so here —
-      // and only here — it decides rather than advises.
-      const rc = pos(r.capacity_ltrs);
-      if (rc) {
-        const near = cands.filter(t => { const c = pos(t.capacity_ltrs); return c && Math.abs(c - rc) <= rc * 0.01; });
-        if (near.length === 1) cands = near;
-      }
+    // No tank of that number here. The console is describing a tank Settings does
+    // not have — nothing to place it against.
+    if (byNumber.length === 0) {
+      mismatched.push({ console: rowLabel(r), fuel: rowFuel(r), reason: 'no tank with that number' });
+      return;
     }
-    if (cands.length !== 1) { ambiguous.push(rowLabel(r)); return; }
 
-    const t = cands[0];
-    take(i, t, r);
-    renumbered.push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r) });
+    // The number exists but the product does not agree. THIS IS THE STOP. Filling
+    // it would put one fuel's volume into another fuel's tank, or the right fuel
+    // into the wrong one of two — either way a number nobody can trace back.
+    const t = byNumber.find(t => norm(t.fuel_type) === norm(r.product));
+    if (!t) {
+      mismatched.push({
+        console: rowLabel(r), fuel: rowFuel(r),
+        reason: `console says ${rowFuel(r)}, Settings says ${byNumber.map(x => x.fuel_type).join('/')}`,
+      });
+      return;
+    }
+
+    // Two console rows claiming one tank — the screen was misread, not the tank.
+    if (claimed.has(t.id)) {
+      mismatched.push({ console: rowLabel(r), fuel: rowFuel(r), reason: 'a second row claims the same tank' });
+      return;
+    }
+
+    // Physically impossible against the MASTER capacity — never the screen's.
+    const vol = pos(r.net_volume_ltrs), cap = pos(t.capacity_ltrs);
+    if (vol && cap && vol > cap * OVER_CAPACITY) {
+      overCapacity.push({ console: rowLabel(r), tank: t.tank_number, vol: Math.round(vol), cap: Math.round(cap) });
+      return;
+    }
+
+    claimed.add(t.id);
+    pairs.push([t, r]);
   });
 
-  // Capacity as pure verification across everything we filled. It is a note, not
-  // a refusal — the figure on the screen is the reading; a stale capacity in
-  // Settings is a Settings problem, and blocking on it costs the manager his
-  // stock entry to fix somebody else's typo.
+  // Capacity as pure verification on what we filled. The screen's capacity is just
+  // another OCR'd number — on 20-Aug a scan read 12,650 and 4,000 for tanks the
+  // master records at 16,000 and 9,000 — so a disagreement is a note about the
+  // photograph, never a reason to refuse a reading that already passed both keys.
   pairs.forEach(([t, r]) => {
     const rc = pos(r.capacity_ltrs), tc = pos(t.capacity_ltrs);
     if (rc && tc && Math.abs(tc - rc) > rc * 0.01) {
@@ -96,7 +107,7 @@ export function matchGaugeRows(rows, tanks) {
     }
   });
 
-  return { pairs, dropped, unplaced, ambiguous, renumbered, capacityOff };
+  return { pairs, dropped, mismatched, overCapacity, capacityOff };
 }
 
 export default matchGaugeRows;
