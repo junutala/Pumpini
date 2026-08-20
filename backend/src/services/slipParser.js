@@ -227,6 +227,7 @@ async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
 
   return {
     engine: read.engine,
+    ocr_chars: read.ocr_chars,
     slip_type: ['A', 'B', 'C'].includes(parsed.slip_type) ? parsed.slip_type : 'other',
     pump_id: cleanPumpId(parsed.pump_id),
     // Kept VERBATIM apart from case and surrounding space. Serials are alphanumeric
