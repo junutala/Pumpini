@@ -1098,7 +1098,7 @@ router.delete('/leads/:id', authAdmin, async (req, res, next) => {
 //
 // Table/column names are server constants (never request input) — no injection.
 // ─────────────────────────────────────────────────────────────────────────────
-async function runBackfill({ table, blobCol, scopeCol, prefix, limit, res }) {
+async function runBackfill({ table, blobCol, scopeCol, prefix, limit, res, orderCol = 'created_at' }) {
   if (!storageConfigured()) {
     return res.status(400).json({ error: 'Object storage not configured (SUPABASE_* env missing).' });
   }
@@ -1109,7 +1109,7 @@ async function runBackfill({ table, blobCol, scopeCol, prefix, limit, res }) {
       `SELECT id, ${scopeCol} AS scope, ${blobCol} AS blob, media_type
          FROM ${table}
         WHERE storage_path IS NULL AND ${blobCol} IS NOT NULL
-        ORDER BY created_at ASC
+        ORDER BY ${orderCol} ASC
         LIMIT $1`, [lim]));
   } catch (e) {
     if (e.code === '42703') {
@@ -1145,6 +1145,19 @@ router.post('/backfill/delivery-invoices', authAdmin, async (req, res, next) => 
 });
 
 // POST /api/superadmin/backfill/meter-photos?limit=25
+// station_artifacts — the slips, gauge screens, coupons and staff photographs.
+// The other two tables were backfilled through this same helper long ago;
+// station_artifacts was simply never given a route, which is why it stood at 0 of 31
+// in the bucket on 20-Aug-2026 while delivery_invoices was 78 of 78 and meter_photos
+// 39 of 39. Ordered by captured_at — this table has no created_at, and naming a
+// column it does not have would 42703 the whole run.
+router.post('/backfill/station-artifacts', authAdmin, async (req, res, next) => {
+  try {
+    await runBackfill({ table: 'station_artifacts', blobCol: 'file_base64', scopeCol: 'station_id',
+                        prefix: 'artifacts', limit: req.query.limit, res, orderCol: 'captured_at' });
+  } catch (err) { next(err); }
+});
+
 router.post('/backfill/meter-photos', authAdmin, async (req, res, next) => {
   try {
     await runBackfill({ table: 'meter_photos', blobCol: 'image_base64', scopeCol: 'shift_id', prefix: 'meter-photos', limit: req.query.limit, res });
