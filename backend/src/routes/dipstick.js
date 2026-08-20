@@ -1,5 +1,6 @@
 // src/routes/dipstick.js
 const router = require('express').Router();
+const { readImageAsJson } = require('../services/visionOcr');
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
@@ -374,32 +375,40 @@ function withGaugeChecks(parsed) {
   return parsed;
 }
 
+// A console lists several TANKS down one screen, and OCR flattens that into a run of
+// numbers. Naming the shape stops two tanks' figures being merged into one.
+const GAUGE_OCR_PREAMBLE = `Below is text extracted from a PHOTOGRAPH of the gauge console
+screen by an OCR engine. The layout may be imperfect: lines can arrive out of order and
+columns can be flattened. The screen lists SEVERAL TANKS, each with its own block of
+figures — keep every figure with the tank whose block it is printed in, and never merge
+two tanks' readings. Use the printed LABELS to decide what each figure is, never position
+on the page.
+
+OCR text:
+
+`;
+
 router.post('/parse-gauge', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { file_base64, media_type, shift_id, reading_type } = req.body;
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!GAUGE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) of the gauge screen.' });
 
-    let msg;
-    try {
-      msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 3000,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-          { type: 'text', text: GAUGE_PROMPT },
-        ] }],
-      });
-    } catch (e) {
-      try { require('../utils/logger').error('parse-gauge API error: ' + (e.message || e)); } catch { /* noop */ }
+    // Google Vision first, Claude on the text — the same pipeline as invoices and
+    // slips. A gauge console is a backlit LCD photographed at an angle, which is the
+    // hardest thing we ask a vision model to read: on 18-Aug-2026 a single glared
+    // frame of this screen produced three confident and entirely false findings about
+    // Sri Balaji's fuel types and tank capacities. Falls back to the direct vision
+    // call, so a missing key or a failed OCR behaves exactly as before.
+    const read = await readImageAsJson({
+      file_base64, media_type, prompt: GAUGE_PROMPT, max_tokens: 3000,
+      ocrPreamble: GAUGE_OCR_PREAMBLE,
+    });
+    if (read.error === 'api') {
       return res.status(503).json({ error: 'Screen scanning is unavailable right now — enter the reading manually.' });
     }
-
-    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    let parsed;
-    try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
+    const parsed = read.parsed;
     if (!parsed) {
-      try { require('../utils/logger').warn(`parse-gauge unparsed (stop=${msg.stop_reason}): ${txt.slice(0, 300)}`); } catch { /* noop */ }
       return res.status(422).json({ error: 'Could not read the screen — enter the reading manually.' });
     }
     if (!Array.isArray(parsed.tanks)) parsed.tanks = [];

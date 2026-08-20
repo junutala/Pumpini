@@ -46,6 +46,7 @@ async function hasAutocloseFlag(client = pool) {
 }
 const slipParser = require('../services/slipParser');
 const pumps      = require('../services/pumpService');
+const { readImageAsJson } = require('../services/visionOcr');
 const attendance = require('../services/attendanceService');
 
 // Do the slip-mapping columns exist on nozzles yet? ONE probe for that one question,
@@ -812,21 +813,22 @@ router.post('/pos-meter', authenticate,
     if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
 
     // OCR the totalizer
+    // Through the ONE shared reader — Google Vision first, Claude on the text, the
+    // direct vision call as fallback. This one has the most to gain of the six: it
+    // runs on claude-haiku-4-5, the smallest model we use, against a mechanical
+    // counter that is routinely photographed mid-roll and under glare. Reading
+    // characters is Vision's job; deciding what they mean is the model's.
     let reading = '', legible = false, notes = '';
     try {
-      const ai = await aiClient.messages.create({
-        model: 'claude-haiku-4-5', max_tokens: 300,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type, data: image_base64 } },
-          { type: 'text', text: 'This image is a fuel dispenser cumulative totalizer (the counter showing total litres dispensed for one nozzle). Read its digits exactly, left to right, ignoring separators (keep a decimal only if clearly shown). Respond with ONLY a JSON object: {"reading":"<digits>","legible":<true|false>,"notes":"<short>"}. legible=false if any digit is unclear, mid-roll, glare-obscured, or you are unsure.' },
-        ] }],
+      const read = await readImageAsJson({
+        file_base64: image_base64, media_type, model: 'claude-haiku-4-5', max_tokens: 300,
+        prompt: 'This image is a fuel dispenser cumulative totalizer (the counter showing total litres dispensed for one nozzle). Read its digits exactly, left to right, ignoring separators (keep a decimal only if clearly shown). Respond with ONLY a JSON object: {"reading":"<digits>","legible":<true|false>,"notes":"<short>"}. legible=false if any digit is unclear, mid-roll, glare-obscured, or you are unsure.',
       });
-      const txt = (ai.content.find(b => b.type === 'text')?.text || '').trim();
-      const m = txt.match(/\{[\s\S]*\}/);
-      const parsed = m ? JSON.parse(m[0]) : {};
+      const parsed = read.parsed || {};
       reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
       legible = parsed.legible === true && reading !== '';
       notes   = String(parsed.notes ?? '');
+      if (!read.parsed) notes = notes || 'Could not read the counter — type the reading.';
     } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
 
     // THIS ROUTE NO LONGER WRITES A METER READING. It reads the totalizer off a

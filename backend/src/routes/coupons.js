@@ -3,6 +3,7 @@
 // over services/couponService; the sale itself is written by services/dispenseService,
 // the same writer the POS uses. docs/credit-slip-invoicing.md.
 const router = require('express').Router();
+const { readImageAsJson } = require('../services/visionOcr');
 const { authenticate } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
@@ -55,29 +56,17 @@ router.post('/parse', authenticate, requireStationAccess({ required: true }), re
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) of the coupon.' });
 
-    let msg;
-    try {
-      msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 1500,
-        messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-          { type: 'text', text: COUPON_PROMPT },
-        ] }],
-      });
-    } catch (e) {
-      try { require('../utils/logger').error('coupon parse API error: ' + (e.message || e)); } catch { /* noop */ }
+    // Same shared reader as every other photographed document. A coupon is
+    // HANDWRITTEN, so Vision helps least here of the six — but the manager confirms
+    // every figure on this screen anyway, and one pipeline beats a special case.
+    const read = await readImageAsJson({ file_base64, media_type, prompt: COUPON_PROMPT, max_tokens: 1500 });
+    if (read.error === 'api') {
       return res.status(503).json({ error: 'Coupon scanning is unavailable right now — enter the details manually.' });
     }
-
-    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    let parsed;
-    try { parsed = m ? JSON.parse(m[0]) : null; } catch { parsed = null; }
-    if (!parsed) {
-      try { require('../utils/logger').warn(`coupon parse unparsed: ${txt.slice(0, 300)}`); } catch { /* noop */ }
+    if (!read.parsed) {
       return res.status(422).json({ error: 'Could not read the coupon — enter the details manually.' });
     }
-    res.json(parsed);
+    res.json(read.parsed);
   } catch (err) { next(err); }
 });
 

@@ -15,7 +15,7 @@
 // manager happened to be on.
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const { visionOcr, usable } = require('./visionOcr');
+const { readImageAsJson } = require('./visionOcr');
 
 // SHARED RULE TEXT — the parts of the prompt that describe HOW to read a slip, factored
 // out so the single-slip and composite prompts cannot drift. SLIP_PROMPT below is rebuilt
@@ -115,43 +115,13 @@ OCR text:
 
 `;
 
-// ONE reader for both callers. Returns the parsed JSON object, or null.
-// `engine` is reported back so a caller — and the eval script — can see which path
-// produced the answer instead of guessing.
+// Both callers go through the ONE shared reader in services/visionOcr.js. This
+// function used to carry its own copy of the Vision-then-Claude pipeline; the copy
+// is gone, because three more readers needed the same thing and four copies of one
+// idea is exactly what the cardinal rule exists to stop.
 async function readSlipJson({ file_base64, media_type, prompt, max_tokens = 1500 }) {
-  // Preferred: Vision OCR -> Claude TEXT.
-  try {
-    const ocrText = await visionOcr(file_base64);
-    if (usable(ocrText)) {
-      const msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens,
-        messages: [{ role: 'user', content: [{ type: 'text', text: `${prompt}\n\n${OCR_PREAMBLE}${ocrText}` }] }],
-      });
-      const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length };
-    }
-  } catch (e) { warn('slip vision-ocr path failed: ' + (e.message || e)); }
-
-  // Fallback: the original Claude vision call, unchanged.
-  try {
-    const msg = await ai.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-        { type: 'text', text: prompt },
-      ] }],
-    });
-    const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-    return parsed ? { parsed, engine: 'claude_vision', ocr_chars: 0 } : null;
-  } catch (e) {
-    warn('slip parse failed: ' + (e.message || e));
-    return null;
-  }
-}
-
-function extractJson(txt) {
-  const m = (txt || '').trim().match(/\{[\s\S]*\}/);
-  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+  const r = await readImageAsJson({ file_base64, media_type, prompt, max_tokens, ocrPreamble: OCR_PREAMBLE });
+  return r.parsed ? r : null;
 }
 
 function warn(msg) {
