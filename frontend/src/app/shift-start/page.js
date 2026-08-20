@@ -26,6 +26,7 @@ import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { nozName } from '../../lib/nozzle';
+import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
@@ -646,11 +647,19 @@ export default function ShiftStartPage() {
       const b64 = await readB64(file);
       const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg' });
       const slips = Array.isArray(res.slips) ? res.slips : [];
-      let matched = 0; const unmatched = []; const verify = []; const locked = [];
+      let matched = 0; const unmatched = []; const verify = []; const locked = []; const refused = [];
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
         if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
+        // Refused by the amount-vs-volume cross-check — never pre-filled. An opening
+        // is what the whole shift is measured against, so a figure we cannot verify
+        // must be typed deliberately rather than accepted by default.
+        if (l.legible === false) {
+          const why = rejectNote(l, tc);
+          refused.push(`${l.nozzle_name || l.nozzle_number || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
+          return;
+        }
         const noz = nozzles.find(x => x.id === l.nozzle_id);
         if (!noz) { unmatched.push(l.nozzle_name || l.nozzle_number || String(l.nozzle_id)); return; }
         if (l.cumulative_volume == null) return;
@@ -682,6 +691,7 @@ export default function ShiftStartPage() {
       if (unmatched.length)     msg += ' ' + tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
       if (unknownSerials.length) msg += ' ' + tc('sstart.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
       if (verify.length)        msg += ' ' + tc('sstart.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
+      if (refused.length)       msg += ' ' + tc('sstart.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
       if (locked.length)        msg += ' ' + tc('sstart.slipsDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
       if (res.legible === false) msg += ' ' + tc('sstart.slipsVerify','⚠ Some digits unclear — verify.');
       if (res.notes)            msg += ' ' + res.notes;
