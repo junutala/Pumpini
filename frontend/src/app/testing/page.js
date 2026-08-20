@@ -37,6 +37,7 @@ import { FlaskConical, ArrowRight, AlertTriangle } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { nozName } from '../../lib/nozzle';
 
 // Flip to true once outlets are printing testing slips (see header).
 const SHOW_SLIP_SCAN = false;
@@ -117,7 +118,7 @@ export default function TestingPage() {
         station_id: stationId, nozzle_id: nozzleId, to_tank_id: tankId, litres: parseFloat(litres),
       });
       setOk(tc('testing.saved','Recorded {l} L from nozzle {n} into tank {t}.')
-        .replace('{l}', fmtL(r.litres)).replace('{n}', r.nozzle_number).replace('{t}', r.to_tank_number));
+        .replace('{l}', fmtL(r.litres)).replace('{n}', nozName(r)).replace('{t}', r.to_tank_number));
       setNozzleId(''); setLitres('5');
       if (tanksForFuel.length > 1) setTankId('');
       load();
@@ -162,7 +163,7 @@ export default function TestingPage() {
               <option value="">{tc('testing.selectNozzle','Select nozzle…')}</option>
               {nozzlesForFuel.map(n => (
                 <option key={n.id} value={n.id}>
-                  {tc('testing.nozzle','Nozzle')} {n.nozzle_number}{n.pump_number ? ` · ${tc('testing.pump','Pump')} ${n.pump_number}` : ''}
+                  {nozName(n)}
                 </option>
               ))}
             </select>
@@ -241,7 +242,7 @@ export default function TestingPage() {
             <span style={{fontWeight:800,minWidth:70}}>{fmtL(r.litres)} L</span>
             <span style={{color:'#475569',textTransform:'capitalize'}}>{label(r.fuel_type)}</span>
             <span style={{display:'inline-flex',alignItems:'center',gap:5,color:'#0f172a'}}>
-              {tc('testing.nozzle','Nozzle')} {r.nozzle_number} <ArrowRight size={13}/> {tc('testing.tank','Tank')} {r.to_tank_number}
+              {nozName(r)} <ArrowRight size={13}/> {tc('testing.tank','Tank')} {r.to_tank_number}
             </span>
             {r.cross_tank && (
               <span style={{fontSize:11,color:'#9a3412',background:'#fff7ed',borderRadius:99,padding:'2px 8px',fontWeight:700}}>

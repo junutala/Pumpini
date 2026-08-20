@@ -6,6 +6,7 @@ import { Download, Search } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { nozName } from '../../lib/nozzle';
 
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
@@ -81,7 +82,7 @@ export default function ReportsPage() {
     ];
     const rows = report.rows.map(r => [
       new Date(r.occurred_at).toLocaleString('en-IN'),
-      r.attendant_name || '', r.nozzle_number || '', r.fuel_type || '',
+      r.attendant_name || '', nozName(r), r.fuel_type || '',
       r.quantity_ltrs, r.rate_per_ltr, r.amount, r.payment_mode, r.vehicle_number || ''
     ]);
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');

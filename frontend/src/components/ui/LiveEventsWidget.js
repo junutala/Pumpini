@@ -4,6 +4,7 @@ import { Activity } from 'lucide-react';
 import Link from 'next/link';
 import api from '../../lib/api';
 import { useSocket } from '../../hooks/useSocket';
+import { nozName } from '../../lib/nozzle';
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL = n => Number(n||0).toFixed(2);
@@ -64,7 +65,7 @@ export default function LiveEventsWidget({ stationId, maxRows=8 }) {
             <div style={{width:6,height:6,borderRadius:'50%',flexShrink:0,background:FUEL_COLORS[ev.fuel_type]||'#888'}}/>
             <div style={{minWidth:0}}>
               <div style={{fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                {ev.attendant_name||'—'} · N{ev.nozzle_number}
+                {ev.attendant_name||'—'} · {nozName(ev)}
               </div>
               <div style={{fontSize:11,color:'var(--text-3)'}}>
                 {ev.sales_hidden ? '' : `${fmtL(ev.quantity_ltrs)}L · `}{ev.payment_mode} · {toIST(ev.occurred_at)}

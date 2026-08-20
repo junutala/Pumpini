@@ -14,6 +14,7 @@ import { useAuth } from '../../lib/auth';
 import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { useTranslation } from 'react-i18next';
+import { nozName } from '../../lib/nozzle';
 
 const FUEL_TYPES = [
   {value:'petrol',         label:'Petrol (MS)'},
@@ -870,7 +871,7 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
                   <span key={n.id} style={{display:'inline-flex',alignItems:'center',gap:6,
                     padding:'6px 11px',borderRadius:999,background:'#fff',border:'1px solid #fed7aa',
                     fontSize:13,fontWeight:600,color:'#9a3412',fontVariantNumeric:'tabular-nums'}}>
-                    {n.nozzle_number} · {fuelLabel(n.fuel_type)}
+                    {nozName(n)} · {fuelLabel(n.fuel_type)}
                   </span>
                 ))}
               </div>
@@ -946,15 +947,17 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
                 style={{flex:1,minWidth:0,minHeight:60,display:'flex',alignItems:'center',gap:12,
                   padding:'12px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left'}}>
                 {expanded ? <ChevronDown size={18} color="var(--text-3)"/> : <ChevronRight size={18} color="var(--text-3)"/>}
-                <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',
-                  minWidth:38,height:38,padding:'0 9px',borderRadius:9,background:'var(--brand-light)',
-                  color:'var(--brand-dark)',fontWeight:800,fontSize:16,fontVariantNumeric:'tabular-nums',flexShrink:0}}>
-                  {p.pump_number}
-                </span>
+                {/* A pump is named by its SERIAL — the identity it prints on every slip
+                    and the half that starts each of its nozzles' names. `pump_number` is
+                    our own forecourt index: it stays as the unique key and stays on the
+                    edit form, but it no longer fronts the card, because nobody outside
+                    this codebase can verify it. A pump with no serial recorded says so
+                    plainly rather than showing a number in its place. */}
                 <span style={{minWidth:0,flex:1}}>
-                  <span style={{display:'block',fontWeight:700,fontSize:14,color:'var(--text-1)',
+                  <span style={{display:'block',fontWeight:800,fontSize:14,color:'var(--text-1)',
                     fontVariantNumeric:'tabular-nums',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                    {[p.serial, p.model].filter(Boolean).join(' · ') || tc('setp.pumpNoSerial', 'No serial recorded')}
+                    {p.serial || tc('setp.pumpNoSerial', 'No serial recorded')}
+                    {p.model && <span style={{fontWeight:400,color:'var(--text-3)'}}> · {p.model}</span>}
                   </span>
                   <span style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:5}}>
                     {p.slip_artifact_id && (
@@ -1026,7 +1029,7 @@ function PumpsTab({ stationId, nozzles, tanks, reload, showToast, askConfirm }) 
                             background:'#fff',border:'1px solid #fed7aa',color:'#9a3412',
                             fontSize:14,fontWeight:700,fontVariantNumeric:'tabular-nums',
                             display:'inline-flex',alignItems:'center',gap:6}}>
-                          <Plus size={14}/>{n.nozzle_number} · {fuelLabel(n.fuel_type)}
+                          <Plus size={14}/>{nozName(n)} · {fuelLabel(n.fuel_type)}
                         </button>
                       ))}
                     </div>
@@ -1194,11 +1197,22 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
   const tankOpts = tanks.filter(t => t.fuel_type === d.fuel_type || t.id === d.tank_id);
 
   return (
+    <>
+    {/* The name this nozzle carries on every other screen and in every export —
+        <pump serial>.<nozzle number>, exactly as its slip prints it. Shown here,
+        read-only, so Settings is where the convention can be CHECKED against the
+        paper rather than a place it quietly diverges. */}
+    <div style={{fontSize:12.5,fontWeight:800,color:'var(--brand-dark)',
+      fontVariantNumeric:'tabular-nums',margin:'10px 0 2px'}}>
+      {nozName(nozzle)}
+    </div>
     <div className="pn-row">
       <div>
-        <label style={MICRO_LABEL}>{tc('setp.thNozzleNum', 'Nozzle #')}</label>
-        {/* Free text, not a number: a pump's nozzles are commonly labelled 5.1, 5.2,
-            5.3 (pump.nozzle) and nothing does arithmetic on the value. */}
+        <label style={MICRO_LABEL}>{tc('setp.thNozzleNumInternal', 'Internal #')}</label>
+        {/* Free text, not a number: outlets label nozzles 5.1, 5.2, 5.3 (pump.nozzle)
+            and nothing does arithmetic on the value. This is OUR key — it orders the
+            lists and it supplies the printed nozzle number when slip_nozzle_no is
+            unset. It is not what any screen shows; the name above is. */}
         <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8} disabled={busy}
           value={d.nozzle_number || ''}
           onChange={e=>setD(p=>({...p,nozzle_number:e.target.value}))}
@@ -1223,11 +1237,12 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
           ))}
         </select>
       </div>
-      {/* NO "slip no." FIELD. The slip does not print one — it prints the pump's
-          serial and a plain nozzle number, and the pump's number is already here.
-          So the slip's nozzle name is derived: pump number + printed nozzle number
-          ("1" on pump 2 IS nozzle 2.1), done server-side in pumpService. Asking the
-          manager to re-key what we can concatenate was a field with no answer. */}
+      {/* NO "slip no." FIELD. The slip prints the pump's SERIAL and a plain nozzle
+          number, and the serial is already on the pump. So the name is derived —
+          serial + printed nozzle number (nozzle "1" on serial M1832105 IS
+          M1832105.1) — by pumpService, the one writer. Where slip_nozzle_no is unset
+          the suffix of the internal number supplies it. Asking the manager to re-key
+          what we can concatenate was a field with no answer. */}
       <div>
         <label style={MICRO_LABEL}>{tc('setp.thStatus', 'Status')}</label>
         <button type="button" disabled={busy} onClick={()=>save({ is_active: !d.is_active })}
@@ -1249,6 +1264,7 @@ function NozzleRow({ stationId, nozzle, tanks, tc, onChanged, onDelete }) {
         </button>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1279,7 +1295,9 @@ function NewNozzleRow({ stationId, pump, tanks, tc, onAdded, onCancel }) {
     <div style={{marginTop:10,background:'var(--surface-2)',borderRadius:10,padding:'4px 12px 12px'}}>
       <div className="pn-row">
         <div>
-          <label style={MICRO_LABEL}>{tc('setp.thNozzleNum', 'Nozzle #')}</label>
+          {/* OUR key, not a display name. Once saved, this nozzle is shown everywhere
+              as <this pump's serial>.<its nozzle number> — see NozzleRow above. */}
+          <label style={MICRO_LABEL}>{tc('setp.thNozzleNumInternal', 'Internal #')}</label>
           <input style={CTRL_NUM} type="text" inputMode="decimal" maxLength={8} autoFocus
             placeholder={tc('setp.egNozzle', 'e.g. 1 or 5.1')}
             value={d.nozzle_number} onChange={e=>f('nozzle_number', e.target.value)}/>

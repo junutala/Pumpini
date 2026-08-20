@@ -9,6 +9,7 @@ const artifacts  = require('../services/artifactService');
 const attendance = require('../services/attendanceService');
 
 const openings   = require('../services/openingService');
+const pumps      = require('../services/pumpService');
 const { closeShiftIfReady } = require('../services/shiftCloseService');
 
 // GET /api/shifts
@@ -71,27 +72,33 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
       WHERE s.id = $1`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Shift not found' });
 
+    // nozzle_name is the ONE name a nozzle has — pumpService owns it, every screen
+    // renders it. Probe-gated, so before the pump columns exist it degrades to the
+    // internal number instead of 500-ing the endpoint Shift Close depends on.
+    const nm = await pumps.nozzleNameSelect(pool);
     const { rows: attendants } = await pool.query(`
       SELECT sa.*, u.name AS attendant_name, r.tag_uid,
-        n.nozzle_number, n.fuel_type,
-        COALESCE(SUM(de.amount),0) AS total_sales,
+        n.nozzle_number, n.fuel_type${nm.col}
+        , COALESCE(SUM(de.amount),0) AS total_sales,
         COALESCE(SUM(de.quantity_ltrs),0) AS total_ltrs
       FROM shift_attendants sa
       JOIN users u ON u.id = sa.attendant_id
       LEFT JOIN rfid_tags r ON r.id = sa.rfid_tag_id
       LEFT JOIN nozzles n ON n.id = sa.nozzle_id
+      ${nm.join}
       LEFT JOIN dispense_events de ON de.shift_id = sa.shift_id
         AND de.attendant_id = sa.attendant_id AND NOT COALESCE(de.is_voided,FALSE)
       WHERE sa.shift_id = $1
-      GROUP BY sa.id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`,
+      GROUP BY sa.id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type${nm.groupBy}`,
       [req.params.id]);
 
     // Attach each operator's nozzles (one operator → many nozzles).
     const { rows: sanRows } = await pool.query(`
       SELECT san.attendant_id, san.nozzle_id, san.opening_reading, san.closing_reading,
-             n.nozzle_number, n.fuel_type
+             n.nozzle_number, n.fuel_type${nm.col}
       FROM shift_attendant_nozzles san
       JOIN nozzles n ON n.id = san.nozzle_id
+      ${nm.join}
       WHERE san.shift_id = $1
       ORDER BY n.nozzle_number`, [req.params.id]);
     const nozBy = {};
@@ -472,12 +479,14 @@ router.patch('/:id/close', authenticate, requireStationVia('SELECT station_id FR
 // GET /api/shifts/:id/events
 router.get('/:id/events', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {
+    const nm = await pumps.nozzleNameSelect(pool);
     const { rows } = await pool.query(`
       SELECT de.*, u.name AS attendant_name, n.nozzle_number, r.tag_uid,
-             sh.status AS shift_status
+             sh.status AS shift_status${nm.col}
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      ${nm.join}
       LEFT JOIN rfid_tags r ON r.id = de.rfid_tag_id
       LEFT JOIN shifts sh ON sh.id = de.shift_id
       WHERE de.shift_id = $1

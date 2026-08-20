@@ -45,23 +45,13 @@ async function hasAutocloseFlag(client = pool) {
   return _hasAutocloseFlag;
 }
 const slipParser = require('../services/slipParser');
+const pumps      = require('../services/pumpService');
 const attendance = require('../services/attendanceService');
 
-// Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
-// deploys first; cached only once TRUE so the first scan after the migration
-// picks them up without an app restart.
-let _hasSlipMapping = false;
-async function hasSlipMapping() {
-  if (_hasSlipMapping) return true;
-  try {
-    const { rows } = await pool.query(
-      `SELECT 1 FROM information_schema.columns
-        WHERE table_schema='public' AND table_name='nozzles'
-          AND column_name='pump_id' LIMIT 1`);
-    _hasSlipMapping = rows.length > 0;
-  } catch { _hasSlipMapping = false; }
-  return _hasSlipMapping;
-}
+// Do the slip-mapping columns exist on nozzles yet? ONE probe for that one question,
+// and it lives with the pumps writer — this file used to keep its own identical copy
+// (`hasSlipMapping`), which is exactly the duplication the cardinal rule forbids.
+const hasSlipMapping = () => pumps.hasPumpNaming(pool);
 
 // Does the draft scan-meter table exist yet? Owner-run DDL means this code deploys
 // FIRST, so persist-on-scan and the read endpoint stay table-tolerant: a catalog
@@ -1092,7 +1082,8 @@ router.post('/parse-slip', authenticate,
           nozzle_id: !ambiguous && cands.length === 1 ? cands[0].id : null,
           matched_on: ambiguous ? 'ambiguous' : matchedOn,
           candidates: ambiguous
-            ? cands.map(c => ({ id: c.id, nozzle_number: c.nozzle_number, fuel_type: c.fuel_type }))
+            ? cands.map(c => ({ id: c.id, nozzle_number: c.nozzle_number,
+                                nozzle_name: pumps.nozzleName(c), fuel_type: c.fuel_type }))
             : undefined,
         };
       })

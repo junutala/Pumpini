@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { nozName } from '../../lib/nozzle';
 
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
@@ -201,7 +202,7 @@ export default function SettlementPage() {
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{tc('settle.meters', 'Closing meters')}</div>
           {noz.map((n, i) => (
             <div key={n.nozzle_id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: i < noz.length - 1 ? '0.5px solid var(--border,#eee)' : 'none' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tc('settle.nozzle', 'Nozzle')} {n.nozzle_number} · {n.fuel_type} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>· {tc('settle.opening', 'opening')} {fmtL(n.opening_reading)}</span>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{nozName(n)} · {n.fuel_type} <span style={{ color: 'var(--text-3)', fontWeight: 400 }}>· {tc('settle.opening', 'opening')} {fmtL(n.opening_reading)}</span>
                 {n.fromScan && <span style={{ marginLeft: 6, fontSize: 10.5, color: '#0f766e', background: '#ccfbf1', borderRadius: 99, padding: '1px 7px', fontWeight: 700 }}>{tc('settle.fromScan', "manager's scan — check")}</span>}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 8, alignItems: 'center' }}>
@@ -286,7 +287,7 @@ function SettlementSlip({ d, onClose, tc }) {
         <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }} />
         {d.lines.map((n, i) => (
           <div key={i} style={{ marginBottom: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>{tc('settle.nozzle', 'Nozzle')} {n.nozzle_number} · {n.fuel_type}</div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{nozName(n)} · {n.fuel_type}</div>
             <div style={row}><span>{tc('settle.opening', 'Opening')} / {tc('settle.closing', 'Closing')}</span><span>{fmtL(n.opening_reading)} → {fmtL(n.closing)}</span></div>
             <div style={row}><span>{fmtL(n.litres)} {unitFor(n.fuel_type)} × {fmtR(n.rate)}</span><b>{fmtR(n.amount)}</b></div>
           </div>

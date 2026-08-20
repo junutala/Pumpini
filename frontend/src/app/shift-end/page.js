@@ -31,6 +31,7 @@ import { describe as describeFace, bestMatch, preload as preloadFace } from '../
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
+import { nozName } from '../../lib/nozzle';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -312,7 +313,7 @@ export default function ShiftEndPage() {
       const b64 = await readB64(file);
       const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       if (r.reading) setCl(a.attendant_id, nozzle.nozzle_id, r.reading);
-      if (!r.legible) setErr(tc('send.scanUnclear', 'Nozzle {n}: scan unclear{notes} — check the reading.').replace('{n}', nozzle.nozzle_number).replace('{notes}', r.notes ? ` (${r.notes})` : ''));
+      if (!r.legible) setErr(tc('send.scanUnclear', 'Nozzle {n}: scan unclear{notes} — check the reading.').replace('{n}', nozName(nozzle)).replace('{notes}', r.notes ? ` (${r.notes})` : ''));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.scanFailed', 'Scan failed')); }
     setScanning('');
   };
@@ -342,7 +343,7 @@ export default function ShiftEndPage() {
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
-        if (l.nozzle_id == null) { unmatched.push(l.nozzle_number || l.slip_no || '?'); return; }
+        if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
         if (l.cumulative_volume == null) return;
         let found = false;
         attendants.forEach(a => (a.nozzles || []).forEach(nz => {
@@ -351,11 +352,11 @@ export default function ShiftEndPage() {
             matched++; found = true;
             // A rupee/litre swap was corrected server-side — flag it for a look
             // before this figure becomes a settled closing meter.
-            if (l.swapped_amount_for_volume) verify.push(nz.nozzle_number);
+            if (l.swapped_amount_for_volume) verify.push(nozName(nz));
           }
         }));
         // Matched to a nozzle_id that no operator on this shift is manning.
-        if (!found) unmatched.push(l.nozzle_number || String(l.nozzle_id));
+        if (!found) unmatched.push(l.nozzle_name || l.nozzle_number || String(l.nozzle_id));
       }));
       // Slips whose printed serial is not a registered pump — name the serial so the
       // manager knows to add the machine in Settings.
@@ -862,7 +863,7 @@ export default function ShiftEndPage() {
                           ? <div style={{fontSize:12.5,color:'#b45309',marginBottom:8}}>{tc('send.noNozzlesAssigned','No nozzles assigned to this operator — fix at shift start.')}</div>
                           : (a.nozzles||[]).map(nz=>(
                             <div key={nz.nozzle_id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                              <div style={{width:150,fontSize:12.5,fontWeight:600}}>N{nz.nozzle_number} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
+                              <div style={{width:150,fontSize:12.5,fontWeight:600}}>{nozName(nz)} <span style={{color:'#888',fontWeight:400}}>{nz.fuel_type}</span> <span style={{color:'#aaa',fontWeight:400}}>· open {Number(nz.opening_reading||0)}</span></div>
                               <input style={{...inp,flex:1}} type="number" step="0.001" placeholder={tc('send.closingMeter','Closing meter')}
                                 value={fm.closings?.[nz.nozzle_id]||''} onChange={e=>setCl(a.attendant_id,nz.nozzle_id,e.target.value)}/>
                               <label title={compositeScanned ? tc('send.cameraOffComposite','Per-nozzle camera off — a composite photo is in force. Retake / clear to use it.') : tc('send.scanTotalizer','Scan the totalizer')}

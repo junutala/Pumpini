@@ -2498,7 +2498,8 @@
     "accountsEnableDesc": "When ON, this outlet gets a bookkeeping layer — profit/loss, balance sheet and a finance dashboard, built from what Pumpini already records. When OFF, none of it shows and operations are unaffected. Switch it on one outlet at a time.",
     "accountsOwnerOnly": "Only the outlet owner can switch this on or off.",
     "selfSettle": "Operators settle their own line",
-    "selfSettleDesc": "When ON, an operator closes his own line from the Settlement screen. When OFF, only the manager settles him at Shift Close, and an operator who opens Settlement is told so. Manager-led close works either way — this only decides whether the operator may do it himself."
+    "selfSettleDesc": "When ON, an operator closes his own line from the Settlement screen. When OFF, only the manager settles him at Shift Close, and an operator who opens Settlement is told so. Manager-led close works either way — this only decides whether the operator may do it himself.",
+    "thNozzleNumInternal": "Internal #"
   },
   "sstart": {
     "dashboard": "Dashboard",

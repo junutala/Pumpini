@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import ManagerReconcileModal from '../../components/shared/ManagerReconcileModal';
+import { nozName } from '../../lib/nozzle';
 
 
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
@@ -222,7 +223,7 @@ export default function ShiftsPage() {
                       </div>
                       <div style={{minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{att.attendant_name}</div>
-                        <div style={{fontSize:11,color:'var(--text-3)'}}>N{att.nozzle_number} · {att.fuel_type}</div>
+                        <div style={{fontSize:11,color:'var(--text-3)'}}>{nozName(att)} · {att.fuel_type}</div>
                       </div>
                     </div>
                     {att.tag_uid && (
