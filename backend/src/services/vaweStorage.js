@@ -148,6 +148,26 @@ async function signedDocUrl(path, expiresIn) {
   return signedUrl({ bucket: docBucket(), path, expiresIn });
 }
 
+// Fetch a private document's BYTES server-side. Used where the caller must return the
+// image itself rather than a URL — /artifacts/:id/image authenticates on the
+// Authorization header and hands back raw bytes, and the browser cannot be redirected
+// to a signed URL for an <img> it never sends that header on. Signing then fetching
+// here keeps the endpoint's contract byte-identical to when the image lived inline,
+// so no screen has to change.
+async function downloadDocument(path) {
+  const url = await signedDocUrl(path);
+  const res = await axios.get(url, {
+    responseType: 'arraybuffer',
+    timeout: 30000,
+    maxContentLength: Infinity,
+    validateStatus: () => true,
+  });
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`Supabase download failed: HTTP ${res.status}`);
+  }
+  return Buffer.from(res.data);
+}
+
 module.exports = {
   storageConfigured,
   safeName,
@@ -156,6 +176,7 @@ module.exports = {
   uploadArtifact,
   uploadDocumentBase64,
   signedDocUrl,
+  downloadDocument,
   docBucket,
   DEFAULT_BUCKET,
   DEFAULT_DOC_BUCKET,

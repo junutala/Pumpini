@@ -27,6 +27,7 @@
 //     whole transaction and take the sale down with it. (See CLAUDE.md — that
 //     exact mistake broke every credit invoice in prod on 30-Jul.)
 const pool = require('../db/pool');
+const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('./vaweStorage');
 
 // Recognised parents. Kept as a list so an unknown entity_type is caught here
 // rather than becoming an un-queryable orphan row nobody can find again.
@@ -93,6 +94,50 @@ async function save(input, client = pool) {
     if (!storage_path) return null;
   }
 
+  // ── THE BYTES GO TO THE BUCKET, NOT INTO POSTGRES ──────────────────────────
+  //
+  // This function has always ACCEPTED a storage_path from its caller but never
+  // produced one, and no caller ever uploaded first — so every artifact ever
+  // written, 31 of them, sat inline as base64 in the table while
+  // delivery_invoices (78/78) and meter_photos (39/39) were correctly in the
+  // bucket. Not a regression: the upload was simply never wired on this path.
+  // Base64 is ~33% larger than the JPEG it encodes, so 31 photographs had grown
+  // the table to 39 MB, and every read of the row dragged the whole image with it.
+  //
+  // Uploading HERE rather than in each caller is deliberate: artifactService is
+  // the one writer for an artifact, so slips, gauge screens, coupons and staff
+  // photographs all reach the bucket by construction instead of four callers
+  // each remembering to.
+  //
+  // FALLS BACK TO INLINE, ALWAYS. If the bucket is unconfigured or the upload
+  // fails we keep the base64 exactly as before. Evidence is never dropped for
+  // want of a bucket — a photograph that exists in a slow place beats one that
+  // does not exist.
+  // ONLY ON AUTOCOMMIT. An upload is a network round-trip with a 30s ceiling, and
+  // save() is called INSIDE the settlement transaction for the operator's close
+  // photograph. Awaiting a bucket there would hold a money transaction — and its
+  // locks — open for the length of someone's mobile upload. storeMeterPhoto carries
+  // the same rule in its header for the same reason. Inside a caller's transaction
+  // the bytes stay inline exactly as before; the shift-wide scans (slips, gauge
+  // screens, coupons) all run on `pool` and do go to the bucket.
+  const onAutocommit = client === pool;
+  let objectPath = storage_path;
+  if (bytes && !objectPath && onAutocommit && storageConfigured()) {
+    try {
+      objectPath = await uploadDocumentBase64({
+        prefix: `artifacts/${kind}`,
+        scope: entity_id || station_id,
+        base64: bytes,
+        contentType: media_type || 'image/jpeg',
+        filename: media_type === 'application/pdf' ? 'doc.pdf' : 'image.jpg',
+      });
+      bytes = null;                       // the bucket holds it now
+    } catch (e) {
+      objectPath = null;
+      log('warn', `artifact: ${kind} upload failed, keeping base64 — ${e.message || e}`);
+    }
+  }
+
   // Inside somebody else's transaction, isolate the insert. If it fails we roll
   // back only this statement and the caller's work survives untouched.
   const inTxn = client !== pool;
@@ -106,7 +151,7 @@ async function save(input, client = pool) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING id, station_id, entity_type, entity_id, kind, media_type,
                  ocr, meta, captured_at, uploaded_by`,
-      [station_id, entity_type || null, entity_id, kind, storage_path, bytes,
+      [station_id, entity_type || null, entity_id, kind, objectPath, bytes,
        media_type, ocr ? JSON.stringify(ocr) : null, meta ? JSON.stringify(meta) : null,
        uploaded_by]
     );
@@ -149,7 +194,21 @@ async function getImage(id, client = pool) {
               file_base64, storage_path, ocr, meta, captured_at, uploaded_by
          FROM station_artifacts WHERE id = $1`, [id]
     );
-    return rows[0] || null;
+    const row = rows[0] || null;
+    if (!row) return null;
+
+    // ONE CONTRACT FOR THE CALLER: it asked for an image and it gets the bytes,
+    // wherever they live. Older artifacts carry base64; new ones carry a path into
+    // the private bucket. Resolving that here means /artifacts/:id/image — and the
+    // ArtifactImage component behind it — did not have to learn about storage.
+    if (!row.file_base64 && row.storage_path) {
+      try {
+        row.file_base64 = (await downloadDocument(row.storage_path)).toString('base64');
+      } catch (e) {
+        log('error', `artifact: download failed for ${row.storage_path} — ${e.message || e}`);
+      }
+    }
+    return row;
   } catch (e) {
     log('error', `artifact: fetch failed — ${e.message || e}`);
     return null;
