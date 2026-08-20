@@ -1,6 +1,7 @@
 // src/routes/corporate.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
+const pumps  = require('../services/pumpService');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
 const {
@@ -430,11 +431,13 @@ router.get('/:id/statement', authenticate, requireCorporateAccess(), async (req,
       dateTo = d.toISOString().slice(0, 10);
     }
 
+    const nm = await pumps.nozzleNameSelect(pool);
     let q = `
-      SELECT de.*, u.name AS attendant_name, n.nozzle_number
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number${nm.col}
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      ${nm.join}
       WHERE de.corporate_id = $1 AND de.payment_mode = 'credit'
         AND NOT COALESCE(de.is_voided,FALSE)
     `;

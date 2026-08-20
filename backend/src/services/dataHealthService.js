@@ -39,6 +39,7 @@
 //   - CNG is sold by weight and is never dipped, so CNG tanks are excluded from
 //     the dip-staleness flags (mirrors the dashboard's "gas · no dip" handling).
 const pool = require('../db/pool');
+const pumps = require('./pumpService');
 
 // Thresholds — named constants, overridable by env, with safe defaults.
 const posInt = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
@@ -255,15 +256,17 @@ async function computeDataHealth(stationIds, today = istToday()) {
   // Advisory only. A pump swap or a totalizer replacement is a real event that shows
   // up here, and it should — but it is not a reason to block anything.
   let meterGapRows = [];
+  const nm = await pumps.nozzleNameSelect(pool);
   try {
     const { rows } = await pool.query(
       `WITH leg AS (
-         SELECT s.station_id, n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
+         SELECT s.station_id, n.id AS nozzle_id, n.nozzle_number, n.fuel_type${nm.col},
                 s.date, s.shift_number, s.start_time,
                 san.opening_reading, san.closing_reading
            FROM shift_attendant_nozzles san
            JOIN shifts  s ON s.id = san.shift_id
            JOIN nozzles n ON n.id = san.nozzle_id
+           ${nm.join}
           WHERE s.station_id = ANY($1::uuid[])
             AND s.date >= ($2::date - $3::int)
        ),
@@ -275,7 +278,7 @@ async function computeDataHealth(stationIds, today = istToday()) {
            FROM leg
          WINDOW w AS (PARTITION BY nozzle_id ORDER BY start_time, date, shift_number)
        )
-       SELECT station_id, nozzle_number, fuel_type, date::text AS date, shift_number,
+       SELECT station_id, nozzle_number, nozzle_name, fuel_type, date::text AS date, shift_number,
               prev_date::text AS prev_date, prev_shift_number,
               ROUND((opening_reading - prev_closing)::numeric, 3) AS diff_ltrs
          FROM seq
@@ -291,6 +294,7 @@ async function computeDataHealth(stationIds, today = istToday()) {
     push(r.station_id, {
       type: 'meter_handover_gap',
       nozzle_number: r.nozzle_number,
+      nozzle_name: r.nozzle_name,
       fuel_type: r.fuel_type,
       diff_ltrs: r.diff_ltrs == null ? null : Number(r.diff_ltrs),
       date: r.date,
@@ -330,7 +334,7 @@ async function computeDataHealth(stationIds, today = istToday()) {
   let entryRows = [];
   try {
     const { rows } = await pool.query(
-      `SELECT s.station_id, n.nozzle_number, n.fuel_type,
+      `SELECT s.station_id, n.nozzle_number, n.fuel_type${nm.col},
               COUNT(*)::int AS readings,
               COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))::int AS whole_readings,
               ROUND(100.0 * COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))
@@ -339,10 +343,11 @@ async function computeDataHealth(stationIds, today = istToday()) {
          FROM shift_attendant_nozzles san
          JOIN shifts s  ON s.id = san.shift_id
          JOIN nozzles n ON n.id = san.nozzle_id
+         ${nm.join}
         WHERE s.station_id = ANY($1::uuid[])
           AND san.closing_reading IS NOT NULL
           AND s.date >= ($2::date - $3::int)
-        GROUP BY s.station_id, n.id, n.nozzle_number, n.fuel_type
+        GROUP BY s.station_id, n.id, n.nozzle_number, n.fuel_type${nm.groupBy}
        HAVING COUNT(*) >= $4::int
           AND 100.0 * COUNT(*) FILTER (WHERE san.closing_reading = TRUNC(san.closing_reading))
               / NULLIF(COUNT(*), 0) >= $5::numeric
@@ -356,6 +361,7 @@ async function computeDataHealth(stationIds, today = istToday()) {
     push(r.station_id, {
       type: 'unverified_meter_entry',
       nozzle_number: r.nozzle_number,
+      nozzle_name: r.nozzle_name,
       fuel_type: r.fuel_type,
       readings: Number(r.readings),
       whole_readings: Number(r.whole_readings),

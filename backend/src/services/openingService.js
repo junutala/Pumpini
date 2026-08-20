@@ -26,6 +26,7 @@
 // close: the first shift ever run on that nozzle or tank, or a newly commissioned
 // one. That is a real event, it is rare, and it is visible as `source: 'entered'`.
 const pool = require('../db/pool');
+const pumps = require('./pumpService');
 
 // The most recent closing meter per nozzle at this station, from THE meter store —
 // `shift_attendant_nozzles`, and nothing else.
@@ -76,14 +77,16 @@ const pool = require('../db/pool');
 // by `start_time`, so a shift entered out of order cannot carry a LATER shift's meter
 // backwards into an earlier one.
 async function nozzleOpenings(shift_id, client = pool) {
+  const nm = await pumps.nozzleNameSelect(client);
   const { rows } = await client.query(`
-    SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type,
+    SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type${nm.col},
            prev.closing_reading                AS carried_opening,
            (prev.shift_id IS NOT NULL)         AS has_prior_leg,
            prev.shift_number                   AS prior_shift_number,
            prev.date::text                     AS prior_shift_date
       FROM (SELECT id, station_id, start_time FROM shifts WHERE id = $1) cur
       JOIN nozzles n ON n.station_id = cur.station_id AND n.is_active
+      ${nm.join}
       LEFT JOIN LATERAL (
         SELECT san.closing_reading, san.shift_id, s2.shift_number, s2.date
           FROM shift_attendant_nozzles san
@@ -101,6 +104,7 @@ async function nozzleOpenings(shift_id, client = pool) {
     map[r.nozzle_id] = {
       nozzle_id: r.nozzle_id,
       nozzle_number: r.nozzle_number,
+      nozzle_name: r.nozzle_name,
       fuel_type: r.fuel_type,
       carried_opening: r.carried_opening,
       // 'carried'  — taken from the last close; the client cannot change it.

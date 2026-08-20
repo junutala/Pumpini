@@ -1,6 +1,7 @@
 // src/routes/dashboard.js
 const router = require('express').Router();
 const pool   = require('../db/pool');
+const pumps  = require('../services/pumpService');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
 const { computeShiftReco } = require('./tankReco');   // live per-tank reconciliation for the wet-stock tile
@@ -382,26 +383,29 @@ router.get('/manager', authenticate, requireStationAccess({ required: true }), r
     const { rows: shiftRow } = await pool.query('SELECT status FROM shifts WHERE id=$1', [shift_id]);
     const hideSales = !isOwner && shiftRow[0]?.status === 'open';
 
+    const nm = await pumps.nozzleNameSelect(pool);
     const [liveEvents, attendantSummary, recoStatus] = await Promise.all([
       pool.query(`
-        SELECT de.*, u.name AS attendant_name, n.nozzle_number
+        SELECT de.*, u.name AS attendant_name, n.nozzle_number${nm.col}
         FROM dispense_events de
         LEFT JOIN users u ON u.id = de.attendant_id
         LEFT JOIN nozzles n ON n.id = de.nozzle_id
+        ${nm.join}
         WHERE de.shift_id=$1 ORDER BY de.event_seq DESC LIMIT 50`, [shift_id]),
 
       pool.query(`
-        SELECT sa.attendant_id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type,
+        SELECT sa.attendant_id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type${nm.col},
                COALESCE(SUM(de.amount),0) AS sales, COALESCE(SUM(de.quantity_ltrs),0) AS litres,
                COUNT(de.id)::int AS txn_count
         FROM shift_attendants sa
         JOIN users u ON u.id = sa.attendant_id
         LEFT JOIN rfid_tags r ON r.id = sa.rfid_tag_id
         LEFT JOIN nozzles n ON n.id = sa.nozzle_id
+        ${nm.join}
         LEFT JOIN dispense_events de ON de.attendant_id = sa.attendant_id AND de.shift_id = sa.shift_id
           AND NOT COALESCE(de.is_voided,FALSE)
         WHERE sa.shift_id=$1
-        GROUP BY sa.attendant_id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type`, [shift_id]),
+        GROUP BY sa.attendant_id, u.name, r.tag_uid, n.nozzle_number, n.fuel_type${nm.groupBy}`, [shift_id]),
 
       pool.query(
         `SELECT r.*, u.name AS attendant_name FROM shift_reconciliation r
@@ -765,10 +769,12 @@ router.get('/attendant', authenticate, requireStationVia('SELECT station_id FROM
     const { rows: shiftRow } = await pool.query('SELECT status FROM shifts WHERE id=$1', [shift_id]);
     const hideSales = !isOwner && shiftRow[0]?.status === 'open';
 
+    const nm = await pumps.nozzleNameSelect(pool);
     const { rows } = await pool.query(`
-      SELECT de.*, n.nozzle_number, n.fuel_type
+      SELECT de.*, n.nozzle_number, n.fuel_type${nm.col}
       FROM dispense_events de
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      ${nm.join}
       WHERE de.attendant_id=$1 AND de.shift_id=$2
       ORDER BY de.event_seq`, [attendant_id, shift_id]);
 

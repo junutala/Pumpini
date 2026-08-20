@@ -18,6 +18,7 @@ import { useState, useEffect } from 'react';
 import { ShieldCheck, AlertTriangle, ChevronDown, ChevronRight, Droplets, Clock, Gauge } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getStationDataHealth, getGroupDataHealth } from '../../lib/api';
+import { nozName } from '../../lib/nozzle';
 
 const card = { background: 'var(--surface,#fff)', border: '0.5px solid var(--border,#e5e7eb)', borderRadius: 14 };
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -56,7 +57,7 @@ function flagText(f, tc) {
     // reports the size and lets the owner ask.
     case 'meter_handover_gap':
       return tc('dh.meterHandover', 'Nozzle {n} · {fuel} — opening meter {v} L off the previous close ({from} → {to})')
-        .replace('{n}', f.nozzle_number)
+        .replace('{n}', nozName(f))
         .replace('{fuel}', cap(f.fuel_type || ''))
         .replace('{v}', f.diff_ltrs != null ? (f.diff_ltrs > 0 ? '+' : '') + f.diff_ltrs : '?')
         .replace('{from}', fmtDay(f.prev_date))
@@ -68,7 +69,7 @@ function flagText(f, tc) {
     // time it was a faulty scanner.
     case 'unverified_meter_entry':
       return tc('dh.unverifiedMeter', 'Nozzle {n} · {fuel} — {p}% of {c} closing meters entered as whole litres; the pump slip prints decimals, so these were typed, not scanned')
-        .replace('{n}', f.nozzle_number)
+        .replace('{n}', nozName(f))
         .replace('{fuel}', cap(f.fuel_type || ''))
         .replace('{p}', f.pct_whole != null ? f.pct_whole : '?')
         .replace('{c}', f.readings);

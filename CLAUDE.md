@@ -321,6 +321,31 @@ Things worth knowing before chasing this meter again:
 - **Commit frequency is not the lever.** Small, individually-revertable PRs are
   worth far more here than the megabytes batching them would save.
 
+## 🔴 ONE nozzle name, one pump name — owner-set 2026-08-20
+
+> *"Any other number remains in the minds of the creator and no other person can
+> validate or verify it. Because the pumpserialno.nozzle number is printed in the
+> nozzle slips and can be verified even by an elementary student. NOW, I WANT
+> EVERYWHERE, I repeat, EVERYWHERE where there is a reference to nozzle to be the
+> nozzle naming convention... NO OTHER NAMING CONVENTION invented by you anywhere."*
+
+- **A nozzle is named `<pump serial>.<nozzle number>`** — `M1832105.1` — exactly as
+  its own slip prints it. **A pump is named by its serial.** Nothing else is shown to
+  a user, ever: not on a screen, not in an error message, not in a CSV export.
+- **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is our index — it orders
+  lists, it is the unique key, and it supplies the printed nozzle number when
+  `slip_nozzle_no` is unset. It is never a label. Same for `pumps.pump_number`.
+- **ONE writer: `pumpService.nozzleNameExpr` / `nozzleName`** (SQL and JS halves of the
+  same three rules). Every nozzle-returning query selects it as `nozzle_name`; the
+  frontend reads it through `lib/nozzle.js → nozName()` and computes nothing.
+  **Do not build a label in a page.** That is what produced `N1.1` on Shift Close and
+  `Nozzle 1` on Shift Open for the same nozzle on the same day.
+- **Kamala's CNG unit prints no slip** (owner, 20-Aug), so its serial is recorded as
+  the literal `CNG` and its nozzles read `CNG.1` / `CNG.2`. Invented, knowingly, for
+  want of a printed identity — and the ONLY sanctioned exception.
+- No serial on file → the name falls back to the internal number. That is a gap to
+  fill in Settings, not a licence to invent a name for it.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO

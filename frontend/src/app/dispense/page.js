@@ -7,6 +7,7 @@ import { getShifts, getManagerDashboard, submitReco, getReco } from '../../lib/a
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import { nozName } from '../../lib/nozzle';
 
 const DENOMS = [500,200,100,50,20,10,5,2,1];
 const fmt = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
@@ -122,7 +123,7 @@ export default function ReconcilePage() {
                   <div>
                     <div style={{fontWeight:700,fontSize:15}}>{att.name}</div>
                     <div style={{fontSize:12,color:'var(--text-3)'}}>
-                      {tc('dispp.nozzleLine','Nozzle {nozzle} · {fuel} · {count} transactions').replace('{nozzle}',att.nozzle_number).replace('{fuel}',att.fuel_type).replace('{count}',att.txn_count)}
+                      {tc('dispp.nozzleLine','Nozzle {nozzle} · {fuel} · {count} transactions').replace('{nozzle}',nozName(att)).replace('{fuel}',att.fuel_type).replace('{count}',att.txn_count)}
                     </div>
                   </div>
                   <div style={{display:'flex',alignItems:'center',gap:10}}>

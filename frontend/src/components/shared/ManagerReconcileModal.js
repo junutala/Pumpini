@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, CheckCircle, AlertTriangle, Lock } from 'lucide-react';
 import api from '../../lib/api';
+import { nozName } from '../../lib/nozzle';
 
 const NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
 const fmt = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
@@ -115,7 +116,7 @@ export default function ManagerReconcileModal({ shift, onClose, onClosed }) {
               background: r ? (short ? '#fef2f2' : '#f0fdf4') : '#fafafa' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{a.attendant_name}
-                  <span style={{ fontWeight: 400, color: '#888', fontSize: 12, marginLeft: 6 }}>N{a.nozzle_number} · {a.fuel_type}</span>
+                  <span style={{ fontWeight: 400, color: '#888', fontSize: 12, marginLeft: 6 }}>{nozName(a)} · {a.fuel_type}</span>
                 </div>
                 {r && <span style={{ fontSize: 12, fontWeight: 700, color: short ? '#dc2626' : '#16a34a', display: 'flex', alignItems: 'center', gap: 4 }}>
                   {short ? <AlertTriangle size={13} /> : <CheckCircle size={13} />}{short ? tc('rmodal.shortage', 'Shortage') : over ? tc('rmodal.overage', 'Overage') : tc('rmodal.tallied', 'Tallied')}

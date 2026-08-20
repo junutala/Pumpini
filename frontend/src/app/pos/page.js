@@ -8,6 +8,7 @@ import { getShifts, getNozzles, getCurrentPrices, recordDispense, getReco, submi
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
+import { nozName } from '../../lib/nozzle';
 
 const PAYMENT_MODES = [
   { id:'cash',   labelKey:'pos_page.cash',   fallback:'💵 Cash',   color:'#16a34a' },
@@ -635,7 +636,7 @@ export default function POSPage() {
             const sr = scanResult[n.id];
             return (
               <div key={n.id} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,flexWrap:'wrap'}}>
-                <div style={{width:110,fontSize:13,fontWeight:600}}>N{n.nozzle_number} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{n.fuel_type}</span></div>
+                <div style={{width:110,fontSize:13,fontWeight:600}}>{nozName(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{n.fuel_type}</span></div>
                 <label style={{flexShrink:0,height:36,padding:'0 14px',display:'flex',alignItems:'center',gap:6,background:scanningNz===n.id?'#94a3b8':'#475569',color:'#fff',borderRadius:8,cursor:scanningNz===n.id?'default':'pointer',fontSize:13,fontWeight:600}}>
                   {scanningNz===n.id?'Reading…':'📷 Scan'}
                   <input type="file" accept="image/*" capture="environment" disabled={scanningNz===n.id} style={{display:'none'}} onChange={e=>{ scanPosMeter(n, e.target.files?.[0]); e.target.value=''; }}/>
@@ -679,7 +680,7 @@ export default function POSPage() {
                     className={`btn ${nozzle===n.id?'btn-primary':'btn-secondary'}`}
                     style={{flexDirection:'column',height:'auto',padding:'10px 6px',fontSize:12,gap:2}}
                     onClick={()=>setNozzle(n.id)}>
-                    <span style={{fontWeight:700}}>N{n.nozzle_number}</span>
+                    <span style={{fontWeight:700}}>{nozName(n)}</span>
                     <span style={{fontSize:10,opacity:.8,textTransform:'capitalize'}}>{n.fuel_type}</span>
                     {getPrice(n.id) > 0 && (
                       <span style={{fontSize:10,opacity:.7}}>₹{getPrice(n.id)}/L</span>

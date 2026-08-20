@@ -46,7 +46,10 @@ async function listPumps(station_id, client = pool) {
               json_build_object(
                 'id', n.id, 'nozzle_number', n.nozzle_number, 'fuel_type', n.fuel_type,
                 'tank_id', n.tank_id, 'slip_nozzle_no', n.slip_nozzle_no,
-                'is_active', n.is_active
+                'is_active', n.is_active,
+                -- The name the slip prints. Built from THIS pump's serial, so the
+                -- Settings card shows exactly what every other screen shows.
+                'nozzle_name', ${nozzleNameExpr('n', 'p')}
               ) ORDER BY n.nozzle_number
             ) FILTER (WHERE n.id IS NOT NULL), '[]') AS nozzles
        FROM pumps p
@@ -68,7 +71,11 @@ async function listPumps(station_id, client = pool) {
 async function unassignedNozzles(station_id, client = pool) {
   if (!station_id || !(await hasPumps(client))) return [];
   const { rows } = await client.query(
-    `SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id, n.is_active
+    // No pump owns these yet, so there is no serial and no printed name to show —
+    // nozzle_name falls back to the stored number, which is precisely the signal that
+    // this nozzle still needs assigning.
+    `SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id, n.is_active,
+            n.nozzle_number::text AS nozzle_name
        FROM nozzles n
       WHERE n.station_id = $1 AND n.pump_id IS NULL AND n.end_date IS NULL
       ORDER BY n.nozzle_number`,
@@ -96,6 +103,97 @@ function cleanSerial(v) {
   const s = String(v ?? '').trim().toUpperCase();
   return s || null;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  THE NAME OF A NOZZLE — one writer, used by every screen, report and export.
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// A nozzle has ONE name: the identity its own slip prints, `<pump serial>.<nozzle
+// number>` — M1832105.1. An attendant, a manager and an auditor can hold the paper
+// against the screen and agree without knowing anything about Pumpini.
+//
+// `nozzles.nozzle_number` ("1.1", "2.3") is OUR index. It is verifiable by nobody
+// outside this codebase, so it is internal only and is never shown to a user. It
+// stays as the join key and the ordering key; it stops being a label.
+//
+// The printed nozzle number is `slip_nozzle_no` where the outlet recorded it, else
+// the suffix of our own number ("1.3" -> "3") — the SAME fallback defaultSlipNo()
+// and the slip matcher in reconcile.js already apply, so the name a screen shows
+// and the name the scanner matches on cannot drift apart.
+//
+// NO SERIAL ON FILE -> the stored nozzle_number, unchanged. A pump not yet recorded
+// is a gap to fill in Settings; it is not a licence to invent a name for it.
+//
+// Kamala's CNG unit prints no slip at all (owner, 20-Aug-2026), so its serial is
+// recorded as the literal "CNG" and its nozzles read CNG.1 / CNG.2. That is an
+// invented name and we know it — there is no printed identity to use, and a name
+// the forecourt actually says beats a number only this repo can explain.
+
+// Columns arrive with owner-run DDL, so this code lives both before and after it.
+// Catalog probe — never a failing SELECT, which inside a transaction would abort
+// the caller's whole unit of work (CLAUDE.md). Cached only once TRUE, so the first
+// call after the migration picks it up with no restart.
+let _hasPumpNaming = false;
+async function hasPumpNaming(client = pool) {
+  if (_hasPumpNaming) return true;
+  try {
+    const { rows } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='nozzles'
+          AND column_name='pump_id' LIMIT 1`);
+    _hasPumpNaming = rows.length > 0;
+  } catch { _hasPumpNaming = false; }
+  return _hasPumpNaming;
+}
+
+// The SQL half of the name. `n` is the nozzles alias already in the caller's query;
+// `p` is the pumps alias the matching join introduces.
+function nozzleNameExpr(n = 'n', p = '_np') {
+  return `CASE WHEN ${p}.serial IS NULL OR btrim(${p}.serial) = ''
+               THEN ${n}.nozzle_number::text
+               ELSE btrim(${p}.serial) || '.' || COALESCE(
+                      NULLIF(btrim(${n}.slip_nozzle_no), ''),
+                      NULLIF(split_part(${n}.nozzle_number::text, '.', 2), ''),
+                      ${n}.nozzle_number::text)
+          END`;
+}
+
+// LEFT JOIN, always: a nozzle no pump owns yet must still come back with a name,
+// and a retired pump must not resurrect its nozzles into a live list.
+function nozzleNameJoin(n = 'n', p = '_np') {
+  return `LEFT JOIN pumps ${p} ON ${p}.id = ${n}.pump_id AND ${p}.end_date IS NULL`;
+}
+
+// What callers use. Hands back the SELECT fragment and the JOIN to splice in, both
+// already comma/space-prefixed, and both EMPTY-SAFE before the migration: without
+// the pump columns the name degrades to today's nozzle_number rather than 500-ing
+// a read path. Shift Close is on the other end of several of these.
+// `groupBy` is the trailing GROUP BY fragment an aggregating caller must add, so a
+// query that groups does not have to repeat the CASE — it groups by the two source
+// columns the name is built from.
+async function nozzleNameSelect(client = pool, { n = 'n', p = '_np', as = 'nozzle_name' } = {}) {
+  if (!(await hasPumpNaming(client))) {
+    return { col: `, ${n}.nozzle_number::text AS ${as}`, join: '', groupBy: '' };
+  }
+  return {
+    col: `, ${nozzleNameExpr(n, p)} AS ${as}`,
+    join: ` ${nozzleNameJoin(n, p)} `,
+    groupBy: `, ${p}.serial, ${n}.slip_nozzle_no`,
+  };
+}
+
+// The JS half, for a name built from a row we already hold rather than in SQL.
+// Same three rules, same order, so the two halves cannot disagree.
+function nozzleName(row = {}) {
+  const stored = String(row.nozzle_number ?? '').trim();
+  const serial = String(row.pump_serial ?? row.serial ?? '').trim();
+  if (!serial) return stored;
+  const printed = String(row.slip_nozzle_no ?? '').trim()
+    || (stored.includes('.') ? stored.split('.').pop() : '')
+    || stored;
+  return `${serial}.${printed}`;
+}
+
 
 // Store the sample slip and hand back its artifact id. The pump form photographs a
 // slip to read the serial off it; keeping the picture is the whole point — the same
@@ -245,5 +343,6 @@ async function retirePump(pump_id, station_id, client = pool) {
 
 module.exports = {
   hasPumps, defaultSlipNo, listPumps, unassignedNozzles, createPump, updatePump, retirePump,
+  hasPumpNaming, nozzleNameExpr, nozzleNameJoin, nozzleNameSelect, nozzleName,
   badRequest, conflict,
 };

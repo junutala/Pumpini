@@ -25,6 +25,8 @@
 // Everything here takes the caller's transaction `client` and never commits: the
 // settlement, its dispense events and its closings must land together or not at all.
 
+const pumps = require('./pumpService');
+
 // A refusal the caller can turn straight into a response. Carrying the status here
 // keeps the two routes from inventing different codes for the same refusal.
 class SettlementError extends Error {
@@ -48,10 +50,14 @@ async function loadOperatorLine(client, { shift_id, attendant_id, notFoundStatus
 // single-nozzle pair on shift_attendants was retired 01-Aug-2026 and dropped from
 // production 04-Aug-2026; nothing here may reach for it again.
 async function loadOperatorNozzles(client, { shift_id, attendant_id, noneMessage }) {
+  // nozzle_name rides along so a refusal ("closing is below opening on …") can name
+  // the nozzle the way its slip does, rather than by our internal index.
+  const nm = await pumps.nozzleNameSelect(client);
   const { rows } = await client.query(`
-    SELECT san.nozzle_id, san.opening_reading, n.fuel_type
+    SELECT san.nozzle_id, san.opening_reading, n.fuel_type, n.nozzle_number${nm.col}
       FROM shift_attendant_nozzles san
       JOIN nozzles n ON n.id = san.nozzle_id
+      ${nm.join}
      WHERE san.shift_id=$1 AND san.attendant_id=$2`, [shift_id, attendant_id]);
   if (!rows.length) throw new SettlementError(400, noneMessage);
   return rows;

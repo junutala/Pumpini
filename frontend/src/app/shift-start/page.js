@@ -20,11 +20,12 @@ import { Check, ChevronRight, ArrowLeft, Droplets, X, ScanLine, AlertTriangle } 
 import AppShell from '../../components/shared/AppShell';
 import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
-import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips, getPumps } from '../../lib/api';
+import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
+import { nozName } from '../../lib/nozzle';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
@@ -294,10 +295,6 @@ export default function ShiftStartPage() {
   // scan, a manual type or a per-nozzle camera all land here, and when a nozzle is
   // ticked for an attendant its pick copies from this map so the two steps agree.
   const [nozReadings, setNozReadings] = useState({}); // nozzle_id -> opening string
-  // nozzle_id -> the SERIAL of the pump this nozzle hangs off, so the Nozzles step
-  // can name each nozzle "SERIAL.slipNo" (e.g. 17EH2900V.1). Loaded once from
-  // getPumps; the /nozzles read does not carry the serial, only pump_id.
-  const [pumpSerial, setPumpSerial] = useState({});
   // nozzle_id -> 'carried' | 'pending' | 'entered'. THE OPENING IS THE LAST CLOSE
   // (owner rule, 01-Aug): where one exists the server uses it whatever this screen
   // sends, so the box is shown READ-ONLY rather than as an editable field whose value
@@ -360,8 +357,7 @@ export default function ShiftStartPage() {
       api.get('/shifts', { params:{ station_id: stationId, status:'open' } }).catch(()=>[]),
       api.get(`/dipstick/tanks/${stationId}`).catch(()=>[]),
       api.get(`/prices/${stationId}/current`).catch(()=>[]),
-      getPumps(stationId).catch(()=>({ pumps:[], unassigned:[] })),
-    ]).then(([d,u,n,os,tk,pr,pm]) => {
+    ]).then(([d,u,n,os,tk,pr]) => {
       const defList = Array.isArray(d)?d:[];
       const openList = Array.isArray(os)?os:[];
       setDefs(defList);
@@ -373,12 +369,6 @@ export default function ShiftStartPage() {
       // suggestion, never the screen.
       loadFaceRefs(staff);
       setNozzles((Array.isArray(n)?n:[]).filter(x=>x.is_active));
-      // nozzle_id -> pump serial, for the "SERIAL.slipNo" nozzle names on the
-      // Nozzles step. A failed pumps read just falls the name back to nozzle_number.
-      const pmap = {};
-      ((pm && Array.isArray(pm.pumps)) ? pm.pumps : []).forEach(p =>
-        (p.nozzles||[]).forEach(nz => { if (p.serial) pmap[nz.id] = p.serial; }));
-      setPumpSerial(pmap);
       setOpenShifts(openList);
       setTanks(Array.isArray(tk)?tk:[]);
       setPrices(Array.isArray(pr)?pr:[]);
@@ -608,34 +598,11 @@ export default function ShiftStartPage() {
   const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
 
-  // The slip number the machine prints for a nozzle, and the display name that pairs
-  // it with the pump SERIAL. slip_nozzle_no is the explicit column; where it is unset
-  // the suffix of "pump.nozzle" (e.g. "3.1" -> "1") is the same figure. No serial on
-  // file (pumps not migrated, or the read failed) → fall back to the raw nozzle name.
-  const slipNoOf = (n) => {
-    if (n.slip_nozzle_no != null && String(n.slip_nozzle_no) !== '') return String(n.slip_nozzle_no);
-    const m = String(n.nozzle_number ?? '').match(/\.(\d+)$/);
-    return m ? m[1] : String(n.nozzle_number ?? '');
-  };
-  // Group a nozzle list by pump: a small SERIAL header before each machine's run of
-  // nozzles, so two near-identical serials (…927 vs …908) stop interleaving and reading
-  // as scrambled. The serial — the slip's own identity — sits in the header once; each
-  // row then shows just its nozzle number, so serial.nozzleNo is still the whole truth,
-  // it just isn't repeated on every line. Nozzles are already ordered pump.nozzle, so a
-  // group is a contiguous run and the header fires when the serial changes.
-  const pumpGroupHeader = (list, i) => {
-    const serial = pumpSerial[list[i]?.id];
-    const prev = i > 0 ? pumpSerial[list[i-1]?.id] : null;
-    if (!serial || serial === prev) return null;
-    return (
-      <div key={`hdr-${serial}`} style={{fontSize:11.5,fontWeight:800,color:'#0f766e',letterSpacing:'.03em',margin:'12px 0 4px 2px',display:'flex',alignItems:'center',gap:6}}>
-        <ScanLine size={12}/> {serial}
-      </div>
-    );
-  };
-  // Row label: the nozzle number within its pump when a serial header carries the
-  // machine; the bare stored name when no serial is on file (then there's no header).
-  const nozLabel = (n) => (pumpSerial[n.id] ? `${tc('sstart.nozzleWord','Nozzle')} ${slipNoOf(n)}` : String(n.nozzle_number ?? ''));
+  // NO LOCAL NAMING HERE. A nozzle's name is `<pump serial>.<nozzle number>`, computed
+  // once by pumpService and delivered as `nozzle_name`; nozName() only reads it. This
+  // page used to carry its own slipNoOf/pumpGroupHeader/nozLabel trio — which is how a
+  // row here could read "Nozzle 1" while Shift Close read "N1.1" for the same nozzle.
+  // That is the route this change closes.
 
   // ONE writer for a captured opening. nozReadings is the source of truth the Nozzles
   // step edits; if the nozzle is already ticked for an attendant we keep its pick in
@@ -657,7 +624,7 @@ export default function ShiftStartPage() {
       // reading goes straight to the shared writer — nozReadings, and the pick if it
       // is already assigned.
       if (r.reading) setReading(nozzle.id, r.reading);
-      if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozzle.nozzle_number) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
+      if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozName(nozzle)) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
     } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errScanFailed','Scan failed')); }
     setScanning('');
   };
@@ -683,9 +650,9 @@ export default function ShiftStartPage() {
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
-        if (l.nozzle_id == null) { unmatched.push(l.nozzle_number || l.slip_no || '?'); return; }
+        if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
         const noz = nozzles.find(x => x.id === l.nozzle_id);
-        if (!noz) { unmatched.push(l.nozzle_number || String(l.nozzle_id)); return; }
+        if (!noz) { unmatched.push(l.nozzle_name || l.nozzle_number || String(l.nozzle_id)); return; }
         if (l.cumulative_volume == null) return;
         // A nozzle whose opening is carried from the last close is left alone — the
         // server uses the carried close regardless, and writing the slip's number in
@@ -693,7 +660,7 @@ export default function ShiftStartPage() {
         // disagreement is a discrepancy to report, not an opening to apply.
         if (openSrc[noz.id] === 'carried' && openings[noz.id] != null) {
           if (Math.abs(Number(l.cumulative_volume) - Number(openings[noz.id])) > 1) {
-            locked.push(`${noz.nozzle_number} (${tc('sstart.slipSays','slip')} ${l.cumulative_volume} vs ${openings[noz.id]})`);
+            locked.push(`${nozName(noz)} (${tc('sstart.slipSays','slip')} ${l.cumulative_volume} vs ${openings[noz.id]})`);
           }
           matched++;
           return;
@@ -702,7 +669,7 @@ export default function ShiftStartPage() {
         matched++;
         // A rupee/litre swap was corrected server-side for this line — flag it so
         // the manager eyeballs the number before it becomes an opening.
-        if (l.swapped_amount_for_volume) verify.push(noz.nozzle_number);
+        if (l.swapped_amount_for_volume) verify.push(nozName(noz));
       }));
       // Slips whose printed serial is not a registered pump — name the serial so the
       // manager knows to add the machine in Settings.
@@ -1004,18 +971,17 @@ export default function ShiftStartPage() {
           </div>
 
           {nozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.noNozzles','No active nozzles configured.')}</div>}
-          {nozzles.flatMap((n,i)=>{
-            const _hdr = pumpGroupHeader(nozzles, i);
+          {nozzles.map(n=>{
             // The last close, which the server will use regardless — shown locked.
             const carried = openSrc[n.id] === 'carried' && openings[n.id] != null;
             // Not carried because the prior shift is not settled yet — a different
             // thing from a nozzle that has never run.
             const pendingOn = !carried && openSrc[n.id] === 'pending' ? openPending[n.id] : null;
-            const _row = (
+            return (
               <div key={n.id} style={{border:'1px solid #eef0f2',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,justifyContent:'space-between',flexWrap:'wrap'}}>
                   <div style={{fontSize:13,fontWeight:700,minWidth:0}}>
-                    {nozLabel(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{String(n.fuel_type||'').replace('_',' ')}</span>
+                    {nozName(n)} <span style={{color:'#888',fontWeight:400,textTransform:'capitalize'}}>{String(n.fuel_type||'').replace('_',' ')}</span>
                   </div>
                   {carried ? (
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -1051,7 +1017,6 @@ export default function ShiftStartPage() {
                 )}
               </div>
             );
-            return _hdr ? [_hdr, _row] : [_row];
           })}
 
           <button onClick={goToAttendants} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
@@ -1108,8 +1073,7 @@ export default function ShiftStartPage() {
               <div>
                 <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint2','(tick each; the opening comes from the Nozzle readings step)')}</span></label>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
-                {availNozzles.flatMap((n,i)=>{
-                  const _hdr = pumpGroupHeader(availNozzles, i);
+                {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;
                   const sug = openings[n.id];
                   // Carried = the last close, and the server will use it regardless.
@@ -1123,11 +1087,11 @@ export default function ShiftStartPage() {
                   // writes back through setReading so the two steps cannot diverge.
                   const fromStep1 = carried ? sug : (nozReadings[n.id] ?? '');
                   const cur = carried ? sug : (pick?.opening ?? '');
-                  const _row = (
+                  return (
                     <div key={n.id} style={{border:'1px solid '+(sel?'#fed7aa':'#eef0f2'),background:sel?'#fff7ed':'#fff',borderRadius:8,padding:'8px 10px',marginBottom:6}}>
                       <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,fontWeight:600}}>
                         <input type="checkbox" checked={sel} onChange={e=>{ if(e.target.checked) pickNoz(n.id,{selected:true, opening: fromStep1}); else setNozPick(p=>({...p,[n.id]:{...(p[n.id]||{}),selected:false}})); }}/>
-                        {nozLabel(n)} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
+                        {nozName(n)} <span style={{color:'#888',fontWeight:400}}>{n.fuel_type}</span>
                       </label>
                       {sel && (
                         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
@@ -1165,7 +1129,6 @@ export default function ShiftStartPage() {
                       )}
                     </div>
                   );
-                  return _hdr ? [_hdr, _row] : [_row];
                 })}
               </div>
 
@@ -1195,7 +1158,7 @@ export default function ShiftStartPage() {
                       ? <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
                           {a.nozzles.map(nz=>(
                             <span key={nz.nozzle_id} style={{fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 8px'}}>
-                              N{nz.nozzle_number} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
+                              {nozName(nz)} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
                             </span>
                           ))}
                         </div>
@@ -1215,7 +1178,7 @@ export default function ShiftStartPage() {
                 <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
                   {availNozzles.map(n=>(
                     <span key={n.id} style={{fontSize:11.5,background:'#fff',border:'1px solid #fde68a',color:'#92400e',borderRadius:99,padding:'2px 8px'}}>
-                      N{n.nozzle_number} · {n.fuel_type}
+                      {nozName(n)} · {n.fuel_type}
                     </span>
                   ))}
                 </div>

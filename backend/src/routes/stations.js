@@ -107,9 +107,12 @@ router.post('/:id/users', authenticate, authorize('owner','manager'), requireSta
 
 router.get('/:id/nozzles', authenticate, requireStationId('id'), async (req, res, next) => {
   try {
+    const nm = await pumpService.nozzleNameSelect(pool);
     const { rows } = await pool.query(
-      `SELECT n.*, t.tank_number, t.fuel_type AS tank_fuel FROM nozzles n
-       LEFT JOIN tanks t ON t.id=n.tank_id WHERE n.station_id=$1 ORDER BY n.nozzle_number`,
+      `SELECT n.*, t.tank_number, t.fuel_type AS tank_fuel${nm.col} FROM nozzles n
+       LEFT JOIN tanks t ON t.id=n.tank_id
+       ${nm.join}
+       WHERE n.station_id=$1 ORDER BY n.nozzle_number`,
       [req.params.id]
     );
     res.json(rows);

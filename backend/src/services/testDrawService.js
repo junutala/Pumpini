@@ -38,6 +38,7 @@
 //   then explicitly: −T on the source tank, +T on the destination. That is the diesel
 //   case, and it is the one the reconciliation has never seen.
 const pool = require('../db/pool');
+const pumps = require('./pumpService');
 
 class TestDrawError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -46,15 +47,17 @@ class TestDrawError extends Error {
 // Everything the write needs about the nozzle, re-scoped to the validated station so a
 // nozzle_id from another outlet cannot be written here.
 async function loadNozzle(client, { nozzle_id, station_id }) {
+  const nm = await pumps.nozzleNameSelect(client);
   const { rows } = await client.query(`
-    SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id, n.station_id
+    SELECT n.id, n.nozzle_number, n.fuel_type, n.tank_id, n.station_id${nm.col}
       FROM nozzles n
+      ${nm.join}
      WHERE n.id = $1 AND n.station_id = $2 AND n.is_active`, [nozzle_id, station_id]);
   if (!rows.length) throw new TestDrawError(400, 'That nozzle does not belong to this outlet.');
   const nz = rows[0];
   if (!nz.tank_id) {
     throw new TestDrawError(400,
-      `Nozzle ${nz.nozzle_number} is not linked to a tank. Set its tank in Settings first — ` +
+      `Nozzle ${nz.nozzle_name || nz.nozzle_number} is not linked to a tank. Set its tank in Settings first — ` +
       'without it there is no record of which tank the fuel came out of.');
   }
   return nz;
@@ -122,6 +125,7 @@ async function createTestDraw({
   return {
     ...rows[0],
     nozzle_number: nz.nozzle_number,
+    nozzle_name: nz.nozzle_name,
     fuel_type: nz.fuel_type,
     to_tank_number: dest.tank_number,
     // True when the fuel went back somewhere other than where it came from. The books

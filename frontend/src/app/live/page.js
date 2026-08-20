@@ -7,6 +7,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
+import { nozName } from '../../lib/nozzle';
 
 const fmt  = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtL = n => Number(n||0).toFixed(2);
@@ -175,7 +176,7 @@ export default function LiveEventsPage() {
                     <td className="num" style={{color:'var(--text-3)',fontSize:12}}>{ev.event_seq}</td>
                     <td style={{fontSize:12,fontFamily:'var(--font-mono)',whiteSpace:'nowrap'}}>{toIST(ev.occurred_at)}</td>
                     <td style={{fontWeight:500}}>{ev.attendant_name||'—'}</td>
-                    <td style={{fontWeight:600}}>N{ev.nozzle_number}</td>
+                    <td style={{fontWeight:600}}>{nozName(ev)}</td>
                     <td>
                       <span style={{
                         display:'inline-block',padding:'2px 8px',borderRadius:4,fontSize:12,fontWeight:600,

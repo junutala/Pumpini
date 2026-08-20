@@ -52,14 +52,17 @@ router.get('/', authenticate, requireStationAccess({ required: true }), requireP
     try {
       const { station_id, shift_id } = req.query;
       const pool = require('../db/pool');
+      const pumps = require('../services/pumpService');
+      const nm = await pumps.nozzleNameSelect(pool);
       const p = [station_id];
       let q = `
-        SELECT d.*, n.nozzle_number, n.fuel_type,
+        SELECT d.*, n.nozzle_number, n.fuel_type${nm.col},
                ft.tank_number AS from_tank_number, tt.tank_number AS to_tank_number,
                u.name AS recorded_by_name, a.name AS attendant_name,
                (d.from_tank_id <> d.to_tank_id) AS cross_tank
           FROM fuel_test_draws d
           JOIN nozzles n ON n.id = d.nozzle_id
+          ${nm.join}
           JOIN tanks ft  ON ft.id = d.from_tank_id
           JOIN tanks tt  ON tt.id = d.to_tank_id
           LEFT JOIN users u ON u.id = d.recorded_by

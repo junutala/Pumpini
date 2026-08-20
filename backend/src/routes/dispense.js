@@ -192,12 +192,14 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
   try {
     const isOwner = req.user.role === 'owner';
     const { shift_id, attendant_id, date_from, date_to, station_id, corporate_id, payment_mode, limit = 200 } = req.query;
+    const nm = await pumps.nozzleNameSelect(pool);
     let q = `
-      SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel,
+      SELECT de.*, u.name AS attendant_name, n.nozzle_number, n.fuel_type AS nozzle_fuel${nm.col},
              sh.status AS shift_status
       FROM dispense_events de
       LEFT JOIN users u ON u.id = de.attendant_id
       LEFT JOIN nozzles n ON n.id = de.nozzle_id
+      ${nm.join}
       LEFT JOIN shifts sh ON sh.id = de.shift_id
       WHERE 1=1
     `;
