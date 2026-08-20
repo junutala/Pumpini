@@ -6,7 +6,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js"
+    "seed": "node src/db/seed.js",
+    "slip-eval": "node scripts/slip-eval.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",

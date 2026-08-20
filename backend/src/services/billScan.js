@@ -33,25 +33,8 @@ Rules:
 - If a value is missing or unreadable, use null. NEVER guess.`;
 }
 
-async function googleVisionOcr(base64) {
-  const key = process.env.GOOGLE_VISION_API_KEY;
-  if (!key) return null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
-  try {
-    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${key}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
-      signal: ctrl.signal,
-    });
-    if (!r.ok) return null;
-    const j = await r.json();
-    const resp = j?.responses?.[0];
-    if (resp?.error) return null;
-    return resp?.fullTextAnnotation?.text || null;
-  } catch { return null; }
-  finally { clearTimeout(timer); }
-}
+// ONE Vision reader, shared with the delivery-invoice and dispenser-slip scanners.
+const { visionOcr: googleVisionOcr } = require('./visionOcr');
 
 function parseJson(txt) {
   const m = (txt || '').match(/\{[\s\S]*\}/);

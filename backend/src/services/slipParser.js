@@ -15,6 +15,7 @@
 // manager happened to be on.
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const { visionOcr, usable } = require('./visionOcr');
 
 // SHARED RULE TEXT — the parts of the prompt that describe HOW to read a slip, factored
 // out so the single-slip and composite prompts cannot drift. SLIP_PROMPT below is rebuilt
@@ -86,6 +87,77 @@ Respond with ONLY a JSON object, nothing else:
 ${FIELD_RULES_BLOCK}
 Include ONLY slips and nozzles actually visible in THIS image, each under its own slip. Set a nozzle's legible=false (and overall legible=false) if its volume digits are unclear, glare/blur-obscured, mid-roll, or cut off the edge. NEVER guess a digit.`;
 
+// ── HOW A SLIP IS READ ────────────────────────────────────────────────────────
+//
+// GOOGLE VISION FIRST, CLAUDE ON THE TEXT. Asking a vision model to read a
+// thermal slip photographed on a forecourt is the hard version of this problem,
+// and it failed in exactly the ways you would expect: on 20-Aug-2026 two scans of
+// the same five Sri Balaji slips returned the MODEL line as the pump serial on
+// four of five slips in one pass, and lost every rupee amount in the other. Not
+// one of the twenty lines came back legible.
+//
+// Delivery invoices had the identical problem and it went away when the Vision
+// pre-pass went in. Same fix here: Vision reads the characters, Claude structures
+// the TEXT. A text call does not squint.
+//
+// The old vision call is kept as the FALLBACK, not deleted — Vision returns null
+// when the key is unset, the network fails or the photo yields nothing, and on
+// that path the parser behaves exactly as it does today. So this can add a
+// success; it cannot remove one.
+const OCR_PREAMBLE = `Below is text extracted from a PHOTOGRAPH of the slip(s) by an OCR engine.
+The layout may be imperfect: lines can arrive out of order, columns can be flattened, and
+where several slips were photographed together their lines may be interleaved. Use the
+printed LABELS and each slip's own header block to decide what belongs to what — never
+position on the page. Each slip repeats its own header (company, PRINT DATE, PUMP SERIAL
+NUMBER, MODEL), so a new header means a new slip.
+
+OCR text:
+
+`;
+
+// ONE reader for both callers. Returns the parsed JSON object, or null.
+// `engine` is reported back so a caller — and the eval script — can see which path
+// produced the answer instead of guessing.
+async function readSlipJson({ file_base64, media_type, prompt, max_tokens = 1500 }) {
+  // Preferred: Vision OCR -> Claude TEXT.
+  try {
+    const ocrText = await visionOcr(file_base64);
+    if (usable(ocrText)) {
+      const msg = await ai.messages.create({
+        model: 'claude-sonnet-4-6', max_tokens,
+        messages: [{ role: 'user', content: [{ type: 'text', text: `${prompt}\n\n${OCR_PREAMBLE}${ocrText}` }] }],
+      });
+      const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
+      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length };
+    }
+  } catch (e) { warn('slip vision-ocr path failed: ' + (e.message || e)); }
+
+  // Fallback: the original Claude vision call, unchanged.
+  try {
+    const msg = await ai.messages.create({
+      model: 'claude-sonnet-4-6', max_tokens,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
+        { type: 'text', text: prompt },
+      ] }],
+    });
+    const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
+    return parsed ? { parsed, engine: 'claude_vision', ocr_chars: 0 } : null;
+  } catch (e) {
+    warn('slip parse failed: ' + (e.message || e));
+    return null;
+  }
+}
+
+function extractJson(txt) {
+  const m = (txt || '').trim().match(/\{[\s\S]*\}/);
+  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+}
+
+function warn(msg) {
+  try { require('../utils/logger').warn(msg); } catch { /* noop */ }
+}
+
 // A real pump/FIP id is a small number. Stripping non-digits off whatever comes back
 // turns a serial like "17CH2653V" into "172653" and a model "1224/2224" into
 // "12242224", then builds the label "172653.1", which matches no nozzle anywhere.
@@ -121,27 +193,14 @@ function normalizeSlipNozzles(rawNozzles) {
 // Read one slip. Returns null when the image could not be parsed at all; the caller
 // decides what that means for its own screen.
 async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
-  let parsed = null;
-  try {
-    const msg = await ai.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1500,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-        { type: 'text', text: SLIP_PROMPT },
-      ] }],
-    });
-    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    parsed = m ? JSON.parse(m[0]) : null;
-  } catch (e) {
-    try { require('../utils/logger').warn('slip parse failed: ' + (e.message || e)); } catch { /* noop */ }
-    return null;
-  }
+  const read = await readSlipJson({ file_base64, media_type, prompt: SLIP_PROMPT });
+  const parsed = read?.parsed;
   if (!parsed || !Array.isArray(parsed.nozzles)) return null;
 
   const nozzles = normalizeSlipNozzles(parsed.nozzles);
 
   return {
+    engine: read.engine,
     slip_type: ['A', 'B', 'C'].includes(parsed.slip_type) ? parsed.slip_type : 'other',
     pump_id: cleanPumpId(parsed.pump_id),
     // Kept VERBATIM apart from case and surrounding space. Serials are alphanumeric
@@ -160,22 +219,11 @@ async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
 // composite prompt and returns one group per slip, each with its own serial and its
 // nozzles normalised by the SAME shared logic. Returns null on total parse failure.
 async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg' }) {
-  let parsed = null;
-  try {
-    const msg = await ai.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens: 1500,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-        { type: 'text', text: COMPOSITE_SLIP_PROMPT },
-      ] }],
-    });
-    const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
-    const m = txt.match(/\{[\s\S]*\}/);
-    parsed = m ? JSON.parse(m[0]) : null;
-  } catch (e) {
-    try { require('../utils/logger').warn('composite slip parse failed: ' + (e.message || e)); } catch { /* noop */ }
-    return null;
-  }
+  // A composite carries several slips, so its JSON is several times longer than a
+  // single slip's — 1500 was tight enough that one more pump could truncate it,
+  // and a truncated body fails JSON.parse and loses the WHOLE scan, not one slip.
+  const read = await readSlipJson({ file_base64, media_type, prompt: COMPOSITE_SLIP_PROMPT, max_tokens: 8000 });
+  const parsed = read?.parsed;
   if (!parsed || !Array.isArray(parsed.slips)) return null;
 
   const slips = parsed.slips.map(s => ({
@@ -187,6 +235,8 @@ async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg' }) {
   }));
 
   return {
+    engine: read.engine,
+    ocr_chars: read.ocr_chars,
     slips,
     legible: parsed.legible === true
       && slips.length > 0

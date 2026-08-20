@@ -451,37 +451,10 @@ Rules:
 - One item per product/compartment. If a value is missing or not legible, use null and say so in notes. NEVER guess.`;
 
 // ── Google Vision OCR pre-pass (optional) ─────────────────────────────────
-// HPCL has no invoice portal, so managers photograph smudged physical copies on
-// a phone. A general vision model intermittently returns prose ("Could not read")
-// on those; Google Vision DOCUMENT_TEXT_DETECTION reads the figures reliably
-// (validated on a real failing HPCL invoice — every volume, rate, component
-// amount and the grand total came through correct), and Claude then structures
-// the clean *text* (a text call essentially never refuses/returns prose the way a
-// vision call on a bad photo does). Active only when GOOGLE_VISION_API_KEY is set
-// — otherwise the endpoint behaves exactly as before (Claude vision only), and
-// any OCR miss falls through to that same path.
-async function googleVisionOcr(base64) {
-  const key = process.env.GOOGLE_VISION_API_KEY;
-  if (!key) return null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
-  try {
-    const r = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${key}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
-      signal: ctrl.signal,
-    });
-    if (!r.ok) { try { require('../utils/logger').warn(`vision-ocr http ${r.status}`); } catch { /* noop */ } return null; }
-    const j = await r.json();
-    const resp = j?.responses?.[0];
-    if (resp?.error) { try { require('../utils/logger').warn('vision-ocr error: ' + (resp.error.message || '')); } catch { /* noop */ } return null; }
-    return resp?.fullTextAnnotation?.text || null;
-  } catch (e) {
-    try { require('../utils/logger').warn('vision-ocr failed: ' + (e.message || e)); } catch { /* noop */ }
-    return null;
-  } finally { clearTimeout(timer); }
-}
+// The reasoning, the timeout and the degrade-to-null contract now live in ONE
+// place — services/visionOcr.js — shared with the expense-bill scanner and the
+// dispenser-slip reader. This file used to carry its own identical copy.
+const { visionOcr: googleVisionOcr } = require('../services/visionOcr');
 
 // Structure OCR text into our JSON shape via a TEXT-only Claude call. Returns the
 // parsed object, or null on any miss so the caller falls back to Claude vision.
