@@ -63,6 +63,8 @@ function summarise(res) {
         volume: n.cumulative_volume,
         legible: n.legible === true,
         swapped: n.swapped_amount_for_volume === true,
+        implied: n.implied_price,
+        reason:  n.reject_reason || '',
       });
     }
   }
@@ -110,11 +112,11 @@ async function main() {
       console.log(`\n  run ${r}  ·  engine=${sum.engine}  ·  ocr_chars=${sum.ocr_chars}  ·  ${Date.now() - t0}ms`);
       console.log(`  slips=${sum.slips}  lines=${sum.total}  legible=${sum.legible}/${sum.total}  ` +
                   `lines whose serial matches a real pump=${hits}/${sum.total}`);
-      console.log('  ' + 'serial'.padEnd(16) + 'noz'.padEnd(5) + 'amount'.padEnd(18) + 'volume'.padEnd(18) + 'flags');
+      console.log('  ' + 'serial'.padEnd(16) + 'noz'.padEnd(5) + 'amount'.padEnd(18) + 'volume'.padEnd(18) + 'Rs/L'.padEnd(10) + 'flags');
       for (const l of sum.lines) {
         console.log('  ' + String(l.serial).padEnd(16) + String(l.noz).padEnd(5) +
-          fmt(l.amount).padEnd(18) + fmt(l.volume).padEnd(18) +
-          (l.legible ? 'legible ' : '') + (l.swapped ? 'SWAPPED' : ''));
+          fmt(l.amount).padEnd(18) + fmt(l.volume).padEnd(18) + fmt(l.implied).padEnd(10) +
+          (l.legible ? 'legible ' : 'REFUSED ') + (l.swapped ? 'SWAPPED ' : '') + l.reason);
       }
     }
     console.log('');

@@ -2286,7 +2286,8 @@
     "faceLikely": "This is probably {name} — selected below. Worth a second look.",
     "faceUnsure": "Not sure who this is — closest is {name}. Pick him from the list.",
     "faceMany": "More than one face in frame — pick him from the list.",
-    "faceUnread": "Could not read the face — pick him from the list."
+    "faceUnread": "Could not read the face — pick him from the list.",
+    "slipsRefused": "⚠ Not filled — enter by hand: {x}."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2651,7 +2652,8 @@
     "faceMany": "More than one face in frame — pick him from the list.",
     "faceNone": "No face found in that photo — pick him from the list.",
     "faceUnread": "Could not read the face — pick him from the list.",
-    "faceNoRefs": "No reference photos on file yet — add them under Add Attendant and the camera will start naming him."
+    "faceNoRefs": "No reference photos on file yet — add them under Add Attendant and the camera will start naming him.",
+    "slipsRefused": "⚠ Not filled — enter by hand: {x}."
   },
   "streco": {
     "title": "Stock Reconciliation",
@@ -3055,5 +3057,11 @@
     "fp_enable": "Enable Fingerprint",
     "fp_login": "Login with Fingerprint",
     "maybe_later": "Maybe Later"
+  },
+  "slip": {
+    "rejPrice": "implies ₹{p}/L",
+    "rejNoAmount": "amount not read, nothing to check it against",
+    "rejSwap": "rupee/litre swap",
+    "rejUnclear": "digits unclear"
   }
 }

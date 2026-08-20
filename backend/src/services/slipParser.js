@@ -15,7 +15,7 @@
 // manager happened to be on.
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const { visionOcr, usable } = require('./visionOcr');
+const { readImageAsJson } = require('./visionOcr');
 
 // SHARED RULE TEXT — the parts of the prompt that describe HOW to read a slip, factored
 // out so the single-slip and composite prompts cannot drift. SLIP_PROMPT below is rebuilt
@@ -115,43 +115,13 @@ OCR text:
 
 `;
 
-// ONE reader for both callers. Returns the parsed JSON object, or null.
-// `engine` is reported back so a caller — and the eval script — can see which path
-// produced the answer instead of guessing.
+// Both callers go through the ONE shared reader in services/visionOcr.js. This
+// function used to carry its own copy of the Vision-then-Claude pipeline; the copy
+// is gone, because three more readers needed the same thing and four copies of one
+// idea is exactly what the cardinal rule exists to stop.
 async function readSlipJson({ file_base64, media_type, prompt, max_tokens = 1500 }) {
-  // Preferred: Vision OCR -> Claude TEXT.
-  try {
-    const ocrText = await visionOcr(file_base64);
-    if (usable(ocrText)) {
-      const msg = await ai.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens,
-        messages: [{ role: 'user', content: [{ type: 'text', text: `${prompt}\n\n${OCR_PREAMBLE}${ocrText}` }] }],
-      });
-      const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length };
-    }
-  } catch (e) { warn('slip vision-ocr path failed: ' + (e.message || e)); }
-
-  // Fallback: the original Claude vision call, unchanged.
-  try {
-    const msg = await ai.messages.create({
-      model: 'claude-sonnet-4-6', max_tokens,
-      messages: [{ role: 'user', content: [
-        { type: 'image', source: { type: 'base64', media_type, data: file_base64 } },
-        { type: 'text', text: prompt },
-      ] }],
-    });
-    const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-    return parsed ? { parsed, engine: 'claude_vision', ocr_chars: 0 } : null;
-  } catch (e) {
-    warn('slip parse failed: ' + (e.message || e));
-    return null;
-  }
-}
-
-function extractJson(txt) {
-  const m = (txt || '').trim().match(/\{[\s\S]*\}/);
-  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+  const r = await readImageAsJson({ file_base64, media_type, prompt, max_tokens, ocrPreamble: OCR_PREAMBLE });
+  return r.parsed ? r : null;
 }
 
 function warn(msg) {
@@ -166,6 +136,24 @@ function cleanPumpId(v) {
   return digits && digits.length <= 2 ? digits : null;
 }
 
+// ── PLAUSIBILITY BAND FOR THE IMPLIED PRICE ──────────────────────────────────
+// Every known slip layout prints the cumulative AMOUNT beside the cumulative
+// VOLUME, so amount ÷ volume is the pump's LIFETIME AVERAGE price per litre — and
+// that is a number with a knowable range. Verified good reads off Sri Balaji's five
+// pumps on 20-Aug-2026 sat between Rs 77.35 and Rs 116.58. The band below is set
+// far wider than that so an old pump whose average is dragged down by a decade of
+// cheaper fuel is never rejected for being honest.
+//
+// What it catches is not a near miss — it is a digit lost or gained. From the same
+// morning's scans: Rs 950.04/L (a volume read as 331310.09 instead of 1221310.08),
+// Rs 9.09/L (an amount read as 36478759.7 instead of 367478759.7), Rs 3,155/L and
+// Rs 84,878/L. Two of those four came back marked legible=true — the model's own
+// confidence flag did not catch what one division does.
+//
+// Tune these from measurement (scripts/slip-eval.js), never from intuition.
+const MIN_IMPLIED_PRICE = 40;
+const MAX_IMPLIED_PRICE = 200;
+
 // The ONE nozzle normaliser, shared by the single-slip and composite readers so the
 // numeric clean, the rupee/litre swap guard and the legibility verdict cannot drift
 // between them. Takes the raw `nozzles` array off a parsed slip and returns cleaned rows.
@@ -179,13 +167,51 @@ function normalizeSlipNozzles(rawNozzles) {
     // two it is the amount — recorded as a meter it would post a phantom sale of a
     // hundred million litres.
     let swapped = false;
-    if (isFinite(vol) && isFinite(amt) && amt > 0 && vol > amt) { swapped = true; vol = amt; }
+    let A = amt;
+    if (isFinite(vol) && isFinite(A) && A > 0 && vol > 0 && vol > A) {
+      // EXCHANGE the two, do not overwrite one with the other. The old guard did
+      // `vol = amt` and left amt alone, so a "corrected" line came back with the
+      // volume and the amount holding the SAME number — the amount silently became
+      // a litre figure. Seen in production on 20-Aug: A and V both 14630688.45.
+      swapped = true;
+      const t = vol; vol = A; A = t;
+    }
+
+    // ── THE CROSS-CHECK ──────────────────────────────────────────────────────
+    // A volume is only believed if the amount printed beside it agrees. Uniqueness
+    // constraints stop the same nozzle being read twice; nothing else stops it being
+    // read WRONG, and a wrong closing is the one number a shift is judged by.
+    let reject = null;
+    let implied = null;
+    if (isFinite(vol) && vol > 0) {
+      if (!(isFinite(A) && A > 0)) {
+        // Every layout we know (IndianOil CumSale/CumVolume, HPCL Atot/Vtot,
+        // ETOT-MAIN A/V) prints both figures. A missing amount therefore means we
+        // FAILED TO READ it, not that the slip lacks one — and it leaves the volume
+        // with nothing to check it against. That is exactly the hole the old swap
+        // guard had: with amt absent its `amt > 0` test was false, so a "volume" of
+        // 140,500,859 litres passed through untouched (production, 20-Aug 08:59).
+        reject = 'no_amount_to_cross_check';
+      } else {
+        implied = +(A / vol).toFixed(2);
+        if (implied < MIN_IMPLIED_PRICE || implied > MAX_IMPLIED_PRICE) {
+          reject = 'implied_price_out_of_band';
+        }
+      }
+    }
+
     return {
       nozzle_no: no || null,
       cumulative_volume: isFinite(vol) && vol > 0 ? vol : null,
-      cumulative_amount: isFinite(amt) && amt > 0 ? amt : null,
+      cumulative_amount: isFinite(A) && A > 0 ? A : null,
       swapped_amount_for_volume: swapped || undefined,
-      legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped,
+      // What the pair implies, so a screen can say WHY it refused rather than just
+      // that it did, and so slip-eval can show the distribution over real scans.
+      implied_price: implied,
+      reject_reason: reject || undefined,
+      // legible drives the pre-fill. A line that fails the cross-check is NOT
+      // legible, whatever the model said about its own confidence.
+      legible: n.legible === true && isFinite(vol) && vol > 0 && !swapped && !reject,
     };
   }).filter(n => n.nozzle_no);
 }

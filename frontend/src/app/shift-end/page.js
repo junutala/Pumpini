@@ -32,6 +32,7 @@ import { useAuth } from '../../lib/auth';
 import { markToTrueDip, dipToVolume } from '../../lib/calibration';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
+import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
@@ -339,12 +340,21 @@ export default function ShiftEndPage() {
       // fills his own boxes below); the source of truth for attendant-led self-settle.
       const res = await parseSlips(shift.id, { file_base64: b64, media_type: file.type || 'image/jpeg', persist: true });
       const slips = Array.isArray(res.slips) ? res.slips : [];
-      let matched = 0; const unmatched = []; const verify = [];
+      let matched = 0; const unmatched = []; const verify = []; const refused = [];
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
         if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
         if (l.cumulative_volume == null) return;
+        // REFUSED BY THE CROSS-CHECK. Until now an illegible line still pre-filled
+        // the box and `legible:false` was only a sentence at the end — which is how
+        // a misread meter reaches a settlement. A refused figure is not offered at
+        // all; the manager types that one nozzle and the rest still fill.
+        if (l.legible === false) {
+          const why = rejectNote(l, tc);
+          refused.push(`${l.nozzle_name || l.nozzle_number || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
+          return;
+        }
         let found = false;
         attendants.forEach(a => (a.nozzles || []).forEach(nz => {
           if (nz.nozzle_id === l.nozzle_id) {
@@ -369,6 +379,7 @@ export default function ShiftEndPage() {
       if (unmatched.length)     msg += ' ' + tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
       if (unknownSerials.length) msg += ' ' + tc('send.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
       if (verify.length)        msg += ' ' + tc('send.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
+      if (refused.length)       msg += ' ' + tc('send.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
       if (res.legible === false) msg += ' ' + tc('send.slipsVerify','⚠ Some digits unclear — verify.');
       if (res.notes)            msg += ' ' + res.notes;
       setErr(msg);
