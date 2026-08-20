@@ -76,7 +76,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     let chart = null;
     if (tank_id) {
       const { rows: tk } = await client.query(
-        `SELECT c.diameter_cm, c.length_cm
+        `SELECT t.capacity_ltrs, t.tank_number, c.diameter_cm, c.length_cm
          FROM tanks t
          LEFT JOIN tank_calibration_charts c ON c.id = t.calibration_chart_id
          WHERE t.id=$1 AND t.station_id=$2`, [tank_id, station_id]);
@@ -88,6 +88,38 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     if (chart && chart.diameter_cm && chart.length_cm && dip_cm != null) {
       const v = dipToVolume(chart.diameter_cm, chart.length_cm, dip_cm);
       if (v != null) volume_ltrs = v;
+    }
+
+    // ── A TANK CANNOT HOLD MORE THAN IT HOLDS ────────────────────────────────
+    //
+    // The installed capacity comes from the MASTER tank record, never from the
+    // figure OCR'd off the console. Owner-set 20-Aug-2026, after a gauge scan of
+    // Sri Balaji read capacities of 12,650 and 4,000 L for tanks the database
+    // records as 16,000 and 9,000 — and returned checks_ok: true on all three,
+    // because both existing checks are null-guarded and the console's ullage was
+    // unreadable, so neither ever ran.
+    //
+    // A misread volume is not off by a percent, it is off by a decimal place or a
+    // whole digit. Nothing else in this write stops 145,000 litres being recorded
+    // against a 16,000 litre tank, and that figure would then BE the stock — the
+    // number every variance, every loss and every reconciliation is measured from.
+    //
+    // The tolerance is not zero because nominal capacity is not a physical ceiling:
+    // a tank filled to its nameplate can gauge a little over on a warm afternoon,
+    // and refusing a manager at 6am over 0.4% would be the wrong trade. It is small
+    // enough that no digit error survives it.
+    const CAPACITY_TOLERANCE = 1.02;
+    if (chart && chart.capacity_ltrs != null && volume_ltrs != null) {
+      const cap = Number(chart.capacity_ltrs);
+      const vol = Number(volume_ltrs);
+      if (Number.isFinite(cap) && cap > 0 && Number.isFinite(vol) && vol > cap * CAPACITY_TOLERANCE) {
+        return res.status(400).json({
+          error: `That reading is ${Math.round(vol).toLocaleString('en-IN')} L for a tank installed at `
+               + `${Math.round(cap).toLocaleString('en-IN')} L. A tank cannot hold more than its capacity — `
+               + `re-read the gauge, or correct the capacity in Settings if the tank was changed.`,
+          volume_ltrs: vol, capacity_ltrs: cap, tank_number: chart.tank_number,
+        });
+      }
     }
 
     // artifact_id links this figure back to the gauge-screen photograph it was read
@@ -336,6 +368,7 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
    "todays_sale_ltrs": number or null,
    "todays_receipt_ltrs": number or null
  }],
+ "table_visible": true or false — was the BOTTOM SUMMARY TABLE's data rows legible? A header row alone is false. See the mandatory rule below,
  "confidence": "high|medium|low",
  "notes": "anything unclear, glared out, or cut off"
 }
@@ -343,6 +376,8 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
 Rules:
 - product: MS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; Power / Speed / XtraPremium / any branded premium -> "premium_petrol"; CNG -> "cng". Keep the printed text in product_raw either way.
 - DIP IS IN MILLIMETRES on these consoles (e.g. 766.30, 1540.80). Report it as printed in dip_mm — do NOT convert to cm.
+- 🔴 THE SUMMARY TABLE IS MANDATORY, NOT PREFERRED. If the table at the bottom is cropped out of frame, or its ROWS are not legible (a header row alone is not enough), set "table_visible": false, return every tank's numeric fields as null, and say so in notes. DO NOT fall back to the graphical cards for tank_label, product or the volumes. The cards are glare-prone artwork on a curved screen; on 20-Aug-2026 a photograph of a phone displaying this console — table cropped to its header — was read off the cards and returned tank numbers 1/2/3 for an outlet whose tanks are 1/3/4, and capacities of 12,650 and 4,000 L for tanks installed at 16,000 and 9,000 L. A refusal that tells the manager to re-take the photograph with the table in frame is worth more than a screenful of confident wrong numbers.
+
 - ANCHOR ON THE SUMMARY TABLE AT THE BOTTOM. These screens show the same tanks TWICE: graphical cards on top, and below them a plain table with column headers (typically TANK | PRODUCT | VOLUME (Ltr.) | DIP (MM.) | CAPACITY (Ltr.)). The table is labelled, tabular and free of the cards' glare-prone artwork, so it is the RELIABLE source. Read tank_label, product, net_volume_ltrs, dip_mm and capacity_ltrs FROM THE TABLE. Use the cards only to (a) supply the fields the table does not carry — water, temperature, ullage, today's sale/receipt — and (b) cross-check the table. They are the SAME tanks: return ONE entry per tank, never one per view. If a figure differs between the two, TRUST THE TABLE and say so in notes.
 - The table's VOLUME column is the NET volume (it matches the card's "Net Volume", not "Gross Volume"). Put it in net_volume_ltrs.
 - capacity_ltrs from the table matters — we use it to identify which of OUR tanks a row belongs to. Read it carefully.
@@ -416,7 +451,22 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
     // kept on a slip: so a question about a figure is answered by the row rather
     // than by inference. A gauge screen is the hardest read we do, which makes it
     // the one most worth being able to explain afterwards.
-    const out = { ...withGaugeChecks(parsed), engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null };
+    // THE TABLE IS THE SOURCE. Without its rows the reader has only the glare-prone
+    // cards, and that is precisely what produced tank numbers 1/2/3 for an outlet
+    // numbered 1/3/4 on 20-Aug. Refuse rather than hand back numbers sourced from
+    // artwork — the manager re-takes the photograph with the table in frame.
+    if (parsed.table_visible === false) {
+      return res.status(422).json({
+        error: 'The summary table at the bottom of the console screen was not readable in that photo. '
+             + 'Re-take it with the whole table in frame — the tank numbers and volumes are read from there, '
+             + 'not from the coloured tank pictures.',
+        table_visible: false,
+        notes: String(parsed.notes ?? ''),
+      });
+    }
+
+    const out = { ...withGaugeChecks(parsed), engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null,
+                  table_visible: parsed.table_visible !== false };
 
     // Keep the screen. A gauge screen photographed inside a shift hangs off that
     // shift; one taken for the plain dip register belongs to the outlet.
