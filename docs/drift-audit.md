@@ -31,6 +31,18 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
 | Assign attendant to a shift (FORM) | `shift-start` two-screen flow **and** a second modal inside `shifts/page.js` | **FIXED (01-Aug-2026)** — the `shifts/page.js` modal is retired; its Add-Attendant button now routes to `/shift-start?shift=<id>`. It had diverged to one-nozzle-only, asked for a float outlets do not give, took no photograph, and offered an opening-meter box the server ignores once the close carries forward. A form that silently discards typed input is worse than none. |
 | Opening reading (meter + dip) | client-supplied at shift start | **FIXED (01-Aug-2026)** — `services/openingService` is the single answer; the last close IS the next open, decided server-side. `POST /shifts` seeds opening dips, `POST /shifts/:id/assign` ignores a client-supplied opening where a prior close exists. |
 | Stored document images | `dispense_artifacts` (unused) + a planned `dipstick_artifacts` | **FIXED (01-Aug-2026)** — one `station_artifacts` table with a named parent `(entity_type, entity_id)`, one writer `services/artifactService`. `dispense_artifacts` (0 rows) copied over and dropped before a second table could exist. |
+| Speech → text (Sarvam) | `routes/voice.js` wrote the Sarvam call out inline; the lead form would have been a second copy | **FIXED (22-Aug-2026)** — `services/transcribeService`. Same endpoint, model and key for every caller; they differ only in `mode` (`codemix` for POS so `parsePOSCommand` still sees both "petrol" and "పెట్రోల్", `translate` for leads so the owner reads English) and in the guard over it (`authenticate` vs public + rate limit). |
+| Lead interaction (WRITER) | would have been written twice — public field tool and `/admin` | **FIXED (22-Aug-2026)** — `services/leadService.addInteraction`, called by `routes/leads.js` (public, composes inside the capture transaction via a passed `client`) and `routes/superadmin.js` (authAdmin). One table, one validation, two guards. |
+| Record-and-transcribe control (FORM) | `app/lead/page.js` + `components/admin/LeadRail.js` | **FIXED (22-Aug-2026)** — `components/shared/InteractionRecorder`, embedded by both. |
+
+## Known remaining copies (declared, not hidden)
+
+- **MediaRecorder plumbing (3 copies).** `lib/recordAudio.js` (22-Aug-2026) is the one
+  helper — probe the mime type, collect chunks, release the tracks — and the lead tool and
+  the admin rail use it. `app/pos/page.js` and `components/shared/FloatingChat.js` still
+  carry their own inline copies of that same sequence. Migrating them is a separate PR
+  with its own impact analysis: `/pos` is a money screen and does not get refactored as a
+  side effect of shipping a leads tool. Flagged here rather than left to be rediscovered.
 
 ## Dead / broken code to remove
 

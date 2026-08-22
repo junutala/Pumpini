@@ -1334,3 +1334,64 @@ BEGIN
 END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.shift_scan_meters TO app_authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Leads: field capture (pumpini.in/lead) + the interaction log
+-- Added 22-Aug-2026. Both blocks are idempotent and safe to re-run.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Where the temp was standing when the lead was taken, and which mobile filed it.
+-- `captured_by` is SELF-DECLARED — the number that opened the field tool, never a
+-- verified identity. Nothing downstream may read it as proof of one.
+-- All nullable: a lead whose owner refused the location prompt still saves.
+ALTER TABLE public.leads
+  ADD COLUMN IF NOT EXISTS lat               numeric(9,6),
+  ADD COLUMN IF NOT EXISTS lng               numeric(9,6),
+  ADD COLUMN IF NOT EXISTS location_accuracy numeric,
+  ADD COLUMN IF NOT EXISTS captured_by       text;
+
+-- A lead is courted over several visits, so the account of it is a LOG, not a
+-- column. One row per interaction; `leads.message` stays what it always was —
+-- the website enquiry form's text.
+CREATE TABLE IF NOT EXISTS public.lead_interactions (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id           uuid NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  note              text NOT NULL,
+  captured_by       text,
+  lat               numeric(9,6),
+  lng               numeric(9,6),
+  location_accuracy numeric,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_interactions_lead
+  ON public.lead_interactions(lead_id, created_at DESC);
+
+-- 🔴 RLS ships in the SAME block as the table. New tables get RLS enabled
+-- automatically on this project, and RLS-on-with-no-policy denies everything —
+-- silently returning zero rows on SELECT while INSERT raises.
+--
+-- NOT station-scoped: a lead belongs to nobody's outlet yet, which is the whole
+-- point of it. So this mirrors `leads` rather than the my_stations() shape —
+-- the public form may INSERT, only a superadmin may SELECT.
+ALTER TABLE public.lead_interactions ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='lead_interactions'
+                   AND policyname='lead_interactions_public_insert') THEN
+    CREATE POLICY lead_interactions_public_insert ON public.lead_interactions
+      FOR INSERT WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='lead_interactions'
+                   AND policyname='lead_interactions_superadmin_read') THEN
+    CREATE POLICY lead_interactions_superadmin_read ON public.lead_interactions
+      FOR SELECT USING (public.app_is_superadmin());
+  END IF;
+END $$;
+
+GRANT ALL ON TABLE public.lead_interactions TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.lead_interactions TO app_authenticated;

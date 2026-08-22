@@ -4,6 +4,11 @@
 const router  = require('express').Router();
 const { authenticate } = require('../middleware/auth');
 const multer  = require('multer');
+// The Sarvam call itself lives in ONE place now (CLAUDE.md one-writer rule).
+// This route is the tenant-JWT boundary over it; routes/leads.js is the public
+// one. Same endpoint, same model, same key — they differ only in the `mode`
+// they ask for, and in who is allowed to ask.
+const { transcribe, LANG_MAP } = require('../services/transcribeService');
 
 // Use memory storage
 const upload = multer({
@@ -11,59 +16,34 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// Language code mapping
-const LANG_MAP = {
-  en: 'en-IN', hi: 'hi-IN', ta: 'ta-IN',
-  te: 'te-IN', kn: 'kn-IN', mr: 'mr-IN',
-};
-
 // ── POST /api/voice/transcribe ────────────────────────────
 router.post('/transcribe', authenticate, upload.single('audio'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No audio file provided' });
 
-    const apiKey = process.env.SARVAM_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Sarvam API key not configured' });
+    const lang = req.body.language || 'en';
 
-    const lang     = req.body.language || 'en';
-    const langCode = LANG_MAP[lang] || 'en-IN';
-
-    console.log(`Voice: ${req.file.size} bytes, ${req.file.mimetype}, lang: ${langCode}`);
-
-    // Use Node 18 native FormData + Blob
-    const blob = new Blob([req.file.buffer], {
-      type: req.file.mimetype || 'audio/webm'
+    // 'codemix' keeps the speaker's own words. parsePOSCommand() below matches
+    // BOTH 'petrol' and 'పెట్రోల్', so translating to English here would not
+    // help it — it would just throw away one half of the vocabulary it knows.
+    const { transcript } = await transcribe({
+      buffer:   req.file.buffer,
+      mimetype: req.file.mimetype,
+      language: lang,
+      mode:     'codemix',
     });
 
-    const form = new FormData();
-    form.append('file', blob, 'audio.webm');
-    form.append('model', 'saaras:v3');
-    form.append('mode', 'codemix');
-    form.append('language_code', langCode);
-
-    const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
-      method: 'POST',
-      headers: { 'api-subscription-key': apiKey },
-      body: form,
-    });
-
-    const sarvamData = await sarvamRes.json();
-    console.log('Sarvam status:', sarvamRes.status, JSON.stringify(sarvamData).slice(0, 200));
-
-    if (!sarvamRes.ok) {
-      return res.status(502).json({
-        error: 'Transcription failed',
-        details: sarvamData,
-        status: sarvamRes.status
-      });
-    }
-
-    const transcript = sarvamData.transcript || '';
     console.log(`Transcript [${lang}]: "${transcript}"`);
-
     res.json({ transcript, parsed: parsePOSCommand(transcript, lang) });
 
   } catch (err) {
+    // Preserve the response shape the POS screen and FloatingChat already read:
+    // { error, details, status } on failure, so neither needs a change.
+    if (err.isTranscribeError) {
+      return res.status(err.status || 502).json({
+        error: err.message, details: err.details, status: err.status,
+      });
+    }
     console.error('Voice route error:', err.message);
     next(err);
   }
