@@ -9,6 +9,9 @@ const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/re
 // manager, Group Dashboard to a non-owner). Enforced at ASSIGN time, where the
 // target user's role is known.
 const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles');
+// THE Indian-mobile normalizer (utils/phone) — so signing in by mobile accepts
+// the same shapes every other phone field in Pumpini does.
+const { normalizePhone, validatePhone } = require('../utils/phone');
 // Single user-writer (one insert path for every creator — tenant + admin).
 const { createUser, linkUserToStation } = require('../services/userService');
 // One writer for a lead interaction — shared with the public field tool
@@ -33,11 +36,36 @@ const authAdmin = (req, res, next) => {
 };
 
 // POST /api/superadmin/login
+//
+// Accepts EITHER the email or the mobile number as the identifier, against the
+// one `superadmins` store. The mobile path exists so the owner can sign in on
+// pumpini.in/lead one-handed in the field without a second user type, a second
+// credential store, or a second login writer — the thing that would have been
+// "leadadmin" is this OR.
+//
+// The password is still a real password. A browse-everything screen cannot be
+// guarded by a phone number, which is not a secret.
+//
+// `email` stays the field name for backwards compatibility (the /admin login
+// screen posts it); `identifier` is the honest name and wins when both appear.
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const identifier = String(req.body.identifier || req.body.email || '').trim();
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Identifier and password are required.' });
+    }
+
+    // Only offer a phone to the query when the input actually IS one. Otherwise
+    // normalizePhone('contact@sixera.in') reduces to the literal '+91' and would
+    // be compared against every row — NULL simply never matches.
+    const asPhone = validatePhone(identifier) ? normalizePhone(identifier) : null;
+
     const { rows } = await pool.query(
-      'SELECT * FROM superadmins WHERE email=$1 AND is_active=TRUE', [email]
+      `SELECT * FROM superadmins
+        WHERE is_active=TRUE AND (lower(email)=lower($1) OR phone=$2)
+        LIMIT 1`,
+      [identifier, asPhone]
     );
     if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await bcrypt.compare(password, rows[0].password_hash);

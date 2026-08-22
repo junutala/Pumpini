@@ -5,10 +5,18 @@
 // what was said, saves, and moves to the next outlet. Their whole day is this one
 // screen repeated, so it stays a single scrolling column with nothing to navigate.
 //
-// WRITE-ONLY BY DESIGN. The gate takes any mobile number entered twice (owner's
-// call, 22-Aug-2026) — which is fine precisely because nothing can be read back
-// through it. Developing leads into a funnel happens on /admin behind the
-// superadmin login; this screen only ever adds.
+// TWO DOORS, ONE URL:
+//
+//   • A temp signs in with a mobile number entered twice and gets the capture
+//     form ONLY. Write-only, which is precisely what makes an any-mobile gate
+//     harmless — the credential guards nothing but the ability to add.
+//   • The owner signs in with a mobile OR email plus a REAL password, against
+//     the existing `superadmins` store, and gets everything: every temp's leads,
+//     the rail, the full history, and the same capture form.
+//
+// Why not a "leadadmin" user type: a third credential store is the drift the
+// cardinal rule bans, and mobile+mobile on a browse-everything screen would make
+// a phone number — which is not a secret — the password to the whole pipeline.
 //
 // The mobile that signed in is stored as `captured_by`: self-declared, never a
 // verified identity, and no code downstream may read it as proof of one. It also
@@ -16,12 +24,27 @@
 // adds an interaction to that lead instead of creating a second one.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Loader2, Check, RefreshCw, LogOut, AlertTriangle } from 'lucide-react';
+import { MapPin, Loader2, Check, RefreshCw, LogOut, AlertTriangle, Plus, List, Shield } from 'lucide-react';
 // The SAME control the owner uses on /admin to log a visit. One implementation,
 // two screens (CLAUDE.md: reuse the form, do not open a new route).
 import InteractionRecorder from '../../components/shared/InteractionRecorder';
+// The owner's side. Both are REUSED, not re-implemented: the rail is the very
+// component the /admin Leads tab renders, and the client is the one superadmin
+// client — so a lead worked here and a lead worked on /admin are the same lead
+// through the same writer.
+import LeadRail from '../../components/admin/LeadRail';
+import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
 const AGENT_KEY = 'pumpini_lead_agent';
+// Mirrors the /admin pipeline exactly — the rail renders the same badges on both
+// screens, so a status means the same thing wherever it is read.
+const LEAD_STATUS = [
+  ['new',       'New',       '#dbeafe', '#1d4ed8'],
+  ['contacted', 'Contacted', '#fef9c3', '#854d0e'],
+  ['trial',     'Trial Set', '#ede9fe', '#5b21b6'],
+  ['converted', 'Converted', '#dcfce7', '#15803d'],
+  ['lost',      'Lost',      '#fee2e2', '#991b1b'],
+];
 const ORANGE    = '#FF6B00';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
@@ -51,24 +74,53 @@ export default function LeadPage() {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
 
-  const [agent, setAgent] = useState(null);   // the mobile that opened the tool
-  const [ready, setReady] = useState(false);  // localStorage read (SSR guard)
+  const [agent, setAgent] = useState(null);    // temp: the mobile that signed in
+  const [owner, setOwner] = useState(null);    // owner: the decoded superadmin JWT
+  const [ready, setReady] = useState(false);   // storage read done (SSR guard)
+  const [view, setView]   = useState('new');   // owner only: 'new' | 'list'
 
   useEffect(() => {
+    // An owner session wins: if a valid superadmin token is present there is no
+    // reason to show the lesser door, even if a temp mobile is also remembered
+    // on this device.
+    const token = getAdminToken();
+    if (token) {
+      try {
+        const p = JSON.parse(atob(token.split('.')[1]));
+        if (p.isSuperAdmin && p.exp > Date.now() / 1000) setOwner(p);
+        else clearAdminToken();
+      } catch { clearAdminToken(); }
+    }
     try { setAgent(localStorage.getItem(AGENT_KEY)); } catch { /* private mode */ }
     setReady(true);
   }, []);
 
-  const signIn = (mobile) => {
+  const signInTemp = (mobile) => {
     try { localStorage.setItem(AGENT_KEY, mobile); } catch { /* ignore */ }
     setAgent(mobile);
   };
+
   const signOut = () => {
     try { localStorage.removeItem(AGENT_KEY); } catch { /* ignore */ }
+    clearAdminToken();
     setAgent(null);
+    setOwner(null);
+    setView('new');
   };
 
-  if (!ready) return null;   // avoid a flash of the gate for a signed-in temp
+  if (!ready) return null;   // avoid a flash of the gate for a signed-in user
+
+  const who = owner ? (owner.name || owner.email) : agent;
+
+  const tab = (id, icon, text) => (
+    <button onClick={() => setView(id)} style={{
+      flex: 1, height: 40, border: 'none', borderRadius: 9, cursor: 'pointer',
+      fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      background: view === id ? '#1a1a1a' : 'transparent',
+      color: view === id ? '#fff' : '#666',
+    }}>{icon}{text}</button>
+  );
 
   return (
     <div style={{ minHeight: '100dvh', background: '#faf9f7', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#1a1a1a' }}>
@@ -80,19 +132,38 @@ export default function LeadPage() {
         <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-.01em' }}>
           Pumpini <span style={{ fontWeight: 500, opacity: .9 }}>{tc('lead.leads', 'Leads')}</span>
         </div>
-        {agent && (
+        {who && (
           <button onClick={signOut} style={{
             background: 'rgba(255,255,255,.18)', color: '#fff', border: 'none', borderRadius: 7,
             padding: '6px 10px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
             display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'inherit',
+            maxWidth: '60%',
           }}>
-            {agent}<LogOut size={13} />
+            {owner && <Shield size={12} />}
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{who}</span>
+            <LogOut size={13} style={{ flexShrink: 0 }} />
           </button>
         )}
       </header>
 
-      <main style={{ maxWidth: 560, margin: '0 auto', padding: '1rem' }}>
-        {agent ? <LeadForm agent={agent} tc={tc} /> : <Gate onSignIn={signIn} tc={tc} />}
+      <main style={{ maxWidth: 620, margin: '0 auto', padding: '1rem' }}>
+        {owner ? (
+          <>
+            {/* The owner gets both: file a lead himself, or work the pipeline. */}
+            <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #e5e3de',
+                          borderRadius: 11, padding: 4, marginBottom: '0.9rem' }}>
+              {tab('new',  <Plus size={15} />, tc('lead.tabNew', 'New Lead'))}
+              {tab('list', <List size={15} />, tc('lead.tabAll', 'All Leads'))}
+            </div>
+            {view === 'new'
+              ? <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('list')} />
+              : <OwnerLeads tc={tc} />}
+          </>
+        ) : agent ? (
+          <LeadForm agent={agent} tc={tc} />
+        ) : (
+          <Gate onSignInTemp={signInTemp} onSignInOwner={setOwner} tc={tc} />
+        )}
       </main>
 
       <style jsx global>{`
@@ -103,48 +174,164 @@ export default function LeadPage() {
   );
 }
 
-// ── Gate: mobile number, twice ───────────────────────────────────────────────
-function Gate({ onSignIn, tc }) {
+// ── Gate: two doors ──────────────────────────────────────────────────────────
+// Staff: a mobile number twice, for a screen that can only add.
+// Owner: mobile OR email plus a real password, against the one `superadmins`
+// store — the same credential and the same endpoint as the /admin console, so
+// signing in here signs you in there.
+function Gate({ onSignInTemp, onSignInOwner, tc }) {
+  const [door, setDoor] = useState('staff');   // 'staff' | 'owner'
+
   const [mobile, setMobile]   = useState('');
   const [confirm, setConfirm] = useState('');
-  const [err, setErr]         = useState('');
 
-  const submit = (e) => {
+  const [ident, setIdent]     = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy]       = useState(false);
+
+  const [err, setErr] = useState('');
+
+  const submitStaff = (e) => {
     e.preventDefault();
     if (mobile.length !== 10) return setErr(tc('lead.errMobile10', 'Enter a 10-digit mobile number.'));
     if (mobile !== confirm)   return setErr(tc('lead.errMobileMatch', 'The two numbers do not match.'));
     setErr('');
-    onSignIn(mobile);
+    onSignInTemp(mobile);
   };
 
+  const submitOwner = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setBusy(true);
+    const res = await adminLogin(ident.trim(), password);
+    setBusy(false);
+    if (!res.ok) return setErr(res.error || tc('lead.errCredentials', 'Invalid credentials.'));
+    // Decode the token we were just given rather than round-tripping for a
+    // profile — it is the same JWT /admin reads.
+    try {
+      const p = JSON.parse(atob(getAdminToken().split('.')[1]));
+      onSignInOwner(p);
+    } catch {
+      setErr(tc('lead.errCredentials', 'Invalid credentials.'));
+    }
+  };
+
+  const doorTab = (id, text) => (
+    <button type="button" onClick={() => { setDoor(id); setErr(''); }} style={{
+      flex: 1, height: 38, border: 'none', borderRadius: 8, cursor: 'pointer',
+      fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+      background: door === id ? '#1a1a1a' : 'transparent',
+      color: door === id ? '#fff' : '#666',
+    }}>{text}</button>
+  );
+
   return (
-    <form onSubmit={submit} style={{ ...card, marginTop: '1.5rem' }}>
-      <h1 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 4px' }}>{tc('lead.signInTitle', 'Sign in')}</h1>
-      <p style={{ fontSize: 13.5, color: '#666', margin: '0 0 1.1rem', lineHeight: 1.5 }}>
-        {tc('lead.signInHint', 'Enter your mobile number twice. It is recorded against every lead you file.')}
-      </p>
+    <div style={{ marginTop: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #e5e3de',
+                    borderRadius: 10, padding: 4, marginBottom: '0.9rem' }}>
+        {doorTab('staff', tc('lead.doorStaff', 'Field staff'))}
+        {doorTab('owner', tc('lead.doorOwner', 'Owner'))}
+      </div>
 
-      <label style={label}>{tc('lead.yourMobile', 'Your mobile number')}</label>
-      <input style={{ ...input, marginBottom: 12 }} value={mobile} inputMode="numeric" autoComplete="tel"
-             placeholder="9876543210" onChange={e => setMobile(tenDigits(e.target.value))} />
+      {door === 'staff' ? (
+        <form onSubmit={submitStaff} style={card}>
+          <h1 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 4px' }}>{tc('lead.signInTitle', 'Sign in')}</h1>
+          <p style={{ fontSize: 13.5, color: '#666', margin: '0 0 1.1rem', lineHeight: 1.5 }}>
+            {tc('lead.signInHint', 'Enter your mobile number twice. It is recorded against every lead you file.')}
+          </p>
 
-      <label style={label}>{tc('lead.confirmMobile', 'Confirm mobile number')}</label>
-      <input style={input} value={confirm} inputMode="numeric" autoComplete="off"
-             placeholder="9876543210" onChange={e => setConfirm(tenDigits(e.target.value))} />
+          <label style={label}>{tc('lead.yourMobile', 'Your mobile number')}</label>
+          <input style={{ ...input, marginBottom: 12 }} value={mobile} inputMode="numeric" autoComplete="tel"
+                 placeholder="9876543210" onChange={e => setMobile(tenDigits(e.target.value))} />
 
-      {err && <p style={{ color: '#b91c1c', fontSize: 13, margin: '10px 0 0' }}>{err}</p>}
+          <label style={label}>{tc('lead.confirmMobile', 'Confirm mobile number')}</label>
+          <input style={input} value={confirm} inputMode="numeric" autoComplete="off"
+                 placeholder="9876543210" onChange={e => setConfirm(tenDigits(e.target.value))} />
 
-      <button type="submit" style={{
-        width: '100%', marginTop: 16, height: 48, background: ORANGE, color: '#fff',
-        border: 'none', borderRadius: 10, fontSize: 15.5, fontWeight: 700, cursor: 'pointer',
-        fontFamily: 'inherit',
-      }}>{tc('lead.continue', 'Continue')}</button>
-    </form>
+          {err && <p style={{ color: '#b91c1c', fontSize: 13, margin: '10px 0 0' }}>{err}</p>}
+
+          <button type="submit" style={{
+            width: '100%', marginTop: 16, height: 48, background: ORANGE, color: '#fff',
+            border: 'none', borderRadius: 10, fontSize: 15.5, fontWeight: 700, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}>{tc('lead.continue', 'Continue')}</button>
+        </form>
+      ) : (
+        <form onSubmit={submitOwner} style={card}>
+          <h1 style={{ fontSize: 19, fontWeight: 800, margin: '0 0 4px',
+                       display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            <Shield size={17} color={ORANGE} />{tc('lead.ownerSignIn', 'Owner sign-in')}
+          </h1>
+          <p style={{ fontSize: 13.5, color: '#666', margin: '0 0 1.1rem', lineHeight: 1.5 }}>
+            {tc('lead.ownerSignInHint', 'Your Pumpini admin email or mobile, and your password. This shows every lead your staff have filed.')}
+          </p>
+
+          <label style={label}>{tc('lead.emailOrMobile', 'Email or mobile')}</label>
+          <input style={{ ...input, marginBottom: 12 }} value={ident} type="text" autoComplete="username"
+                 placeholder="admin@pumpini.in" onChange={e => setIdent(e.target.value)} />
+
+          <label style={label}>{tc('lead.password', 'Password')}</label>
+          <input style={input} value={password} type="password" autoComplete="current-password"
+                 onChange={e => setPassword(e.target.value)} />
+
+          {err && <p style={{ color: '#b91c1c', fontSize: 13, margin: '10px 0 0' }}>{err}</p>}
+
+          <button type="submit" disabled={busy || !ident.trim() || !password} style={{
+            width: '100%', marginTop: 16, height: 48, fontFamily: 'inherit',
+            background: busy || !ident.trim() || !password ? '#e5e3de' : ORANGE,
+            color: busy || !ident.trim() || !password ? '#999' : '#fff',
+            border: 'none', borderRadius: 10, fontSize: 15.5, fontWeight: 700,
+            cursor: busy ? 'wait' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}>
+            {busy ? <><Loader2 size={17} className="spin" />{tc('lead.signingIn', 'Signing in…')}</>
+                  : tc('lead.signIn', 'Sign in')}
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
 
+// ── Owner: the whole pipeline, through the same rail /admin renders ──────────
+function OwnerLeads({ tc }) {
+  const [leads, setLeads] = useState(null);   // null = still loading
+  const [err, setErr]     = useState('');
+
+  const load = useCallback(async () => {
+    setErr('');
+    const r = await adminFetch('/leads');
+    if (!Array.isArray(r)) {
+      setLeads([]);
+      setErr(tc('lead.loadFailed', 'Could not load the leads. Pull to refresh, or sign in again.'));
+      return;
+    }
+    setLeads(r);
+  }, [tc]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (leads === null) {
+    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
+      <Loader2 size={16} className="spin" />{tc('lead.loadingLeads', 'Loading leads…')}
+    </div>;
+  }
+
+  if (err) {
+    return <div style={{ ...card, textAlign: 'center', padding: '2rem 1.1rem' }}>
+      <p style={{ fontSize: 14, color: '#991b1b', margin: 0, lineHeight: 1.6 }}>{err}</p>
+      <button onClick={load} style={{
+        marginTop: 14, background: 'none', border: 'none', color: ORANGE, fontSize: 13,
+        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+      }}>{tc('lead.retry', 'Try again')}</button>
+    </div>;
+  }
+
+  return <LeadRail leads={leads} statuses={LEAD_STATUS} adminFetch={adminFetch} tc={tc} onChanged={load} />;
+}
+
 // ── The capture form ─────────────────────────────────────────────────────────
-function LeadForm({ agent, tc }) {
+function LeadForm({ agent, tc, onSaved }) {
   const [phone, setPhone]             = useState('');
   const [name, setName]               = useState('');
   const [interaction, setInteraction] = useState('');
@@ -208,7 +395,7 @@ function LeadForm({ agent, tc }) {
       setPhone(''); setName(''); setInteraction('');
       locate();                                  // next outlet, next fix
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      setTimeout(() => setSaved(''), 4500);
+      setTimeout(() => { setSaved(''); onSaved?.(); }, 2500);
     } catch (e) {
       setSaveErr(e?.message || tc('lead.saveFailed', 'Could not save. Check the signal and try again.'));
     } finally {

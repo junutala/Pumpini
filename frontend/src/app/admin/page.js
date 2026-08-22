@@ -9,6 +9,8 @@ import { INDIAN_STATES, getCities } from '../../lib/india';
 // The owner's working view of the pipeline. The table below stays the
 // overview; both read the same GET /leads and write the same PATCH.
 import LeadRail from '../../components/admin/LeadRail';
+// ONE superadmin client, shared with the owner's side of pumpini.in/lead.
+import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
 if (typeof window === 'undefined') {
   // SSR guard — export empty component during server render
@@ -17,13 +19,7 @@ if (typeof window === 'undefined') {
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtAmt = n => '₹' + Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 
-const adminFetch = (url, opts={}) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : '';
-  return fetch(`/api/superadmin${url}`, {
-    ...opts,
-    headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...(opts.headers||{})}
-  }).then(r=>r.json()).catch(()=>null);   // non-JSON/5xx (e.g. mid-deploy) → null, never throw
-};
+
 
 const PLAN_COLORS   = { starter:['#dcfce7','#15803d'], pro:['#fff7ed','#9a3412'], enterprise:['#ede9fe','#5b21b6'] };
 const STATUS_COLORS = { active:['#dcfce7','#15803d'], suspended:['#fef9c3','#854d0e'], cancelled:['#fee2e2','#991b1b'] };
@@ -107,12 +103,10 @@ function LoginScreen({onLogin}){
 
   const submit=async e=>{
     e.preventDefault(); setLoading(true); setError('');
-    const res=await fetch('/api/superadmin/login',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(form)
-    }).then(r=>r.json());
-    if(res.error){setError(res.error);setLoading(false);return;}
-    localStorage.setItem('admin_token',res.token);
+    // One login writer, shared with pumpini.in/lead. The identifier may be the
+    // email or the mobile — the endpoint accepts either against `superadmins`.
+    const res = await adminLogin(form.email, form.password);
+    if(!res.ok){setError(res.error);setLoading(false);return;}
     onLogin(res.admin);
     setLoading(false);
   };
@@ -131,9 +125,11 @@ function LoginScreen({onLogin}){
         </div>
         <form onSubmit={submit}>
           <div style={{marginBottom:'1rem'}}>
-            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.email', 'Email')}</label>
+            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.emailOrMobile', 'Email or mobile')}</label>
+            {/* type="text", not "email": the endpoint now accepts a mobile as the
+                identifier, and type="email" makes the browser refuse to submit one. */}
             <input style={{width:'100%',padding:'10px 12px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box'}}
-              type="email" placeholder="admin@pumpini.in" value={form.email}
+              type="text" autoComplete="username" placeholder="admin@pumpini.in" value={form.email}
               onChange={e=>setForm(p=>({...p,email:e.target.value}))} required/>
           </div>
           <div style={{marginBottom:'1.5rem'}}>
@@ -243,13 +239,13 @@ export default function AdminPage(){
   const fmtDate    = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—';
 
   useEffect(()=>{
-    const token = localStorage.getItem('admin_token');
+    const token = getAdminToken();
     if(!token) return;
     try {
       const p = JSON.parse(atob(token.split('.')[1]));
       if(p.isSuperAdmin && p.exp > Date.now()/1000) setAdmin(p);
-      else localStorage.removeItem('admin_token');
-    } catch { localStorage.removeItem('admin_token'); }
+      else clearAdminToken();
+    } catch { clearAdminToken(); }
   },[]);
 
   const reload = async()=>{
@@ -375,7 +371,7 @@ export default function AdminPage(){
           <div style={{fontSize:12,color:'rgba(255,255,255,.5)',marginBottom:8}}>{admin.name}</div>
           <button style={{background:'rgba(255,255,255,.08)',border:'none',color:'rgba(255,255,255,.6)',
             borderRadius:7,padding:'7px 12px',cursor:'pointer',fontSize:12,width:'100%',display:'flex',alignItems:'center',gap:6}}
-            onClick={()=>{localStorage.removeItem('admin_token');setAdmin(null);}}>
+            onClick={()=>{clearAdminToken();setAdmin(null);}}>
             <LogOut size={13}/>{tc('adminp.logout', 'Logout')}
           </button>
         </div>

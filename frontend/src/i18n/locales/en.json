@@ -1379,7 +1379,8 @@
     "colLocation": "Location",
     "colCapturedBy": "Captured by",
     "colMap": "Map",
-    "leadSource_direct": "Direct"
+    "leadSource_direct": "Direct",
+    "emailOrMobile": "Email or mobile"
   },
   "aichat": {
     "starterTotalSales": "What are today's total sales?",
@@ -3127,6 +3128,20 @@
     "swipeHint": "Swipe or use the arrows",
     "filedOn": "Filed",
     "capturedBy": "by",
-    "openMap": "Open in Maps"
+    "openMap": "Open in Maps",
+    "tabNew": "New Lead",
+    "tabAll": "All Leads",
+    "doorStaff": "Field staff",
+    "doorOwner": "Owner",
+    "ownerSignIn": "Owner sign-in",
+    "ownerSignInHint": "Your Pumpini admin email or mobile, and your password. This shows every lead your staff have filed.",
+    "emailOrMobile": "Email or mobile",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "errCredentials": "Invalid credentials.",
+    "loadFailed": "Could not load the leads. Pull to refresh, or sign in again.",
+    "loadingLeads": "Loading leads…",
+    "retry": "Try again"
   }
 }

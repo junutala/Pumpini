@@ -84,7 +84,10 @@ router.post('/', limitSubmit, async (req, res, next) => {
 
     const src   = PUBLIC_SOURCES.has(source) ? source : 'website';
     const note  = text(message, 4000);
-    const agent = text(captured_by, 20);
+    // 60, matching leadService — the owner files leads from this tool too, and
+    // his name or email is longer than a 10-digit mobile. A shorter cap here
+    // would truncate the identifier the dedupe then matches on.
+    const agent = text(captured_by, 60);
 
     // Both probes run BEFORE the transaction opens. A catalog lookup that failed
     // inside a BEGIN…COMMIT would abort the whole transaction and lose the lead
