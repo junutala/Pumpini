@@ -26,11 +26,16 @@ const STATUS_COLORS = { active:['#dcfce7','#15803d'], suspended:['#fef9c3','#854
 
 // Lead pipeline
 const LEAD_STATUS = [
-  ['new',       'New',       '#dbeafe', '#1d4ed8'],
-  ['contacted', 'Contacted', '#fef9c3', '#854d0e'],
-  ['trial',     'Trial Set', '#ede9fe', '#5b21b6'],
-  ['converted', 'Converted', '#dcfce7', '#15803d'],
-  ['lost',      'Lost',      '#fee2e2', '#991b1b'],
+  ['new',       'New',            '#dbeafe', '#1d4ed8'],
+  // Field outcomes from pumpini.in/lead. 'revisit' is an OPEN item — nobody was
+  // there to ask, so it is worth going back. 'refused' is closed: the manager
+  // would not share the owner's details, and a second trip buys nothing.
+  ['revisit',   'Revisit',        '#ffedd5', '#9a3412'],
+  ['contacted', 'Contacted',      '#fef9c3', '#854d0e'],
+  ['trial',     'Trial Set',      '#ede9fe', '#5b21b6'],
+  ['converted', 'Converted',      '#dcfce7', '#15803d'],
+  ['refused',   'Refused',        '#ffe4e6', '#9f1239'],
+  ['lost',      'Lost',           '#fee2e2', '#991b1b'],
 ];
 // 'direct' is the field tool at pumpini.in/lead — a temp standing on the
 // forecourt. Kept first after 'website' so the two automated sources sit
@@ -292,7 +297,8 @@ export default function AdminPage(){
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
-  const LEAD_CLOSED = ['converted','lost'];
+  // A refused outlet is done with, same as lost — hide it with the rest.
+  const LEAD_CLOSED = ['converted','lost','refused'];
   const sortLeads = (field)=> setLeadSort(s=>({ field, dir: s.field===field && s.dir==='asc' ? 'desc' : 'asc' }));
   const sortedLeads = [...leads]
     .filter(l=> !hideClosed || !LEAD_CLOSED.includes(l.status))

@@ -24,7 +24,7 @@
 // adds an interaction to that lead instead of creating a second one.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Loader2, Check, RefreshCw, LogOut, AlertTriangle, Plus, List, Shield } from 'lucide-react';
+import { Loader2, Check, LogOut, Plus, List, Shield, XCircle } from 'lucide-react';
 // The SAME control the owner uses on /admin to log a visit. One implementation,
 // two screens (CLAUDE.md: reuse the form, do not open a new route).
 import InteractionRecorder from '../../components/shared/InteractionRecorder';
@@ -39,19 +39,19 @@ const AGENT_KEY = 'pumpini_lead_agent';
 // Mirrors the /admin pipeline exactly — the rail renders the same badges on both
 // screens, so a status means the same thing wherever it is read.
 const LEAD_STATUS = [
-  ['new',       'New',       '#dbeafe', '#1d4ed8'],
-  ['contacted', 'Contacted', '#fef9c3', '#854d0e'],
-  ['trial',     'Trial Set', '#ede9fe', '#5b21b6'],
-  ['converted', 'Converted', '#dcfce7', '#15803d'],
-  ['lost',      'Lost',      '#fee2e2', '#991b1b'],
+  ['new',       'New',            '#dbeafe', '#1d4ed8'],
+  // Field outcomes from pumpini.in/lead. 'revisit' is an OPEN item — nobody was
+  // there to ask, so it is worth going back. 'refused' is closed: the manager
+  // would not share the owner's details, and a second trip buys nothing.
+  ['revisit',   'Revisit',        '#ffedd5', '#9a3412'],
+  ['contacted', 'Contacted',      '#fef9c3', '#854d0e'],
+  ['trial',     'Trial Set',      '#ede9fe', '#5b21b6'],
+  ['converted', 'Converted',      '#dcfce7', '#15803d'],
+  ['refused',   'Refused',        '#ffe4e6', '#9f1239'],
+  ['lost',      'Lost',           '#fee2e2', '#991b1b'],
 ];
 const ORANGE    = '#FF6B00';
 
-// House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
-const fmtDateTime = (d) => new Date(d).toLocaleString('en-IN', {
-  timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
-  hour: '2-digit', minute: '2-digit', hour12: true,
-});
 
 const tenDigits = (v) => String(v || '').replace(/\D/g, '').slice(0, 10);
 
@@ -334,24 +334,17 @@ function OwnerLeads({ tc }) {
 function LeadForm({ agent, tc, onSaved }) {
   const [phone, setPhone]             = useState('');
   const [name, setName]               = useState('');
+  const [outlet, setOutlet]           = useState('');
   const [interaction, setInteraction] = useState('');
-  const [now, setNow]                 = useState(() => new Date());
 
   // 'idle' | 'locating' | 'ok' | 'denied' | 'unsupported' | 'error'
   const [geo, setGeo] = useState({ state: 'idle', lat: null, lng: null, acc: null });
 
   const [recBusy, setRecBusy] = useState(false);   // mic open or transcript in flight
 
-  const [saving, setSaving]   = useState(false);
+  const [saving, setSaving]   = useState('');   // '' | 'captured' | 'refused' | 'absent'
   const [saved, setSaved]     = useState('');
   const [saveErr, setSaveErr] = useState('');
-
-  // Live clock. What is STORED is the server's created_at; this is only what the
-  // temp sees, so a half-minute tick is plenty.
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, []);
 
   const locate = useCallback(() => {
     if (!navigator.geolocation) return setGeo({ state: 'unsupported', lat: null, lng: null, acc: null });
@@ -365,19 +358,28 @@ function LeadForm({ agent, tc, onSaved }) {
 
   useEffect(() => { locate(); }, [locate]);
 
-  const canSave = phone.length === 10 && name.trim().length > 0 && !saving && !recBusy;
+  // Every field is optional (owner's call, 22-Aug-2026) — making any of them
+  // mandatory would collide with the two refusal buttons, which by their nature
+  // have no owner and no number. SAVE only asks that SOMETHING names the visit.
+  const identified = phone.length > 0 || name.trim().length > 0 || outlet.trim().length > 0;
+  const busy       = !!saving || recBusy;
 
-  const save = async () => {
+  // ONE submit for all three buttons. They differ by the `outcome` they send and
+  // by nothing else — same fields, same coordinates, same endpoint — so a change
+  // to what a visit records reaches all three by construction.
+  const submit = async (kind) => {
     setSaveErr('');
-    setSaving(true);
+    setSaving(kind);
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source: 'direct',
-          name: name.trim(),
-          phone,
+          outcome: kind,
+          name: name.trim() || null,
+          phone: phone || null,
+          station_name: outlet.trim() || null,
           message: interaction.trim() || null,
           captured_by: agent,
           // Never partial coordinates — either the fix we got, or nothing.
@@ -389,17 +391,20 @@ function LeadForm({ agent, tc, onSaved }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || `Could not save (${res.status})`);
 
-      setSaved(data.reused
-        ? tc('lead.savedAppended', 'You had already filed this number — the note was added to that lead.')
-        : tc('lead.savedOk', 'Lead saved.'));
-      setPhone(''); setName(''); setInteraction('');
+      setSaved(
+        data.reused ? tc('lead.savedAppended', 'You had already filed this outlet — the visit was added to it.')
+        : kind === 'refused' ? tc('lead.savedRefused', 'Recorded as refused. You will not be sent back here.')
+        : kind === 'absent'  ? tc('lead.savedAbsent',  'Recorded. This outlet is marked for a revisit.')
+        : tc('lead.savedOk', 'Lead saved.')
+      );
+      setPhone(''); setName(''); setOutlet(''); setInteraction('');
       locate();                                  // next outlet, next fix
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => { setSaved(''); onSaved?.(); }, 2500);
     } catch (e) {
       setSaveErr(e?.message || tc('lead.saveFailed', 'Could not save. Check the signal and try again.'));
     } finally {
-      setSaving(false);
+      setSaving('');
     }
   };
 
@@ -413,6 +418,22 @@ function LeadForm({ agent, tc, onSaved }) {
           <Check size={18} style={{ flexShrink: 0, marginTop: 1 }} />{saved}
         </div>
       )}
+
+      {/* The order the visit actually happens in: the board is read from the
+          road, the owner is named next, and the number is the last thing given. */}
+      {/* Read off the roadside board. It needs nobody's permission, and it is the
+          only thing that names a visit where no number was given. */}
+      <div style={card}>
+        <label style={label}>{tc('lead.outletName', 'Outlet Name')}</label>
+        <input style={input} value={outlet} onChange={e => setOutlet(e.target.value)}
+               placeholder={tc('lead.outletNamePlaceholder', 'Name on the board')} autoComplete="off" />
+      </div>
+
+      <div style={card}>
+        <label style={label}>{tc('lead.ownerName', 'Owner Name')}</label>
+        <input style={input} value={name} onChange={e => setName(e.target.value)}
+               placeholder={tc('lead.ownerNamePlaceholder', 'Full name')} autoComplete="off" />
+      </div>
 
       {/* Mobile number — the one field that must be right, so it gets the room. */}
       <div style={card}>
@@ -434,56 +455,16 @@ function LeadForm({ agent, tc, onSaved }) {
         />
       </div>
 
-      <div style={card}>
-        <label style={label}>{tc('lead.ownerName', 'Owner Name')}</label>
-        <input style={input} value={name} onChange={e => setName(e.target.value)}
-               placeholder={tc('lead.ownerNamePlaceholder', 'Full name')} autoComplete="off" />
-      </div>
 
-      {/* Location */}
-      <div style={card}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ ...label, marginBottom: 0 }}>{tc('lead.location', 'Location')}</span>
-          <button onClick={locate} disabled={geo.state === 'locating'} style={{
-            background: 'none', border: 'none', color: ORANGE, fontSize: 12.5, fontWeight: 700,
-            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, padding: 0,
-            fontFamily: 'inherit',
-          }}>
-            <RefreshCw size={12} className={geo.state === 'locating' ? 'spin' : ''} />
-            {geo.state === 'locating' ? tc('lead.locating', 'Locating…') : tc('lead.refresh', 'Refresh')}
-          </button>
-        </div>
 
-        {geo.state === 'ok' ? (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <MapPin size={17} color="#15803d" style={{ marginTop: 2, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                {geo.lat.toFixed(6)}, {geo.lng.toFixed(6)}
-              </div>
-              <div style={{ fontSize: 12.5, color: '#666', marginTop: 2 }}>
-                {tc('lead.accuracy', 'Accurate to about')} ±{Math.round(geo.acc)} m
-              </div>
-            </div>
-          </div>
-        ) : geo.state === 'locating' ? (
-          <div style={{ fontSize: 13.5, color: '#666', display: 'flex', alignItems: 'center', gap: 7 }}>
-            <Loader2 size={15} className="spin" />{tc('lead.gettingLocation', 'Getting your location…')}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, color: '#854d0e' }}>
-            <AlertTriangle size={16} style={{ marginTop: 2, flexShrink: 0 }} />
-            <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-              {geo.state === 'denied'
-                ? tc('lead.locDenied', 'Location permission was refused. Allow it in your browser settings, or save without it.')
-                : geo.state === 'unsupported'
-                  ? tc('lead.locUnsupported', 'This browser cannot report a location.')
-                  : tc('lead.locFailed', 'Could not get a location.')}
-              <div style={{ color: '#666', marginTop: 3 }}>{tc('lead.locSaveAnyway', 'The lead will save without coordinates.')}</div>
-            </div>
-          </div>
-        )}
-      </div>
+
+      {/* Coordinates and the timestamp are recorded SILENTLY on any of the three
+          buttons. Nothing about the location is shown, and there is deliberately
+          no warning when it is missing: the temp can do nothing with a latitude,
+          and a warning they can dismiss is not what catches a denied permission.
+          The owner watches this data daily and calls the temp by the second or
+          third lead if the map pins are missing (owner, 22-Aug-2026) — a faster
+          loop than any banner, and it needs no pixels here. */}
 
       {/* Interaction */}
       <div style={card}>
@@ -492,10 +473,6 @@ function LeadForm({ agent, tc, onSaved }) {
         <InteractionRecorder value={interaction} onChange={setInteraction} tc={tc} onBusy={setRecBusy} />
       </div>
 
-      <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ ...label, marginBottom: 0 }}>{tc('lead.dateTime', 'Date & Time')}</span>
-        <span style={{ fontSize: 14, fontWeight: 700 }}>{fmtDateTime(now)}</span>
-      </div>
 
       {saveErr && (
         <div style={{ ...card, background: '#fee2e2', border: '1px solid #fca5a5', color: '#991b1b', fontSize: 13.5 }}>
@@ -503,15 +480,51 @@ function LeadForm({ agent, tc, onSaved }) {
         </div>
       )}
 
-      <button onClick={save} disabled={!canSave} style={{
+      <button onClick={() => submit('captured')} disabled={!identified || busy} style={{
         width: '100%', height: 54, borderRadius: 11, border: 'none', fontFamily: 'inherit',
-        background: canSave ? ORANGE : '#e5e3de', color: canSave ? '#fff' : '#999',
-        fontSize: 16.5, fontWeight: 800, cursor: canSave ? 'pointer' : 'not-allowed',
+        background: identified && !busy ? ORANGE : '#e5e3de', color: identified && !busy ? '#fff' : '#999',
+        fontSize: 16.5, fontWeight: 800, cursor: identified && !busy ? 'pointer' : 'not-allowed',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-        marginBottom: '2rem',
       }}>
-        {saving ? <><Loader2 size={18} className="spin" />{tc('lead.saving', 'Saving…')}</> : tc('lead.save', 'SAVE')}
+        {saving === 'captured'
+          ? <><Loader2 size={18} className="spin" />{tc('lead.saving', 'Saving…')}</>
+          : tc('lead.save', 'SAVE')}
       </button>
+
+      {/* The visit that produced nothing still has to be recorded, because the
+          two ways it can fail mean OPPOSITE things: a refusal is an outlet not to
+          be sent back to, an absent manager is one that must be. Kept visually
+          quieter than SAVE — they are the exception, not the choice. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '1.4rem 0 0.8rem' }}>
+        <div style={{ flex: 1, height: 1, background: '#e5e3de' }} />
+        <span style={{ fontSize: 11.5, color: '#999', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {tc('lead.orNoLuck', 'or, if nothing came of it')}
+        </span>
+        <div style={{ flex: 1, height: 1, background: '#e5e3de' }} />
+      </div>
+
+      <div style={{ display: 'grid', gap: 9, marginBottom: '2rem' }}>
+        {[['refused', tc('lead.ctaRefused', 'Details refused'),
+                      tc('lead.ctaRefusedSub', 'Manager would not share the owner\u2019s details')],
+          ['absent',  tc('lead.ctaAbsent', 'Manager not available'),
+                      tc('lead.ctaAbsentSub', 'Nobody there to ask \u2014 worth another visit')]].map(([kind, title, sub]) => (
+          <button key={kind} onClick={() => submit(kind)} disabled={busy} style={{
+            width: '100%', padding: '11px 14px', borderRadius: 10, fontFamily: 'inherit',
+            border: '1.5px solid #ddd', background: '#fff', textAlign: 'left',
+            cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? .55 : 1,
+            display: 'flex', alignItems: 'center', gap: 10,
+          }}>
+            {saving === kind
+              ? <Loader2 size={17} className="spin" style={{ flexShrink: 0 }} />
+              : <XCircle size={17} color="#9f1239" style={{ flexShrink: 0 }} />}
+            <span>
+              <span style={{ display: 'block', fontSize: 14.5, fontWeight: 700 }}>{title}</span>
+              <span style={{ display: 'block', fontSize: 11.5, color: '#888', marginTop: 1 }}>{sub}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
     </div>
   );
 }

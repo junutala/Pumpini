@@ -47,6 +47,42 @@ const limitTranscribe = rateLimit({
   message: 'Too many recordings from this device. Please try again in a little while.',
 });
 
+// How a visit ENDED. The field tool closes a visit one of three ways, and the
+// two failures are NOT the same failure — which is the whole reason they are
+// separate buttons rather than one "no luck" note:
+//
+//   captured  the manager gave the owner's name and number → a real lead
+//   refused   the manager would not give them → do not spend a second visit
+//   absent    nobody was there to ask → worth going back
+//
+// Deliberately NOT proof-of-effort machinery. The owner takes over from the
+// second interaction, so a temp has nothing to gain by faking one (owner's call,
+// 22-Aug-2026) — and a photograph was considered and REJECTED as unsafe: the one
+// manager who refuses to share details is exactly the one who reacts badly to a
+// camera, and that argument is not worth a lead that was worth nothing.
+const OUTCOMES = {
+  captured: { status: null,      label: null },
+  refused:  { status: 'refused', label: 'Manager refused to share the owner\'s details.' },
+  absent:   { status: 'revisit', label: 'Manager not available at the outlet.' },
+};
+
+// A refused or absent visit has NO owner name and NO mobile — nothing was
+// learned except which outlet said no. Both columns are NOT NULL in a database
+// that predates this, so the visit cannot be filed until they are relaxed:
+//   ALTER TABLE public.leads ALTER COLUMN name  DROP NOT NULL;
+//   ALTER TABLE public.leads ALTER COLUMN phone DROP NOT NULL;
+// Probed rather than assumed, so the endpoint says plainly that the migration is
+// pending instead of throwing a 23502 the temp cannot interpret. Filling them
+// with '—' to dodge this was considered and rejected: a placeholder in a name
+// column is read as a name by the next person to look.
+const contactNullable = schemaProbe(
+  'leads.name/phone nullable',
+  `SELECT count(*)::int AS n FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='leads'
+      AND column_name IN ('name','phone') AND is_nullable='YES'`,
+  row => row.n === 2
+);
+
 // Column tolerance for lat/lng/location_accuracy/captured_by. A missing column
 // must not 500 the capture — a lead without a map pin beats a lead that was
 // never taken. schemaProbe latches a YES and expires a NO, so coordinates start
@@ -72,28 +108,49 @@ router.post('/', limitSubmit, async (req, res, next) => {
   try {
     const {
       name, station_name, city, state, phone, email, message, company,
-      source, lat, lng, location_accuracy, captured_by,
+      source, outcome, lat, lng, location_accuracy, captured_by,
     } = req.body;
 
     // Honeypot — bots fill hidden "company" field; humans never see it.
     if (company) return res.status(201).json({ ok: true });
 
-    if (!name?.trim() || !phone?.trim()) {
-      return res.status(400).json({ error: 'Name and phone number are required.' });
+    const src     = PUBLIC_SOURCES.has(source) ? source : 'website';
+    const kind    = OUTCOMES[outcome] ? outcome : 'captured';
+    const outlet  = text(station_name, 160);
+    const spoken  = text(message, 4000);
+    const agent   = text(captured_by, 60);
+
+    // ── What a visit must carry ──────────────────────────────────────────────
+    // The MARKETING form is unchanged: it is a stranger typing into a public
+    // page, and a lead with no way to reach anybody is worthless there.
+    if (src === 'website') {
+      if (!name?.trim() || !phone?.trim()) {
+        return res.status(400).json({ error: 'Name and phone number are required.' });
+      }
+    } else if (kind === 'captured' && !text(name, 120) && !text(phone, 20) && !outlet) {
+      // The FIELD tool keeps every field optional (owner's call, 22-Aug-2026):
+      // making any of them mandatory would collide with the refusal buttons,
+      // which by their nature have no owner and no number. The one floor is that
+      // SAVE must carry SOMETHING that names the visit — a mobile, an owner or
+      // the outlet off the board. Without one of the three the row is a ghost:
+      // it appears in the pipeline and can never be acted on or matched to
+      // anything. The two CTAs are exempt, because pressing one is itself the
+      // record and the coordinates say where it happened.
+      return res.status(400).json({
+        error: 'Add a mobile number, an owner name, or the outlet name before saving.',
+      });
     }
 
-    const src   = PUBLIC_SOURCES.has(source) ? source : 'website';
-    const note  = text(message, 4000);
-    // 60, matching leadService — the owner files leads from this tool too, and
-    // his name or email is longer than a 10-digit mobile. A shorter cap here
-    // would truncate the identifier the dedupe then matches on.
-    const agent = text(captured_by, 60);
-
-    // Both probes run BEFORE the transaction opens. A catalog lookup that failed
-    // inside a BEGIN…COMMIT would abort the whole transaction and lose the lead
-    // along with the note.
     const geoOk = await hasGeoColumns();
     const logOk = await hasInteractionTable();
+
+    // `leads.name` and `leads.phone` are NOT NULL in a database that predates a
+    // visit which learns neither. Any save missing one needs them relaxed.
+    if ((!text(name, 120) || !text(phone, 20)) && !(await contactNullable())) {
+      return res.status(503).json({
+        error: 'Saving a visit without the owner\'s name and number is not switched on yet. Nothing was saved — please tell the office.',
+      });
+    }
 
     const coords = {
       lat: num(lat, -90, 90),
@@ -101,6 +158,16 @@ router.post('/', limitSubmit, async (req, res, next) => {
       acc: num(location_accuracy, 0, 1_000_000),
     };
 
+    // Pressing the button IS the assertion, so it is recorded as the note when
+    // the temp said nothing aloud — a faithful record of what was claimed, not
+    // an invented account of the visit. Anything spoken is kept alongside it.
+    const note = kind === 'captured'
+      ? spoken
+      : [OUTCOMES[kind].label, spoken].filter(Boolean).join(' ');
+
+    // Both probes run BEFORE the transaction opens. A catalog lookup that failed
+    // inside a BEGIN…COMMIT would abort the whole transaction and lose the lead
+    // along with the note.
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -108,13 +175,23 @@ router.post('/', limitSubmit, async (req, res, next) => {
       let leadId = null;
       let reused = false;
 
+      // One outlet canvassed twice is one record with two visits. A captured
+      // lead is keyed by the mobile; a refused or absent one has none, so it is
+      // keyed by the outlet name instead. Both are scoped to the temp who filed
+      // it — merging one person's work into another's would make their save
+      // vanish from under them.
       if (logOk && geoOk && src === 'direct' && agent) {
-        const { rows } = await client.query(
-          `SELECT id FROM leads
-            WHERE phone=$1 AND captured_by=$2 AND source='direct'
-            ORDER BY created_at LIMIT 1`,
-          [text(phone, 20), agent]
-        );
+        const { rows } = kind === 'captured'
+          ? await client.query(
+              `SELECT id FROM leads
+                WHERE phone=$1 AND captured_by=$2 AND source='direct'
+                ORDER BY created_at LIMIT 1`,
+              [text(phone, 20), agent])
+          : await client.query(
+              `SELECT id FROM leads
+                WHERE lower(station_name)=lower($1) AND captured_by=$2 AND source='direct'
+                ORDER BY created_at LIMIT 1`,
+              [outlet, agent]);
         if (rows.length) { leadId = rows[0].id; reused = true; }
       }
 
@@ -122,7 +199,7 @@ router.post('/', limitSubmit, async (req, res, next) => {
         const cols = ['name','station_name','city','state','phone','email','message','source'];
         const vals = [
           text(name, 120),
-          text(station_name, 160),
+          outlet,
           text(city, 80),
           text(state, 60),
           text(phone, 20),
@@ -135,6 +212,13 @@ router.post('/', limitSubmit, async (req, res, next) => {
           logOk && src === 'direct' ? null : note,
           src,
         ];
+
+        // 'refused' drops out of the working view; 'revisit' stays open and asks
+        // to be gone back to. Left to the column default ('new') for a capture.
+        if (OUTCOMES[kind].status) {
+          cols.push('status');
+          vals.push(OUTCOMES[kind].status);
+        }
 
         if (geoOk) {
           cols.push('lat', 'lng', 'location_accuracy', 'captured_by');
@@ -149,6 +233,11 @@ router.post('/', limitSubmit, async (req, res, next) => {
           vals
         );
         leadId = rows[0].id;
+      } else if (OUTCOMES[kind].status) {
+        // A revisit that ended the same way re-states the outcome; a revisit
+        // that finally got the details is handled by the capture path above and
+        // must NOT be dragged back to 'refused'.
+        await client.query('UPDATE leads SET status=$2 WHERE id=$1', [leadId, OUTCOMES[kind].status]);
       }
 
       if (logOk && note) {
@@ -160,8 +249,8 @@ router.post('/', limitSubmit, async (req, res, next) => {
       }
 
       await client.query('COMMIT');
-      logger.info(`lead ${reused ? 'appended' : 'captured'}: source=${src} id=${leadId}`);
-      res.status(201).json({ ok: true, id: leadId, reused });
+      logger.info(`lead ${reused ? 'appended' : 'captured'}: source=${src} outcome=${kind} id=${leadId}`);
+      res.status(201).json({ ok: true, id: leadId, reused, outcome: kind });
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       throw err;

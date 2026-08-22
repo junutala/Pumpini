@@ -1395,3 +1395,16 @@ END $$;
 
 GRANT ALL ON TABLE public.lead_interactions TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.lead_interactions TO app_authenticated;
+
+-- A refused or absent visit learns NEITHER the owner's name NOR a mobile — the
+-- only thing it knows is which outlet said no, and where it stands. Both columns
+-- predate that and were NOT NULL. Relaxed rather than filled with a placeholder:
+-- a '—' in a name column is read as a name by the next person to look.
+-- The app still requires both on the marketing form (source 'website').
+-- Run 22-Aug-2026. Idempotent: DROP NOT NULL on an already-nullable column is a
+-- no-op, so this is safe to re-run.
+ALTER TABLE public.leads ALTER COLUMN name  DROP NOT NULL;
+ALTER TABLE public.leads ALTER COLUMN phone DROP NOT NULL;
+
+-- No DDL for the two new statuses: `leads.status` carries a default but no CHECK
+-- constraint (verified against prod), so 'refused' and 'revisit' store as-is.

@@ -1380,7 +1380,9 @@
     "colCapturedBy": "Captured by",
     "colMap": "Map",
     "leadSource_direct": "Direct",
-    "emailOrMobile": "Email or mobile"
+    "emailOrMobile": "Email or mobile",
+    "leadStatus_refused": "Refused",
+    "leadStatus_revisit": "Revisit"
   },
   "aichat": {
     "starterTotalSales": "What are today's total sales?",
@@ -3113,7 +3115,7 @@
     "save": "SAVE",
     "saving": "Saving…",
     "savedOk": "Lead saved.",
-    "savedAppended": "You had already filed this number — the note was added to that lead.",
+    "savedAppended": "You had already filed this outlet — the visit was added to it.",
     "saveFailed": "Could not save. Check the signal and try again.",
     "addInteraction": "Add an interaction",
     "addInteractionPlaceholder": "What was said this time. Record it, or type it here.",
@@ -3142,6 +3144,15 @@
     "errCredentials": "Invalid credentials.",
     "loadFailed": "Could not load the leads. Pull to refresh, or sign in again.",
     "loadingLeads": "Loading leads…",
-    "retry": "Try again"
+    "retry": "Try again",
+    "outletName": "Outlet Name",
+    "outletNamePlaceholder": "Name on the board",
+    "orNoLuck": "or, if nothing came of it",
+    "ctaRefused": "Details refused",
+    "ctaRefusedSub": "Manager would not share the owner’s details",
+    "ctaAbsent": "Manager not available",
+    "ctaAbsentSub": "Nobody there to ask — worth another visit",
+    "savedRefused": "Recorded as refused. You will not be sent back here.",
+    "savedAbsent": "Recorded. This outlet is marked for a revisit."
   }
 }
