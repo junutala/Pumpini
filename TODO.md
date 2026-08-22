@@ -267,3 +267,89 @@ in prod yet, so there is no history.
 > two months, order of ₹8 a year, and the bias runs opposite to the way it was reported.
 > `docs/round-amount-rounding-drift.md` carries the working and both queries so the
 > conclusion can be re-run rather than re-argued.
+
+---
+
+## 18. Lead tool — the enhancement batch after the owner's field days (NEW 2026-08-22)
+
+> Parked deliberately. The owner is running `pumpini.in/lead` himself for two or
+> three days before hiring a temp resource, and wants everything below shipped as
+> **one enhancement** informed by that use — not drip-fed now. Do not pick single
+> items off this list early; wait for his field feedback and fold it in.
+
+### 18a. Revoking a temp's access — a blacklist does NOT work
+
+The gate accepts **any** mobile number entered twice (owner's call 22-Aug). So
+there is nothing to revoke: an ex-temp who is blacklisted types another ten
+digits and is straight back in. A blacklist is the appearance of revocation
+without the substance, and it costs exactly as much to maintain as the thing
+that would actually work.
+
+**The only mechanism that revokes is a whitelist**, which the owner declined on
+22-Aug when revocation was not yet a requirement. It is now. Proposed shape:
+
+- A small `lead_agents` table — `mobile`, `name`, `is_active`, `end_date`.
+  Mirrors how attendants are already governed (`is_active` + `end_date` drive the
+  Start-Shift picker — see CLAUDE.md house facts), so a fortnight's hire lapses on
+  its own rather than relying on the owner remembering.
+- 🔴 New table ⇒ its RLS policy ships in the SAME DDL block. Not station-scoped
+  (a lead belongs to no outlet), so mirror `leads`/`lead_interactions`: public
+  INSERT is not even needed here — superadmin SELECT plus whatever the login path
+  requires. Check `pg_policies` before calling it done.
+- Managed from the `/admin` Leads screen. One writer, thin guarded routes.
+- **Falls out for free:** `captured_by` becomes a NAME on every lead instead of a
+  bare number, and "which temp produced what" becomes answerable.
+
+**🔴 Deployment gotcha — this one locks a temp out mid-street if missed.** The
+instant the whitelist goes live an unlisted number stops working. Seed the table
+from the `captured_by` values already in `leads` **in the same migration**, so
+everyone currently in the field keeps working and notices nothing.
+
+**The honest alternative is to do nothing.** An ex-temp can only ADD leads, never
+read one, and the owner reviews this data daily — junk from an unfamiliar number
+is obvious and deletable in a click. That is cleanup rather than prevention, and
+with one or two temps he personally knows it may genuinely be enough. Decide by
+whether he expects to hire and release people repeatedly.
+
+### 18b. Language selector on /lead — deferred, may never be needed
+
+Owner, 22-Aug: *"I dont intend to hire a doctorate in computer applications guy
+for this job. So, keeping it simple helps all of us."* No language button was
+added, and the recorder tells Sarvam `en-IN` (from `localStorage.i18nextLng`,
+defaulting to `en`).
+
+This has NOT bitten yet: the owner's own Tamil-inflected speech transcribed
+cleanly to English with the `en-IN` hint and `mode: 'translate'`. Revisit only if
+a temp speaking pure Tamil or Telugu produces poor transcripts. **Check the
+zero-UI option first** — Sarvam may accept an auto-detect language code, which
+would fix it without putting a single control on the screen.
+
+### 18c. Things deliberately NOT built — do not re-propose without new reason
+
+Each was considered on 22-Aug and rejected with the owner. Re-raising any of
+these needs a NEW argument, not a fresh pair of eyes:
+
+- **A photograph of the outlet on the refusal CTAs.** The strongest proof of
+  presence, and unsafe here: the one manager who refuses to share owner details
+  is exactly the one who reacts badly to a camera. Owner: *"what if he calls
+  police? this could lead to bigger problems."*
+- **GPS gating, cluster/impossible-travel warnings, effort scoring.** The owner
+  takes over from the second interaction onward, so there is no incentive to fake
+  a visit he will personally work. *"I cannot be policing my job."*
+- **A "location is off" banner on the temp's screen.** He watches this data daily
+  and will phone the temp by the second or third lead if map pins stop arriving —
+  faster than a banner a temp can dismiss.
+- **Showing coordinates/accuracy/clock to the temp.** His own three captures sat
+  3.3 m apart with the device reporting ±14–17 m: ordinary consumer-GPS jitter. A
+  latitude a temp can do nothing with is decoration, and it also means any "same
+  place" test could only ever work in tens of metres, never metres.
+- **Mandatory fields.** They collide with the two CTAs, which by their nature have
+  no owner name and no mobile. The only floor kept is that SAVE must carry ONE of
+  mobile / owner name / outlet name, so the row is not a ghost.
+
+### 18d. Known remaining duplication (also in docs/drift-audit.md)
+
+`app/pos/page.js` and `components/shared/FloatingChat.js` still hold their own
+inline MediaRecorder copies of what is now `lib/recordAudio.js`. Migrating them is
+its own PR with its own impact analysis — `/pos` is a money screen and does not
+get refactored as a side effect of lead-tool work.
