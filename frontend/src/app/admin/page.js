@@ -3,8 +3,14 @@ import { useState, useEffect, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
-         CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox } from 'lucide-react';
+         CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox,
+         LayoutGrid, Table2, MapPin } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
+// The owner's working view of the pipeline. The table below stays the
+// overview; both read the same GET /leads and write the same PATCH.
+import LeadRail from '../../components/admin/LeadRail';
+// ONE superadmin client, shared with the owner's side of pumpini.in/lead.
+import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
 if (typeof window === 'undefined') {
   // SSR guard — export empty component during server render
@@ -13,13 +19,7 @@ if (typeof window === 'undefined') {
 const fmt    = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 const fmtAmt = n => '₹' + Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:0});
 
-const adminFetch = (url, opts={}) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : '';
-  return fetch(`/api/superadmin${url}`, {
-    ...opts,
-    headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...(opts.headers||{})}
-  }).then(r=>r.json()).catch(()=>null);   // non-JSON/5xx (e.g. mid-deploy) → null, never throw
-};
+
 
 const PLAN_COLORS   = { starter:['#dcfce7','#15803d'], pro:['#fff7ed','#9a3412'], enterprise:['#ede9fe','#5b21b6'] };
 const STATUS_COLORS = { active:['#dcfce7','#15803d'], suspended:['#fef9c3','#854d0e'], cancelled:['#fee2e2','#991b1b'] };
@@ -32,7 +32,10 @@ const LEAD_STATUS = [
   ['converted', 'Converted', '#dcfce7', '#15803d'],
   ['lost',      'Lost',      '#fee2e2', '#991b1b'],
 ];
-const LEAD_SOURCE = ['website','whatsapp','referral','call','other'];
+// 'direct' is the field tool at pumpini.in/lead — a temp standing on the
+// forecourt. Kept first after 'website' so the two automated sources sit
+// together, ahead of the ones the owner types in by hand.
+const LEAD_SOURCE = ['website','direct','whatsapp','referral','call','other'];
 const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
 const btn = (bg='#FF6B00',color='#fff') => ({padding:'0 14px',height:34,background:bg,color,border:'none',borderRadius:7,cursor:'pointer',fontSize:13,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5});
 
@@ -100,12 +103,10 @@ function LoginScreen({onLogin}){
 
   const submit=async e=>{
     e.preventDefault(); setLoading(true); setError('');
-    const res=await fetch('/api/superadmin/login',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(form)
-    }).then(r=>r.json());
-    if(res.error){setError(res.error);setLoading(false);return;}
-    localStorage.setItem('admin_token',res.token);
+    // One login writer, shared with pumpini.in/lead. The identifier may be the
+    // email or the mobile — the endpoint accepts either against `superadmins`.
+    const res = await adminLogin(form.email, form.password);
+    if(!res.ok){setError(res.error);setLoading(false);return;}
     onLogin(res.admin);
     setLoading(false);
   };
@@ -124,9 +125,11 @@ function LoginScreen({onLogin}){
         </div>
         <form onSubmit={submit}>
           <div style={{marginBottom:'1rem'}}>
-            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.email', 'Email')}</label>
+            <label style={{fontSize:13,fontWeight:600,display:'block',marginBottom:4}}>{tc('adminp.emailOrMobile', 'Email or mobile')}</label>
+            {/* type="text", not "email": the endpoint now accepts a mobile as the
+                identifier, and type="email" makes the browser refuse to submit one. */}
             <input style={{width:'100%',padding:'10px 12px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box'}}
-              type="email" placeholder="admin@pumpini.in" value={form.email}
+              type="text" autoComplete="username" placeholder="admin@pumpini.in" value={form.email}
               onChange={e=>setForm(p=>({...p,email:e.target.value}))} required/>
           </div>
           <div style={{marginBottom:'1.5rem'}}>
@@ -174,6 +177,9 @@ export default function AdminPage(){
   const [stTemplates,setStTemplates]   = useState([]);   // responsibilities for selected bunk
   const [leads,setLeads]               = useState([]);
   const [leadSort,setLeadSort]         = useState({ field:'created_at', dir:'desc' });
+  // 'cards' is the working view (one lead at a time, its interaction log and
+  // the recorder); 'table' is the overview. Same data, same writers.
+  const [leadView,setLeadView]         = useState('cards');
   const [hideClosed,setHideClosed]     = useState(false);
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
@@ -233,13 +239,13 @@ export default function AdminPage(){
   const fmtDate    = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '—';
 
   useEffect(()=>{
-    const token = localStorage.getItem('admin_token');
+    const token = getAdminToken();
     if(!token) return;
     try {
       const p = JSON.parse(atob(token.split('.')[1]));
       if(p.isSuperAdmin && p.exp > Date.now()/1000) setAdmin(p);
-      else localStorage.removeItem('admin_token');
-    } catch { localStorage.removeItem('admin_token'); }
+      else clearAdminToken();
+    } catch { clearAdminToken(); }
   },[]);
 
   const reload = async()=>{
@@ -365,7 +371,7 @@ export default function AdminPage(){
           <div style={{fontSize:12,color:'rgba(255,255,255,.5)',marginBottom:8}}>{admin.name}</div>
           <button style={{background:'rgba(255,255,255,.08)',border:'none',color:'rgba(255,255,255,.6)',
             borderRadius:7,padding:'7px 12px',cursor:'pointer',fontSize:12,width:'100%',display:'flex',alignItems:'center',gap:6}}
-            onClick={()=>{localStorage.removeItem('admin_token');setAdmin(null);}}>
+            onClick={()=>{clearAdminToken();setAdmin(null);}}>
             <LogOut size={13}/>{tc('adminp.logout', 'Logout')}
           </button>
         </div>
@@ -807,16 +813,33 @@ export default function AdminPage(){
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
               <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.leadsHeading', 'Leads')} <span style={{fontSize:14,color:'#888',fontWeight:500}}>({sortedLeads.length})</span></h1>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
+                <div style={{display:'flex',gap:3,background:'#fff',border:'1px solid #e5e3de',borderRadius:9,padding:3}}>
+                  {[['cards',<LayoutGrid key="g" size={13}/>,tc('adminp.viewCards','Cards')],
+                    ['table',<Table2 key="t" size={13}/>,tc('adminp.viewTable','Table')]].map(([v,icon,lab])=>(
+                    <button key={v} onClick={()=>setLeadView(v)} style={{
+                      height:28,padding:'0 11px',border:'none',borderRadius:7,cursor:'pointer',
+                      fontSize:12.5,fontWeight:700,fontFamily:'inherit',display:'inline-flex',
+                      alignItems:'center',gap:5,
+                      background:leadView===v?'#1a1a1a':'transparent',color:leadView===v?'#fff':'#666',
+                    }}>{icon}{lab}</button>
+                  ))}
+                </div>
                 <label style={{fontSize:12.5,color:'#666',display:'flex',alignItems:'center',gap:5,cursor:'pointer'}}>
                   <input type="checkbox" checked={hideClosed} onChange={e=>setHideClosed(e.target.checked)}/> {tc('adminp.hideClosed', 'Hide closed')}
                 </label>
                 <button style={btn()} onClick={()=>openModal('lead',{source:'website',status:'new'})}><Plus size={15}/>{tc('adminp.addLead', 'Add Lead')}</button>
               </div>
             </div>
+            {leadView==='cards'&&(
+              <LeadRail leads={sortedLeads} statuses={LEAD_STATUS} adminFetch={adminFetch}
+                        tc={tc} onChanged={loadLeads}/>
+            )}
+
+            {leadView==='table'&&(
             <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:980}}>
                 <thead><tr style={{background:'#f8f7f5'}}>
-                  {[[tc('adminp.colDate','Date'),'created_at'],[tc('adminp.colName','Name'),'name'],[tc('adminp.colPhone','Phone'),null],[tc('adminp.colBunk','Bunk'),'station_name'],[tc('adminp.colCity','City'),'city'],[tc('adminp.colState','State'),'state'],[tc('adminp.colSource','Source'),'source'],[tc('adminp.colStatus','Status'),'status'],[tc('adminp.colNotes','Notes'),null],['',null]].map(([h,field],i)=>(
+                  {[[tc('adminp.colDate','Date'),'created_at'],[tc('adminp.colName','Name'),'name'],[tc('adminp.colPhone','Phone'),null],[tc('adminp.colBunk','Bunk'),'station_name'],[tc('adminp.colCity','City'),'city'],[tc('adminp.colState','State'),'state'],[tc('adminp.colSource','Source'),'source'],[tc('adminp.colLocation','Location'),null],[tc('adminp.colCapturedBy','Captured by'),'captured_by'],[tc('adminp.colStatus','Status'),'status'],[tc('adminp.colNotes','Notes'),null],['',null]].map(([h,field],i)=>(
                     <th key={i} onClick={()=>field&&sortLeads(field)}
                       style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de',cursor:field?'pointer':'default',userSelect:'none',whiteSpace:'nowrap'}}>
                       {h}{field&&leadSort.field===field?(leadSort.dir==='asc'?' ▲':' ▼'):''}
@@ -824,19 +847,28 @@ export default function AdminPage(){
                   ))}
                 </tr></thead>
                 <tbody>
-                  {sortedLeads.length===0&&<tr><td colSpan={10} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>{tc('adminp.noLeads', 'No leads')}</td></tr>}
+                  {sortedLeads.length===0&&<tr><td colSpan={12} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>{tc('adminp.noLeads', 'No leads')}</td></tr>}
                   {sortedLeads.map(l=>{
                     const m = LEAD_STATUS.find(x=>x[0]===l.status) || ['','','#f3f4f6','#374151'];
                     const sb = m[2], st = m[3];
                     return (
                       <tr key={l.id} style={{borderBottom:'1px solid #f0f0f0'}}>
-                        <td style={{padding:'10px 12px',fontSize:12,color:'#666',whiteSpace:'nowrap'}}>{(l.created_at||'').slice(0,10)}</td>
-                        <td style={{padding:'10px 12px',fontWeight:600}} title={l.message||''}>{l.name}{l.message?' 💬':''}</td>
+                        <td style={{padding:'10px 12px',fontSize:12,color:'#666',whiteSpace:'nowrap'}}>{l.created_at?new Date(l.created_at).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+                        <td style={{padding:'10px 12px',fontWeight:600}} title={l.message||''}>{l.name}{l.interaction_count>0?<span style={{marginLeft:6,fontSize:11,fontWeight:700,color:'#475569',background:'#f1f5f9',borderRadius:99,padding:'1px 7px'}}>💬 {l.interaction_count}</span>:(l.message?' 💬':'')}</td>
                         <td style={{padding:'10px 12px',fontFamily:'monospace',fontSize:13,whiteSpace:'nowrap'}}>{l.phone}</td>
                         <td style={{padding:'10px 12px',fontSize:13}}>{l.station_name||'—'}</td>
                         <td style={{padding:'10px 12px',fontSize:13}}>{l.city||'—'}</td>
                         <td style={{padding:'10px 12px',fontSize:13}}>{l.state||'—'}</td>
-                        <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 7px',borderRadius:99,background:'#f1f5f9',color:'#475569',textTransform:'capitalize'}}>{l.source}</span></td>
+                        <td style={{padding:'10px 12px'}}><span style={{fontSize:11,padding:'2px 7px',borderRadius:99,background:'#f1f5f9',color:'#475569',textTransform:'capitalize'}}>{tc('adminp.leadSource_'+l.source,l.source)}</span></td>
+                        <td style={{padding:'10px 12px',fontSize:12,whiteSpace:'nowrap'}}>
+                          {l.lat!=null&&l.lng!=null
+                            ? <a href={`https://www.google.com/maps?q=${l.lat},${l.lng}`} target="_blank" rel="noreferrer"
+                                 style={{color:'#FF6B00',fontWeight:700,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3}}>
+                                <MapPin size={11}/>{tc('adminp.colMap','Map')}
+                              </a>
+                            : <span style={{color:'#ccc'}}>—</span>}
+                        </td>
+                        <td style={{padding:'10px 12px',fontSize:12,fontFamily:'monospace',whiteSpace:'nowrap'}}>{l.captured_by||'—'}</td>
                         <td style={{padding:'10px 12px'}}>
                           <select value={l.status} onChange={e=>patchLead(l.id,{status:e.target.value})}
                             style={{padding:'4px 8px',borderRadius:99,border:'none',fontSize:11,fontWeight:600,background:sb,color:st,cursor:'pointer'}}>
@@ -858,6 +890,7 @@ export default function AdminPage(){
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
       </div>

@@ -9,8 +9,14 @@ const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/re
 // manager, Group Dashboard to a non-owner). Enforced at ASSIGN time, where the
 // target user's role is known.
 const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles');
+// THE Indian-mobile normalizer (utils/phone) — so signing in by mobile accepts
+// the same shapes every other phone field in Pumpini does.
+const { normalizePhone, validatePhone } = require('../utils/phone');
 // Single user-writer (one insert path for every creator — tenant + admin).
 const { createUser, linkUserToStation } = require('../services/userService');
+// One writer for a lead interaction — shared with the public field tool
+// (routes/leads.js). Same table and validation; only the guard differs.
+const { addInteraction, listInteractions, hasInteractionTable } = require('../services/leadService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
 // backfill below. Degrades safely: the backfill 400s if storage isn't configured.
 const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('../services/vaweStorage');
@@ -30,11 +36,36 @@ const authAdmin = (req, res, next) => {
 };
 
 // POST /api/superadmin/login
+//
+// Accepts EITHER the email or the mobile number as the identifier, against the
+// one `superadmins` store. The mobile path exists so the owner can sign in on
+// pumpini.in/lead one-handed in the field without a second user type, a second
+// credential store, or a second login writer — the thing that would have been
+// "leadadmin" is this OR.
+//
+// The password is still a real password. A browse-everything screen cannot be
+// guarded by a phone number, which is not a secret.
+//
+// `email` stays the field name for backwards compatibility (the /admin login
+// screen posts it); `identifier` is the honest name and wins when both appear.
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const identifier = String(req.body.identifier || req.body.email || '').trim();
+    if (!identifier || !password) {
+      return res.status(400).json({ error: 'Identifier and password are required.' });
+    }
+
+    // Only offer a phone to the query when the input actually IS one. Otherwise
+    // normalizePhone('contact@sixera.in') reduces to the literal '+91' and would
+    // be compared against every row — NULL simply never matches.
+    const asPhone = validatePhone(identifier) ? normalizePhone(identifier) : null;
+
     const { rows } = await pool.query(
-      'SELECT * FROM superadmins WHERE email=$1 AND is_active=TRUE', [email]
+      `SELECT * FROM superadmins
+        WHERE is_active=TRUE AND (lower(email)=lower($1) OR phone=$2)
+        LIMIT 1`,
+      [identifier, asPhone]
     );
     if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await bcrypt.compare(password, rows[0].password_hash);
@@ -1039,9 +1070,65 @@ const LEAD_FIELDS = ['name','station_name','city','state','phone','email','messa
 
 router.get('/leads', authAdmin, async (req, res, next) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM leads ORDER BY created_at DESC');
+    // The interaction count rides along so the Leads screen can show it without
+    // a request per row. Guarded by the same probe the writer uses: until the
+    // lead_interactions DDL is run this endpoint must keep working (a JOIN on a
+    // missing table would 500 the whole Leads tab, not degrade it).
+    const logOk = await hasInteractionTable();
+    const { rows } = await pool.query(
+      logOk
+        ? `SELECT l.*,
+                  COALESCE(i.n, 0)::int AS interaction_count,
+                  i.last_at             AS last_interaction_at
+             FROM leads l
+             LEFT JOIN (
+               SELECT lead_id, count(*) AS n, max(created_at) AS last_at
+                 FROM lead_interactions GROUP BY lead_id
+             ) i ON i.lead_id = l.id
+            ORDER BY l.created_at DESC`
+        : `SELECT *, 0 AS interaction_count, NULL AS last_interaction_at
+             FROM leads ORDER BY created_at DESC`
+    );
     res.json(rows);
   } catch (err) { next(err); }
+});
+
+// ── Lead interactions ─────────────────────────────────────
+// The owner's side of the field tool: /lead writes the first interaction, this
+// is where a lead gets worked into the funnel one visit at a time. Both go
+// through leadService.addInteraction — same table, same validation, different
+// guard (authAdmin here, open there).
+router.get('/leads/:id/interactions', authAdmin, async (req, res, next) => {
+  try {
+    res.json({ interactions: await listInteractions(req.params.id) });
+  } catch (err) { next(err); }
+});
+
+router.post('/leads/:id/interactions', authAdmin, async (req, res, next) => {
+  try {
+    if (!(await hasInteractionTable())) {
+      return res.status(503).json({
+        error: 'The interaction log table is not created yet. Run the lead_interactions DDL first — nothing was saved.',
+      });
+    }
+    const { rows } = await pool.query('SELECT id FROM leads WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Lead not found.' });
+
+    const interaction = await addInteraction({
+      leadId:     req.params.id,
+      note:       req.body.note,
+      // Who logged it, for a log that will later hold both the owner's visits
+      // and a temp's cold calls. Falls back to the admin's own name.
+      capturedBy: req.body.captured_by || req.admin?.name || 'admin',
+      lat:        req.body.lat,
+      lng:        req.body.lng,
+      accuracy:   req.body.location_accuracy,
+    });
+    res.status(201).json({ ok: true, interaction });
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(err);
+  }
 });
 
 // Manual add (owner logging a WhatsApp/personal enquiry)
