@@ -50,6 +50,13 @@ const when = (v) => {
   return y >= 2000 && y <= 2100 ? d.toISOString() : null;
 };
 
+// Contacts arrive in their own migration; code lands first, so probe.
+const hasContactsTable = schemaProbe(
+  'lead_contacts',
+  `SELECT to_regclass('public.lead_contacts') IS NOT NULL AS ok`,
+  row => row.ok === true
+);
+
 /** Finite number inside [min,max], else null. Rejects NaN, '', Infinity, junk. */
 const num = (v, min, max) => {
   if (v === null || v === undefined || v === '') return null;
@@ -165,7 +172,55 @@ async function listAppointments(limit = 500) {
   return rows;
 }
 
+// ── Contacts ─────────────────────────────────────────────────────────────────
+//
+// A lead is an OUTLET, and an outlet has people: the manager who lets you in,
+// the owner who signs. One name/phone pair forces you to lose one to record the
+// other — which is exactly what happened on Arcot Road, where the field brought
+// back managers and the owners were still to come.
+//
+// THE ONE WRITER. The public capture route files the contact the field brought;
+// the authAdmin route adds the ones the owner gathers later. Same table, same
+// validation, different guard.
+
+/** File a contact against a lead. Silently does nothing when there is neither a
+ *  name nor a number — a blank contact is not a record of anything. */
+async function addContact({ leadId, name, phone, client }) {
+  if (!(await hasContactsTable())) return null;
+  const nm = text(name, 120);
+  const ph = text(phone, 20);
+  if (!nm && !ph) return null;
+
+  const db = client || pool;
+  const { rows } = await db.query(
+    `INSERT INTO lead_contacts(lead_id, name, phone) VALUES($1,$2,$3)
+     RETURNING id, lead_id, name, phone, created_at`,
+    [leadId, nm, ph]
+  );
+  return rows[0];
+}
+
+/** Oldest first: the contact the field brought leads, the ones gathered since
+ *  follow in the order they were learned. That ordering IS the story of the
+ *  outlet, so it is not sorted by anything cleverer. */
+async function listContacts(leadId) {
+  if (!(await hasContactsTable())) return [];
+  const { rows } = await pool.query(
+    `SELECT id, name, phone, created_at FROM lead_contacts
+      WHERE lead_id = $1 ORDER BY created_at, id`,
+    [leadId]
+  );
+  return rows;
+}
+
+async function deleteContact(id) {
+  if (!(await hasContactsTable())) return false;
+  const { rowCount } = await pool.query('DELETE FROM lead_contacts WHERE id=$1', [id]);
+  return rowCount > 0;
+}
+
 module.exports = {
   addInteraction, listInteractions, listAppointments,
-  hasInteractionTable, hasAppointmentColumn, num, text, when,
+  addContact, listContacts, deleteContact,
+  hasInteractionTable, hasAppointmentColumn, hasContactsTable, num, text, when,
 };

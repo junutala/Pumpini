@@ -13,10 +13,12 @@
 // The table on the Leads tab is the overview; this is the working surface. Both
 // read the same GET /leads and write through the same PATCH — no second writer.
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock,
+         UserPlus, Download, Trash2, X } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
 import { toInstant } from '../../lib/appointment';
 import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
+import { saveContact } from '../../lib/vcard';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -171,26 +173,6 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
             </span>
           </div>
 
-          {/* ONLY when there is something to dial. This was unguarded, so a lead
-              with no number rendered `tel:null` — and Android's dialer T9-decodes
-              the word: N=6, U=8, L=5, L=5, so every such card offered to ring
-              6855. A dead link that looks live is worse than no link. */}
-          {phoneHref(l) ? (
-            <a href={phoneHref(l)} style={{
-              fontSize: 16, fontWeight: 700, color: '#1a1a1a', textDecoration: 'none',
-              fontVariantNumeric: 'tabular-nums', marginTop: 4,
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-            }}>
-              <Phone size={15} color="#888" />{l.phone}
-            </a>
-          ) : (
-            <div style={{
-              fontSize: 13, color: '#aaa', marginTop: 5,
-              display: 'inline-flex', alignItems: 'center', gap: 7,
-            }}>
-              <Phone size={14} color="#ccc" />{tc('lead.noNumberYet', 'No number yet')}
-            </div>
-          )}
         </div>
         <span style={{ background: meta[2], color: meta[3], borderRadius: 20, padding: '4px 11px',
                        fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -218,6 +200,8 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
         )}
       </div>
 
+      <LeadContacts lead={l} adminFetch={adminFetch} tc={tc} />
+
       <div style={{ marginTop: 13 }}>
         <label style={lbl}>{tc('adminp.status', 'Status')}</label>
         <select value={l.status} onChange={e => setStatus(e.target.value)} style={{
@@ -229,6 +213,180 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
           ))}
         </select>
       </div>
+    </div>
+  );
+}
+
+// ── Contacts on a lead ───────────────────────────────────────────────────────
+//
+// An outlet has people, not a person. The field brings one — usually whoever was
+// behind the counter — and the owner turns up later, or does not. Holding both
+// is the point: the manager is often the one who actually lets you in.
+//
+// Only on the OWNER's screen. The temp's form stays one number and done: "He
+// brings me one contact - job done. Owner - better, Manager - good. Period."
+// (owner, 23-Aug-2026). Roles are written into the name — "Satish - Manager" —
+// because that is how he already writes them, and a role dropdown is one more
+// decision on a forecourt for no gain.
+function LeadContacts({ lead, adminFetch, tc }) {
+  const [items, setItems]   = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [name, setName]     = useState('');
+  const [phone, setPhone]   = useState('');
+  const [busy, setBusy]     = useState(false);
+  const [err, setErr]       = useState('');
+
+  const load = useCallback(async () => {
+    const d = await adminFetch(`/leads/${lead.id}/contacts`);
+    setItems(Array.isArray(d?.contacts) ? d.contacts : []);
+  }, [lead.id, adminFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // TRANSITIONAL, and it earns its keep twice. This panel replaced the single
+  // phone line on the card, so before the lead_contacts DDL is run — or before
+  // its backfill reaches a row — every lead would otherwise read "No number yet"
+  // even when it plainly has one. Falling back to the lead's own name/phone
+  // keeps the card TRUE whichever side of the migration we are on.
+  //
+  // It is not a second home for a contact: it is read-only (no id to delete),
+  // and it disappears the moment a real row exists.
+  const fallback = (!items?.length && (lead.name || lead.phone))
+    ? [{ id: null, name: lead.name, phone: lead.phone, fromLead: true }]
+    : [];
+  const rows = items?.length ? items : fallback;
+
+  const ready = name.trim() || phone.trim();
+
+  const add = async () => {
+    if (!ready) return;
+    setErr(''); setBusy(true);
+    try {
+      const d = await adminFetch(`/leads/${lead.id}/contacts`, {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim() || null, phone: phone.trim() || null }),
+      });
+      if (!d || d.error) throw new Error(d?.error || tc('lead.saveFailed', 'Could not save. Try again.'));
+      setName(''); setPhone(''); setAdding(false);
+      await load();
+    } catch (e) {
+      setErr(e?.message || tc('lead.saveFailed', 'Could not save. Try again.'));
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id) => {
+    if (!confirm(tc('lead.removeContactConfirm', 'Remove this contact?'))) return;
+    await adminFetch(`/leads/${lead.id}/contacts/${id}`, { method: 'DELETE' });
+    await load();
+  };
+
+  const download = (c) => {
+    if (!saveContact(c, lead)) {
+      setErr(tc('lead.vcardFailed', 'Your browser blocked the download. Try again, or copy the number.'));
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ ...lbl, marginBottom: 0 }}>{tc('lead.contacts', 'Contacts')}</span>
+        <button onClick={() => { setAdding(a => !a); setErr(''); }} style={{
+          background: 'none', border: 'none', color: ORANGE, fontSize: 12.5, fontWeight: 700,
+          cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}>
+          {adding ? <><X size={13} />{tc('lead.cancel', 'Cancel')}</>
+                  : <><UserPlus size={13} />{tc('lead.addContact', 'Add contact')}</>}
+        </button>
+      </div>
+
+      {items === null ? (
+        <div style={{ fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 7 }}>
+          <Loader2 size={13} className="spin" />{tc('lead.loadingContacts', 'Loading…')}
+        </div>
+      ) : !rows.length && !adding ? (
+        <div style={{ fontSize: 13, color: '#aaa', display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <Phone size={13} color="#ccc" />{tc('lead.noNumberYet', 'No number yet')}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 7 }}>
+          {rows.map(c => (
+            <div key={c.id || 'from-lead'} style={{
+              display: 'flex', alignItems: 'center', gap: 9,
+              background: '#faf9f7', border: '1px solid #eee', borderRadius: 9, padding: '8px 10px',
+            }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {c.name && (
+                  <div style={{ fontSize: 13.5, fontWeight: 700, overflow: 'hidden',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                )}
+                {/* Same rule as everywhere: no link unless there is something to
+                    dial, or the dialer gets handed the word "null". */}
+                {phoneHref(c) ? (
+                  <a href={phoneHref(c)} style={{
+                    fontSize: 14.5, fontWeight: 700, color: '#1a1a1a', textDecoration: 'none',
+                    fontVariantNumeric: 'tabular-nums',
+                    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 1,
+                  }}><Phone size={13} color="#888" />{c.phone}</a>
+                ) : (
+                  <div style={{ fontSize: 12.5, color: '#bbb', marginTop: 1 }}>
+                    {tc('lead.noNumberYet', 'No number yet')}
+                  </div>
+                )}
+              </div>
+
+              {phoneHref(c) && (
+                <button onClick={() => download(c)}
+                  title={tc('lead.saveToPhone', 'Save to phone')}
+                  aria-label={tc('lead.saveToPhone', 'Save to phone')}
+                  style={{
+                    width: 34, height: 34, flexShrink: 0, borderRadius: 8, cursor: 'pointer',
+                    border: '1px solid #e5e3de', background: '#fff', color: '#444',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}><Download size={15} /></button>
+              )}
+              {/* No id means this is the lead's own name/phone shown through the
+                  fallback above — there is no row to delete. */}
+              {c.id && (
+                <button onClick={() => remove(c.id)}
+                  aria-label={tc('lead.removeContact', 'Remove contact')}
+                  style={{
+                    width: 34, height: 34, flexShrink: 0, borderRadius: 8, cursor: 'pointer',
+                    border: '1px solid #fee2e2', background: '#fff', color: '#991b1b',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  }}><Trash2 size={14} /></button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adding && (
+        <div style={{ marginTop: 9, display: 'grid', gap: 7 }}>
+          <input value={name} onChange={e => setName(e.target.value)} autoComplete="off"
+            placeholder={tc('lead.contactNamePlaceholder', 'Name — e.g. Satish - Manager')}
+            style={{ width: '100%', padding: '10px 11px', border: '1.5px solid #ddd', borderRadius: 8,
+                     fontSize: 15, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+          <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9+ ]/g, ''))}
+            inputMode="tel" autoComplete="off"
+            placeholder={tc('lead.contactPhonePlaceholder', 'Mobile number')}
+            style={{ width: '100%', padding: '10px 11px', border: '1.5px solid #ddd', borderRadius: 8,
+                     fontSize: 16, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+                     fontVariantNumeric: 'tabular-nums' }} />
+          <button onClick={add} disabled={busy || !ready} style={{
+            height: 40, borderRadius: 8, border: 'none', fontFamily: 'inherit', fontSize: 14, fontWeight: 800,
+            background: !busy && ready ? ORANGE : '#e5e3de',
+            color: !busy && ready ? '#fff' : '#999',
+            cursor: !busy && ready ? 'pointer' : 'not-allowed',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+          }}>
+            {busy ? <><Loader2 size={15} className="spin" />{tc('lead.saving', 'Saving…')}</>
+                  : tc('lead.saveContact', 'Save contact')}
+          </button>
+        </div>
+      )}
+
+      {err && <p style={{ color: '#b91c1c', fontSize: 12.5, margin: '7px 0 0' }}>{err}</p>}
     </div>
   );
 }

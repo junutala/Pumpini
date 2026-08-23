@@ -3198,6 +3198,18 @@
     "loadingAppts": "మీ డైరీ లోడ్ అవుతోంది…",
     "loadFailedAppts": "డైరీని లోడ్ చేయలేకపోయాం. రిఫ్రెష్ చేయండి, లేదా మళ్ళీ సైన్ ఇన్ చేయండి.",
     "apptOne": "అపాయింట్‌మెంట్",
-    "apptMany": "అపాయింట్‌మెంట్లు"
+    "apptMany": "అపాయింట్‌మెంట్లు",
+    "contacts": "పరిచయాలు",
+    "addContact": "పరిచయం జోడించు",
+    "saveContact": "పరిచయం సేవ్ చేయి",
+    "contactNamePlaceholder": "పేరు — ఉదా. సతీష్ - మేనేజర్",
+    "contactPhonePlaceholder": "మొబైల్ నంబర్",
+    "loadingContacts": "లోడ్ అవుతోంది…",
+    "removeContact": "పరిచయం తొలగించు",
+    "removeContactConfirm": "ఈ పరిచయాన్ని తొలగించాలా?",
+    "saveToPhone": "ఫోన్‌లో సేవ్ చేయి",
+    "vcardFailed": "మీ బ్రౌజర్ డౌన్‌లోడ్‌ను నిరోధించింది. మళ్ళీ ప్రయత్నించండి, లేదా నంబర్ కాపీ చేయండి.",
+    "cancel": "రద్దు",
+    "noNumberYet": "ఇంకా నంబర్ లేదు"
   }
 }
