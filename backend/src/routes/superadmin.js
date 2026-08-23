@@ -16,7 +16,7 @@ const { normalizePhone, validatePhone } = require('../utils/phone');
 const { createUser, linkUserToStation } = require('../services/userService');
 // One writer for a lead interaction — shared with the public field tool
 // (routes/leads.js). Same table and validation; only the guard differs.
-const { addInteraction, listInteractions, hasInteractionTable } = require('../services/leadService');
+const { addInteraction, listInteractions, listAppointments, hasInteractionTable } = require('../services/leadService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
 // backfill below. Degrades safely: the backfill 400s if storage isn't configured.
 const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('../services/vaweStorage');
@@ -1093,6 +1093,16 @@ router.get('/leads', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Appointments ──────────────────────────────────────────
+// Everything the owner has agreed to attend, soonest first, past ones dropped.
+// Derived from the interaction log rather than stored twice: the appointment is
+// a fact about the conversation that set it, so the newest one simply wins.
+router.get('/appointments', authAdmin, async (req, res, next) => {
+  try {
+    res.json({ appointments: await listAppointments() });
+  } catch (err) { next(err); }
+});
+
 // ── Lead interactions ─────────────────────────────────────
 // The owner's side of the field tool: /lead writes the first interaction, this
 // is where a lead gets worked into the funnel one visit at a time. Both go
@@ -1123,6 +1133,7 @@ router.post('/leads/:id/interactions', authAdmin, async (req, res, next) => {
       lat:        req.body.lat,
       lng:        req.body.lng,
       accuracy:   req.body.location_accuracy,
+      appointmentAt: req.body.appointment_at,
     });
     res.status(201).json({ ok: true, interaction });
   } catch (err) {

@@ -1382,7 +1382,14 @@
     "leadSource_direct": "Direct",
     "emailOrMobile": "Email or mobile",
     "leadStatus_refused": "Refused",
-    "leadStatus_revisit": "Revisit"
+    "leadStatus_revisit": "Revisit",
+    "tabAppointments": "Appointments",
+    "appointmentsHeading": "Appointments",
+    "colWhen": "When",
+    "colWho": "Who",
+    "today": "TODAY",
+    "noAppointments": "Nothing scheduled",
+    "refresh": "Refresh"
   },
   "aichat": {
     "starterTotalSales": "What are today's total sales?",
@@ -3153,6 +3160,15 @@
     "ctaAbsent": "Manager not available",
     "ctaAbsentSub": "Nobody there to ask — worth another visit",
     "savedRefused": "Recorded as refused. You will not be sent back here.",
-    "savedAbsent": "Recorded. This outlet is marked for a revisit."
+    "savedAbsent": "Recorded. This outlet is marked for a revisit.",
+    "appointment": "Next appointment",
+    "optional": "(optional)",
+    "dayToday": "Today",
+    "dayTomorrow": "Tomorrow",
+    "dayAfter": "Day after",
+    "dayMonday": "Monday",
+    "otherTime": "Other…",
+    "clearAppointment": "Clear appointment",
+    "apptOnlyNote": "Appointment set."
   }
 }
