@@ -2306,7 +2306,8 @@
     "slipsRefused": "⚠ Not filled — enter by hand: {x}.",
     "gaugeOverCapacity": "⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.",
     "gaugeLowConfidence": "⚠ The screen was hard to read — check every figure against the console before saving.",
-    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings."
+    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.",
+    "gaugeAssumed": "⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",
@@ -2675,7 +2676,8 @@
     "slipsRefused": "⚠ Not filled — enter by hand: {x}.",
     "gaugeOverCapacity": "⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.",
     "gaugeLowConfidence": "⚠ The screen was hard to read — check every figure against the console before saving.",
-    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings."
+    "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.",
+    "gaugeAssumed": "⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving."
   },
   "streco": {
     "title": "Stock Reconciliation",

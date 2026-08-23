@@ -545,7 +545,7 @@ export default function ShiftEndPage() {
       // FUEL DECIDES WHICH TANK; THE TANK NUMBER ONLY VERIFIES. The rule lives in
       // lib/gaugeMatch so this cannot drift from shift open — read the note at the
       // top of that file for why it is this way round.
-      const { pairs, dropped, mismatched, overCapacity, capacityOff } =
+      const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff } =
         matchGaugeRows(rows, dipTanks);
 
       pairs.forEach(([tank, r]) => {
@@ -557,17 +557,19 @@ export default function ShiftEndPage() {
         setDipArtifact(p => ({ ...p, [tank.id]: artId }));
       });
 
-      const skipped = [...dropped];
+      const skipped = [...unplaced, ...dropped];
       setGaugeMsg(
         (pairs.length === 0
           ? tc('send.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
           : tc('send.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure before closing.').replace('{n}', pairs.length))
         + (skipped.length ? ' ' + tc('send.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
-        // NOT advisory. Tank number AND fuel must both agree with the master; a
-        // disagreement in either leaves that tank blank for manual entry, because
-        // a wrong figure in a right-looking box is worse than an empty one.
-        + (mismatched.length ? ' ' + tc('send.gaugeMismatch','⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.')
-            .replace('{list}', mismatched.map(x => `console tank ${x.console} (${x.reason})`).join(', ')) : '')
+        // Advisory — these rows ARE filled. Fuel decided; the number disagreed.
+        + (renumbered.length ? ' ' + tc('send.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
+            .replace('{list}', renumbered.map(x => `${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
+        // Two tanks of one fuel and nothing to choose by. Filled in order and said
+        // so — a shift within a fuel is correctable, a blank box is a retype.
+        + (assumed.length ? ' ' + tc('send.gaugeAssumed','⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving.')
+            .replace('{list}', assumed.map(x => `console ${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
         // NOT advisory. A volume above the installed capacity is physically
         // impossible, so the figure was misread and is not offered at all.
         + (overCapacity.length ? ' ' + tc('send.gaugeOverCapacity','⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.')
