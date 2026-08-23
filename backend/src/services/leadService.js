@@ -139,8 +139,13 @@ async function listAppointments(limit = 500) {
     `SELECT * FROM (
        SELECT DISTINCT ON (l.id)
               l.id            AS lead_id,
-              l.name          AS owner_name,
-              l.station_name  AS outlet_name,
+              -- Same column NAMES the /leads endpoint returns. They were aliased
+              -- to owner_name/outlet_name, which meant one lead arrived in two
+              -- shapes depending on which endpoint fetched it — and a screen
+              -- written against one shape silently rendered nothing under the
+              -- other. One shape, one set of helpers, no guessing.
+              l.name,
+              l.station_name,
               l.phone,
               l.status,
               l.lat, l.lng,

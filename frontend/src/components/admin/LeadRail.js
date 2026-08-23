@@ -16,6 +16,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
 import { toInstant } from '../../lib/appointment';
+import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -161,17 +162,35 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
     <div style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
+          {/* A refused or unattended visit has no owner — the outlet off the
+              board is the name. This printed a bare icon and nothing else. */}
           <div style={{ fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 7 }}>
             <User size={16} color="#888" style={{ flexShrink: 0 }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {leadTitle(l) || <span style={{ color: '#ccc', fontWeight: 600 }}>—</span>}
+            </span>
           </div>
-          <a href={`tel:${l.phone}`} style={{
-            fontSize: 16, fontWeight: 700, color: '#1a1a1a', textDecoration: 'none',
-            fontVariantNumeric: 'tabular-nums', marginTop: 4,
-            display: 'inline-flex', alignItems: 'center', gap: 7,
-          }}>
-            <Phone size={15} color="#888" />{l.phone}
-          </a>
+
+          {/* ONLY when there is something to dial. This was unguarded, so a lead
+              with no number rendered `tel:null` — and Android's dialer T9-decodes
+              the word: N=6, U=8, L=5, L=5, so every such card offered to ring
+              6855. A dead link that looks live is worse than no link. */}
+          {phoneHref(l) ? (
+            <a href={phoneHref(l)} style={{
+              fontSize: 16, fontWeight: 700, color: '#1a1a1a', textDecoration: 'none',
+              fontVariantNumeric: 'tabular-nums', marginTop: 4,
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+            }}>
+              <Phone size={15} color="#888" />{l.phone}
+            </a>
+          ) : (
+            <div style={{
+              fontSize: 13, color: '#aaa', marginTop: 5,
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+            }}>
+              <Phone size={14} color="#ccc" />{tc('lead.noNumberYet', 'No number yet')}
+            </div>
+          )}
         </div>
         <span style={{ background: meta[2], color: meta[3], borderRadius: 20, padding: '4px 11px',
                        fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -180,8 +199,8 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
       </div>
 
       <div style={{ marginTop: 13, fontSize: 12.5, color: '#666', lineHeight: 1.75 }}>
-        {(l.station_name || l.city || l.state) && (
-          <div>{[l.station_name, l.city, l.state].filter(Boolean).join(' · ')}</div>
+        {(outletSubtitle(l) || l.city || l.state) && (
+          <div>{[outletSubtitle(l), l.city, l.state].filter(Boolean).join(' · ')}</div>
         )}
         <div>
           {tc('adminp.colSource', 'Source')}: <strong style={{ color: '#444' }}>
