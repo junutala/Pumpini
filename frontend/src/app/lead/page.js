@@ -28,6 +28,8 @@ import { Loader2, Check, LogOut, Plus, List, Shield, XCircle, CalendarClock } fr
 // The SAME control the owner uses on /admin to log a visit. One implementation,
 // two screens (CLAUDE.md: reuse the form, do not open a new route).
 import InteractionRecorder from '../../components/shared/InteractionRecorder';
+// The single rule for whether the picker's value is a real appointment.
+import { toInstant } from '../../lib/appointment';
 // The owner's side. Both are REUSED, not re-implemented: the rail is the very
 // component the /admin Leads tab renders, and the client is the one superadmin
 // client — so a lead worked here and a lead worked on /admin are the same lead
