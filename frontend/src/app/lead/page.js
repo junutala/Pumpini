@@ -24,7 +24,7 @@
 // adds an interaction to that lead instead of creating a second one.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Check, LogOut, Plus, List, Shield, XCircle } from 'lucide-react';
+import { Loader2, Check, LogOut, Plus, List, Shield, XCircle, CalendarClock } from 'lucide-react';
 // The SAME control the owner uses on /admin to log a visit. One implementation,
 // two screens (CLAUDE.md: reuse the form, do not open a new route).
 import InteractionRecorder from '../../components/shared/InteractionRecorder';
@@ -33,6 +33,8 @@ import InteractionRecorder from '../../components/shared/InteractionRecorder';
 // client — so a lead worked here and a lead worked on /admin are the same lead
 // through the same writer.
 import LeadRail from '../../components/admin/LeadRail';
+// The SAME list the /admin Appointments tab renders, in its phone layout.
+import AppointmentList from '../../components/admin/AppointmentList';
 import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
 const AGENT_KEY = 'pumpini_lead_agent';
@@ -115,8 +117,8 @@ export default function LeadPage() {
   const tab = (id, icon, text) => (
     <button onClick={() => setView(id)} style={{
       flex: 1, height: 40, border: 'none', borderRadius: 9, cursor: 'pointer',
-      fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
       background: view === id ? '#1a1a1a' : 'transparent',
       color: view === id ? '#fff' : '#666',
     }}>{icon}{text}</button>
@@ -152,12 +154,13 @@ export default function LeadPage() {
             {/* The owner gets both: file a lead himself, or work the pipeline. */}
             <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #e5e3de',
                           borderRadius: 11, padding: 4, marginBottom: '0.9rem' }}>
-              {tab('new',  <Plus size={15} />, tc('lead.tabNew', 'New Lead'))}
-              {tab('list', <List size={15} />, tc('lead.tabAll', 'All Leads'))}
+              {tab('new',   <Plus size={15} />,          tc('lead.tabNew', 'New'))}
+              {tab('list',  <List size={15} />,          tc('lead.tabAll', 'Leads'))}
+              {tab('appts', <CalendarClock size={15} />, tc('lead.tabAppts', 'Diary'))}
             </div>
-            {view === 'new'
-              ? <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('list')} />
-              : <OwnerLeads tc={tc} />}
+            {view === 'new'   && <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('list')} />}
+            {view === 'list'  && <OwnerLeads tc={tc} />}
+            {view === 'appts' && <OwnerAppointments tc={tc} />}
           </>
         ) : agent ? (
           <LeadForm agent={agent} tc={tc} />
@@ -289,6 +292,59 @@ function Gate({ onSignInTemp, onSignInOwner, tc }) {
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+// ── Owner: what he must attend next, on the phone he is holding ─────────────
+// The /admin Appointments tab is the same endpoint and the same component; only
+// the layout differs, because a forecourt is not a desk.
+function OwnerAppointments({ tc }) {
+  const [appts, setAppts] = useState(null);   // null = still loading
+  const [err, setErr]     = useState('');
+
+  const load = useCallback(async () => {
+    setErr('');
+    const r = await adminFetch('/appointments');
+    if (!r || !Array.isArray(r.appointments)) {
+      setAppts([]);
+      setErr(tc('lead.loadFailedAppts', 'Could not load your diary. Pull to refresh, or sign in again.'));
+      return;
+    }
+    setAppts(r.appointments);
+  }, [tc]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (appts === null) {
+    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
+      <Loader2 size={16} className="spin" />{tc('lead.loadingAppts', 'Loading your diary…')}
+    </div>;
+  }
+
+  if (err) {
+    return <div style={{ ...card, textAlign: 'center', padding: '2rem 1.1rem' }}>
+      <p style={{ fontSize: 14, color: '#991b1b', margin: 0, lineHeight: 1.6 }}>{err}</p>
+      <button onClick={load} style={{
+        marginTop: 14, background: 'none', border: 'none', color: ORANGE, fontSize: 13,
+        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+      }}>{tc('lead.retry', 'Try again')}</button>
+    </div>;
+  }
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: 10, padding: '0 2px' }}>
+        <span style={{ fontSize: 12.5, color: '#666', fontWeight: 600 }}>
+          {appts.length} {appts.length === 1 ? tc('lead.apptOne', 'appointment') : tc('lead.apptMany', 'appointments')}
+        </span>
+        <button onClick={load} style={{
+          background: 'none', border: 'none', color: ORANGE, fontSize: 12.5, fontWeight: 700,
+          cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+        }}>{tc('lead.refresh', 'Refresh')}</button>
+      </div>
+      <AppointmentList appointments={appts} tc={tc} compact />
     </div>
   );
 }
