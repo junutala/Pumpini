@@ -15,6 +15,7 @@
 // stacked cards with the phone number as a tap-to-call target; a desk gets the
 // table. The same fields either way.
 import { MapPin, Phone, CalendarClock, ChevronRight } from 'lucide-react';
+import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
 
 const ORANGE = '#FF6B00';
 
@@ -27,10 +28,8 @@ const fmtWhen = (d) => new Date(d).toLocaleString('en-IN', {
 const isToday = (d) =>
   new Date(d).toLocaleDateString('en-CA', IST) === new Date().toLocaleDateString('en-CA', IST);
 
-// A lead filed by a refusal CTA has NO owner name — Uma, Selvan and Tnccf are all
-// like that, and they are exactly the ones worth an appointment. The outlet off
-// the board stands in.
-const who = (a) => a.owner_name || a.outlet_name || null;
+// Naming and dialling both come from lib/lead, so this screen and the rail
+// cannot disagree about a lead with no owner or no number.
 
 const TodayBadge = ({ tc }) => (
   <span style={{
@@ -87,17 +86,17 @@ export default function AppointmentList({ appointments, tc, compact = false, onO
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <span style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.3 }}>
-                {who(a) || <span style={{ color: '#ccc' }}>—</span>}
+                {leadTitle(a) || <span style={{ color: '#ccc' }}>—</span>}
               </span>
               {clickable && <ChevronRight size={17} color="#c4c4c4" style={{ flexShrink: 0 }} />}
             </div>
-            {a.owner_name && a.outlet_name && (
-              <div style={{ fontSize: 12.5, color: '#888', marginTop: 1 }}>{a.outlet_name}</div>
+            {outletSubtitle(a) && (
+              <div style={{ fontSize: 12.5, color: '#888', marginTop: 1 }}>{outletSubtitle(a)}</div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 9 }}>
-              {a.phone && (
-                <a href={`tel:${a.phone}`} onClick={stop} style={{
+              {phoneHref(a) && (
+                <a href={phoneHref(a)} onClick={stop} style={{
                   color: '#1a1a1a', textDecoration: 'none', fontWeight: 700, fontSize: 14,
                   fontVariantNumeric: 'tabular-nums',
                   display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -134,14 +133,14 @@ export default function AppointmentList({ appointments, tc, compact = false, onO
                 {isToday(a.appointment_at) && <span style={{ marginLeft: 7 }}><TodayBadge tc={tc} /></span>}
               </td>
               <td style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13.5 }}>
-                {who(a) || <span style={{ color: '#ccc' }}>—</span>}
-                {a.owner_name && a.outlet_name && (
-                  <span style={{ display: 'block', fontWeight: 400, fontSize: 12, color: '#888' }}>{a.outlet_name}</span>
+                {leadTitle(a) || <span style={{ color: '#ccc' }}>—</span>}
+                {outletSubtitle(a) && (
+                  <span style={{ display: 'block', fontWeight: 400, fontSize: 12, color: '#888' }}>{outletSubtitle(a)}</span>
                 )}
               </td>
               <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
-                {a.phone
-                  ? <a href={`tel:${a.phone}`} onClick={stop} style={{ color: '#1a1a1a', textDecoration: 'none' }}>{a.phone}</a>
+                {phoneHref(a)
+                  ? <a href={phoneHref(a)} onClick={stop} style={{ color: '#1a1a1a', textDecoration: 'none' }}>{a.phone}</a>
                   : <span style={{ color: '#ccc' }}>—</span>}
               </td>
               <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
