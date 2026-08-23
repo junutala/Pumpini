@@ -5,8 +5,14 @@
 // longer period — first dip to last dip, with every delivery and sale between —
 // never a sum of the daily variances, which only piles up per-shift noise instead
 // of letting it cancel.
+//
+// A THIRD tile — the Drift report — answers a different question over a period the
+// owner picks: how much fuel went missing per litre SOLD, with delivery gains taken
+// out. It lives here rather than on a page of its own because it reconciles the same
+// tanks from the same dips; a second Stock screen is exactly the drift the cardinal
+// rule forbids.
 import { useState, useEffect, Fragment } from 'react';
-import { AlertTriangle, CheckCircle, Save } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Save, Play } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -24,6 +30,11 @@ const lastOfMonth  = d => {
   return `${d.slice(0, 7)}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
 };
 const minDate = (a, b) => (a && b) ? (a < b ? a : b) : (a || b);
+const daysBefore = (d, n) => {
+  const t = new Date(`${d}T00:00:00`); t.setDate(t.getDate() - n);
+  return t.toLocaleDateString('en-CA');
+};
+const signed = n => `${Number(n || 0) > 0 ? '+' : ''}${L(n)}`;
 
 export default function StockRecoPage() {
   const { user, station } = useAuth();
@@ -40,6 +51,16 @@ export default function StockRecoPage() {
   const [tol, setTol]       = useState({});
   const [savingTol, setSavingTol] = useState(false);
 
+  // Drift report — deliberately NOT auto-loaded. It walks every shift in the period
+  // against every tank, which is a far heavier read than the two tiles above; firing
+  // it on page load would tax a screen most people open to check one day. On demand
+  // means on demand.
+  const [dFrom, setDFrom]   = useState('');
+  const [dTo, setDTo]       = useState('');
+  const [drift, setDrift]   = useState(null);
+  const [dBusy, setDBusy]   = useState(false);
+  const [dErr, setDErr]     = useState('');
+
   // Open on the last day that HAS readings, not on today. Today is usually empty —
   // a screen full of dashes reads as "broken" rather than "nothing recorded yet".
   const loadLastDay = async () => {
@@ -48,6 +69,10 @@ export default function StockRecoPage() {
     const d = r?.last_day || today();
     setLastDay(r?.last_day || '');
     setDate(p => p || d);
+    // Default to the 60 days ending on the last day that HAS dips — the same reason
+    // the day tile does not open on today: a period of empty days reads as a fault.
+    setDTo(p => p || d);
+    setDFrom(p => p || daysBefore(d, 60));
   };
   const loadTol = async () => {
     if (!stationId) return;
@@ -98,6 +123,20 @@ export default function StockRecoPage() {
       reload();
     } catch (e) { alert(e.response?.data?.error || e.error || tc('streco.failed', 'Failed')); }
     setBusy(false);
+  };
+
+  const runDrift = async () => {
+    if (!stationId || !dFrom || !dTo) return;
+    if (dFrom > dTo) { setDErr(tc('streco.driftBadRange', 'The “from” date is after the “to” date.')); return; }
+    setDBusy(true); setDErr('');
+    try {
+      const r = await api.get('/tank-reco/drift', { params: { station_id: stationId, date_from: dFrom, date_to: dTo } });
+      setDrift(r);
+    } catch (e) {
+      setDrift(null);
+      setDErr(e.response?.data?.error || e.error || tc('streco.failed', 'Failed'));
+    }
+    setDBusy(false);
   };
 
   const saveTol = async () => {
@@ -246,6 +285,126 @@ export default function StockRecoPage() {
           </div>
         )}
       </div>
+      {/* ── Tile 3: Drift report — the real loss over a period the owner picks ── */}
+      <div className="card" style={{ marginTop: '1.25rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '0.75rem', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{tc('streco.driftTitle', 'Drift report')}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2, maxWidth: 620 }}>
+              {tc('streco.driftHint', 'Loss per litre SOLD, over a period you choose. Delivery shifts are shown separately and never netted off — every outlet gains on decant, and averaging that against ordinary days hides a real loss.')}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div><label className="label">{tc('streco.from', 'From')}</label>
+              <input type="date" className="input" style={{ width: 150 }} value={dFrom} max={today()} onChange={e => setDFrom(e.target.value)} /></div>
+            <div><label className="label">{tc('streco.to', 'To')}</label>
+              <input type="date" className="input" style={{ width: 150 }} value={dTo} max={today()} onChange={e => setDTo(e.target.value)} /></div>
+            <button className="btn btn-primary" onClick={runDrift} disabled={dBusy || !dFrom || !dTo}>
+              <Play size={14} />{dBusy ? tc('streco.running', 'Running…') : tc('streco.run', 'Run report')}
+            </button>
+          </div>
+        </div>
+
+        {dErr && <div style={{ color: '#dc2626', fontSize: 13, padding: '4px 2px 10px' }}>{dErr}</div>}
+
+        {!drift && !dBusy && !dErr && (
+          <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem', fontSize: 13 }}>
+            {tc('streco.driftIdle', 'Choose a period and press Run report.')}
+          </div>
+        )}
+
+        {drift && (
+          <>
+            <div className="table-wrap">
+              <table className="dms-table">
+                <thead>
+                  <tr>
+                    <th>{tc('streco.colTank', 'Tank')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colShifts', 'Shifts')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colSold', 'Litres sold')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colDrift', 'Drift')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colDriftPct', '% of sold')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colPerShift', 'Per shift')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colDelGain', 'Delivery gain')}</th>
+                    <th style={{ textAlign: 'right' }}>{tc('streco.colEvents', 'Excluded')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(drift.tanks || []).length === 0 && (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem' }}>
+                      {tc('streco.driftEmpty', 'No shift in this period has both an opening and a closing dip, so there is nothing to reconcile.')}
+                    </td></tr>
+                  )}
+                  {(drift.tanks || []).map(r => {
+                    const loss = r.drift_ltrs < 0;
+                    return (
+                      <tr key={r.tank_number}>
+                        <td style={{ fontWeight: 600 }}>T{r.tank_number}{' '}
+                          <span style={{ color: 'var(--text-3)', fontWeight: 400, fontSize: 12 }}>{r.fuel_type}</span></td>
+                        <td className="num" style={{ textAlign: 'right' }}>{r.trading_shifts}</td>
+                        <td className="num" style={{ textAlign: 'right' }}>{L(r.litres_sold)}</td>
+                        <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: loss ? '#dc2626' : '#16a34a' }}>{signed(r.drift_ltrs)}</td>
+                        <td className="num" style={{ textAlign: 'right', fontWeight: 700, color: loss ? '#dc2626' : '#16a34a' }}>
+                          {r.drift_pct_of_sales == null ? '—' : `${r.drift_pct_of_sales > 0 ? '+' : ''}${r.drift_pct_of_sales}%`}</td>
+                        <td className="num" style={{ textAlign: 'right' }}>{r.drift_per_shift == null ? '—' : signed(r.drift_per_shift)}</td>
+                        <td className="num" style={{ textAlign: 'right', color: 'var(--text-3)' }}>
+                          {r.delivery_shifts === 0 ? '—'
+                            : <>{signed(r.delivery_gain_ltrs)} <span style={{ fontSize: 11 }}>
+                                {tc('streco.overNShifts', 'over {n}').replace('{n}', r.delivery_shifts)}</span></>}
+                        </td>
+                        <td className="num" style={{ textAlign: 'right', color: r.recording_events ? '#d97706' : 'var(--text-3)' }}>
+                          {r.recording_events || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                  {(drift.tanks || []).length > 0 && (() => {
+                    const t = drift.totals || {};
+                    const loss = (t.drift_ltrs || 0) < 0;
+                    return (
+                      <tr style={{ background: '#f8fafc', borderTop: '2px solid #e2e8f0' }}>
+                        <td style={{ fontWeight: 800 }}>{tc('streco.wholeOutlet', 'Whole outlet')}</td>
+                        <td />
+                        <td className="num" style={{ textAlign: 'right', fontWeight: 700 }}>{L(t.litres_sold)}</td>
+                        <td className="num" style={{ textAlign: 'right', fontWeight: 800, color: loss ? '#dc2626' : '#16a34a' }}>{signed(t.drift_ltrs)}</td>
+                        <td className="num" style={{ textAlign: 'right', fontWeight: 800, color: loss ? '#dc2626' : '#16a34a' }}>
+                          {t.drift_pct_of_sales == null ? '—' : `${t.drift_pct_of_sales > 0 ? '+' : ''}${t.drift_pct_of_sales}%`}</td>
+                        <td />
+                        <td className="num" style={{ textAlign: 'right', color: 'var(--text-3)' }}>{signed(t.delivery_gain_ltrs)}</td>
+                        <td className="num" style={{ textAlign: 'right', color: t.recording_events ? '#d97706' : 'var(--text-3)' }}>{t.recording_events || '—'}</td>
+                      </tr>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+
+            {/* COVERAGE IS PART OF THE ANSWER. A tank reconciled on a third of its
+                shifts can read clean and mean nothing — the unmeasured shifts are not
+                the same as measured-and-fine, and the number above must never be read
+                without knowing how much of the period it actually covers. */}
+            <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '10px 14px', lineHeight: 1.7 }}>
+              {drift.covered_from && (
+                <div><strong>{tc('streco.driftPeriod', 'Period covered')}:</strong>{' '}
+                  {human(drift.covered_from)} — {human(drift.covered_to)}</div>
+              )}
+              {drift.coverage && (
+                <div>
+                  <strong>{tc('streco.driftCoverage', 'Coverage')}:</strong>{' '}
+                  <span style={{ color: (drift.coverage.pct ?? 0) < 70 ? '#d97706' : undefined, fontWeight: (drift.coverage.pct ?? 0) < 70 ? 700 : undefined }}>
+                    {tc('streco.driftCoverageVal', '{r} of {s} shifts reconcilable ({p}%)')
+                      .replace('{r}', drift.coverage.reconcilable).replace('{s}', drift.coverage.shifts)
+                      .replace('{p}', drift.coverage.pct ?? 0)}
+                  </span>{' '}
+                  {tc('streco.driftCoverageNote', '— a shift with no closing dip is unmeasured, which is not the same as measured-and-fine.')}
+                </div>
+              )}
+              <div>{tc('streco.driftExcludedNote', '“Excluded” counts shifts whose variance exceeds 1,000 L — almost always a tanker booked into the wrong shift, which produces a matching +/− pair on adjacent days and says nothing about fuel. They are left out of the drift figure and counted here rather than dropped quietly.')}</div>
+              <div>{tc('streco.driftPctNote', 'The percentage is of litres SOLD, not of what sits in the tank: loss scales with throughput, so the yardstick must too.')}</div>
+            </div>
+          </>
+        )}
+      </div>
+
     </AppShell>
   );
 }
