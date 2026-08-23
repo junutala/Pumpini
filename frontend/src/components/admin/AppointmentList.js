@@ -14,7 +14,7 @@
 // `compact` is a LAYOUT switch only — never a different set of rows. A phone gets
 // stacked cards with the phone number as a tap-to-call target; a desk gets the
 // table. The same fields either way.
-import { MapPin, Phone, CalendarClock } from 'lucide-react';
+import { MapPin, Phone, CalendarClock, ChevronRight } from 'lucide-react';
 
 const ORANGE = '#FF6B00';
 
@@ -39,9 +39,10 @@ const TodayBadge = ({ tc }) => (
   }}>{tc('adminp.today', 'TODAY')}</span>
 );
 
-const MapLink = ({ a, tc, size = 11 }) => (
+const MapLink = ({ a, tc, size = 11, onClick }) => (
   a.lat != null && a.lng != null ? (
     <a href={`https://www.google.com/maps?q=${a.lat},${a.lng}`} target="_blank" rel="noreferrer"
+       onClick={onClick}
        style={{ color: ORANGE, fontWeight: 700, textDecoration: 'none',
                 display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12 }}>
       <MapPin size={size} />{tc('adminp.colMap', 'Map')}
@@ -49,7 +50,13 @@ const MapLink = ({ a, tc, size = 11 }) => (
   ) : <span style={{ color: '#ccc' }}>—</span>
 );
 
-export default function AppointmentList({ appointments, tc, compact = false }) {
+export default function AppointmentList({ appointments, tc, compact = false, onOpen }) {
+  // Opening a row jumps to that lead's card, so the history can be read on the
+  // way in. The phone number and the map link keep their own jobs — without
+  // stopPropagation a thumb aiming at "call" would navigate away instead.
+  const open = (id) => (e) => { e.stopPropagation(); onOpen?.(id); };
+  const stop = (e) => e.stopPropagation();
+  const clickable = !!onOpen;
   if (!appointments.length) {
     return (
       <div style={{
@@ -63,17 +70,26 @@ export default function AppointmentList({ appointments, tc, compact = false }) {
     return (
       <div style={{ display: 'grid', gap: 9 }}>
         {appointments.map(a => (
-          <div key={a.lead_id} style={{
-            background: '#fff', borderRadius: 12, border: '1px solid #e5e3de', padding: '0.9rem 1rem',
-          }}>
+          <div key={a.lead_id}
+            onClick={clickable ? open(a.lead_id) : undefined}
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') open(a.lead_id)(e); } : undefined}
+            style={{
+              background: '#fff', borderRadius: 12, border: '1px solid #e5e3de', padding: '0.9rem 1rem',
+              cursor: clickable ? 'pointer' : 'default',
+            }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
               <CalendarClock size={14} color="#3730a3" style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 13.5, fontWeight: 800, color: '#3730a3' }}>{fmtWhen(a.appointment_at)}</span>
               {isToday(a.appointment_at) && <TodayBadge tc={tc} />}
             </div>
 
-            <div style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.3 }}>
-              {who(a) || <span style={{ color: '#ccc' }}>—</span>}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.3 }}>
+                {who(a) || <span style={{ color: '#ccc' }}>—</span>}
+              </span>
+              {clickable && <ChevronRight size={17} color="#c4c4c4" style={{ flexShrink: 0 }} />}
             </div>
             {a.owner_name && a.outlet_name && (
               <div style={{ fontSize: 12.5, color: '#888', marginTop: 1 }}>{a.outlet_name}</div>
@@ -81,13 +97,13 @@ export default function AppointmentList({ appointments, tc, compact = false }) {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 9 }}>
               {a.phone && (
-                <a href={`tel:${a.phone}`} style={{
+                <a href={`tel:${a.phone}`} onClick={stop} style={{
                   color: '#1a1a1a', textDecoration: 'none', fontWeight: 700, fontSize: 14,
                   fontVariantNumeric: 'tabular-nums',
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                 }}><Phone size={13} color="#888" />{a.phone}</a>
               )}
-              <MapLink a={a} tc={tc} size={12} />
+              <MapLink a={a} tc={tc} size={12} onClick={stop} />
             </div>
           </div>
         ))}
@@ -110,7 +126,9 @@ export default function AppointmentList({ appointments, tc, compact = false }) {
         </tr></thead>
         <tbody>
           {appointments.map(a => (
-            <tr key={a.lead_id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+            <tr key={a.lead_id}
+              onClick={clickable ? open(a.lead_id) : undefined}
+              style={{ borderBottom: '1px solid #f0f0f0', cursor: clickable ? 'pointer' : 'default' }}>
               <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                 <span style={{ fontWeight: 700, fontSize: 13.5 }}>{fmtWhen(a.appointment_at)}</span>
                 {isToday(a.appointment_at) && <span style={{ marginLeft: 7 }}><TodayBadge tc={tc} /></span>}
@@ -123,11 +141,11 @@ export default function AppointmentList({ appointments, tc, compact = false }) {
               </td>
               <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 13, whiteSpace: 'nowrap' }}>
                 {a.phone
-                  ? <a href={`tel:${a.phone}`} style={{ color: '#1a1a1a', textDecoration: 'none' }}>{a.phone}</a>
+                  ? <a href={`tel:${a.phone}`} onClick={stop} style={{ color: '#1a1a1a', textDecoration: 'none' }}>{a.phone}</a>
                   : <span style={{ color: '#ccc' }}>—</span>}
               </td>
               <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                <MapLink a={a} tc={tc} />
+                <MapLink a={a} tc={tc} onClick={stop} />
               </td>
             </tr>
           ))}
