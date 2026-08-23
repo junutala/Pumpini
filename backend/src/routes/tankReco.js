@@ -504,8 +504,141 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
   } catch (e) { next(e); }
 });
 
+// ── DRIFT REPORT — the real loss, with delivery gains taken out ──────────────
+//
+// GET /api/tank-reco/drift?station_id=&days=60
+//
+// Owner-set 2026-08-23, after an analysis that misled him twice before it was
+// right. Three lessons are baked in, each because the naive version was wrong:
+//
+// 1. A DELIVERY SHIFT IS NOT A VARIANCE. Every outlet gains on decant — fuel
+//    expands in transit and the oil company allows a margin. Measured across
+//    Jul-Aug 2026: Kamala +35 L, Highway +76 L, Adhoc +64 L per delivery
+//    tank-shift, positive on all fourteen without exception, exactly as the
+//    managers describe ("after the tank unloads the quantity increases by 200 to
+//    300 litres over book"). Mixing those gains in with ordinary days averages a
+//    systematic positive against a systematic negative and reports the sum as if
+//    it were one number: it hid Highway's loss and understated it by half.
+//    So delivery shifts are reported SEPARATELY and never netted off.
+//
+// 2. DRIFT IS A PERCENTAGE OF LITRES SOLD, NOT OF WHAT IS IN THE TANK. The
+//    per-shift alert measures tolerance against (opening + deliveries), so a
+//    nearly-full tank on a quiet shift gets a huge allowance. Highway lost 23 L
+//    per tank-shift for 53 straight shifts and never once breached. Loss scales
+//    with throughput; the denominator has to as well.
+//
+// 3. RECORDING EVENTS ARE COUNTED, NEVER SILENTLY DROPPED. A tanker booked into
+//    the wrong shift produces paired +/-15,000 L swings on adjacent days that
+//    cancel out and mean nothing about fuel. They are excluded from the drift
+//    figure and REPORTED AS A COUNT, because a report that quietly discards its
+//    largest numbers is how somebody concludes the wrong thing.
+//
+// Read-only. Computes from dips, deliveries and dispense events; writes nothing.
+const DRIFT_EVENT_LTRS = 1000;   // beyond this, a recording event, not drift
+
+async function computeDrift(station_id, days) {
+  const { rows } = await pool.query(`
+    WITH per AS (
+      SELECT t.id AS tank_id, t.tank_number, t.fuel_type, s.date,
+        op.volume_ltrs AS opening, cl.volume_ltrs AS closing,
+        COALESCE((SELECT SUM(COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs))
+                    FROM fuel_deliveries fd
+                   WHERE fd.tank_id = t.id
+                     AND fd.received_at >  op.recorded_at
+                     AND fd.received_at <= cl.recorded_at), 0) AS deliv,
+        COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
+                    JOIN nozzles n ON n.id = de.nozzle_id
+                   WHERE de.shift_id = s.id AND n.tank_id = t.id
+                     AND NOT COALESCE(de.is_voided, FALSE)), 0) AS sales
+      FROM shifts s
+      JOIN tanks t ON t.station_id = s.station_id
+      LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings d
+         WHERE d.shift_id = s.id AND d.tank_id = t.id AND d.reading_type = 'opening'
+         ORDER BY recorded_at LIMIT 1) op ON TRUE
+      LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings d
+         WHERE d.shift_id = s.id AND d.tank_id = t.id AND d.reading_type = 'closing'
+         ORDER BY recorded_at DESC LIMIT 1) cl ON TRUE
+      WHERE s.station_id = $1
+        AND s.date >= (CURRENT_DATE - make_interval(days => $2))
+        AND op.volume_ltrs IS NOT NULL AND cl.volume_ltrs IS NOT NULL
+    ),
+    v AS (SELECT *, (closing - (opening + deliv - sales)) AS var, (deliv > 0) AS had_delivery FROM per)
+    SELECT tank_number, fuel_type,
+      -- ORDINARY TRADING SHIFTS — this is the real drift
+      COUNT(*) FILTER (WHERE NOT had_delivery AND abs(var) <= $3)                    AS trading_shifts,
+      COALESCE(SUM(sales) FILTER (WHERE NOT had_delivery AND abs(var) <= $3), 0)     AS trading_sold,
+      COALESCE(SUM(var)   FILTER (WHERE NOT had_delivery AND abs(var) <= $3), 0)     AS trading_drift,
+      -- DELIVERY SHIFTS — expected to gain; reported, never netted off
+      COUNT(*) FILTER (WHERE had_delivery AND abs(var) <= $3)                        AS delivery_shifts,
+      COALESCE(SUM(var) FILTER (WHERE had_delivery AND abs(var) <= $3), 0)           AS delivery_gain,
+      -- RECORDING EVENTS — a tanker in the wrong shift; excluded, but counted
+      COUNT(*) FILTER (WHERE abs(var) > $3)                                          AS recording_events,
+      COALESCE(SUM(var) FILTER (WHERE abs(var) > $3), 0)                             AS recording_ltrs
+    FROM v GROUP BY tank_number, fuel_type ORDER BY tank_number`,
+    [station_id, days, DRIFT_EVENT_LTRS]);
+
+  // Coverage matters as much as the number. A tank reconciled on a third of its
+  // shifts can read clean and mean nothing — the shifts with no closing dip are
+  // simply unmeasured, and that is not the same as measured-and-fine.
+  const { rows: cov } = await pool.query(`
+    SELECT COUNT(*)::int AS shifts,
+           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM dipstick_readings d
+                WHERE d.shift_id = s.id AND d.reading_type = 'opening')
+             AND EXISTS (SELECT 1 FROM dipstick_readings d
+                WHERE d.shift_id = s.id AND d.reading_type = 'closing'))::int AS reconcilable
+      FROM shifts s
+     WHERE s.station_id = $1 AND s.date >= (CURRENT_DATE - make_interval(days => $2))`,
+    [station_id, days]);
+
+  const num = v => (v == null ? 0 : +parseFloat(v).toFixed(2));
+  const tanks = rows.map(r => {
+    const sold = num(r.trading_sold), drift = num(r.trading_drift);
+    const delShifts = Number(r.delivery_shifts) || 0;
+    return {
+      tank_number: r.tank_number, fuel_type: r.fuel_type,
+      trading_shifts: Number(r.trading_shifts) || 0,
+      litres_sold: sold,
+      drift_ltrs: drift,
+      // THE HEADLINE. Loss as a share of what was sold, delivery gains excluded.
+      drift_pct_of_sales: sold > 0 ? +(100 * drift / sold).toFixed(2) : null,
+      drift_per_shift: r.trading_shifts > 0 ? +(drift / r.trading_shifts).toFixed(1) : null,
+      delivery_shifts: delShifts,
+      delivery_gain_ltrs: num(r.delivery_gain),
+      delivery_gain_per_shift: delShifts > 0 ? +(num(r.delivery_gain) / delShifts).toFixed(1) : null,
+      recording_events: Number(r.recording_events) || 0,
+      recording_ltrs: num(r.recording_ltrs),
+    };
+  });
+
+  const sold  = tanks.reduce((a, t) => a + t.litres_sold, 0);
+  const drift = tanks.reduce((a, t) => a + t.drift_ltrs, 0);
+  const c = cov[0] || { shifts: 0, reconcilable: 0 };
+  return {
+    days, tanks,
+    totals: {
+      litres_sold: +sold.toFixed(2),
+      drift_ltrs:  +drift.toFixed(2),
+      drift_pct_of_sales: sold > 0 ? +(100 * drift / sold).toFixed(2) : null,
+      delivery_gain_ltrs: +tanks.reduce((a, t) => a + t.delivery_gain_ltrs, 0).toFixed(2),
+      recording_events:   tanks.reduce((a, t) => a + t.recording_events, 0),
+    },
+    coverage: {
+      shifts: c.shifts, reconcilable: c.reconcilable,
+      pct: c.shifts > 0 ? +(100 * c.reconcilable / c.shifts).toFixed(1) : null,
+    },
+  };
+}
+
+router.get('/drift', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days || 60, 10)));
+    res.json(await computeDrift(req.query.station_id, days));
+  } catch (e) { next(e); }
+});
+
 module.exports = router;
 module.exports.finalizeShiftReco = finalizeShiftReco;
+module.exports.computeDrift = computeDrift;
 module.exports.computePeriodReco = computePeriodReco;
 module.exports.computeLiveTankStatus = computeLiveTankStatus;
 module.exports.computeShiftReco = computeShiftReco;
