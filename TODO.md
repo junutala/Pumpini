@@ -311,6 +311,34 @@ is obvious and deletable in a click. That is cleanup rather than prevention, and
 with one or two temps he personally knows it may genuinely be enough. Decide by
 whether he expects to hire and release people repeatedly.
 
+### 18a-bis. No way to add a phone to an existing lead (hit 23-Aug-2026)
+
+The owner came back from Arcot Road with two manager numbers — Satish 9585700617
+for Selvan, Arul 9751473216 for Tnccf — and **could not enter them**. A lead filed
+by a refusal CTA has no number by design, and nothing in the UI edits one
+afterwards: the rail card shows the phone but cannot change it, and the /admin
+Leads table exposes only status and notes. He had to ask for a SQL update, which
+is not a workflow.
+
+The backend already allows it — `PATCH /superadmin/leads/:id` accepts `phone` and
+`name` (both are in `LEAD_FIELDS`). So this is a UI gap only: an editable phone
+(and name) on the rail card, writing through the PATCH that already exists. No
+new endpoint, no new writer.
+
+Two things settled while this came up, so they are not re-litigated:
+
+- **The name convention is the owner's:** *"that's the same style I am entering
+  if the manager number is given"* — `Satish - Manager`, with the role in the
+  text. `leads.name` is nominally the OWNER; the suffix is what stops a manager
+  being read as one later.
+- **A separate owner-number field was deliberately NOT added.** Owner,
+  23-Aug: *"We will think later how to add owner number later, if required."*
+  Do not build a second phone column on a hunch — one number plus an honest label
+  is holding fine.
+
+Uma service station stays deliberately blank: the attendant did not share a
+number. The card now reads "No number yet" rather than offering a dead link.
+
 ### 18b. Language selector on /lead — deferred, may never be needed
 
 Owner, 22-Aug: *"I dont intend to hire a doctorate in computer applications guy
