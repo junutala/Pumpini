@@ -108,7 +108,7 @@ router.post('/', limitSubmit, async (req, res, next) => {
   try {
     const {
       name, station_name, city, state, phone, email, message, company,
-      source, outcome, lat, lng, location_accuracy, captured_by,
+      source, outcome, lat, lng, location_accuracy, captured_by, appointment_at,
     } = req.body;
 
     // Honeypot — bots fill hidden "company" field; humans never see it.
@@ -240,10 +240,13 @@ router.post('/', limitSubmit, async (req, res, next) => {
         await client.query('UPDATE leads SET status=$2 WHERE id=$1', [leadId, OUTCOMES[kind].status]);
       }
 
-      if (logOk && note) {
+      if (logOk && (note || appointment_at)) {
         await addInteraction({
           leadId, note, capturedBy: agent,
           lat: coords.lat, lng: coords.lng, accuracy: coords.acc,
+          // "Come back Monday at 2" is the single most useful thing a temp can
+          // bring home from a visit that produced no number.
+          appointmentAt: appointment_at,
           client,                      // compose inside this transaction
         });
       }

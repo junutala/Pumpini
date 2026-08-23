@@ -13,7 +13,7 @@
 // The table on the Leads tab is the overview; this is the working surface. Both
 // read the same GET /leads and write through the same PATCH — no second writer.
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
@@ -195,6 +195,7 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
 function LeadLog({ lead, adminFetch, tc, onChanged }) {
   const [items, setItems]   = useState(null);   // null = still loading
   const [note, setNote]     = useState('');
+  const [appt, setAppt]     = useState('');   // datetime-local string
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState('');
 
@@ -207,7 +208,9 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
 
   const add = async () => {
     const body = note.trim();
-    if (!body) return;
+    // An appointment with no words is still worth filing — "seeing him Tuesday"
+    // is the note.
+    if (!body && !appt) return;
     setErr('');
     setSaving(true);
     try {
@@ -218,7 +221,7 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
       // failure, not an empty success — say so rather than clearing the note the
       // owner just dictated.
       if (!data || data.error) throw new Error(data?.error || tc('lead.saveFailed', 'Could not save. Try again.'));
-      setNote('');
+      setNote(''); setAppt('');
       await load();
       onChanged?.();          // refresh counts on the card and the table
     } catch (e) {
@@ -240,13 +243,15 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
         <InteractionRecorder
           value={note} onChange={setNote} tc={tc}
           placeholder={tc('lead.addInteractionPlaceholder', 'What was said this time. Record it, or type it here.')}
+          appointment={appt} onAppointmentChange={setAppt}
         />
         {err && <p style={{ color: '#b91c1c', fontSize: 12.5, margin: '7px 0 0' }}>{err}</p>}
-        <button onClick={add} disabled={!note.trim() || saving} style={{
+        <button onClick={add} disabled={(!note.trim() && !appt) || saving} style={{
           width: '100%', marginTop: 12, height: 44, borderRadius: 9, border: 'none', fontFamily: 'inherit',
-          background: note.trim() && !saving ? ORANGE : '#e5e3de',
-          color: note.trim() && !saving ? '#fff' : '#999',
-          fontSize: 14.5, fontWeight: 800, cursor: note.trim() && !saving ? 'pointer' : 'not-allowed',
+          background: (note.trim() || appt) && !saving ? ORANGE : '#e5e3de',
+          color: (note.trim() || appt) && !saving ? '#fff' : '#999',
+          fontSize: 14.5, fontWeight: 800,
+          cursor: (note.trim() || appt) && !saving ? 'pointer' : 'not-allowed',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
         }}>
           {saving ? <><Loader2 size={16} className="spin" />{tc('lead.saving', 'Saving…')}</> : tc('lead.addToLog', 'ADD TO LOG')}
@@ -276,6 +281,15 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
             {fmtDateTime(it.created_at)}{it.captured_by ? ` · ${it.captured_by}` : ''}
           </div>
           <div style={{ fontSize: 14.5, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{it.note}</div>
+          {it.appointment_at && (
+            <div style={{
+              marginTop: 7, display: 'inline-flex', alignItems: 'center', gap: 5,
+              background: '#eef2ff', color: '#3730a3', borderRadius: 7,
+              padding: '3px 9px', fontSize: 12, fontWeight: 700,
+            }}>
+              <CalendarClock size={12} />{fmtDateTime(it.appointment_at)}
+            </div>
+          )}
           {it.lat != null && it.lng != null && (
             <a href={`https://www.google.com/maps?q=${it.lat},${it.lng}`} target="_blank" rel="noreferrer"
                style={{ color: ORANGE, fontWeight: 700, textDecoration: 'none', fontSize: 12,

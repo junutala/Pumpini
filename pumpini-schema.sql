@@ -1408,3 +1408,15 @@ ALTER TABLE public.leads ALTER COLUMN phone DROP NOT NULL;
 
 -- No DDL for the two new statuses: `leads.status` carries a default but no CHECK
 -- constraint (verified against prod), so 'refused' and 'revisit' store as-is.
+
+-- An appointment is a fact about the CONVERSATION that agreed it, so it lives on
+-- the interaction rather than on the lead. Rescheduling is then just a newer
+-- interaction carrying a newer date — the old one stops being "latest" and drops
+-- out of the Appointments tab without anybody deleting anything, and the history
+-- of what was agreed when stays readable.
+-- Run 23-Aug-2026. Idempotent.
+ALTER TABLE public.lead_interactions
+  ADD COLUMN IF NOT EXISTS appointment_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS idx_lead_interactions_appointment
+  ON public.lead_interactions(appointment_at) WHERE appointment_at IS NOT NULL;

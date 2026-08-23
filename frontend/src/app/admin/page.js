@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
          CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox,
-         LayoutGrid, Table2, MapPin } from 'lucide-react';
+         LayoutGrid, Table2, MapPin, CalendarClock } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
 // The owner's working view of the pipeline. The table below stays the
 // overview; both read the same GET /leads and write the same PATCH.
@@ -185,6 +185,7 @@ export default function AdminPage(){
   // 'cards' is the working view (one lead at a time, its interaction log and
   // the recorder); 'table' is the overview. Same data, same writers.
   const [leadView,setLeadView]         = useState('cards');
+  const [appts,setAppts]               = useState([]);
   const [hideClosed,setHideClosed]     = useState(false);
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
@@ -277,6 +278,7 @@ export default function AdminPage(){
     });
     setPlanFeat(pf);
     loadLeads();
+    loadAppts();
   };
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
@@ -296,6 +298,10 @@ export default function AdminPage(){
   };
 
   const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
+  // Already filtered to the future and ordered soonest-first by the server, so
+  // the screen does no date arithmetic of its own — one place decides what
+  // "upcoming" means.
+  const loadAppts = async()=>{ const r=await adminFetch('/appointments'); setAppts(Array.isArray(r?.appointments)?r.appointments:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   // A refused outlet is done with, same as lost — hide it with the rest.
   const LEAD_CLOSED = ['converted','lost','refused'];
@@ -343,6 +349,7 @@ export default function AdminPage(){
     {id:'alertdefs',label:tc('adminp.tabAiChat','AI Chat'),           icon:<Shield size={14}/>},
     {id:'stationusers',label:tc('adminp.tabUsersRoles','Users & Roles'),  icon:<UserPlus size={14}/>},
     {id:'leads',    label:tc('adminp.tabLeads','Leads'),             icon:<Inbox size={14}/>},
+    {id:'appts',    label:tc('adminp.tabAppointments','Appointments'), icon:<CalendarClock size={14}/>},
   ];
 
   const formCities = getCities(form.state||'');
@@ -814,6 +821,66 @@ export default function AdminPage(){
         )}
 
         {/* ── Leads ── */}
+        {/* ── Appointments ── */}
+        {tab==='appts'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
+              <h1 style={{fontSize:'1.4rem',fontWeight:800}}>
+                {tc('adminp.appointmentsHeading','Appointments')}{' '}
+                <span style={{fontSize:14,color:'#888',fontWeight:500}}>({appts.length})</span>
+              </h1>
+              <button style={btn('#fff','#666')} onClick={loadAppts}>{tc('adminp.refresh','Refresh')}</button>
+            </div>
+            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:640}}>
+                <thead><tr style={{background:'#f8f7f5'}}>
+                  {[tc('adminp.colWhen','When'),tc('adminp.colWho','Who'),tc('adminp.colPhone','Phone'),tc('adminp.colMap','Map')].map((h,i)=>(
+                    <th key={i} style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de',whiteSpace:'nowrap'}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {appts.length===0&&<tr><td colSpan={4} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>{tc('adminp.noAppointments','Nothing scheduled')}</td></tr>}
+                  {appts.map(a=>{
+                    // Server-side ordering already puts the soonest first and drops
+                    // anything past, so no date arithmetic happens here.
+                    const when = new Date(a.appointment_at);
+                    const today = when.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'})===new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+                    return (
+                      <tr key={a.lead_id} style={{borderBottom:'1px solid #f0f0f0'}}>
+                        <td style={{padding:'10px 12px',whiteSpace:'nowrap'}}>
+                          <span style={{fontWeight:700,fontSize:13.5}}>
+                            {when.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true})}
+                          </span>
+                          {today&&<span style={{marginLeft:7,fontSize:10.5,fontWeight:800,background:'#fee2e2',color:'#991b1b',borderRadius:99,padding:'1px 7px'}}>{tc('adminp.today','TODAY')}</span>}
+                        </td>
+                        {/* A lead filed by a refusal CTA has no owner name — the
+                            outlet off the board is all there is, and it is enough. */}
+                        <td style={{padding:'10px 12px',fontWeight:600,fontSize:13.5}}>
+                          {a.owner_name||a.outlet_name||<span style={{color:'#ccc'}}>—</span>}
+                          {a.owner_name&&a.outlet_name&&(
+                            <span style={{display:'block',fontWeight:400,fontSize:12,color:'#888'}}>{a.outlet_name}</span>
+                          )}
+                        </td>
+                        <td style={{padding:'10px 12px',fontFamily:'monospace',fontSize:13,whiteSpace:'nowrap'}}>
+                          {a.phone?<a href={`tel:${a.phone}`} style={{color:'#1a1a1a',textDecoration:'none'}}>{a.phone}</a>:<span style={{color:'#ccc'}}>—</span>}
+                        </td>
+                        <td style={{padding:'10px 12px',fontSize:12,whiteSpace:'nowrap'}}>
+                          {a.lat!=null&&a.lng!=null
+                            ? <a href={`https://www.google.com/maps?q=${a.lat},${a.lng}`} target="_blank" rel="noreferrer"
+                                 style={{color:'#FF6B00',fontWeight:700,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3}}>
+                                <MapPin size={11}/>{tc('adminp.colMap','Map')}
+                              </a>
+                            : <span style={{color:'#ccc'}}>—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {tab==='leads'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>
@@ -838,7 +905,7 @@ export default function AdminPage(){
             </div>
             {leadView==='cards'&&(
               <LeadRail leads={sortedLeads} statuses={LEAD_STATUS} adminFetch={adminFetch}
-                        tc={tc} onChanged={loadLeads}/>
+                        tc={tc} onChanged={()=>{loadLeads();loadAppts();}}/>
             )}
 
             {leadView==='table'&&(

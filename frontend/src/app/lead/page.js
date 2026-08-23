@@ -336,6 +336,7 @@ function LeadForm({ agent, tc, onSaved }) {
   const [name, setName]               = useState('');
   const [outlet, setOutlet]           = useState('');
   const [interaction, setInteraction] = useState('');
+  const [appt, setAppt]               = useState('');   // datetime-local string
 
   // 'idle' | 'locating' | 'ok' | 'denied' | 'unsupported' | 'error'
   const [geo, setGeo] = useState({ state: 'idle', lat: null, lng: null, acc: null });
@@ -381,6 +382,9 @@ function LeadForm({ agent, tc, onSaved }) {
           phone: phone || null,
           station_name: outlet.trim() || null,
           message: interaction.trim() || null,
+          // Local wall clock -> a real instant, so the server stores when it
+          // actually is rather than a string whose meaning depends on a device.
+          appointment_at: appt ? new Date(appt).toISOString() : null,
           captured_by: agent,
           // Never partial coordinates — either the fix we got, or nothing.
           lat: geo.state === 'ok' ? geo.lat : null,
@@ -397,7 +401,7 @@ function LeadForm({ agent, tc, onSaved }) {
         : kind === 'absent'  ? tc('lead.savedAbsent',  'Recorded. This outlet is marked for a revisit.')
         : tc('lead.savedOk', 'Lead saved.')
       );
-      setPhone(''); setName(''); setOutlet(''); setInteraction('');
+      setPhone(''); setName(''); setOutlet(''); setInteraction(''); setAppt('');
       locate();                                  // next outlet, next fix
       window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => { setSaved(''); onSaved?.(); }, 2500);
@@ -470,7 +474,8 @@ function LeadForm({ agent, tc, onSaved }) {
       <div style={card}>
         <label style={label}>{tc('lead.interaction', 'Interaction')}</label>
 
-        <InteractionRecorder value={interaction} onChange={setInteraction} tc={tc} onBusy={setRecBusy} />
+        <InteractionRecorder value={interaction} onChange={setInteraction} tc={tc} onBusy={setRecBusy}
+                             appointment={appt} onAppointmentChange={setAppt} />
       </div>
 
 

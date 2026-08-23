@@ -1382,7 +1382,14 @@
     "leadSource_direct": "డైరెక్ట్",
     "emailOrMobile": "ఇమెయిల్ లేదా మొబైల్",
     "leadStatus_refused": "నిరాకరించారు",
-    "leadStatus_revisit": "మళ్ళీ సందర్శించాలి"
+    "leadStatus_revisit": "మళ్ళీ సందర్శించాలి",
+    "tabAppointments": "అపాయింట్‌మెంట్లు",
+    "appointmentsHeading": "అపాయింట్‌మెంట్లు",
+    "colWhen": "ఎప్పుడు",
+    "colWho": "ఎవరు",
+    "today": "ఈరోజు",
+    "noAppointments": "ఏమీ షెడ్యూల్ కాలేదు",
+    "refresh": "రిఫ్రెష్"
   },
   "aichat": {
     "starterTotalSales": "ఈరోజు మొత్తం అమ్మకాలు ఎంత?",
@@ -3153,6 +3160,15 @@
     "ctaAbsent": "మేనేజర్ అందుబాటులో లేరు",
     "ctaAbsentSub": "అడగడానికి ఎవరూ లేరు — మళ్ళీ వెళ్ళడం విలువైనది",
     "savedRefused": "నిరాకరణగా నమోదైంది. మిమ్మల్ని మళ్ళీ ఇక్కడికి పంపము.",
-    "savedAbsent": "నమోదైంది. ఈ అవుట్‌లెట్ మళ్ళీ సందర్శించడానికి గుర్తించబడింది."
+    "savedAbsent": "నమోదైంది. ఈ అవుట్‌లెట్ మళ్ళీ సందర్శించడానికి గుర్తించబడింది.",
+    "appointment": "తదుపరి అపాయింట్‌మెంట్",
+    "optional": "(ఐచ్ఛికం)",
+    "dayToday": "ఈరోజు",
+    "dayTomorrow": "రేపు",
+    "dayAfter": "ఎల్లుండి",
+    "dayMonday": "సోమవారం",
+    "otherTime": "ఇతర…",
+    "clearAppointment": "అపాయింట్‌మెంట్ తొలగించు",
+    "apptOnlyNote": "అపాయింట్‌మెంట్ నిర్ణయించబడింది."
   }
 }
