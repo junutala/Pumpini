@@ -3138,8 +3138,8 @@
     "filedOn": "Filed",
     "capturedBy": "by",
     "openMap": "Open in Maps",
-    "tabNew": "New Lead",
-    "tabAll": "All Leads",
+    "tabNew": "New",
+    "tabAll": "Leads",
     "doorStaff": "Field staff",
     "doorOwner": "Owner",
     "ownerSignIn": "Owner sign-in",
@@ -3167,6 +3167,11 @@
     "clearAppointment": "Clear appointment",
     "apptOnlyNote": "Appointment set.",
     "pickTimeToo": "Now pick a time.",
-    "apptPast": "That time has passed — pick another."
+    "apptPast": "That time has passed — pick another.",
+    "tabAppts": "Diary",
+    "loadingAppts": "Loading your diary…",
+    "loadFailedAppts": "Could not load your diary. Pull to refresh, or sign in again.",
+    "apptOne": "appointment",
+    "apptMany": "appointments"
   }
 }

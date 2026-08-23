@@ -9,6 +9,9 @@ import { INDIAN_STATES, getCities } from '../../lib/india';
 // The owner's working view of the pipeline. The table below stays the
 // overview; both read the same GET /leads and write the same PATCH.
 import LeadRail from '../../components/admin/LeadRail';
+// The same list the owner sees on his phone at pumpini.in/lead — one component,
+// one endpoint, so the two can never disagree about what is upcoming.
+import AppointmentList from '../../components/admin/AppointmentList';
 // ONE superadmin client, shared with the owner's side of pumpini.in/lead.
 import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
@@ -831,53 +834,7 @@ export default function AdminPage(){
               </h1>
               <button style={btn('#fff','#666')} onClick={loadAppts}>{tc('adminp.refresh','Refresh')}</button>
             </div>
-            <div style={{background:'#fff',borderRadius:12,border:'1px solid #e5e3de',overflow:'auto'}}>
-              <table style={{width:'100%',borderCollapse:'collapse',minWidth:640}}>
-                <thead><tr style={{background:'#f8f7f5'}}>
-                  {[tc('adminp.colWhen','When'),tc('adminp.colWho','Who'),tc('adminp.colPhone','Phone'),tc('adminp.colMap','Map')].map((h,i)=>(
-                    <th key={i} style={{padding:'9px 12px',textAlign:'left',color:'#666',fontWeight:600,fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de',whiteSpace:'nowrap'}}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>
-                  {appts.length===0&&<tr><td colSpan={4} style={{textAlign:'center',padding:'2.5rem',color:'#aaa'}}>{tc('adminp.noAppointments','Nothing scheduled')}</td></tr>}
-                  {appts.map(a=>{
-                    // Server-side ordering already puts the soonest first and drops
-                    // anything past, so no date arithmetic happens here.
-                    const when = new Date(a.appointment_at);
-                    const today = when.toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'})===new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
-                    return (
-                      <tr key={a.lead_id} style={{borderBottom:'1px solid #f0f0f0'}}>
-                        <td style={{padding:'10px 12px',whiteSpace:'nowrap'}}>
-                          <span style={{fontWeight:700,fontSize:13.5}}>
-                            {when.toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:true})}
-                          </span>
-                          {today&&<span style={{marginLeft:7,fontSize:10.5,fontWeight:800,background:'#fee2e2',color:'#991b1b',borderRadius:99,padding:'1px 7px'}}>{tc('adminp.today','TODAY')}</span>}
-                        </td>
-                        {/* A lead filed by a refusal CTA has no owner name — the
-                            outlet off the board is all there is, and it is enough. */}
-                        <td style={{padding:'10px 12px',fontWeight:600,fontSize:13.5}}>
-                          {a.owner_name||a.outlet_name||<span style={{color:'#ccc'}}>—</span>}
-                          {a.owner_name&&a.outlet_name&&(
-                            <span style={{display:'block',fontWeight:400,fontSize:12,color:'#888'}}>{a.outlet_name}</span>
-                          )}
-                        </td>
-                        <td style={{padding:'10px 12px',fontFamily:'monospace',fontSize:13,whiteSpace:'nowrap'}}>
-                          {a.phone?<a href={`tel:${a.phone}`} style={{color:'#1a1a1a',textDecoration:'none'}}>{a.phone}</a>:<span style={{color:'#ccc'}}>—</span>}
-                        </td>
-                        <td style={{padding:'10px 12px',fontSize:12,whiteSpace:'nowrap'}}>
-                          {a.lat!=null&&a.lng!=null
-                            ? <a href={`https://www.google.com/maps?q=${a.lat},${a.lng}`} target="_blank" rel="noreferrer"
-                                 style={{color:'#FF6B00',fontWeight:700,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3}}>
-                                <MapPin size={11}/>{tc('adminp.colMap','Map')}
-                              </a>
-                            : <span style={{color:'#ccc'}}>—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <AppointmentList appointments={appts} tc={tc}/>
           </div>
         )}
 
