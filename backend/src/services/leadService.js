@@ -142,6 +142,19 @@ async function listInteractions(leadId, limit = 200) {
  */
 async function listAppointments(limit = 500) {
   if (!(await hasInteractionTable()) || !(await hasAppointmentColumn())) return [];
+
+  // EVERY contact rides along, not just the first. Standing outside an outlet you
+  // want whichever number answers — the manager who lets you in, or the owner who
+  // signs — and choosing between them is a decision for the doorstep, not for a
+  // query (owner, 23-Aug-2026: "the diary should show both contacts. with the
+  // option to call either of them"). Aggregated in the same round trip rather
+  // than a fetch per row.
+  const contacts = await hasContactsTable()
+    ? `(SELECT coalesce(json_agg(json_build_object('id', c.id, 'name', c.name, 'phone', c.phone)
+                                 ORDER BY c.created_at, c.id), '[]'::json)
+          FROM lead_contacts c WHERE c.lead_id = l.id)`
+    : `'[]'::json`;
+
   const { rows } = await pool.query(
     `SELECT * FROM (
        SELECT DISTINCT ON (l.id)
@@ -156,6 +169,7 @@ async function listAppointments(limit = 500) {
               l.phone,
               l.status,
               l.lat, l.lng,
+              ${contacts} AS contacts,
               i.appointment_at,
               i.note,
               i.captured_by

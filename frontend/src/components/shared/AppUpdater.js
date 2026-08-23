@@ -6,6 +6,8 @@
 // but never a mystery reload.
 //
 // Cadence (otherwise dormant — no background polling):
+//   • on first mount — the only trigger that reaches pumpini.in/lead, which has
+//     no tenant session,
 //   • on login / when a restored session loads, and
 //   • on wake — when the tab becomes visible again (returning to it, or the
 //     laptop resuming from sleep).
@@ -57,6 +59,13 @@ export default function AppUpdater() {
       }
     } catch { /* offline / transient — ignore, the next wake/login retries */ }
   }, [reloadWhenIdle]);
+
+  // On first mount. This is what covers pumpini.in/lead: the field tool has no
+  // tenant `user`, so the login trigger below never fires there, and a phone that
+  // never backgrounds the tab would sit on a stale bundle indefinitely. That is
+  // not theoretical — on 23-Aug the owner's diary showed "—" for every name
+  // because his bundle predated a rename of those response fields.
+  useEffect(() => { check(); }, [check]);
 
   // On login (and when a restored session resolves a user).
   useEffect(() => { if (user?.id) check(); }, [user?.id, check]);
