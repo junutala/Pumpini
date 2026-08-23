@@ -25,12 +25,44 @@ const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('.
 // as the thing that actually drives `stations.entitlement` (the real gate).
 const planToEntitlement = (plan) => (String(plan || '').toLowerCase().includes('lite') ? 'lite' : 'pumpini');
 
+// ── Session lifetime ─────────────────────────────────────
+// 12 hours, and it SLIDES: any use re-issues it, so the owner working leads in
+// the field day after day never signs in again, while a phone left in an auto
+// still locks itself out by the next morning.
+//
+// A "remember me" tick issuing a 30-day token was the obvious alternative and is
+// the weaker trade: this is not a lead-tool credential, it is the whole
+// superadmin console — every outlet's money data, plans, entitlements, user
+// creation. Idleness, not a checkbox, is the right thing to expire on.
+const ADMIN_TTL_HOURS = 12;
+// Re-issued at most once an hour, so a busy session does not mint a token per
+// request while still extending well before the 12 hours are up.
+const RENEW_AFTER_SECONDS = 3600;
+
+const signAdminToken = (row) => jwt.sign(
+  { id: row.id, name: row.name, email: row.email, isSuperAdmin: true },
+  process.env.JWT_SECRET + '_admin',
+  { expiresIn: `${ADMIN_TTL_HOURS}h` }
+);
+
 const authAdmin = (req, res, next) => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
   try {
     req.admin = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET + '_admin');
     if (!req.admin.isSuperAdmin) return res.status(403).json({ error: 'Not superadmin' });
+
+    // Slide the window. Handed back on a header rather than in the body so every
+    // existing route's response shape is untouched — the client swaps its stored
+    // token and nothing else changes. Failing to renew must never fail the
+    // REQUEST: the caller is already authenticated, and a fresh token is a
+    // convenience, not a precondition.
+    const age = Math.floor(Date.now() / 1000) - (req.admin.iat || 0);
+    if (age > RENEW_AFTER_SECONDS) {
+      try { res.set('X-Renewed-Token', signAdminToken(req.admin)); }
+      catch (err) { logger.warn(`authAdmin: token renewal skipped — ${err.message}`); }
+    }
+
     next();
   } catch { return res.status(401).json({ error: 'Invalid token' }); }
 };
@@ -70,11 +102,7 @@ router.post('/login', async (req, res, next) => {
     if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
     const valid = await bcrypt.compare(password, rows[0].password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-    const token = jwt.sign(
-      { id:rows[0].id, name:rows[0].name, email:rows[0].email, isSuperAdmin:true },
-      process.env.JWT_SECRET + '_admin',
-      { expiresIn:'12h' }
-    );
+    const token = signAdminToken(rows[0]);
     res.json({ token, admin:{ id:rows[0].id, name:rows[0].name, email:rows[0].email } });
   } catch (err) { next(err); }
 });

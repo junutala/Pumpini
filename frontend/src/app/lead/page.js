@@ -382,9 +382,9 @@ function LeadForm({ agent, tc, onSaved }) {
           phone: phone || null,
           station_name: outlet.trim() || null,
           message: interaction.trim() || null,
-          // Local wall clock -> a real instant, so the server stores when it
-          // actually is rather than a string whose meaning depends on a device.
-          appointment_at: appt ? new Date(appt).toISOString() : null,
+          // toInstant is the one rule for "is this actually an appointment":
+          // it refuses a day with no time yet, and anything already gone.
+          appointment_at: toInstant(appt),
           captured_by: agent,
           // Never partial coordinates — either the fix we got, or nothing.
           lat: geo.state === 'ok' ? geo.lat : null,

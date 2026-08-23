@@ -15,6 +15,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
+import { toInstant } from '../../lib/appointment';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -209,13 +210,19 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
   const add = async () => {
     const body = note.trim();
     // An appointment with no words is still worth filing — "seeing him Tuesday"
-    // is the note.
-    if (!body && !appt) return;
+    // is the note. toInstant is the single rule for whether the picker's value
+    // is a real appointment (a day with no time yet does not count).
+    const at = toInstant(appt);
+    if (!body && !at) return;
     setErr('');
     setSaving(true);
     try {
       const data = await adminFetch(`/leads/${lead.id}/interactions`, {
-        method: 'POST', body: JSON.stringify({ note: body }),
+        method: 'POST',
+        body: JSON.stringify({
+          note: body || tc('lead.apptOnlyNote', 'Appointment set.'),
+          appointment_at: at,
+        }),
       });
       // adminFetch swallows non-JSON/5xx into null, so an empty reply is a
       // failure, not an empty success — say so rather than clearing the note the

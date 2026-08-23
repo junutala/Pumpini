@@ -18,7 +18,7 @@ import { Mic, Square, Loader2, CalendarClock, X } from 'lucide-react';
 import { startRecording, audioFormData } from '../../lib/recordAudio';
 // The date arithmetic lives in lib/appointment.js so it can be tested — a
 // picker that books the wrong day fails silently and costs a wasted drive.
-import { applyDay, applyHour, dayOffset, daysToMonday, isHourPast, isDayPast, toLocalInput }
+import { dayChoices, dayOffset, combine, minTimeFor, isPast, startOfDay, toTimeInput }
   from '../../lib/appointment';
 
 const uiLang = () => (typeof window !== 'undefined' && localStorage.getItem('i18nextLng')) || 'en';
@@ -131,51 +131,39 @@ export default function InteractionRecorder({
 
 // ── AppointmentPicker ────────────────────────────────────────────────────────
 //
-// Two taps, standing on a forecourt, one-handed. The native datetime-local
-// control is several taps of scrolling through a wheel, which is the wrong tool
-// for somebody who has been walking outlets all day (owner, 23-Aug-2026:
-// "running around the outlets is tiring... a complicated date&time picker will
-// break the back").
+// A row of REAL DAYS and a free time field. Two controls, no arithmetic, no
+// assumptions about when a manager is willing to see anyone.
 //
-// Nearly every appointment a canvasser sets is near-term and on the hour — the
-// owner's own field notes read "he'll be back only on Monday" and "contact after
-// 2 p.m." So: a row of days, a row of hours, and the full picker kept behind
-// "Other…" for the rare appointment that is neither.
+// The version this replaces offered "Today / Tomorrow / Day after / Monday" and
+// fixed 2-hour slots. Both were wrong, and the owner caught both on the first
+// day of real use (23-Aug-2026):
 //
-// The value stays a `datetime-local` string throughout, so the two screens that
-// embed this are unchanged and still convert it to a real instant when sending.
+//   - On a SUNDAY, "Tomorrow" and "Monday" are the same day. Two chips, one
+//     meaning. Relative words also make the reader do arithmetic to answer
+//     "which date is that?" — so days are now named outright: "Mon 25".
+//   - "we cannot assume that the manager/owner will give us slot at exactly
+//     2 hour apart" — exactly right. An owner says 11:30 or 4:15, so the time is
+//     a plain time field that accepts any minute, not a menu of five options.
+//
+// Past times are refused rather than accepted-and-hidden: on today, the field
+// carries a `min` of now, and a stale pair is caught before saving.
 function AppointmentPicker({ value, onChange, tc }) {
-  const [manual, setManual] = useState(false);
-
   const current = value ? new Date(value) : null;
   const valid   = current && !Number.isNaN(current.getTime());
 
-  const DAYS = [
-    [tc('lead.dayToday',    'Today'),     0],
-    [tc('lead.dayTomorrow', 'Tomorrow'),  1],
-    [tc('lead.dayAfter',    'Day after'), 2],
-    [tc('lead.dayMonday',   'Monday'),    daysToMonday()],
-  ];
-  const HOURS = [
-    ['10 AM', 10], ['12 PM', 12], ['2 PM', 14], ['4 PM', 16], ['6 PM', 18],
-  ];
+  // A day is chosen as soon as a value exists; the time may still be midnight,
+  // which is how "day picked, time not yet" is represented.
+  const chosenDay  = valid ? startOfDay(current) : null;
+  const chosenTime = valid && !(current.getHours() === 0 && current.getMinutes() === 0)
+    ? toTimeInput(current) : '';
 
+  const days = dayChoices(14);
   const offset = valid ? dayOffset(current) : null;
 
+  const pickDay  = (d) => onChange(combine(d, chosenTime));
+  const pickTime = (t) => onChange(combine(chosenDay || startOfDay(new Date()), t));
 
-  // A past slot is greyed rather than hidden: the row keeps its shape through
-  // the day, so the chip a thumb is used to reaching for does not move.
-  const chip = (label, active, onClick, past = false) => (
-    <button key={label} type="button" onClick={onClick} disabled={past} style={{
-      padding: '7px 12px', borderRadius: 99, fontFamily: 'inherit',
-      fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap',
-      cursor: past ? 'not-allowed' : 'pointer',
-      border: `1.5px solid ${active ? '#1a1a1a' : past ? '#eee' : '#ddd'}`,
-      background: active ? '#1a1a1a' : past ? '#f6f6f6' : '#fff',
-      color: active ? '#fff' : past ? '#c4c4c4' : '#444',
-      textDecoration: past ? 'line-through' : 'none',
-    }}>{label}</button>
-  );
+  const stale = isPast(value);
 
   return (
     <div style={{ marginTop: 13, paddingTop: 13, borderTop: '1px dashed #e5e3de' }}>
@@ -189,52 +177,78 @@ function AppointmentPicker({ value, onChange, tc }) {
         </span>
       </label>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 7 }}>
-        {DAYS.map(([label, off]) => chip(label, offset === off,
-          () => onChange(applyDay(off, valid ? current : null)),
-          isDayPast(off, HOURS.map(h => h[1]))))}
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-        {HOURS.map(([label, h]) => chip(label, valid && current.getHours() === h,
-          () => onChange(applyHour(h, valid ? current : null)),
-          isHourPast(h, valid ? current : null)))}
-        {chip(tc('lead.otherTime', 'Other…'), manual, () => setManual(m => !m))}
+      {/* Real dates, scrolled sideways. Nothing here needs working out. */}
+      <div className="lead-rail" style={{
+        display: 'flex', gap: 7, overflowX: 'auto', paddingBottom: 4, marginBottom: 10,
+      }}>
+        {days.map((d) => {
+          const active = offset === d.offset;
+          return (
+            <button key={d.offset} type="button" onClick={() => pickDay(d.date)} style={{
+              flexShrink: 0, width: 58, padding: '7px 0', borderRadius: 10, cursor: 'pointer',
+              fontFamily: 'inherit', textAlign: 'center',
+              border: `1.5px solid ${active ? '#1a1a1a' : '#ddd'}`,
+              background: active ? '#1a1a1a' : '#fff',
+              color: active ? '#fff' : '#444',
+            }}>
+              <span style={{ display: 'block', fontSize: 10.5, fontWeight: 700, opacity: .75 }}>
+                {d.isToday ? tc('lead.dayToday', 'Today') : d.weekday}
+              </span>
+              <span style={{ display: 'block', fontSize: 15, fontWeight: 800, lineHeight: 1.25 }}>
+                {d.day}
+              </span>
+              <span style={{ display: 'block', fontSize: 9.5, fontWeight: 600, opacity: .6 }}>
+                {d.month}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {manual && (
-        <input
-          type="datetime-local"
-          value={value || ''}
-          min={toLocalInput(new Date())}
-          onChange={e => onChange(e.target.value)}
-          style={{
-            width: '100%', marginTop: 9, padding: '10px 11px', border: '1.5px solid #ddd',
-            borderRadius: 9, fontSize: 15, outline: 'none', boxSizing: 'border-box',
-            fontFamily: 'inherit', background: '#fff',
-          }}
-        />
-      )}
+      {/* Any time the owner actually offers — 11:30, 4:15, whatever was said. */}
+      <input
+        type="time"
+        value={chosenTime}
+        min={minTimeFor(chosenDay) || undefined}
+        onChange={(e) => pickTime(e.target.value)}
+        style={{
+          width: '100%', padding: '11px 12px', border: '1.5px solid #ddd', borderRadius: 9,
+          fontSize: 16, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+          background: '#fff', color: chosenTime ? '#1a1a1a' : '#888',
+        }}
+      />
 
-      {/* Says the choice back in words, so a mis-tap is caught before saving
-          rather than discovered when nobody is at the outlet. */}
-      {valid && (
+      {/* Says the choice back in words, so a mis-tap is caught here rather than
+          discovered when nobody is at the outlet. */}
+      {valid && chosenTime && (
         <div style={{
           marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 8, background: '#eef2ff', borderRadius: 8, padding: '8px 11px',
+          gap: 8, borderRadius: 8, padding: '8px 11px',
+          background: stale ? '#fef2f2' : '#eef2ff',
         }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#3730a3' }}>
-            {current.toLocaleString('en-IN', {
-              timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short',
-              hour: '2-digit', minute: '2-digit', hour12: true,
-            })}
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: stale ? '#991b1b' : '#3730a3' }}>
+            {stale ? tc('lead.apptPast', 'That time has passed — pick another.')
+                   : current.toLocaleString('en-IN', {
+                       weekday: 'short', day: '2-digit', month: 'short',
+                       hour: '2-digit', minute: '2-digit', hour12: true,
+                     })}
           </span>
-          <button type="button" onClick={() => { onChange(''); setManual(false); }}
+          <button type="button" onClick={() => onChange('')}
             aria-label={tc('lead.clearAppointment', 'Clear appointment')}
             style={{
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              color: '#6366f1', display: 'inline-flex', alignItems: 'center', flexShrink: 0,
+              color: stale ? '#dc2626' : '#6366f1', display: 'inline-flex',
+              alignItems: 'center', flexShrink: 0,
             }}><X size={16} /></button>
         </div>
+      )}
+
+      {/* A day with no time is not yet an appointment; say so rather than
+          silently filing midnight. */}
+      {valid && !chosenTime && (
+        <p style={{ fontSize: 12, color: '#888', margin: '8px 0 0' }}>
+          {tc('lead.pickTimeToo', 'Now pick a time.')}
+        </p>
       )}
     </div>
   );
