@@ -368,7 +368,7 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
    "todays_sale_ltrs": number or null,
    "todays_receipt_ltrs": number or null
  }],
- "table_visible": true or false — was the BOTTOM SUMMARY TABLE's data rows legible? A header row alone is false. See the mandatory rule below,
+ "table_state": "used" | "cropped" | "absent" — see the layout rule below. "used" = a bottom summary table was present and you read from it; "cropped" = a table IS there but its data rows are cut off or unreadable; "absent" = this console has no summary table at all, only tank cards,
  "confidence": "high|medium|low",
  "notes": "anything unclear, glared out, or cut off"
 }
@@ -376,7 +376,12 @@ Return ONLY a JSON object (no prose, no markdown) of this exact shape:
 Rules:
 - product: MS / Motor Spirit / Petrol -> "petrol"; HSD / Diesel -> "diesel"; Power / Speed / XtraPremium / any branded premium -> "premium_petrol"; CNG -> "cng". Keep the printed text in product_raw either way.
 - DIP IS IN MILLIMETRES on these consoles (e.g. 766.30, 1540.80). Report it as printed in dip_mm — do NOT convert to cm.
-- 🔴 THE SUMMARY TABLE IS MANDATORY, NOT PREFERRED. If the table at the bottom is cropped out of frame, or its ROWS are not legible (a header row alone is not enough), set "table_visible": false, return every tank's numeric fields as null, and say so in notes. DO NOT fall back to the graphical cards for tank_label, product or the volumes. The cards are glare-prone artwork on a curved screen; on 20-Aug-2026 a photograph of a phone displaying this console — table cropped to its header — was read off the cards and returned tank numbers 1/2/3 for an outlet whose tanks are 1/3/4, and capacities of 12,650 and 4,000 L for tanks installed at 16,000 and 9,000 L. A refusal that tells the manager to re-take the photograph with the table in frame is worth more than a screenful of confident wrong numbers.
+- 🔴 TWO CONSOLE LAYOUTS EXIST. Decide which you are looking at, and report it in table_state.
+  * HPCL-style: graphical tank cards on top AND a plain summary table below them (TANK | PRODUCT | VOLUME | DIP | CAPACITY). Read from the TABLE — set table_state "used".
+  * IOCL-style: tank cards ONLY, no summary table anywhere. Each card is a labelled list — "1 - Motor Spirit", then Fuel Height, Temperature, Net Volume, Water Height, Ullage, Water Volume, Density, Gross Volume, Today's Sale, MTD Sale. This layout is perfectly readable: the labels sit beside their values, so read the cards and set table_state "absent". Do NOT refuse an IOCL console for lacking a table it never had.
+  * CROPPED: a table IS present but its data rows are cut off or illegible (a header row alone counts as cropped). Set table_state "cropped", return every numeric field null, and say so in notes — do NOT fall back to the cards in this case. That is the 20-Aug-2026 failure: a photograph of a phone showing an HPCL console, table cut to its header, read off the glare-lit cards and returned tank numbers 1/2/3 for an outlet whose tanks are 1/3/4 and capacities of 12,650 and 4,000 L against 16,000 and 9,000 installed. When a table exists, it is the truth and a cropped one is a re-take, not a guess.
+
+- IOCL FIELD NAMES map to ours as: "Fuel Height" -> dip_mm, "Net Volume" -> net_volume_ltrs, "Gross Volume" -> gross_volume_ltrs, "Water Height" -> water_dip_mm, "Water Volume" -> water_ltrs, "Ullage" -> ullage_ltrs, "Temperature" -> temperature_c, "Today's Sale" -> todays_sale_ltrs. The card heading "2 - High Speed Diesel" carries BOTH the tank number (2) and the product (High Speed Diesel = diesel); "Motor Spirit" = petrol. This console prints no capacity — leave capacity_ltrs null rather than deriving it.
 
 - ANCHOR ON THE SUMMARY TABLE AT THE BOTTOM. These screens show the same tanks TWICE: graphical cards on top, and below them a plain table with column headers (typically TANK | PRODUCT | VOLUME (Ltr.) | DIP (MM.) | CAPACITY (Ltr.)). The table is labelled, tabular and free of the cards' glare-prone artwork, so it is the RELIABLE source. Read tank_label, product, net_volume_ltrs, dip_mm and capacity_ltrs FROM THE TABLE. Use the cards only to (a) supply the fields the table does not carry — water, temperature, ullage, today's sale/receipt — and (b) cross-check the table. They are the SAME tanks: return ONE entry per tank, never one per view. If a figure differs between the two, TRUST THE TABLE and say so in notes.
 - The table's VOLUME column is the NET volume (it matches the card's "Net Volume", not "Gross Volume"). Put it in net_volume_ltrs.
@@ -455,18 +460,22 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
     // cards, and that is precisely what produced tank numbers 1/2/3 for an outlet
     // numbered 1/3/4 on 20-Aug. Refuse rather than hand back numbers sourced from
     // artwork — the manager re-takes the photograph with the table in frame.
-    if (parsed.table_visible === false) {
+    // Refuse ONLY a table that exists and was cut off. An IOCL console has no
+    // summary table at all and is perfectly readable from its cards — the rule
+    // shipped on 20-Aug made the table mandatory outright and would have refused
+    // every IOCL outlet, Kamala included, for lacking something it never had.
+    if (parsed.table_state === 'cropped') {
       return res.status(422).json({
-        error: 'The summary table at the bottom of the console screen was not readable in that photo. '
+        error: 'The summary table at the bottom of the console screen was cut off in that photo. '
              + 'Re-take it with the whole table in frame — the tank numbers and volumes are read from there, '
              + 'not from the coloured tank pictures.',
-        table_visible: false,
+        table_state: 'cropped',
         notes: String(parsed.notes ?? ''),
       });
     }
 
     const out = { ...withGaugeChecks(parsed), engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null,
-                  table_visible: parsed.table_visible !== false };
+                  table_state: parsed.table_state ?? null };
 
     // Keep the screen. A gauge screen photographed inside a shift hangs off that
     // shift; one taken for the plain dip register belongs to the outlet.
