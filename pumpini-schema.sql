@@ -1420,3 +1420,57 @@ ALTER TABLE public.lead_interactions
 
 CREATE INDEX IF NOT EXISTS idx_lead_interactions_appointment
   ON public.lead_interactions(appointment_at) WHERE appointment_at IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Lead contacts — an outlet has PEOPLE, not a person (owner-set 23-Aug-2026)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- The field brings one contact, usually whoever was behind the counter. The
+-- owner turns up later, or does not. A single leads.name/leads.phone pair forces
+-- you to LOSE one to record the other — and on Arcot Road the managers came back
+-- first, with the owners still to come.
+--
+-- The field tool is deliberately NOT given this: "He brings me one contact - job
+-- done. Owner - better, Manager - good. Period." Roles live in the NAME
+-- ("Satish - Manager"), which is how the owner already writes them; a role
+-- dropdown is one more decision on a forecourt for no gain.
+-- Run 23-Aug-2026. Idempotent.
+CREATE TABLE IF NOT EXISTS public.lead_contacts (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id    uuid NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  name       text,
+  phone      text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lead_contacts_lead
+  ON public.lead_contacts(lead_id, created_at);
+
+-- 🔴 RLS in the same block. Not station-scoped (a lead belongs to no outlet
+-- yet), so this mirrors leads/lead_interactions rather than my_stations():
+-- the public field tool may INSERT the first contact, only a superadmin reads.
+ALTER TABLE public.lead_contacts ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public'
+                 AND tablename='lead_contacts' AND policyname='lead_contacts_public_insert') THEN
+    CREATE POLICY lead_contacts_public_insert ON public.lead_contacts
+      FOR INSERT WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public'
+                 AND tablename='lead_contacts' AND policyname='lead_contacts_superadmin_all') THEN
+    CREATE POLICY lead_contacts_superadmin_all ON public.lead_contacts
+      FOR ALL USING (public.app_is_superadmin()) WITH CHECK (public.app_is_superadmin());
+  END IF;
+END $$;
+
+GRANT ALL ON TABLE public.lead_contacts TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.lead_contacts TO app_authenticated;
+
+-- Move the contacts already held on the lead row across, so no screen starts
+-- empty. The NOT EXISTS makes a re-run a no-op.
+INSERT INTO public.lead_contacts (lead_id, name, phone, created_at)
+SELECT l.id, l.name, l.phone, l.created_at
+  FROM public.leads l
+ WHERE (l.name IS NOT NULL OR l.phone IS NOT NULL)
+   AND NOT EXISTS (SELECT 1 FROM public.lead_contacts c WHERE c.lead_id = l.id);

@@ -22,7 +22,7 @@ const { rateLimit } = require('../utils/rateLimit');
 const { schemaProbe } = require('../utils/schemaProbe');
 const { transcribe } = require('../services/transcribeService');
 // One writer for an interaction, shared with the admin routes.
-const { addInteraction, hasInteractionTable, num, text } = require('../services/leadService');
+const { addInteraction, addContact, hasInteractionTable, num, text } = require('../services/leadService');
 
 // Sources this endpoint will accept from the wire. A whitelist, not a passthrough
 // — `source` drives the admin pipeline view, and an open text field would let a
@@ -238,6 +238,14 @@ router.post('/', limitSubmit, async (req, res, next) => {
         // that finally got the details is handled by the capture path above and
         // must NOT be dragged back to 'refused'.
         await client.query('UPDATE leads SET status=$2 WHERE id=$1', [leadId, OUTCOMES[kind].status]);
+      }
+
+      // The contact the field brought goes into the ONE contact store, in the
+      // same transaction as the lead. Only on a NEW lead: a repeat visit to an
+      // outlet already filed would otherwise stack a duplicate of the same
+      // person every time.
+      if (!reused) {
+        await addContact({ leadId, name, phone, client });
       }
 
       if (logOk && (note || appointment_at)) {

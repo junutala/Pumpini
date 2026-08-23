@@ -16,7 +16,9 @@ const { normalizePhone, validatePhone } = require('../utils/phone');
 const { createUser, linkUserToStation } = require('../services/userService');
 // One writer for a lead interaction — shared with the public field tool
 // (routes/leads.js). Same table and validation; only the guard differs.
-const { addInteraction, listInteractions, listAppointments, hasInteractionTable } = require('../services/leadService');
+const { addInteraction, listInteractions, listAppointments,
+        addContact, listContacts, deleteContact, hasContactsTable,
+        hasInteractionTable } = require('../services/leadService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
 // backfill below. Degrades safely: the backfill 400s if storage isn't configured.
 const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('../services/vaweStorage');
@@ -1128,6 +1130,43 @@ router.get('/leads', authAdmin, async (req, res, next) => {
 router.get('/appointments', authAdmin, async (req, res, next) => {
   try {
     res.json({ appointments: await listAppointments() });
+  } catch (err) { next(err); }
+});
+
+// ── Lead contacts ─────────────────────────────────────────
+// The owner's side: the field brings one contact, he gathers the rest. Both go
+// through leadService.addContact — one table, one validation, different guard.
+// Deliberately NOT exposed to the field tool: a temp brings one number and is
+// done, and every field beyond that is weight he does not need to carry.
+router.get('/leads/:id/contacts', authAdmin, async (req, res, next) => {
+  try {
+    res.json({ contacts: await listContacts(req.params.id) });
+  } catch (err) { next(err); }
+});
+
+router.post('/leads/:id/contacts', authAdmin, async (req, res, next) => {
+  try {
+    if (!(await hasContactsTable())) {
+      return res.status(503).json({
+        error: 'The contacts table is not created yet. Run its DDL first — nothing was saved.',
+      });
+    }
+    const { rows } = await pool.query('SELECT id FROM leads WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Lead not found.' });
+
+    const contact = await addContact({
+      leadId: req.params.id, name: req.body.name, phone: req.body.phone,
+    });
+    if (!contact) return res.status(400).json({ error: 'Enter a name or a number.' });
+    res.status(201).json({ ok: true, contact });
+  } catch (err) { next(err); }
+});
+
+router.delete('/leads/:id/contacts/:contactId', authAdmin, async (req, res, next) => {
+  try {
+    const gone = await deleteContact(req.params.contactId);
+    if (!gone) return res.status(404).json({ error: 'Contact not found.' });
+    res.json({ ok: true });
   } catch (err) { next(err); }
 });
 

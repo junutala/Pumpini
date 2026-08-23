@@ -3174,6 +3174,18 @@
     "loadingAppts": "Loading your diary…",
     "loadFailedAppts": "Could not load your diary. Pull to refresh, or sign in again.",
     "apptOne": "appointment",
-    "apptMany": "appointments"
+    "apptMany": "appointments",
+    "contacts": "Contacts",
+    "addContact": "Add contact",
+    "saveContact": "Save contact",
+    "contactNamePlaceholder": "Name — e.g. Satish - Manager",
+    "contactPhonePlaceholder": "Mobile number",
+    "loadingContacts": "Loading…",
+    "removeContact": "Remove contact",
+    "removeContactConfirm": "Remove this contact?",
+    "saveToPhone": "Save to phone",
+    "vcardFailed": "Your browser blocked the download. Try again, or copy the number.",
+    "cancel": "Cancel",
+    "noNumberYet": "No number yet"
   }
 }
