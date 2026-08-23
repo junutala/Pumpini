@@ -68,6 +68,26 @@ jobs:
       # that a *missing runtime env var* can never mask a genuine build error:
       # everything the build reads (NEXT_PUBLIC_API_URL, build id) has a code
       # fallback, so these are belt-and-braces only.
+      # An undefined identifier is a RUNTIME error, not a compile error, and
+      # `next build` skips linting — so a page that references a helper it forgot
+      # to import builds perfectly green and then throws in the user's browser.
+      # That shipped on 2026-08-23: a patch script aborted midway, `toInstant(...)`
+      # landed in app/lead/page.js without its import, CI passed, and SAVE was
+      # broken in the field tool until a screenshot came back.
+      #
+      # Only `no-undef` is enforced, with no config inherited: the repo has
+      # pre-existing react-hooks/rules-of-hooks errors that are none of this
+      # gate's business, and a gate that fails for unrelated reasons gets muted.
+      # --no-inline-config so eslint-disable comments naming rules this minimal
+      # config does not load cannot fail the run.
+      - name: Undefined-identifier check (no-undef only)
+        run: |
+          npx eslint --no-eslintrc --no-inline-config \
+            --env browser,es2022,node \
+            --parser-options 'ecmaVersion:2022,sourceType:module,ecmaFeatures:{jsx:true}' \
+            --rule '{"no-undef":"error"}' \
+            'src/**/*.js'
+
       - name: Build
         env:
           NEXT_PUBLIC_API_URL: https://dummy.invalid
