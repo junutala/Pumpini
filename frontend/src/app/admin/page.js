@@ -189,6 +189,7 @@ export default function AdminPage(){
   // the recorder); 'table' is the overview. Same data, same writers.
   const [leadView,setLeadView]         = useState('cards');
   const [appts,setAppts]               = useState([]);
+  const [focusLead,setFocusLead]       = useState(null);   // lead to open from the diary
   const [hideClosed,setHideClosed]     = useState(false);
   const [modal,setModal]   = useState(null);
   const [form,setForm]     = useState({});
@@ -304,6 +305,16 @@ export default function AdminPage(){
   // Already filtered to the future and ordered soonest-first by the server, so
   // the screen does no date arithmetic of its own — one place decides what
   // "upcoming" means.
+  // From an appointment straight to its lead, so the history can be read on the
+  // way into the meeting. Hide-closed is cleared first: a lead that was refused
+  // and later agreed to meet is exactly the kind that would otherwise be
+  // filtered out, and the click would do nothing at all.
+  const openLeadFromDiary = (leadId)=>{
+    setHideClosed(false);
+    setLeadView('cards');
+    setTab('leads');
+    setFocusLead(leadId);
+  };
   const loadAppts = async()=>{ const r=await adminFetch('/appointments'); setAppts(Array.isArray(r?.appointments)?r.appointments:[]); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   // A refused outlet is done with, same as lost — hide it with the rest.
@@ -834,7 +845,7 @@ export default function AdminPage(){
               </h1>
               <button style={btn('#fff','#666')} onClick={loadAppts}>{tc('adminp.refresh','Refresh')}</button>
             </div>
-            <AppointmentList appointments={appts} tc={tc}/>
+            <AppointmentList appointments={appts} tc={tc} onOpen={openLeadFromDiary}/>
           </div>
         )}
 
@@ -862,7 +873,7 @@ export default function AdminPage(){
             </div>
             {leadView==='cards'&&(
               <LeadRail leads={sortedLeads} statuses={LEAD_STATUS} adminFetch={adminFetch}
-                        tc={tc} onChanged={()=>{loadLeads();loadAppts();}}/>
+                        tc={tc} onChanged={()=>{loadLeads();loadAppts();}} focusLeadId={focusLead}/>
             )}
 
             {leadView==='table'&&(

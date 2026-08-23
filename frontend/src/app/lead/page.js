@@ -79,7 +79,8 @@ export default function LeadPage() {
   const [agent, setAgent] = useState(null);    // temp: the mobile that signed in
   const [owner, setOwner] = useState(null);    // owner: the decoded superadmin JWT
   const [ready, setReady] = useState(false);   // storage read done (SSR guard)
-  const [view, setView]   = useState('new');   // owner only: 'new' | 'list'
+  const [view, setView]   = useState('new');   // owner only: 'new' | 'list' | 'appts'
+  const [focusLead, setFocusLead] = useState(null);   // lead to open from the diary
 
   useEffect(() => {
     // An owner session wins: if a valid superadmin token is present there is no
@@ -159,8 +160,8 @@ export default function LeadPage() {
               {tab('appts', <CalendarClock size={15} />, tc('lead.tabAppts', 'Diary'))}
             </div>
             {view === 'new'   && <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('list')} />}
-            {view === 'list'  && <OwnerLeads tc={tc} />}
-            {view === 'appts' && <OwnerAppointments tc={tc} />}
+            {view === 'list'  && <OwnerLeads tc={tc} focusLeadId={focusLead} />}
+            {view === 'appts' && <OwnerAppointments tc={tc} onOpen={(id) => { setFocusLead(id); setView('list'); }} />}
           </>
         ) : agent ? (
           <LeadForm agent={agent} tc={tc} />
@@ -299,7 +300,7 @@ function Gate({ onSignInTemp, onSignInOwner, tc }) {
 // ── Owner: what he must attend next, on the phone he is holding ─────────────
 // The /admin Appointments tab is the same endpoint and the same component; only
 // the layout differs, because a forecourt is not a desk.
-function OwnerAppointments({ tc }) {
+function OwnerAppointments({ tc, onOpen }) {
   const [appts, setAppts] = useState(null);   // null = still loading
   const [err, setErr]     = useState('');
 
@@ -344,13 +345,13 @@ function OwnerAppointments({ tc }) {
           cursor: 'pointer', padding: 0, fontFamily: 'inherit',
         }}>{tc('lead.refresh', 'Refresh')}</button>
       </div>
-      <AppointmentList appointments={appts} tc={tc} compact />
+      <AppointmentList appointments={appts} tc={tc} compact onOpen={onOpen} />
     </div>
   );
 }
 
 // ── Owner: the whole pipeline, through the same rail /admin renders ──────────
-function OwnerLeads({ tc }) {
+function OwnerLeads({ tc, focusLeadId }) {
   const [leads, setLeads] = useState(null);   // null = still loading
   const [err, setErr]     = useState('');
 
@@ -383,7 +384,8 @@ function OwnerLeads({ tc }) {
     </div>;
   }
 
-  return <LeadRail leads={leads} statuses={LEAD_STATUS} adminFetch={adminFetch} tc={tc} onChanged={load} />;
+  return <LeadRail leads={leads} statuses={LEAD_STATUS} adminFetch={adminFetch} tc={tc}
+                   onChanged={load} focusLeadId={focusLeadId} />;
 }
 
 // ── The capture form ─────────────────────────────────────────────────────────

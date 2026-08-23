@@ -32,15 +32,37 @@ const card = { background: '#fff', borderRadius: 12, border: '1px solid #e5e3de'
 const lbl  = { display: 'block', fontSize: 11, fontWeight: 700, color: '#666',
                textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 };
 
-export default function LeadRail({ leads, statuses, adminFetch, tc, onChanged }) {
+export default function LeadRail({ leads, statuses, adminFetch, tc, onChanged, focusLeadId }) {
   const [idx, setIdx] = useState(0);
   const rail = useRef(null);
+  // Which focus request has already been honoured. Without this the effect
+  // re-fires every time `leads` is refetched and would yank the rail back to the
+  // appointment's lead while the owner is swiping away from it.
+  const applied = useRef(null);
 
   // A lead deleted or filtered out from under us must not leave the rail
   // pointing past the end.
   useEffect(() => {
     if (idx > leads.length - 1) setIdx(Math.max(0, leads.length - 1));
   }, [leads.length, idx]);
+
+  // Arriving from an appointment: jump straight to that lead so its history can
+  // be read on the way into the meeting. Honoured ONCE per request — a silent
+  // no-op if the lead is not in the current list (filtered out, or deleted),
+  // which is better than snapping to the wrong card.
+  useEffect(() => {
+    if (!focusLeadId || applied.current === focusLeadId) return;
+    const i = leads.findIndex(l => l.id === focusLeadId);
+    if (i < 0) return;
+    applied.current = focusLeadId;
+    setIdx(i);
+    // The rail may not be laid out on the first paint, and scrolling by a width
+    // of 0 lands everywhere on card one. Wait for a frame.
+    requestAnimationFrame(() => {
+      const el = rail.current;
+      if (el?.clientWidth) el.scrollTo({ left: i * el.clientWidth, behavior: 'auto' });
+    });
+  }, [focusLeadId, leads]);
 
   // Derive the active card from the scroll position rather than tracking it
   // separately — a swipe and an arrow tap then agree by construction.
