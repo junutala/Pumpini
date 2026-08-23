@@ -506,7 +506,12 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 
 // ── DRIFT REPORT — the real loss, with delivery gains taken out ──────────────
 //
-// GET /api/tank-reco/drift?station_id=&days=60
+// GET /api/tank-reco/drift?station_id=&date_from=&date_to=      (or &days=60)
+//
+// The SCREEN is the Drift tile on Stock Reconciliation — the owner picks a period
+// and presses Run. `days` is kept because it was the first shape of this endpoint;
+// an explicit range wins when both are given. ONE endpoint, two ways in, no second
+// route (cardinal rule).
 //
 // Owner-set 2026-08-23, after an analysis that misled him twice before it was
 // right. Three lessons are baked in, each because the naive version was wrong:
@@ -536,7 +541,15 @@ router.get('/', authenticate, requireStationAccess({ required: true }), async (r
 // Read-only. Computes from dips, deliveries and dispense events; writes nothing.
 const DRIFT_EVENT_LTRS = 1000;   // beyond this, a recording event, not drift
 
-async function computeDrift(station_id, days) {
+async function computeDrift(station_id, opts = {}) {
+  // Accepts either shape. A half-given range (only a from, only a to) is not an
+  // error — the missing end simply stays open, which is what a date picker with one
+  // box filled means to the person who filled it.
+  const days = Math.min(365, Math.max(1, parseInt(opts.days || 60, 10)));
+  const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const from = isDate(opts.date_from) ? opts.date_from : null;
+  const to   = isDate(opts.date_to)   ? opts.date_to   : null;
+
   const { rows } = await pool.query(`
     WITH per AS (
       SELECT t.id AS tank_id, t.tank_number, t.fuel_type, s.date,
@@ -559,23 +572,24 @@ async function computeDrift(station_id, days) {
          WHERE d.shift_id = s.id AND d.tank_id = t.id AND d.reading_type = 'closing'
          ORDER BY recorded_at DESC LIMIT 1) cl ON TRUE
       WHERE s.station_id = $1
-        AND s.date >= (CURRENT_DATE - make_interval(days => $2))
+        AND s.date >= COALESCE($2::date, CURRENT_DATE - make_interval(days => $3))
+        AND ($4::date IS NULL OR s.date <= $4::date)
         AND op.volume_ltrs IS NOT NULL AND cl.volume_ltrs IS NOT NULL
     ),
     v AS (SELECT *, (closing - (opening + deliv - sales)) AS var, (deliv > 0) AS had_delivery FROM per)
     SELECT tank_number, fuel_type,
       -- ORDINARY TRADING SHIFTS — this is the real drift
-      COUNT(*) FILTER (WHERE NOT had_delivery AND abs(var) <= $3)                    AS trading_shifts,
-      COALESCE(SUM(sales) FILTER (WHERE NOT had_delivery AND abs(var) <= $3), 0)     AS trading_sold,
-      COALESCE(SUM(var)   FILTER (WHERE NOT had_delivery AND abs(var) <= $3), 0)     AS trading_drift,
+      COUNT(*) FILTER (WHERE NOT had_delivery AND abs(var) <= $5)                    AS trading_shifts,
+      COALESCE(SUM(sales) FILTER (WHERE NOT had_delivery AND abs(var) <= $5), 0)     AS trading_sold,
+      COALESCE(SUM(var)   FILTER (WHERE NOT had_delivery AND abs(var) <= $5), 0)     AS trading_drift,
       -- DELIVERY SHIFTS — expected to gain; reported, never netted off
-      COUNT(*) FILTER (WHERE had_delivery AND abs(var) <= $3)                        AS delivery_shifts,
-      COALESCE(SUM(var) FILTER (WHERE had_delivery AND abs(var) <= $3), 0)           AS delivery_gain,
+      COUNT(*) FILTER (WHERE had_delivery AND abs(var) <= $5)                        AS delivery_shifts,
+      COALESCE(SUM(var) FILTER (WHERE had_delivery AND abs(var) <= $5), 0)           AS delivery_gain,
       -- RECORDING EVENTS — a tanker in the wrong shift; excluded, but counted
-      COUNT(*) FILTER (WHERE abs(var) > $3)                                          AS recording_events,
-      COALESCE(SUM(var) FILTER (WHERE abs(var) > $3), 0)                             AS recording_ltrs
+      COUNT(*) FILTER (WHERE abs(var) > $5)                                          AS recording_events,
+      COALESCE(SUM(var) FILTER (WHERE abs(var) > $5), 0)                             AS recording_ltrs
     FROM v GROUP BY tank_number, fuel_type ORDER BY tank_number`,
-    [station_id, days, DRIFT_EVENT_LTRS]);
+    [station_id, from, days, to, DRIFT_EVENT_LTRS]);
 
   // Coverage matters as much as the number. A tank reconciled on a third of its
   // shifts can read clean and mean nothing — the shifts with no closing dip are
@@ -585,10 +599,14 @@ async function computeDrift(station_id, days) {
            COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM dipstick_readings d
                 WHERE d.shift_id = s.id AND d.reading_type = 'opening')
              AND EXISTS (SELECT 1 FROM dipstick_readings d
-                WHERE d.shift_id = s.id AND d.reading_type = 'closing'))::int AS reconcilable
+                WHERE d.shift_id = s.id AND d.reading_type = 'closing'))::int AS reconcilable,
+           to_char(MIN(s.date), 'YYYY-MM-DD') AS first_day,
+           to_char(MAX(s.date), 'YYYY-MM-DD') AS last_day
       FROM shifts s
-     WHERE s.station_id = $1 AND s.date >= (CURRENT_DATE - make_interval(days => $2))`,
-    [station_id, days]);
+     WHERE s.station_id = $1
+       AND s.date >= COALESCE($2::date, CURRENT_DATE - make_interval(days => $3))
+       AND ($4::date IS NULL OR s.date <= $4::date)`,
+    [station_id, from, days, to]);
 
   const num = v => (v == null ? 0 : +parseFloat(v).toFixed(2));
   const tanks = rows.map(r => {
@@ -613,8 +631,16 @@ async function computeDrift(station_id, days) {
   const sold  = tanks.reduce((a, t) => a + t.litres_sold, 0);
   const drift = tanks.reduce((a, t) => a + t.drift_ltrs, 0);
   const c = cov[0] || { shifts: 0, reconcilable: 0 };
+  // The period ACTUALLY covered, not the one asked for. A range reaching back before
+  // the outlet's first shift would otherwise print a header claiming months of
+  // coverage the data never had. Formatted to YYYY-MM-DD in SQL on purpose: a bare
+  // `date` arrives as a JS Date at midnight in the server's zone, and formatting THAT
+  // for Asia/Kolkata is how a period silently reports the wrong day.
   return {
-    days, tanks,
+    days: from ? null : days,
+    date_from: from, date_to: to,
+    covered_from: c.first_day || null, covered_to: c.last_day || null,
+    tanks,
     totals: {
       litres_sold: +sold.toFixed(2),
       drift_ltrs:  +drift.toFixed(2),
@@ -629,10 +655,13 @@ async function computeDrift(station_id, days) {
   };
 }
 
-router.get('/drift', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+// Same gate as the screen it feeds: Stock Reconciliation is `stock.reconcile` in the
+// sidebar, so the tile on it must not be reachable by anyone the page is not.
+router.get('/drift', authenticate, requireStationAccess({ required: true }),
+  requirePerm('stock.reconcile'), async (req, res, next) => {
   try {
-    const days = Math.min(365, Math.max(1, parseInt(req.query.days || 60, 10)));
-    res.json(await computeDrift(req.query.station_id, days));
+    const { days, date_from, date_to } = req.query;
+    res.json(await computeDrift(req.query.station_id, { days, date_from, date_to }));
   } catch (e) { next(e); }
 });
 
