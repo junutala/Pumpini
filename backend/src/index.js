@@ -78,7 +78,11 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true
+  credentials: true,
+  // Without this the browser HIDES the header from JavaScript, and the sliding
+  // session silently never renews. In prod /api is a same-origin Vercel rewrite
+  // so CORS does not apply — this is what keeps local dev behaving the same.
+  exposedHeaders: ['X-Renewed-Token'],
 }));
 app.use(morgan('combined', { stream: { write: m => logger.info(m.trim()) } }));
 app.use(express.json({ limit: '10mb' }));

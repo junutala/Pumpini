@@ -36,7 +36,15 @@ export const adminFetch = (url, opts = {}) =>
       Authorization: `Bearer ${getAdminToken()}`,
       ...(opts.headers || {}),
     },
-  }).then(r => r.json()).catch(() => null);
+  }).then(r => {
+    // Sliding session: the server hands back a fresh token once an hour of use.
+    // Swapping it here means every screen that talks through this client keeps
+    // the session alive, so working leads daily never asks for a password again
+    // — while a phone left untouched still expires overnight.
+    const renewed = r.headers.get('X-Renewed-Token');
+    if (renewed) setAdminToken(renewed);
+    return r.json();
+  }).catch(() => null);
 
 /**
  * Sign in with EITHER the email or the mobile number — one endpoint, one store.

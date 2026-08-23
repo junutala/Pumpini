@@ -3164,11 +3164,9 @@
     "appointment": "Next appointment",
     "optional": "(optional)",
     "dayToday": "Today",
-    "dayTomorrow": "Tomorrow",
-    "dayAfter": "Day after",
-    "dayMonday": "Monday",
-    "otherTime": "Other…",
     "clearAppointment": "Clear appointment",
-    "apptOnlyNote": "Appointment set."
+    "apptOnlyNote": "Appointment set.",
+    "pickTimeToo": "Now pick a time.",
+    "apptPast": "That time has passed — pick another."
   }
 }
