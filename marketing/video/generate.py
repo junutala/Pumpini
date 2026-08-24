@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Pumpini launch film generator — 1080x1920 (9:16), 36s, silent, H.264 MP4.
+"""Pumpini launch film generator — 1080x1920 (9:16), 41s, silent, H.264 MP4.
 
 Third creative in the recall chain (WhatsApp image -> A5 front -> this film ->
-the two-fold brochure). Every caption below is copy already set in type on the
+the two-fold brochure). Every caption is copy already set in type on the
 brochure. The film reinforces the print piece; it does not invent new claims.
 
 How it works: the scene is one HTML page whose motion is pure CSS animation.
@@ -11,10 +11,16 @@ Every animation is PAUSED, and each frame is rendered by setting
 screenshotting. A frame is therefore a pure function of its time — no real-time
 recording, no dropped frames, byte-identical on a re-run.
 
+Live-action footage is composited the same way: each clip is exploded to a JPEG
+sequence at build time and the right frame is swapped into an <img> for each
+film frame. It is done that way because the bundled Chromium cannot decode
+H.264 in-page — seeking a <video> element hangs forever waiting for a `seeked`
+event that never fires. Frames always work.
+
     python3 generate.py            # English master
 
-Requires: pip install playwright  (+ `playwright install chromium`, or set
-          CHROMIUM_PATH to an existing chromium binary)
+Requires: pip install playwright pillow  (+ `playwright install chromium`, or
+          set CHROMIUM_PATH to an existing chromium binary)
           ffmpeg with libx264 + aac
           npx -y qrcode  for the closing WhatsApp QR
           ../../frontend/public/pumpini-logo.png
@@ -30,34 +36,55 @@ W, H, FPS = 1080, 1920, 30
 WHATSAPP = 'https://wa.me/917842178350'
 
 # ---------------------------------------------------------------- timeline --
-# EVERY timing in the film lives here, in seconds. To cut a shorter version
-# (e.g. 28s for WhatsApp Status) pull these in — nothing else needs touching.
-END = 40.0
+# EVERY timing in the film lives here, in seconds.
+END = 41.0
 SCENES = {                       # scene: (start, end), 0.5s cross-fade each side
-    's1': (0.0,  3.6),           # TAKE PICTURE
-    's2': (3.4, 11.6),           # USP 1 — capture
-    's3': (11.4, 19.6),          # USP 2 — reconcile
-    's4': (19.4, 27.6),          # USP 3 — dashboard
-    's5': (27.4, 32.6),          # USP 4 — ask
-    's6': (32.4, END),           # close — HELD, never faded out (see scene_css)
+    's1': (0.0,  3.2),           # TAKE PICTURE
+    'sA': (3.0,  5.4),           # FOOTAGE — attendant photographs the nozzle slip
+    's2': (5.2, 11.4),           # USP 1 — capture
+    's3': (11.2, 19.4),          # USP 2 — reconcile
+    's4': (19.2, 25.4),          # USP 3 — dashboard
+    's5': (25.2, 30.0),          # USP 4 — ask
+    'sB': (29.8, 32.2),          # FOOTAGE — the owner checks the bunk on his phone
+    's7': (32.0, 36.2),          # the dashboard, full screen
+    's6': (36.0, END),           # close — HELD, never faded out (see scene_css)
 }
 CUE = {
-    'h1': 0.30, 'h1sub': 1.10,
-    'k2': 3.75, 'h2': 4.35, 'chip0': 5.30, 'chipstep': 0.55, 'slot2': 7.70, 'h2sub': 9.90,
-    'k3': 11.75, 'h3': 12.35, 'item0': 13.55, 'itemstep': 0.45, 'slot3': 16.10,
-    'k4': 19.75, 'h4': 20.35, 'h4sub': 21.60, 'slot4': 22.30, 'h4sub2': 25.40,
-    'k5': 27.75, 'h5': 28.30, 'h5sub': 29.30, 'slot5': 29.90,
-    'logo6': 32.70, 'tl1': 33.05, 'tl2': 33.35, 'qr': 33.70, 'wa': 34.05,
-    'price': 34.40, 'price2': 34.65, 'price3': 34.95,
-    'bug': 0.0,
+    'h1': 0.30, 'h1sub': 1.05,
+    'capA': 3.75,
+    'k2': 5.55, 'h2': 6.15, 'chip0': 7.05, 'chipstep': 0.50, 'slot2': 9.20, 'h2sub': 10.20,
+    'k3': 11.55, 'h3': 12.15, 'item0': 13.30, 'itemstep': 0.45, 'slot3': 15.90,
+    'k4': 19.55, 'h4': 20.15, 'h4sub': 21.40, 'slot4': 22.10,
+    'k5': 25.55, 'h5': 26.10, 'h5sub': 27.05, 'slot5': 27.60,
+    'capB': 30.50,
+    'dashfull': 32.35, 'capDash': 33.40,
+    'logo6': 36.30, 'tl1': 36.65, 'tl2': 36.95, 'qr': 37.30, 'wa': 37.65,
+    'price': 38.00, 'price2': 38.30,
 }
-POSTER_AT = 13.0                 # the "not day end" beat
+POSTER_AT = 34.50                # the dashboard, full screen
+
+# Live-action clips: (file, when its first frame lands in the film, duration).
+# What is NOT here matters as much as what is. The supplied 10s reel has two
+# sections that must never be cut in:
+#   2.1s-4.5s  the attendant photographing the console — an incorrect ATG
+#              capture, rejected by the owner.
+#   6.8s-10s   an AI-FABRICATED dashboard. Its labels read "Morguiar months",
+#              "Volume & moirts", "53.666 cars", "₹3,25.71224 • 2 autins", and
+#              the middle donut says ULLAGE where the real product says BLENDED
+#              MARGIN. Only the three headline figures survived intact. The
+#              real screenshot is used for the dashboard beat instead.
+FOOTAGE = {
+    'a': ('attendant-slip.mp4', 3.20, 2.00),
+    'b': ('owner-phone.mp4',   30.00, 1.80),
+}
 
 # ------------------------------------------------------------------- copy ---
 # APPROVED — lifted verbatim from the printed two-fold brochure. Do not reword
 # here; reword the brochure first, then copy it across.
 T = dict(
     h1='TAKE PICTURE.', h1sub='Data saved. Evidence captured.',
+
+    capA='Photograph it.',
 
     k2='CAPTURE → VERIFY → RECONCILE',
     h2a='Photograph it.', h2b='Pumpini types it.',
@@ -72,11 +99,13 @@ T = dict(
     k4='OWNER DASHBOARD',
     h4a='DATA AT FINGERTIPS —', h4b='ANYWHERE. ANYTIME.',
     h4sub='Today… for the month… year to date.',
-    h4sub2='One outlet or ten.',
 
     k5='AI ASSISTANT',
     h5a='DON’T TYPE.', h5b='ASK.',
     h5sub='In your language. Answers in your language.',
+
+    capB='Anywhere. Anytime.',
+    capDash='One outlet or ten.',
 
     tl1='control every drop.', tl2='track every rupee.',
     # Kept as THREE separate claims on purpose. Run together as one line,
@@ -91,10 +120,7 @@ T = dict(
 # Product screens, cropped from the supplied PDFs — see README for the source
 # file and crop box of each. Every crop deliberately excludes the sidebar (it
 # carries the outlet name and the logged-in user), the browser chrome, the
-# Windows taskbar, and any operator's name. Two name leaks were found by
-# looking at the crops rather than trusting the framing: the shift selector
-# read "Adhoc", and each dashboard card's grey note read "Highway Filling
-# Station". Both are cropped out. Value is the display width in film pixels.
+# Windows taskbar, and any operator's name. Value is display width in film px.
 SLOTS = {
     'slot2': ('capture-gauge.png', 896),
     'slot3': ('credit-invoice.png', 896),
@@ -121,6 +147,7 @@ body{width:1080px;height:1920px;overflow:hidden;color:#fff;background:#07150E;
 
 .scene{position:absolute;inset:0;display:flex;flex-direction:column;
   justify-content:center;align-items:flex-start;padding:0 92px;opacity:0}
+.scene.full{padding:0;justify-content:flex-end;align-items:stretch}
 
 .rise{animation:rise .85s cubic-bezier(.2,.85,.25,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(48px)}to{opacity:1;transform:none}}
@@ -154,14 +181,20 @@ h2 .o{color:#FF6B00}
 .shot{display:block;border-radius:22px;border:3px solid rgba(255,255,255,.22);
   box-shadow:0 30px 90px rgba(0,0,0,.6);background:#fff}
 
-/* Persistent wordmark, frame one to the close. A clip gets forwarded out of
-   every context it was posted in; the mark has to travel with it. It sits on a
-   white chip because the logo is dark-on-white artwork with no alpha, so it
-   cannot simply be laid over a dark ground. It fades before the closing card,
-   where the logo appears full size. */
-.bug{position:absolute;top:52px;left:92px;background:#fff;border-radius:99px;
-  padding:13px 28px;box-shadow:0 8px 26px rgba(0,0,0,.35);z-index:5}
-.bug img{height:46px;display:block}
+/* live-action footage, full bleed, with a scrim so white type stays legible */
+.foot{position:absolute;inset:0;width:1080px;height:1920px;object-fit:cover}
+.scrim{position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(7,21,14,.88) 0%,rgba(7,21,14,.35) 32%,
+             rgba(7,21,14,0) 58%)}
+.lower{position:relative;padding:0 92px 250px}
+.lower .txt{font-size:76px;font-weight:900;line-height:1.08;letter-spacing:-.02em;
+  text-shadow:0 8px 40px rgba(0,0,0,.8)}
+
+/* the dashboard, full screen, with a slow push in */
+.dashfull{position:absolute;left:0;top:50%;width:1080px;
+  box-shadow:0 40px 120px rgba(0,0,0,.65)}
+@keyframes push{from{transform:translateY(-50%) scale(1)}
+                to{transform:translateY(-50%) scale(1.10)}}
 
 .s6{justify-content:center;align-items:center;padding:0 84px}
 .card{width:100%;background:#fff;border-radius:56px;padding:76px 60px;text-align:center;
@@ -177,6 +210,15 @@ h2 .o{color:#FF6B00}
 .card .price2{font-size:29px;font-weight:600;color:#5b6570;margin-top:20px}
 .card .pdiv{width:150px;height:3px;border-radius:3px;background:#E2E6E4;margin:34px auto 0}
 .card .price3{font-size:46px;font-weight:900;color:#0C2418;margin-top:26px;letter-spacing:-.01em}
+
+/* Persistent wordmark, frame one to the close. A clip gets forwarded out of
+   every context it was posted in; the mark has to travel with it. It sits on a
+   white chip because the logo is dark-on-white artwork with no alpha, so it
+   cannot simply be laid over a dark ground or over footage. It fades before the
+   closing card, where the logo appears full size. */
+.bug{position:absolute;top:52px;left:92px;background:#fff;border-radius:99px;
+  padding:13px 28px;box-shadow:0 8px 26px rgba(0,0,0,.35);z-index:5}
+.bug img{height:46px;display:block}
 """
 
 
@@ -195,7 +237,8 @@ def scene_css():
     to the final frame. A player decides whether to loop a clip and no flag in
     the file changes that, so the only thing under our control is what the last
     frame shows. It has to be the QR and the phone number, still on screen —
-    not a scene halfway through fading out.
+    not a scene halfway through fading out. Do not "tidy" this back into the
+    uniform loop.
     """
     out, fade = [], 0.5
     last = list(SCENES)[-1]
@@ -224,18 +267,27 @@ def slot(key):
             % (src, w, CUE[key]))
 
 
+def footage(key):
+    _, t0, dur = FOOTAGE[key]
+    n = int(round(dur * FPS))
+    return ('<img class="foot" data-seq="%s" data-t0="%.3f" data-n="%d" '
+            'src="footage/%s_0001.jpg" alt="">' % (key, t0, n, key))
+
+
 def build_html():
     chips = ''.join('<div class="chip pop" style="animation-delay:%.2fs">%s</div>'
                     % (CUE['chip0'] + i * CUE['chipstep'], c)
                     for i, c in enumerate(T['chips']))
     items = ''.join('<div class="item wipe" style="animation-delay:%.2fs">'
-                    '<div class="tick">✓</div>%s</div>'
+                    '<div class="tick">&#10003;</div>%s</div>'
                     % (CUE['item0'] + i * CUE['itemstep'], it)
                     for i, it in enumerate(T['items']))
+    dash_s, dash_e = SCENES['s7']
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
 {CSS.replace('__FONTS__', FONTS)}
 {scene_css()}
 {bug_css()}
+.dashfull{{animation:push {dash_e - dash_s:.2f}s linear {dash_s:.2f}s both}}
 </style></head><body>
 <div class="bg"><div class="blob b1"></div><div class="blob b2"></div></div>
 <div class="bug"><img src="pumpini-wordmark.png" alt="Pumpini"></div>
@@ -244,6 +296,12 @@ def build_html():
   <h1 class="rise" {dly('h1')}>{T['h1']}</h1>
   <div class="sub big rise" {dly('h1sub')}>{T['h1sub']}</div>
   <div class="rule rise" {dly('h1sub', 0.25)}></div>
+</div>
+
+<div class="scene sA full">
+  {footage('a')}
+  <div class="scrim"></div>
+  <div class="lower"><div class="txt rise" {dly('capA')}>{T['capA']}</div></div>
 </div>
 
 <div class="scene s2">
@@ -266,7 +324,6 @@ def build_html():
   <h2 class="rise" {dly('h4')}>{T['h4a']}<br><span class="o">{T['h4b']}</span></h2>
   <div class="sub big rise" {dly('h4sub')}>{T['h4sub']}</div>
   {slot('slot4')}
-  <div class="sub rise" {dly('h4sub2')}>{T['h4sub2']}</div>
 </div>
 
 <div class="scene s5">
@@ -274,6 +331,18 @@ def build_html():
   <h2 class="rise" {dly('h5')}>{T['h5a']} <span class="o">{T['h5b']}</span></h2>
   <div class="sub big rise" {dly('h5sub')}>{T['h5sub']}</div>
   {slot('slot5')}
+</div>
+
+<div class="scene sB full">
+  {footage('b')}
+  <div class="scrim"></div>
+  <div class="lower"><div class="txt rise" {dly('capB')}>{T['capB']}</div></div>
+</div>
+
+<div class="scene s7 full">
+  <img class="dashfull" src="screens/dashboard-full.png" alt="">
+  <div class="scrim"></div>
+  <div class="lower"><div class="txt rise" {dly('capDash')}>{T['capDash']}</div></div>
 </div>
 
 <div class="scene s6">
@@ -285,14 +354,25 @@ def build_html():
     <div class="wa rise" {dly('wa')}>{T['wa']}</div>
     <div><span class="price pop" {dly('price')}>{T['price']}</span></div>
     <div class="price2 rise" {dly('price2')}>{T['price2']}</div>
-    <div class="pdiv rise" {dly('price3')}></div>
-    <div class="price3 rise" {dly('price3')}>{T['price3']}</div>
+    <div class="pdiv rise" {dly('price2', 0.2)}></div>
+    <div class="price3 rise" {dly('price2', 0.3)}>{T['price3']}</div>
   </div>
 </div>
 
 <script>
-window.renderFrame = (ms) => {{
+const FPS = {FPS};
+window.renderFrame = async (ms) => {{
   for (const a of document.getAnimations()) {{ a.pause(); a.currentTime = ms; }}
+  for (const el of document.querySelectorAll('img[data-seq]')) {{
+    const t0 = +el.dataset.t0, n = +el.dataset.n, key = el.dataset.seq;
+    let i = Math.round((ms / 1000 - t0) * FPS);
+    i = Math.max(0, Math.min(n - 1, i));
+    const src = 'footage/' + key + '_' + String(i + 1).padStart(4, '0') + '.jpg';
+    if (!el.getAttribute('src').endsWith(src)) {{
+      el.setAttribute('src', src);
+      try {{ await el.decode(); }} catch (e) {{}}
+    }}
+  }}
 }};
 </script>
 </body></html>"""
@@ -309,15 +389,29 @@ def main():
     # second brand asset is created and nothing can drift from the original.
     lg = Image.open(src)
     lg.crop((0, 0, lg.width, 218)).save(os.path.join(OUT, 'pumpini-wordmark.png'))
+
     subprocess.run(['npx', '-y', 'qrcode', '-o', os.path.join(OUT, 'qr.png'),
                     '-w', '620', '-m', '2', WHATSAPP], check=True)
 
-    # screens live beside the generator and are referenced relatively, so the
-    # rendered page must sit next to a copy of them
+    # screens and footage are referenced relatively from the rendered page
     scr_dst = os.path.join(OUT, 'screens')
     if os.path.isdir(scr_dst):
         shutil.rmtree(scr_dst)
     shutil.copytree(os.path.join(HERE, 'screens'), scr_dst)
+
+    # Explode each clip to a JPEG sequence. Chromium cannot decode H.264
+    # in-page, so a <video> element would hang on seek; frames always work.
+    foot_dst = os.path.join(OUT, 'footage')
+    if os.path.isdir(foot_dst):
+        shutil.rmtree(foot_dst)
+    os.makedirs(foot_dst)
+    for key, (clip, _t0, dur) in FOOTAGE.items():
+        subprocess.run(
+            ['ffmpeg', '-y', '-loglevel', 'error', '-i', os.path.join(HERE, 'footage', clip),
+             '-vf', 'scale=%d:%d:flags=lanczos,fps=%d' % (W, H, FPS), '-q:v', '3',
+             os.path.join(foot_dst, '%s_%%04d.jpg' % key)], check=True)
+        got = len([f for f in os.listdir(foot_dst) if f.startswith(key + '_')])
+        print('footage %s: %d frames (need %d)' % (key, got, round(dur * FPS)))
 
     page_path = os.path.join(OUT, 'film-en.html')
     open(page_path, 'w', encoding='utf-8').write(build_html())
@@ -341,7 +435,7 @@ def main():
         pg = b.new_page(viewport={'width': W, 'height': H}, device_scale_factor=1)
         pg.goto('file://' + page_path, wait_until='load')
         pg.evaluate('document.fonts.ready')
-        pg.wait_for_timeout(1200)
+        pg.wait_for_timeout(1500)
         for i in range(frames):
             ms = i * 1000.0 / FPS
             pg.evaluate('(ms) => window.renderFrame(ms)', ms)
