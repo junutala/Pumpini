@@ -16,6 +16,8 @@ two-fold brochure). 1080×1920 (9:16), 36s, silent with burned-in captions.
   written in the words already printed on the two-fold brochure ("TAKE PICTURE. Data
   saved. Evidence captured." / "RECONCILE FOR EVERY SHIFT. NOT DAY END." / "DATA AT
   FINGERTIPS — ANYWHERE. ANYTIME." / "DON'T TYPE. ASK."). Awaiting sign-off.
+  The film reinforces the two-fold brochure and must complement it, so where the
+  brochure already sets a line in type, the film uses that line verbatim.
 - ⛔ **No product screens captured yet.** Blocked on a login for a dummy outlet
   (Dilsukhnagar / Nagole). See below.
 
@@ -35,17 +37,27 @@ The screen pack dated 10-Aug-2026 cannot be used as-is:
 The fix is one Playwright pass against a dummy outlet at a mobile viewport, which also
 yields a clean AI-assistant exchange for USP 4.
 
-## Two defects found in the printed two-fold brochure
+## The AI Assistant panel — owner-set 24-Aug-2026, do not re-open
 
-Recorded here because they affect what this film may show:
+The two-fold brochure's AI Assistant panel shows the assistant answering "Diesel has
+the most stock at 8,302 L" and then correcting itself: "Wait, I need to correct that —
+Petrol actually has the most at 9,789 L."
 
-- The **AI Assistant panel shows the assistant contradicting itself** — it answers
-  "Diesel has the most stock at 8,302 L", then "Wait, I need to correct that — Petrol
-  actually has the most at 9,789 L". That panel is the proof for USP 4 and currently
-  argues against it. It must not appear in the film.
-- The outlet anonymisation is **only half applied**: tabs read "Outlet A/B/C Filling
-  Station" while the BY OUTLET rows and the margin panel in the same screenshot still
-  read "Kamala Filling Station" and "Highway Filling Station".
+A previous session flagged this as a defect and advised holding the print run. **The
+owner overruled it, and the ruling stands:** it is the real answer the assistant gave,
+everyone knows an AI can be wrong, and showing it is an honest reproduction. Printing
+and distribution had already begun in any case.
+
+**The consequence for this film:** the assistant exchange is captured LIVE and shown as
+it comes. Do not fish for a clean answer, do not re-run until the assistant looks good,
+do not edit the reply. Whatever it says is what goes in. Honesty is the brand position
+here, not polish.
+
+The outlet anonymisation in that same brochure screenshot is only half applied — the
+tabs read "Outlet A/B/C Filling Station" while the BY OUTLET rows and the margin panel
+still read "Kamala Filling Station" and "Highway Filling Station". Not a defect to fix
+retrospectively; noted because the film's screens are being recaptured on dummy outlets
+and must not repeat it.
 
 ## Brand colours
 
