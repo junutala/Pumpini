@@ -190,11 +190,15 @@ h2 .o{color:#FF6B00}
 .lower .txt{font-size:76px;font-weight:900;line-height:1.08;letter-spacing:-.02em;
   text-shadow:0 8px 40px rgba(0,0,0,.8)}
 
-/* the dashboard, full screen, with a slow push in */
-.dashfull{position:absolute;left:0;top:50%;width:1080px;
+/* The dashboard, full screen, with a slow push in. Inset to 1000px in a
+   1080px frame and the push capped at 1.06, so that 1000*1.06 = 1060 still
+   fits: at full 1080 width a 1.10 push cropped the left edge and clipped
+   "Operations" to "perations". A zoom must never eat the thing it is zooming
+   into. */
+.dashfull{position:absolute;left:40px;top:50%;width:1000px;
   box-shadow:0 40px 120px rgba(0,0,0,.65)}
 @keyframes push{from{transform:translateY(-50%) scale(1)}
-                to{transform:translateY(-50%) scale(1.10)}}
+                to{transform:translateY(-50%) scale(1.06)}}
 
 .s6{justify-content:center;align-items:center;padding:0 84px}
 .card{width:100%;background:#fff;border-radius:56px;padding:76px 60px;text-align:center;
@@ -390,8 +394,21 @@ def main():
     lg = Image.open(src)
     lg.crop((0, 0, lg.width, 218)).save(os.path.join(OUT, 'pumpini-wordmark.png'))
 
-    subprocess.run(['npx', '-y', 'qrcode', '-o', os.path.join(OUT, 'qr.png'),
-                    '-w', '620', '-m', '2', WHATSAPP], check=True)
+    # The QR depends only on WHATSAPP, so regenerating it every run buys
+    # nothing and costs a network round trip. It is cached against a sidecar
+    # holding the URL it was built from, and the call is given a timeout: an
+    # `npx qrcode` that hangs (seen once, for minutes) would otherwise stall a
+    # twelve-minute render before a single frame was drawn.
+    qr_path = os.path.join(OUT, 'qr.png')
+    stamp = os.path.join(OUT, 'qr.url')
+    cached = (os.path.exists(qr_path) and os.path.exists(stamp)
+              and open(stamp, encoding='utf-8').read().strip() == WHATSAPP)
+    if cached:
+        print('qr.png cached for', WHATSAPP)
+    else:
+        subprocess.run(['npx', '-y', 'qrcode', '-o', qr_path,
+                        '-w', '620', '-m', '2', WHATSAPP], check=True, timeout=180)
+        open(stamp, 'w', encoding='utf-8').write(WHATSAPP)
 
     # screens and footage are referenced relatively from the rendered page
     scr_dst = os.path.join(OUT, 'screens')

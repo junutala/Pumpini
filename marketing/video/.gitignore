@@ -6,3 +6,4 @@ output/frames/
 __pycache__/
 output/screens/
 output/footage/
+output/qr.url
