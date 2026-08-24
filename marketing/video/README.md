@@ -1,16 +1,15 @@
-# Pumpini launch film — WORK IN PROGRESS, DO NOT RENDER YET
+# Pumpini launch film
 
 Third creative in the recall chain (WhatsApp image → A5 front → **this film** → the
 two-fold brochure). 1080×1920 (9:16), 36s, silent with burned-in captions.
 
 ## Status (24-Aug-2026)
 
-**The animatic is built and rendered. The product screens are still missing.**
+**The film renders end to end, with product screens in place.**
 
-`output/pumpini-film-en.mp4` — 1080×1920, 36.0s, H.264 + silent AAC, 4.4 MB. Every
-caption beat, transition and the closing card are final. The four product screens are
-rendered as labelled `SCREEN SLOT` placeholders so a draft can never be mistaken for a
-finished film.
+`output/pumpini-film-en.mp4` — 1080×1920, 36.0s, H.264 + silent AAC, ~4.4 MB. Six beats:
+TAKE PICTURE → capture → reconcile-every-shift-not-day-end → data at fingertips →
+don't type, ask → the close.
 
 - ✅ Deterministic frame stepping — every CSS animation is paused and each frame is
   rendered by setting `Animation.currentTime`, so a frame is a pure function of its
@@ -20,9 +19,57 @@ finished film.
   source PNG: it resolves to `https://wa.me/917842178350`. It survives H.264.
 - ✅ The wordmark is cropped from the brand logo at build time, because the logo bakes
   the tagline in and the close card sets that same tagline in 70px type.
-- ⛔ **No product screens.** Blocked — see below.
+- ✅ A persistent wordmark bug rides every frame from the first, so a forwarded clip
+  carries the brand with it — and so the opening frame is never blank in a thumbnail.
+- ✅ The trial and the price are **separate** claims. Run together as one line,
+  "15-day free trial · Less than ₹45 a day" reads as though the trial costs ₹45 a day.
+  Price verified with the owner: ₹1,299/month ÷ 30 = ₹43.30/day.
+- ✅ Product screens cropped from the supplied PDFs — see the table below for the
+  source and crop box of each, and the two outlet-name leaks that cropping removed.
 
-## Blocked: the app is unreachable from the build environment
+## The product screens — where each one came from
+
+The owner directed (24-Aug) that the screens come from the supplied PDFs rather than
+waiting on a recapture. `screens/` holds the crops; they are committed so the film
+rebuilds from repository contents alone.
+
+| File | Source | Crop box (native px) | Shown at |
+|---|---|---|---|
+| `capture-gauge.png` | screens PDF, img 004 | `(195,345)-(730,545)` | 896 px |
+| `credit-invoice.png` | screens PDF, img 010 | `(195,200)-(880,430)` | 896 px |
+| `dashboard.png` | brochure PDF, img 026 | `(430,400)-(830,660)` | 820 px |
+| `ai-assistant.png` | brochure PDF, img 027 | `(8,55)-(442,350)` | 860 px |
+
+Each is upscaled with Lanczos and given a light unsharp mask. **Crop tight, not wide.**
+A whole desktop screen shrunk into a 1080-wide vertical frame is unreadable on a phone —
+the first cut made exactly that mistake. Show the one element the beat is about.
+
+Two name leaks were caught by *looking at the crops*, not by trusting the framing:
+
+- the shift selector on the Start Shift screen read **"Shift 1 — Adhoc"**;
+- the grey note inside every dashboard card read **"costed on Highway Filling Station's
+  rate"**.
+
+Both are outside the final crop boxes. Every crop also excludes the sidebar (it carries
+the outlet name and the logged-in user), the browser chrome, the Windows taskbar, and
+every operator name. **The Cash Integrity screen is never used** — it names six operators
+and flags them "Suspect".
+
+The dashboard crop comes from the brochure because the owner had already anonymised the
+outlets there to "Outlet A / B / C". Its money figures are real but already in print.
+
+### Two product defects visible in these screens
+
+Recorded because they are on camera, not to re-argue them:
+
+- **The assistant's reply renders raw markdown.** It shows `**Diesel**` and `**8,302 L**`
+  literally, asterisks and all, instead of bold. That is a rendering bug in the chat
+  panel, and it is legible in the film.
+- The 10-Aug End Shift screen labels nozzles `N1.1`, `N1.2` — the naming the owner
+  banned on 20-Aug in favour of `<pump serial>.<nozzle number>`. That screen is not used
+  in the film, partly for this reason.
+
+## Blocked: capture from a live app is not possible here
 
 Credentials are not the problem. The session's egress policy denies the hosts outright:
 
@@ -30,10 +77,9 @@ Credentials are not the problem. The session's egress policy denies the hosts ou
     staging.pumpini.in  unreachable
     api.pumpini.in      unreachable
 
-So the screens cannot be captured from a session behind that policy. They must come
-from a machine that can reach the app. Neither PDF supplied so far is a usable source:
-the screen pack is 1253×704 (too soft once cropped for a 1080-wide vertical frame) and
-the brochure's embedded images top out at 887×295.
+The screens above are therefore cropped from PDFs. A mobile-viewport recapture — where
+the type is natively large instead of upscaled — remains the way to make them properly
+crisp, and needs a machine that can reach the app.
 
 ## Why the screens must be recaptured, not reused
 

@@ -44,11 +44,12 @@ SCENES = {                       # scene: (start, end), 0.5s cross-fade each sid
 CUE = {
     'h1': 0.30, 'h1sub': 1.10,
     'k2': 3.75, 'h2': 4.35, 'chip0': 5.30, 'chipstep': 0.55, 'slot2': 7.70, 'h2sub': 9.90,
-    'k3': 11.75, 'h3': 12.35, 'item0': 13.60, 'itemstep': 0.50, 'slot3': 14.10,
+    'k3': 11.75, 'h3': 12.35, 'item0': 13.55, 'itemstep': 0.45, 'slot3': 16.10,
     'k4': 19.75, 'h4': 20.35, 'h4sub': 21.60, 'slot4': 22.30, 'h4sub2': 25.40,
     'k5': 27.75, 'h5': 28.30, 'h5sub': 29.30, 'slot5': 29.90,
     'logo6': 32.70, 'tl1': 33.05, 'tl2': 33.35, 'qr': 33.70, 'wa': 34.05,
-    'price': 34.40, 'price2': 34.70,
+    'price': 34.40, 'price2': 34.65, 'price3': 34.95,
+    'bug': 0.0,
 }
 POSTER_AT = 13.0                 # the "not day end" beat
 
@@ -78,19 +79,27 @@ T = dict(
     h5sub='In your language. Answers in your language.',
 
     tl1='control every drop.', tl2='track every rupee.',
-    price='15-day free trial · Less than ₹45 a day',
+    # Kept as THREE separate claims on purpose. Run together as one line,
+    # "15-day free trial · Less than ₹45 a day" reads as though the trial costs
+    # ₹45 a day. The brochure sets them as two separate badges; so does this.
+    price='15-DAY FREE TRIAL',
     price2='No setup cost. No long-term lock-in.',
+    price3='Less than ₹45 a day',
     wa='+91 78421 78350',
 )
 
-# Slots where a captured product screen goes. Rendered as an unmistakable
-# placeholder until the screens exist — never as a design element, so nobody
-# can mistake a draft for a finished film.
+# Product screens, cropped from the supplied PDFs — see README for the source
+# file and crop box of each. Every crop deliberately excludes the sidebar (it
+# carries the outlet name and the logged-in user), the browser chrome, the
+# Windows taskbar, and any operator's name. Two name leaks were found by
+# looking at the crops rather than trusting the framing: the shift selector
+# read "Adhoc", and each dashboard card's grey note read "Highway Filling
+# Station". Both are cropped out. Value is the display width in film pixels.
 SLOTS = {
-    'slot2': 'Shift Start — gauge photo,\npump-slip scan, attendant photo',
-    'slot3': 'End Shift — settlement,\nvariance to zero',
-    'slot4': 'Group View — outlets live,\ndrill into one bunk',
-    'slot5': 'AI Assistant — live answer,\ncaptured unrehearsed',
+    'slot2': ('capture-gauge.png', 896),
+    'slot3': ('credit-invoice.png', 896),
+    'slot4': ('dashboard.png', 820),
+    'slot5': ('ai-assistant.png', 860),
 }
 
 FONTS = ("'DM Sans','Noto Sans','Noto Sans Telugu','Noto Sans Tamil',"
@@ -140,13 +149,19 @@ h2 .o{color:#FF6B00}
   border:4px solid #4ADE80;color:#4ADE80;font-size:30px;font-weight:900;
   display:flex;align-items:center;justify-content:center}
 
-/* placeholder for a product screen that has not been captured yet */
-.slot{margin-top:46px;width:100%;height:430px;border-radius:34px;
-  border:5px dashed rgba(255,107,0,.55);background:rgba(255,107,0,.06);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
-.slot .lb{font-size:26px;font-weight:800;letter-spacing:.16em;color:#FF9A4D}
-.slot .tx{font-size:32px;font-weight:600;color:rgba(255,255,255,.6);text-align:center;
-  line-height:1.35;white-space:pre-line}
+/* a real product screen, seated on the dark ground */
+.shotwrap{margin-top:44px;width:100%;display:flex;justify-content:center}
+.shot{display:block;border-radius:22px;border:3px solid rgba(255,255,255,.22);
+  box-shadow:0 30px 90px rgba(0,0,0,.6);background:#fff}
+
+/* Persistent wordmark, frame one to the close. A clip gets forwarded out of
+   every context it was posted in; the mark has to travel with it. It sits on a
+   white chip because the logo is dark-on-white artwork with no alpha, so it
+   cannot simply be laid over a dark ground. It fades before the closing card,
+   where the logo appears full size. */
+.bug{position:absolute;top:52px;left:92px;background:#fff;border-radius:99px;
+  padding:13px 28px;box-shadow:0 8px 26px rgba(0,0,0,.35);z-index:5}
+.bug img{height:46px;display:block}
 
 .s6{justify-content:center;align-items:center;padding:0 84px}
 .card{width:100%;background:#fff;border-radius:56px;padding:76px 60px;text-align:center;
@@ -160,7 +175,17 @@ h2 .o{color:#FF6B00}
 .card .price{display:inline-block;margin-top:30px;font-size:33px;font-weight:800;color:#fff;
   background:linear-gradient(135deg,#FF8C3B,#FF6B00);border-radius:99px;padding:20px 44px}
 .card .price2{font-size:29px;font-weight:600;color:#5b6570;margin-top:20px}
+.card .pdiv{width:150px;height:3px;border-radius:3px;background:#E2E6E4;margin:34px auto 0}
+.card .price3{font-size:46px;font-weight:900;color:#0C2418;margin-top:26px;letter-spacing:-.01em}
 """
+
+
+def bug_css():
+    """Visible from frame one, gone before the closing card takes over."""
+    up, out = 0.45 / END * 100, SCENES['s6'][0] / END * 100
+    return ('@keyframes bugfade{0%%{opacity:0}%.3f%%{opacity:1}%.3f%%{opacity:1}'
+            '%.3f%%{opacity:0}100%%{opacity:0}}\n'
+            '.bug{animation:bugfade %.3fs linear 0s both}' % (up, out, out + 1.4, END))
 
 
 def scene_css():
@@ -180,8 +205,10 @@ def dly(key, extra=0.0):
 
 
 def slot(key):
-    return ('<div class="slot rise" %s><div class="lb">SCREEN SLOT</div>'
-            '<div class="tx">%s</div></div>' % (dly(key), SLOTS[key]))
+    src, w = SLOTS[key]
+    return ('<div class="shotwrap"><img class="shot rise" src="screens/%s" '
+            'style="width:%dpx;animation-delay:%.2fs" alt=""></div>'
+            % (src, w, CUE[key]))
 
 
 def build_html():
@@ -195,8 +222,10 @@ def build_html():
     return f"""<!doctype html><html><head><meta charset="utf-8"><style>
 {CSS.replace('__FONTS__', FONTS)}
 {scene_css()}
+{bug_css()}
 </style></head><body>
 <div class="bg"><div class="blob b1"></div><div class="blob b2"></div></div>
+<div class="bug"><img src="pumpini-wordmark.png" alt="Pumpini"></div>
 
 <div class="scene s1">
   <h1 class="rise" {dly('h1')}>{T['h1']}</h1>
@@ -216,6 +245,7 @@ def build_html():
   <div class="kicker rise" {dly('k3')}>{T['k3']}</div>
   <h2 class="rise" {dly('h3')}>{T['h3a']}<br><span class="o">{T['h3b']}</span></h2>
   <div class="items">{items}</div>
+  {slot('slot3')}
 </div>
 
 <div class="scene s4">
@@ -242,6 +272,8 @@ def build_html():
     <div class="wa rise" {dly('wa')}>{T['wa']}</div>
     <div><span class="price pop" {dly('price')}>{T['price']}</span></div>
     <div class="price2 rise" {dly('price2')}>{T['price2']}</div>
+    <div class="pdiv rise" {dly('price3')}></div>
+    <div class="price3 rise" {dly('price3')}>{T['price3']}</div>
   </div>
 </div>
 
@@ -266,6 +298,13 @@ def main():
     lg.crop((0, 0, lg.width, 218)).save(os.path.join(OUT, 'pumpini-wordmark.png'))
     subprocess.run(['npx', '-y', 'qrcode', '-o', os.path.join(OUT, 'qr.png'),
                     '-w', '620', '-m', '2', WHATSAPP], check=True)
+
+    # screens live beside the generator and are referenced relatively, so the
+    # rendered page must sit next to a copy of them
+    scr_dst = os.path.join(OUT, 'screens')
+    if os.path.isdir(scr_dst):
+        shutil.rmtree(scr_dst)
+    shutil.copytree(os.path.join(HERE, 'screens'), scr_dst)
 
     page_path = os.path.join(OUT, 'film-en.html')
     open(page_path, 'w', encoding='utf-8').write(build_html())
