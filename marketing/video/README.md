@@ -5,21 +5,35 @@ two-fold brochure). 1080×1920 (9:16), 36s, silent with burned-in captions.
 
 ## Status (24-Aug-2026)
 
-**The machinery is built and verified. The content is NOT approved.**
+**The animatic is built and rendered. The product screens are still missing.**
+
+`output/pumpini-film-en.mp4` — 1080×1920, 36.0s, H.264 + silent AAC, 4.4 MB. Every
+caption beat, transition and the closing card are final. The four product screens are
+rendered as labelled `SCREEN SLOT` placeholders so a draft can never be mistaken for a
+finished film.
 
 - ✅ Deterministic frame stepping — every CSS animation is paused and each frame is
   rendered by setting `Animation.currentTime`, so a frame is a pure function of its
   time. No real-time recording, no dropped frames, identical on a re-run.
-- ✅ Brand CSS, timeline, and cue table.
-- ⛔ **The copy in `LANGS` below is SUPERSEDED.** It is the abstract chain copy from
-  the WhatsApp/A5 creatives. The agreed direction is now the owner's four USPs,
-  written in the words already printed on the two-fold brochure ("TAKE PICTURE. Data
-  saved. Evidence captured." / "RECONCILE FOR EVERY SHIFT. NOT DAY END." / "DATA AT
-  FINGERTIPS — ANYWHERE. ANYTIME." / "DON'T TYPE. ASK."). Awaiting sign-off.
-  The film reinforces the two-fold brochure and must complement it, so where the
-  brochure already sets a line in type, the film uses that line verbatim.
-- ⛔ **No product screens captured yet.** Blocked on a login for a dummy outlet
-  (Dilsukhnagar / Nagole). See below.
+- ✅ Copy is the approved brochure wording, verbatim.
+- ✅ Closing QR verified by decoding it out of the *encoded video frame*, not just the
+  source PNG: it resolves to `https://wa.me/917842178350`. It survives H.264.
+- ✅ The wordmark is cropped from the brand logo at build time, because the logo bakes
+  the tagline in and the close card sets that same tagline in 70px type.
+- ⛔ **No product screens.** Blocked — see below.
+
+## Blocked: the app is unreachable from the build environment
+
+Credentials are not the problem. The session's egress policy denies the hosts outright:
+
+    pumpini.in          CONNECT tunnel failed, 403
+    staging.pumpini.in  unreachable
+    api.pumpini.in      unreachable
+
+So the screens cannot be captured from a session behind that policy. They must come
+from a machine that can reach the app. Neither PDF supplied so far is a usable source:
+the screen pack is 1253×704 (too soft once cropped for a 1080-wide vertical frame) and
+the brochure's embedded images top out at 887×295.
 
 ## Why the screens must be recaptured, not reused
 
