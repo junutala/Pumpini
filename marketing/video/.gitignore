@@ -1,0 +1,6 @@
+output/*.html
+output/*.png
+output/*.jpg
+output/frames/
+!output/pumpini-video-poster-*.jpg
+__pycache__/
