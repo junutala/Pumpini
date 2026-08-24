@@ -5,3 +5,5 @@ output/frames/
 !output/pumpini-video-poster-*.jpg
 __pycache__/
 output/screens/
+output/footage/
+output/qr.url
