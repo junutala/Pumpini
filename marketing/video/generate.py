@@ -32,14 +32,14 @@ WHATSAPP = 'https://wa.me/917842178350'
 # ---------------------------------------------------------------- timeline --
 # EVERY timing in the film lives here, in seconds. To cut a shorter version
 # (e.g. 28s for WhatsApp Status) pull these in — nothing else needs touching.
-END = 36.0
+END = 40.0
 SCENES = {                       # scene: (start, end), 0.5s cross-fade each side
     's1': (0.0,  3.6),           # TAKE PICTURE
     's2': (3.4, 11.6),           # USP 1 — capture
     's3': (11.4, 19.6),          # USP 2 — reconcile
     's4': (19.4, 27.6),          # USP 3 — dashboard
     's5': (27.4, 32.6),          # USP 4 — ask
-    's6': (32.4, END),           # close
+    's6': (32.4, END),           # close — HELD, never faded out (see scene_css)
 }
 CUE = {
     'h1': 0.30, 'h1sub': 1.10,
@@ -189,13 +189,26 @@ def bug_css():
 
 
 def scene_css():
-    """One opacity animation per scene — fade up, hold, cross-fade out."""
+    """One opacity animation per scene — fade up, hold, cross-fade out.
+
+    The LAST scene is the exception: it fades up and then holds at full opacity
+    to the final frame. A player decides whether to loop a clip and no flag in
+    the file changes that, so the only thing under our control is what the last
+    frame shows. It has to be the QR and the phone number, still on screen —
+    not a scene halfway through fading out.
+    """
     out, fade = [], 0.5
+    last = list(SCENES)[-1]
     for name, (s, e) in SCENES.items():
         d = e - s
-        p1, p2 = fade / d * 100, (d - fade) / d * 100
-        out.append('@keyframes fade_%s{0%%{opacity:0}%.3f%%{opacity:1}'
-                   '%.3f%%{opacity:1}100%%{opacity:0}}' % (name, p1, p2))
+        p1 = fade / d * 100
+        if name == last:
+            out.append('@keyframes fade_%s{0%%{opacity:0}%.3f%%{opacity:1}'
+                       '100%%{opacity:1}}' % (name, p1))
+        else:
+            p2 = (d - fade) / d * 100
+            out.append('@keyframes fade_%s{0%%{opacity:0}%.3f%%{opacity:1}'
+                       '%.3f%%{opacity:1}100%%{opacity:0}}' % (name, p1, p2))
         out.append('.%s{animation:fade_%s %.3fs linear %.3fs both}' % (name, name, d, s))
     return '\n'.join(out)
 

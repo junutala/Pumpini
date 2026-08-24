@@ -1,13 +1,13 @@
 # Pumpini launch film
 
 Third creative in the recall chain (WhatsApp image → A5 front → **this film** → the
-two-fold brochure). 1080×1920 (9:16), 36s, silent with burned-in captions.
+two-fold brochure). 1080×1920 (9:16), 40s, silent with burned-in captions.
 
 ## Status (24-Aug-2026)
 
 **The film renders end to end, with product screens in place.**
 
-`output/pumpini-film-en.mp4` — 1080×1920, 36.0s, H.264 + silent AAC, ~4.4 MB. Six beats:
+`output/pumpini-film-en.mp4` — 1080×1920, 40.0s, H.264 + silent AAC, ~4.6 MB. Six beats:
 TAKE PICTURE → capture → reconcile-every-shift-not-day-end → data at fingertips →
 don't type, ask → the close.
 
@@ -21,6 +21,12 @@ don't type, ask → the close.
   the tagline in and the close card sets that same tagline in 70px type.
 - ✅ A persistent wordmark bug rides every frame from the first, so a forwarded clip
   carries the brand with it — and so the opening frame is never blank in a thumbnail.
+- ✅ **The closing card is held to the final frame, never faded out.** A player decides
+  whether to loop a clip and no flag in the file changes that, so the only thing under
+  our control is what the last frame shows — and it has to be the QR and the phone
+  number, still on screen. The close holds ~4.5s static so a QR can actually be scanned.
+  `scene_css()` special-cases the last scene for this; do not "tidy" it back into the
+  uniform fade-out loop.
 - ✅ The trial and the price are **separate** claims. Run together as one line,
   "15-day free trial · Less than ₹45 a day" reads as though the trial costs ₹45 a day.
   Price verified with the owner: ₹1,299/month ÷ 30 = ₹43.30/day.
