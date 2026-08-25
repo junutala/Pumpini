@@ -413,6 +413,38 @@ deleted and a three-line route added instead. The mechanism you need usually exi
 Reclaiming the disk afterwards needs `VACUUM FULL` — Postgres does not hand it back
 on its own, and it takes an exclusive lock, so off-peak only.
 
+## 🔴 THE CALIBRATION AUTHORITIES ARE IN THE REPO — do not ask for them again
+### added 25-Aug-2026
+
+The OMC documents every tank figure is ultimately checked against now live in
+**`docs/reference/`**. Read `docs/reference/README.md` before touching anything that
+converts a dip to litres.
+
+- **`hp-tank-dip-charts.pdf`** — HP calibration charts, 4 pages, one per tank geometry.
+  Pages 1/2/3 are Sri Balaji's premium / petrol / diesel tanks.
+- **`hp-density-table-astm-53b.xls`** — ASTM 1980 Table 53B, observed density +
+  temperature → density at 15°C.
+
+**`dipToVolume()` reproduces all three installed charts exactly** — 645 points checked
+25-Aug-2026, **max deviation 0.00 L**. So when Pumpini and a gauge console disagree,
+the console is the suspect until someone shows our figure departing from a chart page.
+
+Three traps, all of which cost a live morning at Sri Balaji on 25-Aug:
+
+- **HP prints the RADIUS; we store the DIAMETER.** Radius 100 on the sheet is
+  `diameter_cm = 200`. Page 4 prints a diameter instead. Read the header word.
+- **🔴 THE NAMEPLATE IS NOT THE SHELL VOLUME.** A tank *called* 16 KL holds
+  **17,279 L**. Sri Balaji's ATG was configured from the nameplate (16,023 L) and
+  under-read petrol by **661 L at a 91.23 cm dip** — an error that GROWS with the
+  level, so no correction factor exists. **Test it by running the console's own DIP
+  through the chart and comparing against its GROSS volume** (`net = gross − water`).
+  Do NOT infer shell volume from `net + ullage` — it implies a wrong shell for two
+  tanks that are perfectly calibrated. No stick dip needed, and none should be asked
+  for: the outlet cannot suspend sales so we can measure.
+- **A back-solved dip is fiction.** When two screens disagree, an operator will enter
+  whatever dip makes the litres match — and the volume then looks right while the dip
+  is invented. Sri Balaji's petrol went in as 852.00 mm when the console read 912.30.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
