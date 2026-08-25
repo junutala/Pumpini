@@ -17,7 +17,7 @@ const { normalizePhone, validatePhone } = require('../utils/phone');
 const { createUser, linkUserToStation } = require('../services/userService');
 // One writer for a lead interaction — shared with the public field tool
 // (routes/leads.js). Same table and validation; only the guard differs.
-const { addInteraction, listInteractions, listAppointments,
+const { addInteraction, listInteractions, listAppointments, listAllInteractions,
         addContact, listContacts, deleteContact, hasContactsTable,
         hasInteractionTable } = require('../services/leadService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
@@ -1140,6 +1140,16 @@ router.get('/leads', authAdmin, async (req, res, next) => {
 router.get('/appointments', authAdmin, async (req, res, next) => {
   try {
     res.json({ appointments: await listAppointments() });
+  } catch (err) { next(err); }
+});
+
+// ── The activity feed ─────────────────────────────────────
+// Every interaction across every lead, newest first. The rail answers "what is
+// the story of THIS outlet"; this answers "what happened yesterday", which is a
+// different question and the one asked first thing in the morning.
+router.get('/interactions', authAdmin, async (req, res, next) => {
+  try {
+    res.json({ interactions: await listAllInteractions() });
   } catch (err) { next(err); }
 });
 

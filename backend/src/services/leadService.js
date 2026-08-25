@@ -233,8 +233,36 @@ async function deleteContact(id) {
   return rowCount > 0;
 }
 
+/**
+ * EVERY interaction, newest first, with the outlet it belongs to.
+ *
+ * The rail files an interaction under its lead and shows one lead at a time,
+ * which is right when you are working a single outlet — and useless at 9am when
+ * the question is "what happened yesterday". The owner's ten notes from one
+ * afternoon sat across SEVEN leads, so nine of them were twelve swipes away and
+ * looked lost (25-Aug-2026).
+ *
+ * The lead's identity is joined in so the feed can name each entry without a
+ * request per row.
+ */
+async function listAllInteractions(limit = 200) {
+  if (!(await hasInteractionTable())) return [];
+  const appt = await hasAppointmentColumn();
+  const { rows } = await pool.query(
+    `SELECT i.id, i.lead_id, i.note, i.captured_by, i.lat, i.lng, i.created_at,
+            ${appt ? 'i.appointment_at' : 'NULL::timestamptz AS appointment_at'},
+            l.name, l.station_name, l.phone, l.status
+       FROM lead_interactions i
+       JOIN leads l ON l.id = i.lead_id
+      ORDER BY i.created_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return rows;
+}
+
 module.exports = {
-  addInteraction, listInteractions, listAppointments,
+  addInteraction, listInteractions, listAppointments, listAllInteractions,
   addContact, listContacts, deleteContact,
   hasInteractionTable, hasAppointmentColumn, hasContactsTable, num, text, when,
 };

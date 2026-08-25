@@ -24,7 +24,8 @@
 // adds an interaction to that lead instead of creating a second one.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Check, LogOut, Plus, List, Shield, XCircle, CalendarClock } from 'lucide-react';
+import { Loader2, Check, LogOut, Plus, List, Shield, XCircle, CalendarClock,
+         ListChecks } from 'lucide-react';
 // The SAME control the owner uses on /admin to log a visit. One implementation,
 // two screens (CLAUDE.md: reuse the form, do not open a new route).
 import InteractionRecorder from '../../components/shared/InteractionRecorder';
@@ -37,6 +38,8 @@ import { toInstant } from '../../lib/appointment';
 import LeadRail from '../../components/admin/LeadRail';
 // The SAME list the /admin Appointments tab renders, in its phone layout.
 import AppointmentList from '../../components/admin/AppointmentList';
+// What happened yesterday, across every outlet — the same feed /admin shows.
+import ActivityFeed from '../../components/admin/ActivityFeed';
 import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
 const AGENT_KEY = 'pumpini_lead_agent';
@@ -81,7 +84,7 @@ export default function LeadPage() {
   const [agent, setAgent] = useState(null);    // temp: the mobile that signed in
   const [owner, setOwner] = useState(null);    // owner: the decoded superadmin JWT
   const [ready, setReady] = useState(false);   // storage read done (SSR guard)
-  const [view, setView]   = useState('new');   // owner only: 'new' | 'list' | 'appts'
+  const [view, setView]   = useState('log');   // owner: 'log' | 'new' | 'list' | 'appts'
   const [focusLead, setFocusLead] = useState(null);   // lead to open from the diary
 
   useEffect(() => {
@@ -129,8 +132,8 @@ export default function LeadPage() {
   const tab = (id, icon, text) => (
     <button onClick={() => setView(id)} style={{
       flex: 1, height: 40, border: 'none', borderRadius: 9, cursor: 'pointer',
-      fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+      fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
       background: view === id ? '#1a1a1a' : 'transparent',
       color: view === id ? '#fff' : '#666',
     }}>{icon}{text}</button>
@@ -166,11 +169,13 @@ export default function LeadPage() {
             {/* The owner gets both: file a lead himself, or work the pipeline. */}
             <div style={{ display: 'flex', gap: 4, background: '#fff', border: '1px solid #e5e3de',
                           borderRadius: 11, padding: 4, marginBottom: '0.9rem' }}>
+              {tab('log',   <ListChecks size={15} />,    tc('lead.tabLog', 'Log'))}
               {tab('new',   <Plus size={15} />,          tc('lead.tabNew', 'New'))}
               {tab('list',  <List size={15} />,          tc('lead.tabAll', 'Leads'))}
               {tab('appts', <CalendarClock size={15} />, tc('lead.tabAppts', 'Diary'))}
             </div>
-            {view === 'new'   && <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('list')} />}
+            {view === 'log'   && <OwnerActivity tc={tc} onOpen={(id) => { setFocusLead(id); setView('list'); }} />}
+            {view === 'new'   && <LeadForm agent={owner.name || owner.email} tc={tc} onSaved={() => setView('log')} />}
             {view === 'list'  && <OwnerLeads tc={tc} focusLeadId={focusLead} />}
             {view === 'appts' && <OwnerAppointments tc={tc} onOpen={(id) => { setFocusLead(id); setView('list'); }} />}
           </>
@@ -304,6 +309,60 @@ function Gate({ onSignInTemp, onSignInOwner, tc }) {
           </button>
         </form>
       )}
+    </div>
+  );
+}
+
+// ── Owner: what happened, newest first ──────────────────────────────────────
+// The morning question. The rail files each note under its outlet and shows one
+// outlet at a time, so a day's work spread over seven leads looked like one.
+function OwnerActivity({ tc, onOpen }) {
+  const [items, setItems] = useState(null);
+  const [err, setErr]     = useState('');
+
+  const load = useCallback(async () => {
+    setErr('');
+    const r = await adminFetch('/interactions');
+    if (!r || !Array.isArray(r.interactions)) {
+      setErr(r?.error === 'SESSION_EXPIRED'
+        ? tc('lead.sessionExpired', 'Your session ended. Sign in again — nothing has been lost.')
+        : tc('lead.loadFailedLog', 'Could not load the log. Nothing is lost — try again.'));
+      return;
+    }
+    setItems(r.interactions);
+  }, [tc]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (err) {
+    return <div style={{ ...card, textAlign: 'center', padding: '2rem 1.1rem' }}>
+      <p style={{ fontSize: 14, color: '#991b1b', margin: 0, lineHeight: 1.6 }}>{err}</p>
+      <button onClick={load} style={{
+        marginTop: 14, background: 'none', border: 'none', color: ORANGE, fontSize: 13,
+        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+      }}>{tc('lead.retry', 'Try again')}</button>
+    </div>;
+  }
+
+  if (items === null) {
+    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
+      <Loader2 size={16} className="spin" />{tc('lead.loadingLog', 'Loading…')}
+    </div>;
+  }
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: 10, padding: '0 2px' }}>
+        <span style={{ fontSize: 12.5, color: '#666', fontWeight: 600 }}>
+          {items.length} {items.length === 1 ? tc('lead.noteOne', 'note') : tc('lead.noteMany', 'notes')}
+        </span>
+        <button onClick={load} style={{
+          background: 'none', border: 'none', color: ORANGE, fontSize: 12.5, fontWeight: 700,
+          cursor: 'pointer', padding: 0, fontFamily: 'inherit',
+        }}>{tc('lead.refresh', 'Refresh')}</button>
+      </div>
+      <ActivityFeed interactions={items} tc={tc} onOpen={onOpen} />
     </div>
   );
 }
