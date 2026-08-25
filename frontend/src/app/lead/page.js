@@ -113,6 +113,15 @@ export default function LeadPage() {
     setView('new');
   };
 
+  // adminApi clears the token and fires this when the server rejects a session.
+  // Returning to the gate is the honest response — the alternative is a screen
+  // full of empty lists that reads as lost work.
+  useEffect(() => {
+    const onOut = () => { setOwner(null); setView('new'); };
+    window.addEventListener('pumpini:admin-signed-out', onOut);
+    return () => window.removeEventListener('pumpini:admin-signed-out', onOut);
+  }, []);
+
   if (!ready) return null;   // avoid a flash of the gate for a signed-in user
 
   const who = owner ? (owner.name || owner.email) : agent;
@@ -310,20 +319,15 @@ function OwnerAppointments({ tc, onOpen }) {
     setErr('');
     const r = await adminFetch('/appointments');
     if (!r || !Array.isArray(r.appointments)) {
-      setAppts([]);
-      setErr(tc('lead.loadFailedAppts', 'Could not load your diary. Pull to refresh, or sign in again.'));
+      setErr(r?.error === 'SESSION_EXPIRED'
+        ? tc('lead.sessionExpired', 'Your session ended. Sign in again — nothing has been lost.')
+        : tc('lead.loadFailedAppts', 'Could not load your diary. Nothing is lost — try again.'));
       return;
     }
     setAppts(r.appointments);
   }, [tc]);
 
   useEffect(() => { load(); }, [load]);
-
-  if (appts === null) {
-    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
-      <Loader2 size={16} className="spin" />{tc('lead.loadingAppts', 'Loading your diary…')}
-    </div>;
-  }
 
   if (err) {
     return <div style={{ ...card, textAlign: 'center', padding: '2rem 1.1rem' }}>
@@ -332,6 +336,12 @@ function OwnerAppointments({ tc, onOpen }) {
         marginTop: 14, background: 'none', border: 'none', color: ORANGE, fontSize: 13,
         fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
       }}>{tc('lead.retry', 'Try again')}</button>
+    </div>;
+  }
+
+  if (appts === null) {
+    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
+      <Loader2 size={16} className="spin" />{tc('lead.loadingAppts', 'Loading your diary…')}
     </div>;
   }
 
@@ -361,8 +371,11 @@ function OwnerLeads({ tc, focusLeadId }) {
     setErr('');
     const r = await adminFetch('/leads');
     if (!Array.isArray(r)) {
-      setLeads([]);
-      setErr(tc('lead.loadFailed', 'Could not load the leads. Pull to refresh, or sign in again.'));
+      // Do NOT fall back to an empty list — that is indistinguishable from
+      // having no leads, and it is what made a full pipeline look wiped.
+      setErr(r?.error === 'SESSION_EXPIRED'
+        ? tc('lead.sessionExpired', 'Your session ended. Sign in again — nothing has been lost.')
+        : tc('lead.loadFailed', 'Could not load the leads. Nothing is lost — try again.'));
       return;
     }
     setLeads(r);
@@ -370,12 +383,8 @@ function OwnerLeads({ tc, focusLeadId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (leads === null) {
-    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
-      <Loader2 size={16} className="spin" />{tc('lead.loadingLeads', 'Loading leads…')}
-    </div>;
-  }
-
+  // `err` is checked FIRST: a failed load leaves `leads` at null, and testing
+  // the loading state before the error would spin forever on a broken session.
   if (err) {
     return <div style={{ ...card, textAlign: 'center', padding: '2rem 1.1rem' }}>
       <p style={{ fontSize: 14, color: '#991b1b', margin: 0, lineHeight: 1.6 }}>{err}</p>
@@ -383,6 +392,12 @@ function OwnerLeads({ tc, focusLeadId }) {
         marginTop: 14, background: 'none', border: 'none', color: ORANGE, fontSize: 13,
         fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
       }}>{tc('lead.retry', 'Try again')}</button>
+    </div>;
+  }
+
+  if (leads === null) {
+    return <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 14 }}>
+      <Loader2 size={16} className="spin" />{tc('lead.loadingLeads', 'Loading leads…')}
     </div>;
   }
 

@@ -1389,7 +1389,8 @@
     "colWho": "Who",
     "today": "TODAY",
     "noAppointments": "Nothing scheduled",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "leadsLoadFailed": "Could not load leads. Nothing is lost — try again."
   },
   "aichat": {
     "starterTotalSales": "What are today's total sales?",
@@ -3151,7 +3152,7 @@
     "signIn": "Sign in",
     "signingIn": "Signing in…",
     "errCredentials": "Invalid credentials.",
-    "loadFailed": "Could not load the leads. Pull to refresh, or sign in again.",
+    "loadFailed": "Could not load the leads. Nothing is lost — try again.",
     "loadingLeads": "Loading leads…",
     "retry": "Try again",
     "outletName": "Outlet Name",
@@ -3172,7 +3173,7 @@
     "apptPast": "That time has passed — pick another.",
     "tabAppts": "Diary",
     "loadingAppts": "Loading your diary…",
-    "loadFailedAppts": "Could not load your diary. Pull to refresh, or sign in again.",
+    "loadFailedAppts": "Could not load your diary. Nothing is lost — try again.",
     "apptOne": "appointment",
     "apptMany": "appointments",
     "contacts": "Contacts",
@@ -3186,6 +3187,9 @@
     "saveToPhone": "Save to phone",
     "vcardFailed": "Your browser blocked the download. Try again, or copy the number.",
     "cancel": "Cancel",
-    "noNumberYet": "No number yet"
+    "noNumberYet": "No number yet",
+    "sessionExpired": "Your session ended. Sign in again — nothing has been lost.",
+    "historyFailed": "Could not load the history. Nothing is lost — tap to retry.",
+    "contactsFailed": "Could not load contacts."
   }
 }

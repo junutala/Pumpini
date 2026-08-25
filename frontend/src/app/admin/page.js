@@ -287,6 +287,15 @@ export default function AdminPage(){
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
 
+  // adminApi clears the token and fires this when the server rejects a session.
+  // Without it the console sits there rendering empty lists as though the data
+  // were gone.
+  useEffect(()=>{
+    const onOut = ()=>setAdmin(null);
+    window.addEventListener('pumpini:admin-signed-out', onOut);
+    return ()=>window.removeEventListener('pumpini:admin-signed-out', onOut);
+  },[]);
+
   // Seed the Day Sale picker with the effective day the backend chose (T-1), then
   // let the admin pick any day — refetch the whole stats for that day. The backend
   // computes the day in an isolated try/catch, so the response always carries the
@@ -301,7 +310,16 @@ export default function AdminPage(){
     setDayBusy(false);
   };
 
-  const loadLeads = async()=>{ const r=await adminFetch('/leads'); setLeads(Array.isArray(r)?r:[]); };
+  // A failure must not render as "No leads" — that is how a working pipeline
+  // looks deleted. Keep whatever is on screen and say what happened instead.
+  const [leadsErr,setLeadsErr] = useState('');
+  const loadLeads = async()=>{
+    const r = await adminFetch('/leads');
+    if (Array.isArray(r)) { setLeads(r); setLeadsErr(''); return; }
+    setLeadsErr(r?.error==='SESSION_EXPIRED'
+      ? tc('lead.sessionExpired','Your session ended. Sign in again — nothing has been lost.')
+      : tc('adminp.leadsLoadFailed','Could not load leads. Nothing is lost — try again.'));
+  };
   // Already filtered to the future and ordered soonest-first by the server, so
   // the screen does no date arithmetic of its own — one place decides what
   // "upcoming" means.
@@ -315,7 +333,7 @@ export default function AdminPage(){
     setTab('leads');
     setFocusLead(leadId);
   };
-  const loadAppts = async()=>{ const r=await adminFetch('/appointments'); setAppts(Array.isArray(r?.appointments)?r.appointments:[]); };
+  const loadAppts = async()=>{ const r=await adminFetch('/appointments'); if (Array.isArray(r?.appointments)) setAppts(r.appointments); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   // A refused outlet is done with, same as lost — hide it with the rest.
   const LEAD_CLOSED = ['converted','lost','refused'];
@@ -871,6 +889,15 @@ export default function AdminPage(){
                 <button style={btn()} onClick={()=>openModal('lead',{source:'website',status:'new'})}><Plus size={15}/>{tc('adminp.addLead', 'Add Lead')}</button>
               </div>
             </div>
+            {leadsErr&&(
+              <div style={{background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:10,
+                           padding:'0.9rem 1rem',marginBottom:'0.9rem',color:'#9a3412',fontSize:13.5}}>
+                {leadsErr}
+                <button onClick={loadLeads} style={{display:'block',marginTop:7,background:'none',
+                        border:'none',padding:0,color:'#FF6B00',fontSize:13,fontWeight:700,
+                        cursor:'pointer',fontFamily:'inherit'}}>{tc('lead.retry','Try again')}</button>
+              </div>
+            )}
             {leadView==='cards'&&(
               <LeadRail leads={sortedLeads} statuses={LEAD_STATUS} adminFetch={adminFetch}
                         tc={tc} onChanged={()=>{loadLeads();loadAppts();}} focusLeadId={focusLead}/>
