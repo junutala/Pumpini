@@ -460,6 +460,18 @@ compares. Shared code, per-outlet variables.
   app is *in* the GPay payment flow (not a static-QR / soundbox setup). Decide the GPay route
   with the owner before building any adapter.
 
+- **Pine Labs Plutus (card / EDC & Soundbox channel)** — the **card-acquiring** channel on the
+  physical swipe / Android EDC (Verifone/Pax) & Soundbox, complementing the UPI-QR PSPs; same
+  adapter model, `mode = CARD`. Functions gathered (full spec pending — see §8.3): **Batch Data /
+  Settlement Report** (closed transactions/batches for shift recon — the primary pull),
+  **Transaction Enquiry / Get Transaction Status** (per-txn by `PlutusTransactionRefID` /
+  `MerchantOrderNo`), **Webhook / Callback Bridge** (real-time slip push). Attribution via
+  **Terminal ID (TID) → pump/counter → attendant**. ⚠️ Two open questions decide the design:
+  (a) does the EDC/Soundbox also carry **UPI/wallet** — if so, decide whether Plutus or
+  Paytm/PhonePe **owns** those txns (avoid double-counting); (b) is batch/settlement data only
+  available **after batch close (EOD)** — if so we may need the **webhook + enquiry** for
+  intra-shift verification, not just the batch report.
+
 ---
 
 ## 6. Status & next steps
@@ -550,6 +562,30 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
    carries `paymentMode` and `merchantOrderId`."
 4. "Please confirm the request **`startTimestamp`/`endTimestamp` unit** — epoch **seconds** or
    **milliseconds**?"
+
+### 8.3 Pine Labs Plutus — card / EDC channel (spec still needed)
+The **card** side of digital collections (Paytm/PhonePe cover UPI-QR). To freeze the Plutus
+adapter I need the actual API spec — paste it like the others:
+- **Batch Data / Settlement Report** (primary): base URL (UAT + prod) + path + method; the
+  **auth** scheme (API key / security token / merchant credentials — exactly what); request
+  params (how to scope a **shift / batch** — date-time range? batch id? TID? does it require a
+  batch close first?); response fields per txn — **amount, status (approved / void / refund),
+  timestamp, TID, RRN, approval code, card-network / payment-type, MerchantOrderNo, batch id,
+  settled amount**; pagination; a **sample request + response**.
+- **Transaction Enquiry / Get Transaction Status**: endpoint + method + auth; request keys
+  (`PlutusTransactionRefID`, `MerchantOrderNo`); response fields + status values; a sample.
+- **Webhook / Callback Bridge**: the **payload shape** pushed; how it's **verified**
+  (HMAC / signature? IP allowlist?); how the callback URL is **registered** (per TID? portal?);
+  retry behaviour.
+- **Per-outlet creds/config:** Merchant ID, Store ID, **Terminal ID(s) per EDC**, any API key /
+  security token, environment + base URLs, and the **TID → pump/counter** mapping.
+
+**Clarifying questions for the outlet / Pine Labs:**
+1. Which payment types run through the Plutus EDC/Soundbox — **card only, or also UPI/wallet**?
+   (If UPI too, which channel owns those txns for reconciliation, to avoid double-counting?)
+2. Is settlement/batch data available **only after batch close (EOD)**, or intra-day per shift?
+   (Decides whether we lean on the batch report vs the webhook + enquiry.)
+3. One EDC per pump/counter, and does the response carry the **TID** so we can attribute?
 
 ---
 
