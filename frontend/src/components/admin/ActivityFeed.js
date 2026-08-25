@@ -12,7 +12,7 @@
 // Two questions, two views. The rail answers "what is the story of this outlet".
 // This answers "what did I do", which is what gets asked at 9am.
 import { MapPin, CalendarClock, ChevronRight, Phone } from 'lucide-react';
-import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
+import { leadHeading, ownerSubtitle, phoneHref } from '../../lib/lead';
 
 const ORANGE = '#FF6B00';
 const IST = { timeZone: 'Asia/Kolkata' };
@@ -86,10 +86,10 @@ export default function ActivityFeed({ interactions, tc, onOpen }) {
                     {/* The OUTLET leads. In a chronological feed the outlet is
                         what places the note; the time alone places nothing. */}
                     <div style={{ fontSize: 14.5, fontWeight: 700, lineHeight: 1.3 }}>
-                      {leadTitle(it) || <span style={{ color: '#ccc' }}>—</span>}
+                      {leadHeading(it) || <span style={{ color: '#ccc' }}>—</span>}
                     </div>
-                    {outletSubtitle(it) && (
-                      <div style={{ fontSize: 12, color: '#888', marginTop: 1 }}>{outletSubtitle(it)}</div>
+                    {ownerSubtitle(it) && (
+                      <div style={{ fontSize: 12, color: '#888', marginTop: 1 }}>{ownerSubtitle(it)}</div>
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>

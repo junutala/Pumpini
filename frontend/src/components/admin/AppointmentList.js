@@ -15,7 +15,7 @@
 // stacked cards with the phone number as a tap-to-call target; a desk gets the
 // table. The same fields either way.
 import { MapPin, Phone, CalendarClock, ChevronRight } from 'lucide-react';
-import { leadTitle, phoneHref, outletSubtitle, callableContacts } from '../../lib/lead';
+import { leadHeading, ownerSubtitle, phoneHref, callableContacts } from '../../lib/lead';
 
 const ORANGE = '#FF6B00';
 
@@ -102,10 +102,10 @@ export default function AppointmentList({ appointments, tc, compact = false, onO
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 15.5, fontWeight: 700, lineHeight: 1.3 }}>
-                    {leadTitle(a) || <span style={{ color: '#ccc' }}>—</span>}
+                    {leadHeading(a) || <span style={{ color: '#ccc' }}>—</span>}
                   </div>
-                  {outletSubtitle(a) && (
-                    <div style={{ fontSize: 12.5, color: '#888', marginTop: 1 }}>{outletSubtitle(a)}</div>
+                  {ownerSubtitle(a) && (
+                    <div style={{ fontSize: 12.5, color: '#888', marginTop: 1 }}>{ownerSubtitle(a)}</div>
                   )}
                 </div>
                 {clickable && <ChevronRight size={17} color="#c4c4c4" style={{ flexShrink: 0, marginTop: 2 }} />}
@@ -177,9 +177,9 @@ export default function AppointmentList({ appointments, tc, compact = false, onO
                 {isToday(a.appointment_at) && <span style={{ marginLeft: 7 }}><TodayBadge tc={tc} /></span>}
               </td>
               <td style={{ padding: '10px 12px', fontWeight: 600, fontSize: 13.5 }}>
-                {leadTitle(a) || <span style={{ color: '#ccc' }}>—</span>}
-                {outletSubtitle(a) && (
-                  <span style={{ display: 'block', fontWeight: 400, fontSize: 12, color: '#888' }}>{outletSubtitle(a)}</span>
+                {leadHeading(a) || <span style={{ color: '#ccc' }}>—</span>}
+                {ownerSubtitle(a) && (
+                  <span style={{ display: 'block', fontWeight: 400, fontSize: 12, color: '#888' }}>{ownerSubtitle(a)}</span>
                 )}
               </td>
               <td style={{ padding: '10px 12px', fontSize: 13, whiteSpace: 'nowrap' }}>

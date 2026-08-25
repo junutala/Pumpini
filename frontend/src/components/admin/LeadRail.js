@@ -14,10 +14,10 @@
 // read the same GET /leads and write through the same PATCH — no second writer.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock,
-         UserPlus, Download, Trash2, X, AlertTriangle } from 'lucide-react';
+         UserPlus, Download, Trash2, X, AlertTriangle, Building2 } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
 import { toInstant } from '../../lib/appointment';
-import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
+import { leadHeading, ownerSubtitle, phoneHref, mapHref } from '../../lib/lead';
 import { saveContact } from '../../lib/vcard';
 
 // House rule: en-IN + Asia/Kolkata, never a raw ISO timestamp, never MM/DD.
@@ -164,14 +164,33 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
     <div style={card}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          {/* A refused or unattended visit has no owner — the outlet off the
-              board is the name. This printed a bare icon and nothing else. */}
-          <div style={{ fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 7 }}>
-            <User size={16} color="#888" style={{ flexShrink: 0 }} />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {leadTitle(l) || <span style={{ color: '#ccc', fontWeight: 600 }}>—</span>}
+          {/* THE OUTLET HEADS THE CARD. A lead used to be a person — one name,
+              one number — so the owner led. It now carries several contacts and a
+              running history, which makes the owner one contact among them while
+              the outlet is the thing that does not change, and the thing a person
+              recognises on a road. The map sits beside it because "which bunk is
+              this" and "where is it" are the same question. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <Building2 size={16} color="#888" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 18, fontWeight: 800, overflow: 'hidden',
+                           textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {leadHeading(l) || <span style={{ color: '#ccc', fontWeight: 600 }}>—</span>}
             </span>
+            {mapHref(l) && (
+              <a href={mapHref(l)} target="_blank" rel="noreferrer"
+                 aria-label={tc('lead.openMap', 'Open in Maps')}
+                 title={tc('lead.openMap', 'Open in Maps')}
+                 style={{ color: ORANGE, display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                <MapPin size={17} />
+              </a>
+            )}
           </div>
+          {ownerSubtitle(l) && (
+            <div style={{ fontSize: 13, color: '#666', marginTop: 3,
+                          display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <User size={13} color="#aaa" />{ownerSubtitle(l)}
+            </div>
+          )}
 
         </div>
         <span style={{ background: meta[2], color: meta[3], borderRadius: 20, padding: '4px 11px',
@@ -181,8 +200,8 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
       </div>
 
       <div style={{ marginTop: 13, fontSize: 12.5, color: '#666', lineHeight: 1.75 }}>
-        {(outletSubtitle(l) || l.city || l.state) && (
-          <div>{[outletSubtitle(l), l.city, l.state].filter(Boolean).join(' · ')}</div>
+        {(l.city || l.state) && (
+          <div>{[l.city, l.state].filter(Boolean).join(' · ')}</div>
         )}
         <div>
           {tc('adminp.colSource', 'Source')}: <strong style={{ color: '#444' }}>
@@ -191,13 +210,7 @@ function LeadCard({ lead: l, statuses, adminFetch, tc, onChanged }) {
           {l.captured_by && <> · {tc('lead.capturedBy', 'by')} {l.captured_by}</>}
         </div>
         <div>{tc('lead.filedOn', 'Filed')} {fmtDate(l.created_at)}</div>
-        {l.lat != null && l.lng != null && (
-          <a href={`https://www.google.com/maps?q=${l.lat},${l.lng}`} target="_blank" rel="noreferrer"
-             style={{ color: ORANGE, fontWeight: 700, textDecoration: 'none',
-                      display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <MapPin size={12} />{tc('lead.openMap', 'Open in Maps')}
-          </a>
-        )}
+
       </div>
 
       <LeadContacts lead={l} adminFetch={adminFetch} tc={tc} />
