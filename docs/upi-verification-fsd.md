@@ -17,9 +17,10 @@ during the shift — **on any day, weekends included** — and flags any varianc
 same APIs carry both, tagged by `payment_method` (UPI / CARD); **cards get the same treatment as
 UPI — the fraud risk is identical and we close it.** Read-only: we fetch/receive transaction data
 and compare; **we never move money or write to money tables.**
-> ⚠️ **HP / fleet card (D6):** in scope, but confirm whether it settles through the **same EDC
-> acquirer** (then it's covered for free) or a **separate OMC / fleet-card switch** (then it's its
-> own source/adapter). Do not assume — check on the ground.
+> ⚠️ **HP / fleet card (D6):** a **closed-loop OMC prepaid** HP card is **out of PSP scope**
+> (HPCL's own rail, no third-party merchant API) — reconcile it from HPCL dealer/RO reports
+> separately (later track). Only **EDC-swiped** cards (Visa/RuPay, incl any co-branded HP fleet
+> card) are covered here. Confirm which HP card products the outlet accepts.
 
 **Out of scope (v1):** **GPay for Business** (a collection SDK, not a recon
 API — only relevant with a dedicated GPay VPA); bank-payout/settlement reconciliation (a
@@ -170,8 +171,8 @@ One writer per concern; all outbound signing server-side. Adapters live in
 
 Given `(station_id, window[from,to], optional attendant_id)`:
 1. Pull the station's transactions where `txn_time ∈ window` and `status='success'`,
-   **grouped by tender** (`payment_mode ∈ {upi, card[, wallet per policy]}`), across **all** the
-   outlet's sources.
+   **grouped by tender** — **scan** (`upi` + `wallet`, counted together — D3) and **card** —
+   across **all** the outlet's sources.
 2. **De-dup** by `rrn` (a payment goes through exactly one QR, but guards double delivery).
 3. **Attribute** each txn: `tid → psp_terminal_map → pump → attendant on that pump this shift`.
    - one attendant on the pump → clean per-attendant figure;
@@ -226,14 +227,21 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
   money. Full posture in §17.
 - **D2 — RESOLVED:** PhonePe provides a real-time **S2S webhook** (§8.2 of the API doc) — it pushes
   like Paytm and Pine Labs. No polling needed.
-- **D3 — "UPI" definition:** `UPI` only, or `UPI + wallet`, per outlet policy.
-- **D4 — Settlement-Detail variant (Paytm):** JWT `/SettlementDetail` vs checksum
-  `/v1/settlement/detail` — confirm per MID (EOD path only; not v1-blocking).
-- **D5 — change-management routing:** this adds schema + a public webhook route + is
-  money-*adjacent* (a figure attendants answer for). Route the first outlet through **staging**,
-  or demo on a **test outlet on prod** with sandbox creds? *(Owner call; staging currently = VAWE.)*
-- **D6 — HP / fleet card rail:** does the HP card settle through the **same EDC acquirer**
-  (covered) or a **separate OMC / fleet switch** (its own source)? Confirm on the ground.
+- **D3 — RESOLVED:** "wallet" = the app's stored prepaid balance (Paytm Wallet/`PPI`, PhonePe
+  Wallet) — a QR-scan payment the attendant can't distinguish from UPI. **Count UPI + wallet
+  together as the "scan" total**; EDC card is its own tender. (Wallet is *not* the HP card.)
+- **D4 — DEFERRED to Phase 3:** the Paytm EOD **settlement-breakdown** API has two variants
+  (JWT `/SettlementDetail` vs checksum `/v1/settlement/detail`); confirm which is live on the MID
+  when we build the EOD path. Not v1-blocking.
+- **D5 — RESOLVED:** **no staging.** Deploy the feature to **prod**; wire **sandbox creds on the
+  test outlets** (Dilsukhnagar / Nagole / Hayat); swap to prod creds on real outlets only after a
+  real-shift match. Read-only + inert unless a source is configured → blast radius stays on the
+  test outlets. Schema still ships as **gated owner-run DDL first** (house rule).
+- **D6 — RESOLVED (pending HP-product confirm):** a **closed-loop OMC prepaid** HP card runs on
+  **HPCL's own rail — no third-party merchant API** → **out of PSP scope**; reconcile from HPCL
+  dealer/RO reports separately (later track). **EDC-swiped** cards (Visa/RuPay, incl co-branded HP
+  fleet) **are** covered (§5). Confirm which HP card products the outlets accept + how they
+  reconcile the closed-loop one today. *(HPCL's API can't be verified here — docs egress-blocked.)*
 
 ---
 
@@ -257,8 +265,9 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
 
 - **Phase 0 — outside-first harness** (standalone, sandbox): prove auth + fetch/verify + sum for
   Paytm, PhonePe, Pine Labs. *(The "run outside Pumpini" step from the deployment strategy.)*
-- **Phase 1 — foundation:** DDL (4 tables + RLS), `psp_sources` config + settings screen,
-  webhook receivers (signature-verified) + ingestion. Sandbox creds on a test outlet.
+- **Phase 1 — foundation:** DDL (4 tables + RLS, gated owner-run), `psp_sources` config + settings
+  screen, webhook receivers (signature-verified) + ingestion. **Deployed to prod; sandbox creds on
+  the test outlets** (Dilsukhnagar / Nagole / Hayat) — D5.
 - **Phase 2 — verification:** the core sum/attribute/compare + the settlement-screen panel.
 - **Phase 3 — EOD (secondary):** settlement/batch pull + bank-UTR reconciliation.
 - **Go-live per outlet:** flip `environment`→prod + real creds after the owner's real-shift match.
