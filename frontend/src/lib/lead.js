@@ -64,3 +64,35 @@ export const callableContacts = (lead) => {
   if (rows.length) return rows;
   return phoneHref(lead) ? [{ id: null, name: lead.name, phone: lead.phone }] : [];
 };
+
+/**
+ * What HEADS a lead. The outlet, whenever we know it.
+ *
+ * `leadTitle` puts the owner first, which was right when a lead was one name and
+ * one number. It is not right any more: a lead now carries several contacts and a
+ * running history, so the owner is one contact among them while the OUTLET is the
+ * thing that does not change — and it is what a person recognises on a road
+ * (owner, 25-Aug-2026: "the outlet name deserves in the header and the map link
+ * next to that makes a lot of sense").
+ *
+ * Falls back to a contact name only when no outlet was ever recorded, so a lead
+ * is never headed by nothing.
+ */
+export const leadHeading = (l) => {
+  const outlet = (l?.station_name || '').trim();
+  const owner  = (l?.name || '').trim();
+  return outlet || owner || null;
+};
+
+/** The owner's name, shown UNDER the heading — but only when it is not already
+ *  the heading, so a lead with no outlet does not print its own name twice. */
+export const ownerSubtitle = (l) => {
+  const outlet = (l?.station_name || '').trim();
+  const owner  = (l?.name || '').trim();
+  return outlet && owner ? owner : null;
+};
+
+/** A Google Maps link for a lead's captured fix, or null. One place builds it,
+ *  so every screen points at the same pin. */
+export const mapHref = (l) =>
+  (l?.lat != null && l?.lng != null) ? `https://www.google.com/maps?q=${l.lat},${l.lng}` : null;
