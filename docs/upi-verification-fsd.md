@@ -85,13 +85,12 @@ NormalizedTxn {
 | Provider | Intra-shift (primary) | Enquiry (fallback) | EOD audit | Auth | Amount |
 |---|---|---|---|---|---|
 | **Paytm** | Webhook (`TXN_SUCCESS`) | `POST /v3/order/status` | `/merchant-settlement/v1/settlement/detail` | checksum (Merchant Key) | ₹ |
-| **PhonePe** | *(no push — poll)* `/v1/transactions/details` window | same API by txn | same | X-VERIFY (salt) | **paise ÷100** |
+| **PhonePe** | **Webhook (S2S)** | `GET /v3/transaction/.../status` | `/v1/transactions/details` | X-VERIFY (salt) | **paise ÷100** |
 | **Pine Labs** | Webhook (`payment.success`) | `/api/pay/v1/orders/reference/{ref}` | `/api/settlements/v1/list` | OAuth Bearer / HMAC webhook | ₹ |
 
-> ⚠️ **PhonePe has no confirmed real-time webhook in our spec** — it's **pull** (`/v1/transactions/details`
-> over the shift window, cursor-paginated). So PhonePe outlets are **polled** at settlement (and
-> optionally on a short timer), whereas Paytm/Pine Labs **push**. The core handles both: ingest on
-> webhook *or* pull-on-demand, same normalized model. (Confirm if PhonePe offers a QR callback.)
+> ✅ **All three providers push a real-time webhook** (Paytm, PhonePe S2S, Pine Labs). The core
+> ingests on webhook, with **Check-Status / Enquiry** as the gap-filler and the **Settlement API**
+> for EOD audit — same normalized model for all.
 
 ---
 
@@ -127,7 +126,7 @@ interface PspAdapter {
   verifyWebhook(rawBody, headers, secret) -> bool          // signature check
   normalizeWebhook(payload, station_id)   -> NormalizedTxn
   fetchStatus({orderRef|orderId}, cfg)    -> NormalizedTxn  // enquiry
-  fetchWindow({from, to}, cfg)            -> NormalizedTxn[] // PhonePe poll / Pine Labs+Paytm settlement
+  fetchWindow({from, to}, cfg)            -> NormalizedTxn[] // EOD/gap-fill window (PhonePe /v1/transactions/details; Pine Labs/Paytm settlement)
   signRequest(body, cfg)                  -> headers/body    // outbound auth
 }
 ```
@@ -207,8 +206,8 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
 
 - **D1 — secret storage:** app-layer encryption of `credentials_encrypted` with a Railway-env
   master key (recommended) vs a managed secrets store. *(Recommend app-layer to start.)*
-- **D2 — PhonePe intra-shift:** confirm whether PhonePe offers a **QR payment webhook**; if not,
-  PhonePe outlets are **polled** at settlement (works, just not push). *(Recommend poll-on-settle.)*
+- **D2 — RESOLVED:** PhonePe provides a real-time **S2S webhook** (§8.2 of the API doc) — it pushes
+  like Paytm and Pine Labs. No polling needed.
 - **D3 — "UPI" definition:** `UPI` only, or `UPI + wallet`, per outlet policy.
 - **D4 — Settlement-Detail variant (Paytm):** JWT `/SettlementDetail` vs checksum
   `/v1/settlement/detail` — confirm per MID (EOD path only; not v1-blocking).
@@ -249,7 +248,7 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
 ## 16. Acceptance (v1)
 
 - A sandbox UPI payment on a configured test outlet is **received, signature-verified, stored**,
-  and appears in the settlement panel within seconds (push) or on refresh (PhonePe poll).
+  and appears in the settlement panel within seconds (webhook push).
 - At settlement, **declared vs verified** shows for the outlet (and per attendant where a TID maps
   to one pump/attendant), with a correct variance and drill-down.
 - Disabling the outlet's providers makes the panel inert; **no existing flow is affected.**
