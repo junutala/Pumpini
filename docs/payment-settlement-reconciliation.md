@@ -332,6 +332,12 @@ needs a transaction/order-status API — not the settlement API.
 
 ## 4. PhonePe — **FROZEN: Comprehensive Transaction Recon API**
 
+> **Update — PhonePe *for-Business outlet* model (§8.2, raw spec Appendix F §14) matches
+> Paytm/Pine Labs.** Intra-shift = **S2S Webhook** + **Check Status**
+> (`GET /v3/transaction/{mid}/{txnId}/status`) + **EDC/POS Status** (`POST /v1/edc/transaction/...`);
+> **EOD settlement recon = `/v1/transactions/details`** (this section). All **X-VERIFY** (salt);
+> amounts in **paise ÷100**; `utr` / `referenceNumber` = RRN.
+
 _Fully grounded in PhonePe's official spec (endpoint, X-VERIFY, request/response) + PhonePe's
 own C#/Java/Python samples. **The raw spec and sample code are preserved verbatim in
 [Appendix A (§9)](#9-appendix-a--phonepe-comprehensive-transaction-recon-api-raw-spec--samples)**
@@ -500,12 +506,13 @@ compares. Shared code, per-outlet variables.
       capture **SOUNDBOX_DEVICE_ID / STATIC_QR_ID / POS_ID** for attribution.
 - [ ] Confirm which **Settlement-Detail variant** (JWT vs checksum) is enabled on the MID.
 
-**PhonePe — FROZEN (Comprehensive Transaction Recon API, §4; raw spec §9):**
-- [x] **Frozen on `/v1/transactions/details`** — endpoint, X-VERIFY, request/response all
-      **confirmed** (raw spec + PhonePe C#/Java/Python samples, preserved in §9).
-- [ ] Confirm the **timestamp unit** (seconds vs millis) during the outside-first test.
-- [ ] Ask PhonePe to enable **`includePaymentModes`** + **`return_merchantorderId`** on the MID.
-- [ ] Obtain per outlet: **`merchantId` + `storeId`** (+ `terminalId`) and **Salt Key + Salt Index**.
+**PhonePe — GROUNDED (for-Business model; §8.2 / Appendix F §14):**
+- [x] Intra-shift = **S2S Webhook** (X-VERIFY over base64 `response`) + **Check Status**
+      (`GET /v3/transaction/{mid}/{txnId}/status`) + **EDC Status** (`/v1/edc/...`); EOD =
+      **`/v1/transactions/details`** recon. Amounts **paise ÷100**; `utr`/`referenceNumber` = RRN.
+- [ ] Obtain per outlet: **MERCHANT_ID, SALT_KEY, SALT_INDEX**, **STORE_ID/TERMINAL_ID** map;
+      register our **webhook URL** with PhonePe.
+- [ ] (EOD-only) confirm `/v1/transactions/details` timestamp unit + `includePaymentModes`.
 
 **Pine Labs Plutus / Plural — GROUNDED (all 3 APIs; §8.3 / Appendix D §12):**
 - [x] Transaction Enquiry + Webhook (`payment.success`, HMAC-verified) = intra-shift primary;
@@ -576,22 +583,33 @@ prod `https://securegw.paytm.in`.
 | `STATIC_QR_ID` / `POS_ID` | tag embedded in the dispenser QR sticker → auto-attendant attribution | terminal |
 | webhook URL | our callback, registered in the Paytm Dashboard | integration |
 
-### 8.2 PhonePe — next (per outlet)
-- **`merchantId`** and **`storeId`** (and **`terminalId`** per pump, if terminals are used).
-- **Salt Key + Salt Index** (for the X-VERIFY signature).
-- Enable **`includePaymentModes`** (returns `paymentMode`) and **`return_merchantorderId`**
-  (returns `merchantOrderId`) on the MID.
-- Endpoint is known: prod `https://mercury-t2.phonepe.com/v1/transactions/details`.
+### 8.2 PhonePe for Business — grounded (the outlet model)
+Same shape as the others: **intra-shift = Webhook (S2S) + Check Status; EOD = Settlement recon.**
+Raw spec + samples + verify code in **Appendix F (§14)**. ⚠️ Amounts are **paise** (`150000` = ₹1,500) → ÷100.
 
-**Exact questions to ask the PhonePe executive** (copy-paste):
-1. "Please share our **`merchantId`** and **`storeId`** (and **`terminalId`** per device, if we
-   use terminals) for the outlet *<outlet name>*."
-2. "Please share the **Salt Key** and **Salt Index** for X-VERIFY on this merchant."
-3. "Please **enable the Transaction Details recon API** (`/v1/transactions/details`) for this
-   MID, and turn on **`includePaymentModes`** and **`return_merchantorderId`** so the response
-   carries `paymentMode` and `merchantOrderId`."
-4. "Please confirm the request **`startTimestamp`/`endTimestamp` unit** — epoch **seconds** or
-   **milliseconds**?"
+**Auth (all): X-VERIFY** = `SHA256(<data> + SALT_KEY) + "###" + SALT_INDEX`, where `<data>` is the
+**endpoint path** (status APIs), the **base64 payload + path** (`/v1/transactions/details`), or the
+**base64 `response`** (webhook). **Hosts:** UAT `https://mercury-uat.phonepe.com` · prod
+`https://mercury-t2.phonepe.com` (or `https://api.phonepe.com/apis/hermes`).
+
+- **(1) Webhook (S2S callback) — PRIMARY intra-shift.** PhonePe POSTs `{ "response": "<base64>" }`;
+  verify `X-VERIFY == SHA256(response + SALT_KEY) + "###" + SALT_INDEX`, then base64-decode →
+  `paymentState` (`COMPLETED`), `amount` (paise), `providerReferenceId`, `paymentModes[].utr` (= RRN).
+- **(2) Check Transaction Status — enquiry.** `GET /v3/transaction/{merchantId}/{transactionId}/status`
+  (X-VERIFY over the path). Response `data`: `amount` (paise), `paymentState`, `payResponseCode`,
+  `providerReferenceId`, `paymentModes[]{ mode (e.g. UPI_QR), amount, utr (= RRN) }`.
+- **(3) EDC/POS Status — PhonePe Android POS.** `POST /v1/edc/transaction/{merchantId}/{transactionId}/status`.
+  Response: `storeId`, `terminalId`, `referenceNumber` (= RRN), `paymentMode` (`DQR`), `amount` (paise).
+- **(4) Settlement recon — EOD.** `POST /v1/transactions/details` (§4) — window list + UTRs + refunds.
+
+**Per-outlet config (collect & store; secrets encrypted):**
+| Key | Description | Scope |
+|---|---|---|
+| `MERCHANT_ID` | PhonePe Merchant ID (e.g. `MERCHANTUAT` / live MID) | station |
+| `SALT_KEY` | secret key for SHA-256 checksums | integration |
+| `SALT_INDEX` | key index (typically `1`) | integration |
+| `STORE_ID` / `TERMINAL_ID` | EDC/Soundbox → nozzle/pump mapping | terminal |
+| webhook URL | our callback, registered with PhonePe | integration |
 
 ### 8.3 Pine Labs Plutus / Plural — **grounded (all three APIs)**
 UPI via terminal-generated dynamic QR (POS/Soundbox); each payment logged under the **TID**. Raw
@@ -1088,3 +1106,67 @@ is_valid = PaytmChecksum.verifySignature(request_dict, MERCHANT_KEY, received_ch
 ### E.4 Per-outlet config
 `MID` (station), `MERCHANT_KEY` (integration, AES secret), `SOUNDBOX_DEVICE_ID` (terminal),
 `STATIC_QR_ID` / `POS_ID` (terminal — tag in dispenser QR sticker for auto-attendant attribution).
+
+---
+
+## 14. Appendix F — PhonePe for Business (UPI): raw spec & samples
+
+_Preserved verbatim (docs unreachable here). Curated: §8.2. **Amounts in paise.**_
+
+PhonePe at fuel stations: **Smart POS/EDC, POS Soundbox, static QR** → PhonePe Payment Engine.
+Intra-shift = **S2S Webhook** or **Check Payment Status**; EOD = **Settlement recon / dashboard sync**.
+
+**Environment:** UAT `https://mercury-uat.phonepe.com` · Prod `https://mercury-t2.phonepe.com`
+(or `https://api.phonepe.com/apis/hermes`).
+**Auth:** `X-VERIFY = SHA256(<data> + SALT_KEY) + "###" + SALT_INDEX`.
+
+### F.1 Check Transaction Status — `GET /v3/transaction/{merchantId}/{transactionId}/status`
+`X-VERIFY = SHA256(endpoint_path + SALT_KEY) + "###" + SALT_INDEX` (GET, no body).
+```
+GET /v3/transaction/MERCHANTUAT/FUEL_SHIFT_20260825_P1_01/status HTTP/1.1
+Host: mercury-t2.phonepe.com
+Content-Type: application/json
+X-VERIFY: 9f82c49b0124...f003a###1
+```
+```json
+{
+  "success": true, "code": "PAYMENT_SUCCESS", "message": "Your payment is successful.",
+  "data": {
+    "merchantId": "MERCHANTUAT", "transactionId": "FUEL_SHIFT_20260825_P1_01",
+    "providerReferenceId": "T260825141528918237190", "amount": 150000,
+    "paymentState": "COMPLETED", "payResponseCode": "SUCCESS",
+    "paymentModes": [ { "mode": "UPI_QR", "amount": 150000, "utr": "423819002341" } ]
+  }
+}
+```
+(`amount` in paise: `150000` = ₹1,500.00.)
+
+### F.2 EDC / POS Status — `POST /v1/edc/transaction/{merchantId}/{transactionId}/status`
+`X-VERIFY = SHA256("/v1/edc/transaction/{merchantId}/{transactionId}/status" + SALT_KEY) + "###" + SALT_INDEX`.
+```json
+{
+  "success": true, "code": "SUCCESS", "message": "Your request has been successfully completed.",
+  "data": {
+    "merchantId": "MERCHANTUAT", "storeId": "STORE_PUMP_MAIN", "terminalId": "EDC_TERM_01",
+    "orderId": "FUEL_MRCH_124", "transactionId": "TXN_20260825_001",
+    "referenceNumber": "423819002341", "paymentMode": "DQR", "amount": 120000
+  }
+}
+```
+
+### F.3 Webhook (S2S callback) + verification
+PhonePe POSTs `{ "response": "<base64>" }` with an `X-VERIFY` header.
+Verify, then base64-decode the `response` to read `paymentState`, `amount`, `paymentModes[].utr` (RRN).
+```python
+import base64, json, hashlib
+def verify_phonepe_webhook(base64_response, received_x_verify, salt_key, salt_index):
+    calculated_hash = hashlib.sha256(f"{base64_response}{salt_key}".encode('utf-8')).hexdigest()
+    calculated_x_verify = f"{calculated_hash}###{salt_index}"
+    if calculated_x_verify == received_x_verify:
+        return json.loads(base64.b64decode(base64_response).decode('utf-8'))
+    raise ValueError("Invalid Signature: Unauthorized Webhook Request")
+```
+
+### F.4 Per-outlet config
+`MERCHANT_ID` (station), `SALT_KEY` (integration), `SALT_INDEX` (integration, typically `1`),
+`STORE_ID` / `TERMINAL_ID` (terminal — EDC/Soundbox → nozzle mapping).
