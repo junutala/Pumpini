@@ -1498,9 +1498,15 @@ CREATE TABLE IF NOT EXISTS public.psp_sources (
 
 CREATE INDEX IF NOT EXISTS idx_psp_sources_station ON public.psp_sources(station_id, provider);
 
--- RLS IN THE SAME BLOCK — new tables get RLS auto-enabled on this project, and
--- RLS-on-with-no-policy denies everything silently. Station isolation for the
--- eventual tenant reads (Slice 2); superadmin config runs BYPASSRLS regardless.
+-- ENABLE RLS EXPLICITLY. Do NOT rely on the project's "auto-enable on new tables"
+-- behaviour — verified 25-Aug-2026 that psp_sources came up with rls_enabled=false
+-- (auto-enable did not fire for a raw-SQL CREATE), leaving the policy below inert.
+-- ENABLE is idempotent; safe to re-run.
+ALTER TABLE public.psp_sources ENABLE ROW LEVEL SECURITY;
+
+-- RLS-on-with-no-policy denies everything silently, so the policy MUST accompany
+-- the ENABLE. Station isolation for the eventual tenant reads (Slice 2);
+-- superadmin config runs BYPASSRLS regardless.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
