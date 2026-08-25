@@ -35,3 +35,7 @@ Thumbs.db
 
 .env.txt
 *.env.txt
+
+# Python (ops/ harness build artifacts)
+__pycache__/
+*.pyc
