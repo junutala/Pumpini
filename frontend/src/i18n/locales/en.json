@@ -1390,7 +1390,8 @@
     "today": "TODAY",
     "noAppointments": "Nothing scheduled",
     "refresh": "Refresh",
-    "leadsLoadFailed": "Could not load leads. Nothing is lost — try again."
+    "leadsLoadFailed": "Could not load leads. Nothing is lost — try again.",
+    "viewActivity": "Activity"
   },
   "aichat": {
     "starterTotalSales": "What are today's total sales?",
@@ -3190,6 +3191,14 @@
     "noNumberYet": "No number yet",
     "sessionExpired": "Your session ended. Sign in again — nothing has been lost.",
     "historyFailed": "Could not load the history. Nothing is lost — tap to retry.",
-    "contactsFailed": "Could not load contacts."
+    "contactsFailed": "Could not load contacts.",
+    "tabLog": "Log",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "noActivity": "Nothing recorded yet.",
+    "loadingLog": "Loading…",
+    "loadFailedLog": "Could not load the log. Nothing is lost — try again.",
+    "noteOne": "note",
+    "noteMany": "notes"
   }
 }

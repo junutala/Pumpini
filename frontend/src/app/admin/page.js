@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Users, Building2, Globe, TrendingUp, Plus, X, Shield, Layers,
          ToggleLeft, ToggleRight, LogOut, Edit2, Trash2, Key, UserPlus,
          CheckCircle, Eye, EyeOff, Calendar, IndianRupee, Inbox,
-         LayoutGrid, Table2, MapPin, CalendarClock } from 'lucide-react';
+         LayoutGrid, Table2, MapPin, CalendarClock, ListChecks } from 'lucide-react';
 import { INDIAN_STATES, getCities } from '../../lib/india';
 // The owner's working view of the pipeline. The table below stays the
 // overview; both read the same GET /leads and write the same PATCH.
@@ -12,6 +12,9 @@ import LeadRail from '../../components/admin/LeadRail';
 // The same list the owner sees on his phone at pumpini.in/lead — one component,
 // one endpoint, so the two can never disagree about what is upcoming.
 import AppointmentList from '../../components/admin/AppointmentList';
+// Every interaction across every lead, newest first. The rail answers "what is
+// the story of this outlet"; this answers "what happened yesterday".
+import ActivityFeed from '../../components/admin/ActivityFeed';
 // ONE superadmin client, shared with the owner's side of pumpini.in/lead.
 import { adminFetch, adminLogin, getAdminToken, clearAdminToken } from '../../lib/adminApi';
 
@@ -187,7 +190,11 @@ export default function AdminPage(){
   const [leadSort,setLeadSort]         = useState({ field:'created_at', dir:'desc' });
   // 'cards' is the working view (one lead at a time, its interaction log and
   // the recorder); 'table' is the overview. Same data, same writers.
-  const [leadView,setLeadView]         = useState('cards');
+  // 'activity' lands first: opening the Leads tab in the morning, the question
+  // is "what happened yesterday", and the rail could only answer it one outlet
+  // at a time — which is how ten notes across seven leads read as one.
+  const [leadView,setLeadView]         = useState('activity');
+  const [feed,setFeed]                 = useState([]);
   const [appts,setAppts]               = useState([]);
   const [focusLead,setFocusLead]       = useState(null);   // lead to open from the diary
   const [hideClosed,setHideClosed]     = useState(false);
@@ -283,6 +290,7 @@ export default function AdminPage(){
     setPlanFeat(pf);
     loadLeads();
     loadAppts();
+    loadFeed();
   };
 
   useEffect(()=>{ if(admin) reload(); },[admin]);
@@ -334,6 +342,7 @@ export default function AdminPage(){
     setFocusLead(leadId);
   };
   const loadAppts = async()=>{ const r=await adminFetch('/appointments'); if (Array.isArray(r?.appointments)) setAppts(r.appointments); };
+  const loadFeed  = async()=>{ const r=await adminFetch('/interactions'); if (Array.isArray(r?.interactions)) setFeed(r.interactions); };
   const patchLead = async(id,body)=>{ await adminFetch(`/leads/${id}`,{method:'PATCH',body:JSON.stringify(body)}); loadLeads(); };
   // A refused outlet is done with, same as lost — hide it with the rest.
   const LEAD_CLOSED = ['converted','lost','refused'];
@@ -873,7 +882,8 @@ export default function AdminPage(){
               <h1 style={{fontSize:'1.4rem',fontWeight:800}}>{tc('adminp.leadsHeading', 'Leads')} <span style={{fontSize:14,color:'#888',fontWeight:500}}>({sortedLeads.length})</span></h1>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
                 <div style={{display:'flex',gap:3,background:'#fff',border:'1px solid #e5e3de',borderRadius:9,padding:3}}>
-                  {[['cards',<LayoutGrid key="g" size={13}/>,tc('adminp.viewCards','Cards')],
+                  {[['activity',<ListChecks key="a" size={13}/>,tc('adminp.viewActivity','Activity')],
+                    ['cards',<LayoutGrid key="g" size={13}/>,tc('adminp.viewCards','Cards')],
                     ['table',<Table2 key="t" size={13}/>,tc('adminp.viewTable','Table')]].map(([v,icon,lab])=>(
                     <button key={v} onClick={()=>setLeadView(v)} style={{
                       height:28,padding:'0 11px',border:'none',borderRadius:7,cursor:'pointer',
@@ -898,9 +908,13 @@ export default function AdminPage(){
                         cursor:'pointer',fontFamily:'inherit'}}>{tc('lead.retry','Try again')}</button>
               </div>
             )}
+            {leadView==='activity'&&(
+              <ActivityFeed interactions={feed} tc={tc} onOpen={openLeadFromDiary}/>
+            )}
+
             {leadView==='cards'&&(
               <LeadRail leads={sortedLeads} statuses={LEAD_STATUS} adminFetch={adminFetch}
-                        tc={tc} onChanged={()=>{loadLeads();loadAppts();}} focusLeadId={focusLead}/>
+                        tc={tc} onChanged={()=>{loadLeads();loadAppts();loadFeed();}} focusLeadId={focusLead}/>
             )}
 
             {leadView==='table'&&(
