@@ -130,6 +130,7 @@ DB_USER=postgres
 DB_PASSWORD=your_supabase_db_password
 
 JWT_SECRET=generate_a_64_char_random_string_here
+PSP_ENC_KEY=generate_a_separate_64_char_random_string_here   # encrypts per-outlet payment-provider secrets (docs/upi-verification-fsd.md §17)
 JWT_EXPIRES_IN=8h
 
 FRONTEND_URL=https://pumpini.vercel.app

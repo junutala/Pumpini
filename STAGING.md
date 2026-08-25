@@ -33,6 +33,7 @@ never in the repo. "Promote to prod" = set prod's own values, not copy staging's
 |---|---|---|
 | `DATABASE_URL` / `DB_*` | **Distinct** | Staging Supabase connection string |
 | `JWT_SECRET` | **Distinct** | Fresh random secret (staging token ≠ prod token) |
+| `PSP_ENC_KEY` | **Distinct** | Fresh random key — encrypts payment-provider secrets; staging key ≠ prod key |
 | `JWT_EXPIRES_IN` | Reuse | Same as prod (e.g. `8h`) |
 | `WEBAUTHN_RP_ID` | **Distinct (domain-bound)** | `staging.pumpini.in` |
 | `WEBAUTHN_ORIGIN` | **Distinct (domain-bound)** | `https://staging.pumpini.in` |
