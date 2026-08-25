@@ -460,17 +460,21 @@ compares. Shared code, per-outlet variables.
   app is *in* the GPay payment flow (not a static-QR / soundbox setup). Decide the GPay route
   with the owner before building any adapter.
 
-- **Pine Labs Plutus (card / EDC & Soundbox channel)** — the **card-acquiring** channel on the
-  physical swipe / Android EDC (Verifone/Pax) & Soundbox, complementing the UPI-QR PSPs; same
-  adapter model, `mode = CARD`. Functions gathered (full spec pending — see §8.3): **Batch Data /
-  Settlement Report** (closed transactions/batches for shift recon — the primary pull),
-  **Transaction Enquiry / Get Transaction Status** (per-txn by `PlutusTransactionRefID` /
-  `MerchantOrderNo`), **Webhook / Callback Bridge** (real-time slip push). Attribution via
-  **Terminal ID (TID) → pump/counter → attendant**. ⚠️ Two open questions decide the design:
-  (a) does the EDC/Soundbox also carry **UPI/wallet** — if so, decide whether Plutus or
-  Paytm/PhonePe **owns** those txns (avoid double-counting); (b) is batch/settlement data only
-  available **after batch close (EOD)** — if so we may need the **webhook + enquiry** for
-  intra-shift verification, not just the batch report.
+- **Pine Labs Plutus (UPI via terminal-generated *dynamic* QR)** — a **UPI** channel, **not card**.
+  The attendant keys the amount on the Pine Labs **POS / Soundbox** (VoicePod / Touch POS); it
+  displays a **dynamic UPI QR**; the customer scans & pays; the UPI payment is logged under that
+  machine's **TID** with an **approval code, UPI RRN, and batch number**. Same adapter model,
+  `mode = UPI`. The only difference from Paytm/PhonePe is **dynamic / terminal-generated** QR vs a
+  **standalone static** QR — it is UPI either way. Reconcile via **Transaction Enquiry** (per
+  payment by `PlutusTransactionRefID` / `MerchantOrderNo`), **Batch / Settlement Report** (a
+  shift's UPI transactions/batches), or **Webhook / Callback Bridge** (real-time push). Attribution
+  is strong: each payment carries its **TID → pump/counter → attendant**.
+  - **Per-outlet reality:** an outlet's UPI QR is provided by **one switch** — Paytm, PhonePe, *or*
+    Pine Labs — whichever's QR sits on the pump. That choice is the outlet's `psp` config
+    (Adhoc/Highway → Paytm, Kamala → PhonePe, another → Pine Labs). Double-counting is a risk only
+    if an outlet runs **two** QR providers at once — flag and pick one owner if so.
+  - ⚠️ Open: is Plutus batch/settlement data available **intra-shift**, or only after **batch close
+    (EOD)**? That decides whether the Batch/Settlement Report or the Webhook+Enquiry is primary.
 
 ---
 
@@ -563,29 +567,27 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
 4. "Please confirm the request **`startTimestamp`/`endTimestamp` unit** — epoch **seconds** or
    **milliseconds**?"
 
-### 8.3 Pine Labs Plutus — card / EDC channel (spec still needed)
-The **card** side of digital collections (Paytm/PhonePe cover UPI-QR). To freeze the Plutus
-adapter I need the actual API spec — paste it like the others:
-- **Batch Data / Settlement Report** (primary): base URL (UAT + prod) + path + method; the
-  **auth** scheme (API key / security token / merchant credentials — exactly what); request
-  params (how to scope a **shift / batch** — date-time range? batch id? TID? does it require a
-  batch close first?); response fields per txn — **amount, status (approved / void / refund),
-  timestamp, TID, RRN, approval code, card-network / payment-type, MerchantOrderNo, batch id,
-  settled amount**; pagination; a **sample request + response**.
+### 8.3 Pine Labs Plutus — UPI via terminal / dynamic QR (spec still needed)
+Pine Labs delivers **UPI** at the pump via a **terminal-generated dynamic QR** (POS / Soundbox),
+each payment logged under the machine's **TID**. (This is a UPI channel, not card.) To freeze the
+Plutus adapter I need the actual API spec — paste it like the others:
+- **Batch Data / Settlement Report** (candidate primary): base URL (UAT + prod) + path + method;
+  the **auth** scheme; how to scope a **shift / batch** (date-time range? batch id? TID? does it
+  require a batch close first?); response fields per UPI txn — **amount, status, timestamp, TID,
+  UPI RRN, approval code, MerchantOrderNo / PlutusTransactionRefID, batch id**; pagination; a
+  **sample request + response**.
 - **Transaction Enquiry / Get Transaction Status**: endpoint + method + auth; request keys
   (`PlutusTransactionRefID`, `MerchantOrderNo`); response fields + status values; a sample.
 - **Webhook / Callback Bridge**: the **payload shape** pushed; how it's **verified**
-  (HMAC / signature? IP allowlist?); how the callback URL is **registered** (per TID? portal?);
-  retry behaviour.
-- **Per-outlet creds/config:** Merchant ID, Store ID, **Terminal ID(s) per EDC**, any API key /
-  security token, environment + base URLs, and the **TID → pump/counter** mapping.
+  (HMAC / signature? IP allowlist?); how the callback URL is **registered**; retry behaviour.
+- **Per-outlet creds/config:** Merchant ID, Store ID, **Terminal ID(s) per POS/Soundbox**, any API
+  key / security token, environment + base URLs, and the **TID → pump/counter** mapping.
 
-**Clarifying questions for the outlet / Pine Labs:**
-1. Which payment types run through the Plutus EDC/Soundbox — **card only, or also UPI/wallet**?
-   (If UPI too, which channel owns those txns for reconciliation, to avoid double-counting?)
-2. Is settlement/batch data available **only after batch close (EOD)**, or intra-day per shift?
-   (Decides whether we lean on the batch report vs the webhook + enquiry.)
-3. One EDC per pump/counter, and does the response carry the **TID** so we can attribute?
+**Clarifying questions:**
+1. Does **all UPI** at the outlet flow through the **Pine Labs terminal QR**, or is there **also**
+   a Paytm/PhonePe QR? (Determines the outlet's single UPI `psp`, and flags any double-count.)
+2. Is Plutus batch/settlement data available **intra-shift**, or only after **batch close (EOD)**?
+   (Decides whether the Batch/Settlement Report or the Webhook + Enquiry is the primary for a shift.)
 
 ---
 
