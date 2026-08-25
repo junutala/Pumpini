@@ -417,19 +417,25 @@ outlet setup. (e.g. Adhoc + Highway → Paytm, Kamala → PhonePe — all three 
   UPI-vs-wallet. Per-PSP contracts: **Paytm** §3 + Appendix B (§10); **PhonePe** §4 + Appendix A (§9).
 
 ### 5.2 Per-outlet configuration (set at onboarding — no code, no deploy)
-Stored **per station**, secrets **encrypted**:
+An outlet usually runs **several UPI sources in parallel** — e.g. a Pine Labs dynamic-QR terminal
+**and** static Paytm / PhonePe / BharatPe sticker QRs for peak throughput. So the config is a
+**list of PSP sources** per outlet, each with its own credentials. The engine queries **all**
+configured sources for the shift window and **unifies** them into one stream: a payment goes
+through exactly one QR, so summing across sources is the outlet's true UPI total, and the **UPI
+RRN** is the unique key for matching the attendant's claim and de-duping. Stored **per station**,
+secrets **encrypted**:
 
 | Config | Example / notes |
 |---|---|
-| `psp` | `paytm` / `phonepe` / `gpay` |
+| `psp_sources[]` | one or more of `paytm` / `phonepe` / `pinelabs` (+ `gpay` only with a dedicated GPay-for-Business VPA) |
 | `environment` | `prod` / `uat` |
-| credentials (encrypted) | MID/merchantId, merchant-key / salt-key + index / clientId, `storeId` |
-| terminal ↔ pump map | `terminalId` → pump → its nozzles → attendant |
-| policy | does "UPI" include wallet? |
+| credentials (encrypted) | per source: MID/merchantId, salt-key+index / merchant-key / OAuth `client_id`+`client_secret` / `clientId`, `storeId`, TID(s), webhook secret |
+| terminal ↔ pump map | `tid` / `storeId` → pump → its nozzles → attendant |
+| policy | does "UPI" include wallet? does the attendant tag the gateway? |
 
-Onboarding a new outlet on Paytm/PhonePe is **filling these in during outlet setup** — the
-`New-Outlet-Setup` workbook gains a **"Payment Provider"** section, and the values land in the
-per-station config. No engineering touch.
+Onboarding a new outlet is **filling these in during outlet setup** — the `New-Outlet-Setup`
+workbook gains a **"Payment Providers"** section (a row per source), landing in per-station config.
+No engineering touch.
 
 ### 5.3 Runtime
 **One multi-tenant Pumpini backend serves all outlets.** At shift verification it reads the
@@ -460,21 +466,15 @@ compares. Shared code, per-outlet variables.
   app is *in* the GPay payment flow (not a static-QR / soundbox setup). Decide the GPay route
   with the owner before building any adapter.
 
-- **Pine Labs Plutus (UPI via terminal-generated *dynamic* QR)** — a **UPI** channel, **not card**.
-  The attendant keys the amount on the Pine Labs **POS / Soundbox** (VoicePod / Touch POS); it
-  displays a **dynamic UPI QR**; the customer scans & pays; the UPI payment is logged under that
-  machine's **TID** with an **approval code, UPI RRN, and batch number**. Same adapter model,
-  `mode = UPI`. The only difference from Paytm/PhonePe is **dynamic / terminal-generated** QR vs a
-  **standalone static** QR — it is UPI either way. Reconcile via **Transaction Enquiry** (per
-  payment by `PlutusTransactionRefID` / `MerchantOrderNo`), **Batch / Settlement Report** (a
-  shift's UPI transactions/batches), or **Webhook / Callback Bridge** (real-time push). Attribution
-  is strong: each payment carries its **TID → pump/counter → attendant**.
-  - **Per-outlet reality:** an outlet's UPI QR is provided by **one switch** — Paytm, PhonePe, *or*
-    Pine Labs — whichever's QR sits on the pump. That choice is the outlet's `psp` config
-    (Adhoc/Highway → Paytm, Kamala → PhonePe, another → Pine Labs). Double-counting is a risk only
-    if an outlet runs **two** QR providers at once — flag and pick one owner if so.
-  - ⚠️ Open: is Plutus batch/settlement data available **intra-shift**, or only after **batch close
-    (EOD)**? That decides whether the Batch/Settlement Report or the Webhook+Enquiry is primary.
+- **Pine Labs Plutus / Plural (UPI via terminal-generated *dynamic* QR)** — a **UPI** channel,
+  **not card**. Attendant keys the amount on the POS/Soundbox → dynamic UPI QR → customer scans &
+  pays → logged under the machine **TID** with **UPI RRN + approval code + batch**. `mode = UPI`.
+  **Fully grounded** (§8.3; raw spec + samples + HMAC code in Appendix D §12). Two confirmed
+  realities shape the design: **(a) hybrid** — outlets run Plutus dynamic QR *and* static
+  Paytm/PhonePe/BharatPe QRs in parallel, so the engine treats them as **parallel sources**,
+  unifies, and matches by **RRN**; **(b) batch = EOD-only** — so **intra-shift** verification uses
+  the **Webhook (`payment.success`)** or **Transaction Enquiry**; the **Settlement/Batch API is
+  EOD / audit only**.
 
 ---
 
@@ -494,6 +494,13 @@ compares. Shared code, per-outlet variables.
 - [ ] Confirm the **timestamp unit** (seconds vs millis) during the outside-first test.
 - [ ] Ask PhonePe to enable **`includePaymentModes`** + **`return_merchantorderId`** on the MID.
 - [ ] Obtain per outlet: **`merchantId` + `storeId`** (+ `terminalId`) and **Salt Key + Salt Index**.
+
+**Pine Labs Plutus / Plural — GROUNDED (all 3 APIs; §8.3 / Appendix D §12):**
+- [x] Transaction Enquiry + Webhook (`payment.success`, HMAC-verified) = intra-shift primary;
+      Settlement/Batch = EOD audit. Amounts in **rupees** (not paise). Auth = OAuth Bearer.
+- [ ] Obtain per outlet: `MID`, `STORE_ID`, OAuth `CLIENT_ID`+`CLIENT_SECRET`, `WEBHOOK_SECRET`,
+      `TID_MAPPINGS` (TID → dispenser/island); register our callback URL.
+- [ ] Confirm which outlets run Plutus, and which *also* have Paytm/PhonePe/BharatPe sticker QRs.
 
 **Both:**
 - [ ] One **live call each** → capture JSON **fixtures** (staging where available).
@@ -567,27 +574,47 @@ directly into the secure store, **not** pasted into chat or email where avoidabl
 4. "Please confirm the request **`startTimestamp`/`endTimestamp` unit** — epoch **seconds** or
    **milliseconds**?"
 
-### 8.3 Pine Labs Plutus — UPI via terminal / dynamic QR (spec still needed)
-Pine Labs delivers **UPI** at the pump via a **terminal-generated dynamic QR** (POS / Soundbox),
-each payment logged under the machine's **TID**. (This is a UPI channel, not card.) To freeze the
-Plutus adapter I need the actual API spec — paste it like the others:
-- **Batch Data / Settlement Report** (candidate primary): base URL (UAT + prod) + path + method;
-  the **auth** scheme; how to scope a **shift / batch** (date-time range? batch id? TID? does it
-  require a batch close first?); response fields per UPI txn — **amount, status, timestamp, TID,
-  UPI RRN, approval code, MerchantOrderNo / PlutusTransactionRefID, batch id**; pagination; a
-  **sample request + response**.
-- **Transaction Enquiry / Get Transaction Status**: endpoint + method + auth; request keys
-  (`PlutusTransactionRefID`, `MerchantOrderNo`); response fields + status values; a sample.
-- **Webhook / Callback Bridge**: the **payload shape** pushed; how it's **verified**
-  (HMAC / signature? IP allowlist?); how the callback URL is **registered**; retry behaviour.
-- **Per-outlet creds/config:** Merchant ID, Store ID, **Terminal ID(s) per POS/Soundbox**, any API
-  key / security token, environment + base URLs, and the **TID → pump/counter** mapping.
+### 8.3 Pine Labs Plutus / Plural — **grounded (all three APIs)**
+UPI via terminal-generated dynamic QR (POS/Soundbox); each payment logged under the **TID**. Raw
+spec + samples + signature code preserved in **Appendix D (§12)**. ⚠️ Amounts are **rupee decimals**
+(e.g. `1200.00`) — **not paise** (unlike PhonePe); normalize accordingly.
 
-**Clarifying questions:**
-1. Does **all UPI** at the outlet flow through the **Pine Labs terminal QR**, or is there **also**
-   a Paytm/PhonePe QR? (Determines the outlet's single UPI `psp`, and flags any double-count.)
-2. Is Plutus batch/settlement data available **intra-shift**, or only after **batch close (EOD)**?
-   (Decides whether the Batch/Settlement Report or the Webhook + Enquiry is the primary for a shift.)
+**Auth (all):** OAuth 2.0 — `POST /api/auth/v1/token` (`client_id` + `client_secret`) → Bearer JWT.
+**Hosts:** UAT `https://pluraluat.v2.pinepg.in` · Prod `https://api.pluralpay.in`.
+
+- **(1) Transaction Enquiry — PRIMARY intra-shift (per payment).**
+  `GET /api/pay/v1/orders/reference/{merchant_order_reference}` (or `/api/pay/v1/orders/{order_id}`),
+  Bearer. Response `data`: `order_id`, `merchant_order_reference`, `amount` (₹), `currency`,
+  `status` (**`CHARGED`** = success), `payment_method`, `payment_details{ rrn, approval_code, tid,
+  payer_vpa, transaction_timestamp }`.
+- **(2) Webhook `payment.success` — PRIMARY intra-shift (real-time push).**
+  Headers `webhook-id`, `webhook-timestamp` (unix s), `webhook-signature = v1,<base64 HMAC>`.
+  Body `data`: `order_id`, `merchant_order_reference`, `amount` (₹), `status` (**`PROCESSED`**),
+  `payment_method`, `rrn`, `tid`, `mid`, `created_at`. **Verify every webhook** —
+  `signed = "{webhook-id}.{webhook-timestamp}.{raw_body}"`; HMAC-SHA256 with the base64-decoded
+  Webhook Secret Key; base64; constant-time compare to the part after `v1,` (code in §12).
+- **(3) Settlement / Batch Report — SECONDARY (EOD audit only).**
+  `GET /api/settlements/v1/list?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&page=&per_page=`
+  (**max 60-day** window), Bearer. Response `data[]` per settlement: `settlement_id`, `settled_date`,
+  **`utr_number`**, `tid`, `mid`, `batch_number`, `programs[]`, `actual_transaction_amount`,
+  `total_deduction_amount`, `net_settled_amount`, `total_transactions_count`, `transactions[]{
+  transaction_id, order_id, rrn, approval_code, amount, payment_method, payment_time, status }`.
+  **Data appears only after batch close** → use for post-shift/EOD audit + the bank `utr_number`,
+  not the live shift sum.
+
+**Per-outlet config (collect & store; secrets encrypted):**
+| Key | Description | Scope |
+|---|---|---|
+| `MID` | Pine Labs Merchant ID | station |
+| `STORE_ID` | Store / outlet id (multi-outlet accounts) | station |
+| `CLIENT_ID` | OAuth client id | integration / station |
+| `CLIENT_SECRET` | OAuth client secret | integration / station |
+| `WEBHOOK_SECRET` | HMAC-SHA256 verification key | integration / station |
+| `TID_MAPPINGS` | each EDC/Soundbox **TID → dispenser / nozzle island** | terminal |
+
+**Design:** intra-shift → ingest **verified webhooks** (and/or poll **Transaction Enquiry**) keyed by
+`merchant_order_reference` / `rrn`, sum for the shift window; at EOD reconcile the day's total
+against the Settlement report's `net_settled_amount` + `utr_number`.
 
 ---
 
@@ -845,3 +872,114 @@ _Preserved verbatim (Paytm docs unreachable here). Curated design:
 **Why it doesn't reconcile a shift:** the only transaction data GPay returns is this per-payment
 `PaymentDataResponse` at collection time. There is no MID+window query. To reconcile GPay, see the
 three routes in §5.5.
+
+---
+
+## 12. Appendix D — Pine Labs Plutus / Plural (UPI): raw spec & samples
+
+_Preserved verbatim (docs unreachable here). Curated: §8.3. **Amounts are rupee decimals.**_
+
+**Auth:** OAuth 2.0 — `POST /api/auth/v1/token` with `client_id` + `client_secret` → Bearer JWT.
+**Hosts:** UAT `https://pluraluat.v2.pinepg.in` · Prod `https://api.pluralpay.in`.
+
+### D.1 Settlement / Batch Report (EOD)
+```
+GET /api/settlements/v1/list?start_date=2026-08-25&end_date=2026-08-25&page=1&per_page=50 HTTP/1.1
+Host: api.pluralpay.in
+Authorization: Bearer <JWT_ACCESS_TOKEN>
+Content-Type: application/json
+```
+```json
+{
+  "status": "SUCCESS",
+  "data": [
+    {
+      "settlement_id": "SETTL_987654321",
+      "settled_date": "2026-08-25T14:30:00+05:30",
+      "utr_number": "UTR410092786849",
+      "tid": "44019281",
+      "mid": "10098234",
+      "batch_number": "000142",
+      "programs": ["UPI"],
+      "actual_transaction_amount": 4500.00,
+      "total_deduction_amount": 0.00,
+      "net_settled_amount": 4500.00,
+      "total_transactions_count": 5,
+      "transactions": [
+        {
+          "transaction_id": "TXN_11223344",
+          "order_id": "ORD_PUMP1_SHIFT1_01",
+          "rrn": "423819002341",
+          "approval_code": "APPR892",
+          "amount": 1200.00,
+          "payment_method": "UPI",
+          "payment_time": "2026-08-25T10:15:22+05:30",
+          "status": "PROCESSED"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### D.2 Transaction Enquiry
+`GET /api/pay/v1/orders/reference/{merchant_order_reference}` (or `GET /api/pay/v1/orders/{order_id}`).
+```
+GET /api/pay/v1/orders/reference/FUEL_SHIFT_20260825_0042 HTTP/1.1
+Host: api.pluralpay.in
+Authorization: Bearer <JWT_ACCESS_TOKEN>
+Content-Type: application/json
+```
+```json
+{
+  "status": "SUCCESS",
+  "data": {
+    "order_id": "PL_ORD_99182371",
+    "merchant_order_reference": "FUEL_SHIFT_20260825_0042",
+    "amount": 850.00,
+    "currency": "INR",
+    "status": "CHARGED",
+    "payment_method": "UPI",
+    "payment_details": {
+      "rrn": "423819002341",
+      "approval_code": "AP6712",
+      "tid": "44019281",
+      "payer_vpa": "customer@oksbi",
+      "transaction_timestamp": "2026-08-25T11:02:18+05:30"
+    }
+  }
+}
+```
+
+### D.3 Webhook (`payment.success`) + signature verification
+Headers: `webhook-id`, `webhook-timestamp` (unix seconds), `webhook-signature: v1,<Base64_HMAC>`.
+```json
+{
+  "event": "payment.success",
+  "event_id": "EVT_88291039",
+  "data": {
+    "order_id": "PL_ORD_99182371",
+    "merchant_order_reference": "FUEL_SHIFT_20260825_0042",
+    "amount": 850.00,
+    "currency": "INR",
+    "status": "PROCESSED",
+    "payment_method": "UPI",
+    "rrn": "423819002341",
+    "tid": "44019281",
+    "mid": "10098234",
+    "created_at": "2026-08-25T11:02:18+05:30"
+  }
+}
+```
+**Verification:** `signed_content = "{webhook-id}.{webhook-timestamp}.{raw_body}"`; base64-decode the
+**Webhook Secret Key** → bytes; HMAC-SHA256; base64-encode; compare to the signature after `v1,`.
+```python
+import base64, hmac, hashlib
+
+def verify_pine_signature(raw_body, webhook_id, timestamp, signature_header, secret_key):
+    signed_content = f"{webhook_id}.{timestamp}.{raw_body}".encode('utf-8')
+    secret_bytes = base64.b64decode(secret_key)
+    computed = base64.b64encode(hmac.new(secret_bytes, signed_content, hashlib.sha256).digest()).decode('utf-8')
+    received = signature_header.split("v1,")[1] if "v1," in signature_header else signature_header
+    return hmac.compare_digest(computed, received)
+```
