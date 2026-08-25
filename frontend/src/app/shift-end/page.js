@@ -29,7 +29,7 @@ import ArtifactImage from '../../components/shared/ArtifactImage';
 import api, { parseGaugeScreen, getLatestArtifacts, parseSlips, getReco, confirmReco, autocloseCheck } from '../../lib/api';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { useAuth } from '../../lib/auth';
-import { markToTrueDip, dipToVolume } from '../../lib/calibration';
+import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
 import { rejectNote } from '../../lib/slip';
@@ -147,6 +147,9 @@ export default function ShiftEndPage() {
   const [tanks, setTanks] = useState([]);
   const [dips, setDips]   = useState({});         // tank_id -> entered mark-ordinal (a physical dip)
   const [dipVol, setDipVol] = useState({});       // tank_id -> litres (a system/ATG reading)
+  // Where those litres came from: 'gauge' when a console photo filled them. Only a
+  // console figure counts as NET — see lib/tankVolume.
+  const [volSrc, setVolSrc] = useState({});       // tank_id -> 'gauge' | 'manual'
   const [savedDips, setSavedDips] = useState({});
   const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> artifact_id of the gauge photo that filled it
   const [gaugeBusy, setGaugeBusy] = useState(false);
@@ -269,7 +272,7 @@ export default function ShiftEndPage() {
       setForms(seed); setClosed(closedSeed);
       // Dip state belongs to the shift being closed — switching shift must not
       // carry a half-typed reading across.
-      setDips({}); setDipVol({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
+      setDips({}); setDipVol({}); setVolSrc({}); setSavedDips({}); setDipArtifact({}); setGaugeArtifact(''); setGaugeMsg('');
       // A composite scanned for one shift must not carry its camera-lock into another.
       setCompositeScanned(false);
       // Captured handover photos and face verdicts belong to the shift being closed.
@@ -550,6 +553,9 @@ export default function ShiftEndPage() {
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
+        // The console's NET — water already excluded. Marked so it wins over a
+        // dip, which is gross. Owner-set 25-Aug-2026.
+        setVolSrc(p => ({ ...p, [tank.id]: 'gauge' }));
         setDips(p => ({ ...p, [tank.id]: '' }));
         setSavedDips(p => ({ ...p, [tank.id]: false }));
         // Remember WHICH photograph produced this figure, so the Save below can
@@ -593,26 +599,24 @@ export default function ShiftEndPage() {
   // ATG/HPCL system). Same distinction as shift-start, deliberately: a tank WITH a
   // calibration chart must still be saveable from litres alone, or a gauge scan
   // could not be recorded on a chart-configured tank at all.
-  const tankVol = (tk) => {
-    const dip = dips[tk.id], litres = dipVol[tk.id];
-    const hasChart = tk.diameter_cm && tk.length_cm;
-    if (dip !== '' && dip != null) {
-      if (hasChart) return dipToVolume(tk.diameter_cm, tk.length_cm, markToTrueDip(dip));
-      return litres !== '' && litres != null ? parseFloat(litres) : null;   // no chart → needs manual litres
-    }
-    return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres only (system reading)
-  };
+  // NET FIRST — the console's net volume when a photograph gave us one, else the
+  // dip through this tank's chart. Shared with Shift Start; see lib/tankVolume.
+  const tankBasis = (tk) => tankVolume({
+    dip: dips[tk.id], litres: dipVol[tk.id], source: volSrc[tk.id],
+    diameter_cm: tk.diameter_cm, length_cm: tk.length_cm,
+  });
+  const tankVol = (tk) => tankBasis(tk).volume;
   const saveDip = async (tk) => {
     const dip = dips[tk.id], litres = dipVol[tk.id];
     const hasDip    = dip !== '' && dip != null;
     const hasLitres = litres !== '' && litres != null;
     if (!hasDip && !hasLitres) return false;
-    const hasChart = tk.diameter_cm && tk.length_cm;
-    const vol = tankVol(tk);
+    const { volume: vol, basis } = tankBasis(tk);
     if (vol == null || !Number.isFinite(vol)) { setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number)); return false; }
-    // Dip entered → physical reading (store dip_cm). Litres only → system (ATG)
-    // reading: dip_cm stays null, which is how we tell the two apart downstream.
-    const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
+    // A dip is stored only when the volume actually came FROM it — beside a
+    // console-net figure it would be a fiction, and `dip_cm IS NULL` is how a
+    // system reading is told from a physical one downstream.
+    const dip_cm = tankDipCm({ dip, basis, diameter_cm: tk.diameter_cm, length_cm: tk.length_cm });
     setBusy('dip'+tk.id); setErr('');
     try {
       await api.post('/dipstick', { station_id: stationId, tank_id: tk.id, shift_id: shift.id,
@@ -1072,11 +1076,11 @@ export default function ShiftEndPage() {
             {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('send.noDipTanks','No dip-measured tanks configured.')}</div>}
             {dipTanks.map(tk => {
               const hasChart = tk.diameter_cm && tk.length_cm;
-              const vol = tankVol(tk);
+              const { volume: vol, basis } = tankBasis(tk);
               // A dip on a charted tank OWNS the litres box — the figure is computed,
               // not typed. Otherwise the box is live, which is what lets a scanned
               // (or typed) system reading be saved on a charted tank with dip_cm null.
-              const dipOwnsLitres = dips[tk.id]!=='' && dips[tk.id]!=null && hasChart;
+              const dipOwnsLitres = basis==='chart';
               // ALREADY READ — usually at the handover, where one scan closed this
               // shift and became the next one's opening. Show the figure; do not ask
               // for it a second time. (Not locked when he has just saved it in this
@@ -1106,7 +1110,16 @@ export default function ShiftEndPage() {
                       readOnly={dipOwnsLitres}
                       value={dipOwnsLitres ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
                       onBlur={()=>autoSaveDip(tk)}
-                      onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                      onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setVolSrc(p=>({...p,[tk.id]:'manual'})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                    {basis && vol != null && (
+                    <span style={{fontSize:11,fontWeight:700,borderRadius:99,padding:'2px 8px',
+                      background: basis==='net' ? '#dcfce7' : basis==='chart' ? '#e0f2fe' : '#f1f5f9',
+                      color:      basis==='net' ? '#166534' : basis==='chart' ? '#0369a1' : '#475569'}}>
+                      {basis==='net'   ? tc('send.basisNet','NET from gauge screen (water excluded)')
+                     : basis==='chart' ? tc('send.basisChart','from dip × chart (gross)')
+                     :                   tc('send.basisEntered','entered by hand')}
+                    </span>
+                  )}
                     {/* No per-tank Save button. Close Shift writes every typed
                         reading itself; a button that must be pressed before the
                         one you actually want is a second route to the same place,

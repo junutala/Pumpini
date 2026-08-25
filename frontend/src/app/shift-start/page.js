@@ -22,7 +22,7 @@ import PhotoCapture from '../../components/shared/PhotoCapture';
 import ArtifactImage from '../../components/shared/ArtifactImage';
 import api, { parseGaugeScreen, recordDipstick, getLatestArtifacts, parseSlips } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { markToTrueDip, dipToVolume } from '../../lib/calibration';
+import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { nozName } from '../../lib/nozzle';
@@ -91,6 +91,9 @@ export default function ShiftStartPage() {
   const [tanks, setTanks]     = useState([]);
   const [dips, setDips]       = useState({});       // tank_id -> entered mark-ordinal
   const [dipVol, setDipVol]   = useState({});       // tank_id -> manual volume (no-chart fallback)
+  // Where the litres in dipVol came from: 'gauge' when a console photo filled it.
+  // Only a console figure counts as NET — see lib/tankVolume.
+  const [volSrc, setVolSrc]   = useState({});       // tank_id -> 'gauge' | 'manual'
   const [savedDips, setSavedDips] = useState({});   // tank_id -> true
   // tank_id -> the opening dip row the server carried from the last close. Present
   // means the manager has nothing to do for that tank (owner rule, 01-Aug: the
@@ -189,6 +192,9 @@ export default function ShiftStartPage() {
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
+        // The console's NET — water already excluded. Marked as such so it wins
+        // over a dip, which is gross. Owner-set 25-Aug-2026.
+        setVolSrc(p => ({ ...p, [tank.id]: 'gauge' }));
         setDips(p => ({ ...p, [tank.id]: '' }));
         setSavedDips(p => ({ ...p, [tank.id]: false }));
         // Remember which picture this tank's figure came off. persistDip sends it
@@ -486,18 +492,14 @@ export default function ShiftStartPage() {
   };
 
   // ── Dipstick ──────────────────────────────────────────────────────
-  // Volume for a tank — from the DIP (a physical check) if a dip was entered, else
-  // straight from the LITRES field (a reading typed off, or scanned from, the
-  // ATG/HPCL system).
-  const tankVol = (tank) => {
-    const dip = dips[tank.id], litres = dipVol[tank.id];
-    const hasChart = tank.diameter_cm && tank.length_cm;
-    if (dip !== '' && dip != null) {
-      if (hasChart) return dipToVolume(tank.diameter_cm, tank.length_cm, markToTrueDip(dip));
-      return litres !== '' && litres != null ? parseFloat(litres) : null;  // no chart → needs manual litres
-    }
-    return litres !== '' && litres != null ? parseFloat(litres) : null;      // litres entered directly (system)
-  };
+  // NET FIRST: the console's own net volume when a photograph gave us one, else the
+  // dip through this tank's chart. The rule lives in lib/tankVolume so Shift End
+  // cannot drift from Shift Start — read the note there for why water decides it.
+  const tankBasis = (tank) => tankVolume({
+    dip: dips[tank.id], litres: dipVol[tank.id], source: volSrc[tank.id],
+    diameter_cm: tank.diameter_cm, length_cm: tank.length_cm,
+  });
+  const tankVol = (tank) => tankBasis(tank).volume;
   const hasReading = (tank) => {
     const dip = dips[tank.id], litres = dipVol[tank.id];
     return (dip !== '' && dip != null) || (litres !== '' && litres != null);
@@ -506,14 +508,13 @@ export default function ShiftStartPage() {
 
   const persistDip = async (tank, shiftId) => {
     if (!hasReading(tank)) return true;
-    const dip = dips[tank.id];
-    const hasDip = dip !== '' && dip != null;
-    const hasChart = tank.diameter_cm && tank.length_cm;
-    const vol = tankVol(tank);
+    const { volume: vol, basis } = tankBasis(tank);
     if (vol == null) { setErr(tc('sstart.errTankVolume','Tank {n}: enter a dip or a litres value.').replace('{n}', tank.tank_number)); return false; }
-    // Dip entered → physical reading (store dip_cm). Litres only → system (ATG/HPCL)
-    // reading: dip_cm stays null, which is how we tell the two apart.
-    const dip_cm = hasDip ? (hasChart ? markToTrueDip(dip) : parseFloat(dip)) : null;
+    // A dip is stored only when the volume actually came FROM it. Next to a
+    // console-net figure it would be a fiction, and `dip_cm IS NULL` is how the
+    // rest of the system tells a system reading from a physical one.
+    const dip_cm = tankDipCm({ dip: dips[tank.id], basis,
+      diameter_cm: tank.diameter_cm, length_cm: tank.length_cm });
     try {
       // WHERE THIS READING GOES. With a shift still running it is that shift's
       // CLOSING — one physical measurement, filed once, and the server's
@@ -885,7 +886,7 @@ export default function ShiftStartPage() {
           {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('sstart.noDipTanks','No dip-measured tanks configured.')}</div>}
           {dipTanks.map(tk => {
             const hasChart = tk.diameter_cm && tk.length_cm;
-            const vol = tankVol(tk);
+            const { volume: vol, basis } = tankBasis(tk);
             // Carried from the last close by the server. Nothing to do, nothing to
             // type — showing entry boxes here would invite a manager to "correct"
             // the very figure the rule exists to keep fixed.
@@ -934,15 +935,24 @@ export default function ShiftStartPage() {
                   <input style={{...inp,padding:'9px 10px'}} type="number" step="0.1" inputMode="decimal"
                     placeholder={hasChart?tc('sstart.dipShort','Dip'):tc('sstart.dipCm','dip cm')}
                     value={dips[tk.id]||''} onChange={e=>{ setDips(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
-                  <input style={{...inp,padding:'9px 10px',...((dips[tk.id]!=='' && dips[tk.id]!=null && hasChart)?{background:'#f1f5f9',color:'#0369a1',fontWeight:700}:{})}}
+                  <input style={{...inp,padding:'9px 10px',...((basis==='chart')?{background:'#f1f5f9',color:'#0369a1',fontWeight:700}:{})}}
                     type="number" step="0.01" inputMode="decimal"
                     placeholder={tc('sstart.litresShort','Litres')}
-                    readOnly={dips[tk.id]!=='' && dips[tk.id]!=null && hasChart}
-                    value={(dips[tk.id]!=='' && dips[tk.id]!=null && hasChart) ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
-                    onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                    readOnly={basis==='chart'}
+                    value={(basis==='chart') ? (vol!=null?fmtL(vol):'') : (dipVol[tk.id]||'')}
+                    onChange={e=>{ setDipVol(p=>({...p,[tk.id]:e.target.value})); setVolSrc(p=>({...p,[tk.id]:'manual'})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
                 </div>
                 <div style={{display:'flex',alignItems:'center',gap:8,marginTop:5,minHeight:20}}>
                   {savedDips[tk.id] && <span style={{fontSize:11.5,fontWeight:700,color:'#166534'}}>{tc('sstart.saved','✓ Saved')}</span>}
+                  {basis && vol != null && (
+                    <span style={{fontSize:11,fontWeight:700,borderRadius:99,padding:'2px 8px',
+                      background: basis==='net' ? '#dcfce7' : basis==='chart' ? '#e0f2fe' : '#f1f5f9',
+                      color:      basis==='net' ? '#166534' : basis==='chart' ? '#0369a1' : '#475569'}}>
+                      {basis==='net'   ? tc('sstart.basisNet','NET from gauge screen (water excluded)')
+                     : basis==='chart' ? tc('sstart.basisChart','from dip × chart (gross)')
+                     :                   tc('sstart.basisEntered','entered by hand')}
+                    </span>
+                  )}
                   {dipArtifact[tk.id] && <ArtifactImage artifactId={dipArtifact[tk.id]} size={34} label={tc('sstart.gaugePhotoLabel','Gauge screen this figure came from')}/>}
                 </div>
                 {/* Last saved reading — so a blank entry box never looks like lost data. */}
