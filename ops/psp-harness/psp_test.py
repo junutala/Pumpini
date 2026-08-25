@@ -55,6 +55,20 @@ import requests
 
 INR = lambda n: f"Rs {n:,.2f}"
 
+def _bad(name, r):
+    # Show WHY the server refused — the response body usually says exactly.
+    print(f"\n  X  {name}: HTTP {r.status_code} from {r.url}")
+    txt = (r.text or "").strip().replace("\n", " ")
+    print("     server response:", (txt[:700] if txt else "(empty body)"))
+    return 0.0
+
+def _bad(name, r):
+    # Show WHY the server refused — the response body usually says exactly.
+    print(f"\n  X  {name}: HTTP {r.status_code} from {r.url}")
+    txt = (r.text or "").strip().replace("\n", " ")
+    print("     server response:", (txt[:700] if txt else "(empty body)"))
+    return 0.0
+
 def _day_bounds_epoch(date_str):
     d = datetime.datetime.strptime(date_str, "%Y-%m-%d")
     start = int(d.timestamp())
@@ -92,7 +106,7 @@ def run_phonepe(cfg):
     xverify = hashlib.sha256((b64 + path + cfg["salt_key"]).encode()).hexdigest() + "###" + cfg["salt_index"]
     r = requests.post(base + path, json={"request": b64},
                       headers={"Content-Type": "application/json", "X-VERIFY": xverify}, timeout=30)
-    r.raise_for_status()
+    if not r.ok: return _bad("PhonePe", r)
     data = (r.json().get("data") or {})
     rows = []
     for t in data.get("transactionDetails", []):
@@ -113,12 +127,12 @@ def run_pinelabs(cfg):
     tok = requests.post(base + "/api/auth/v1/token",
                         json={"client_id": cfg["client_id"], "client_secret": cfg["client_secret"]},
                         headers={"Content-Type": "application/json"}, timeout=30)
-    tok.raise_for_status()
+    if not tok.ok: return _bad("Pine Labs (login)", tok)
     access = tok.json().get("access_token") or tok.json().get("token") or ""
     r = requests.get(base + "/api/settlements/v1/list",
                      params={"start_date": DATE, "end_date": DATE, "page": 1, "per_page": 50},
                      headers={"Authorization": f"Bearer {access}", "Content-Type": "application/json"}, timeout=30)
-    r.raise_for_status()
+    if not r.ok: return _bad("Pine Labs", r)
     rows = []
     for s in (r.json().get("data") or []):
         for t in (s.get("transactions") or []):
@@ -143,7 +157,7 @@ def run_paytm(cfg):
     checksum = paytmchecksum.generateSignature(json.dumps(body), cfg["merchant_key"])
     req = {"head": {"version": "v1", "channelId": "WEB", "checksumHash": checksum}, "body": body}
     r = requests.post(base + path, json=req, headers={"Content-Type": "application/json"}, timeout=30)
-    r.raise_for_status()
+    if not r.ok: return _bad("Paytm", r)
     b = (r.json().get("body") or {})
     rows = []
     for t in b.get("settlementDetailList", []):
