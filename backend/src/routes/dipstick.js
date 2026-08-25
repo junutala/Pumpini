@@ -10,21 +10,29 @@ const openings = require('../services/openingService');
 const Anthropic = require('@anthropic-ai/sdk');
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Does dipstick_readings.artifact_id exist yet? Owner-run DDL means this code
-// deploys first, so the column is named only once it is there. Probed against the
-// catalog rather than discovered by a failing INSERT — see CLAUDE.md.
-let _hasArtifactCol = false;
-async function hasArtifactCol() {
-  if (_hasArtifactCol) return true;
+// Does an OPTIONAL column exist on dipstick_readings yet? Owner-run DDL means this
+// code deploys FIRST, so a column is named only once it is actually there. Probed
+// against the catalog rather than discovered by a failing INSERT: inside a
+// transaction a failed statement aborts the whole thing and the fallback dies too
+// (CLAUDE.md). A catalog SELECT succeeds either way and cannot poison anything.
+//
+// Generalised from the artifact_id probe when water_dip_cm / water_ltrs arrived —
+// three copies of the same cache was the drift about to happen.
+const _colCache = new Map();       // column -> true. A FALSE is never cached, so the
+                                   // first request after the DDL picks it up with no
+                                   // restart.
+async function hasCol(column) {
+  if (_colCache.get(column)) return true;
   try {
     const { rows } = await pool.query(
       `SELECT 1 FROM information_schema.columns
         WHERE table_schema='public' AND table_name='dipstick_readings'
-          AND column_name='artifact_id' LIMIT 1`);
-    _hasArtifactCol = rows.length > 0;
-  } catch { _hasArtifactCol = false; }
-  return _hasArtifactCol;   // a false is re-probed, so no restart is needed after the DDL
+          AND column_name=$1 LIMIT 1`, [column]);
+    if (rows.length) { _colCache.set(column, true); return true; }
+  } catch { /* fall through — treat as absent */ }
+  return false;
 }
+const hasArtifactCol = () => hasCol('artifact_id');
 
 // POST /api/dipstick
 // dip_cm is the TRUE dip (the form converts the mark-ordinal entry first). When
@@ -67,7 +75,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
   const client = await pool.connect();
   try {
     const { station_id, tank_id, shift_id, reading_type, dip_cm, density, temperature_c,
-            artifact_id } = req.body;
+            artifact_id, water_dip_cm, water_ltrs } = req.body;
     let volume_ltrs = req.body.volume_ltrs;
 
     // Re-scope tank to the validated station — a tank_id from another outlet
@@ -129,6 +137,20 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // catalog BEFORE the transaction opens: a failed statement inside one aborts it.
     const withArtifact = !!artifact_id && await hasArtifactCol();
 
+    // WATER, so gross and net are explainable rather than one silently excluded.
+    //
+    //     volume_ltrs  = NET — the stock. Water is never sold.
+    //     water_ltrs   = the water under it
+    //     gross        = volume_ltrs + water_ltrs, derived, never stored twice
+    //
+    // Both columns are optional: probed BEFORE the transaction for the same reason
+    // artifact_id is. Absent, the reading is written exactly as it always was and
+    // nothing breaks — this is the hot path every shift open and close runs through.
+    const wDip = Number.isFinite(Number(water_dip_cm)) ? Number(water_dip_cm) : null;
+    const wLtr = Number.isFinite(Number(water_ltrs))   ? Number(water_ltrs)   : null;
+    const withWaterDip = wDip != null && await hasCol('water_dip_cm');
+    const withWaterLtr = wLtr != null && await hasCol('water_ltrs');
+
     await client.query('BEGIN');
     // int4 pair, so the lock is specific to this shift+tank and this type.
     await client.query(
@@ -149,6 +171,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       const sets = ['dip_cm=$1','volume_ltrs=$2','density=$3','temperature_c=$4','recorded_by=$5','recorded_at=NOW()'];
       const vals = [dip_cm, volume_ltrs, density, temperature_c, req.user.id];
       if (withArtifact) { vals.push(artifact_id); sets.push(`artifact_id=$${vals.length}`); }
+      if (withWaterDip) { vals.push(wDip); sets.push(`water_dip_cm=$${vals.length}`); }
+      if (withWaterLtr) { vals.push(wLtr); sets.push(`water_ltrs=$${vals.length}`); }
       vals.push(existing[0].id);
       const { rows } = await client.query(
         `UPDATE dipstick_readings SET ${sets.join(',')} WHERE id=$${vals.length} RETURNING *`, vals);
@@ -157,6 +181,8 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
       const cols = ['station_id','tank_id','shift_id','reading_type','dip_cm','volume_ltrs','density','temperature_c','recorded_by'];
       const vals = [station_id, tank_id, shift_id, reading_type, dip_cm, volume_ltrs, density, temperature_c, req.user.id];
       if (withArtifact) { cols.push('artifact_id'); vals.push(artifact_id); }
+      if (withWaterDip) { cols.push('water_dip_cm'); vals.push(wDip); }
+      if (withWaterLtr) { cols.push('water_ltrs');   vals.push(wLtr); }
       const { rows } = await client.query(
         `INSERT INTO dipstick_readings(${cols.join(',')})
          VALUES(${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`,
