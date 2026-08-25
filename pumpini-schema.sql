@@ -1474,3 +1474,48 @@ SELECT l.id, l.name, l.phone, l.created_at
   FROM public.leads l
  WHERE (l.name IS NOT NULL OR l.phone IS NOT NULL)
    AND NOT EXISTS (SELECT 1 FROM public.lead_contacts c WHERE c.lead_id = l.id);
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PAYMENT PROVIDERS — per-outlet PSP config for UPI/card verification (2026-08-25)
+-- docs/upi-verification-fsd.md. Non-secret identifiers live in public_config; the
+-- real secrets are AES-256-GCM encrypted (backend utils/secretBox, key in the
+-- Railway env var PSP_ENC_KEY) and stored as an opaque base64 blob — never plaintext.
+-- Slice 1 = config only (the superadmin console writes it, on the BYPASSRLS role).
+-- ══════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS public.psp_sources (
+  id                uuid PRIMARY KEY DEFAULT extensions.uuid_generate_v4(),
+  station_id        uuid NOT NULL REFERENCES public.stations(id),
+  provider          character varying(20) NOT NULL,
+  environment       character varying(8)  NOT NULL DEFAULT 'uat',
+  is_active         boolean NOT NULL DEFAULT true,
+  public_config     jsonb   NOT NULL DEFAULT '{}'::jsonb,   -- non-secret ids: mid / store_id / salt_index / client_id
+  secret_encrypted  text,                                    -- base64(iv|tag|ciphertext) of the secret keys
+  created_at        timestamp with time zone DEFAULT now(),
+  updated_at        timestamp with time zone DEFAULT now(),
+  CONSTRAINT psp_sources_provider_chk    CHECK (provider IN ('paytm','phonepe','pinelabs')),
+  CONSTRAINT psp_sources_environment_chk CHECK (environment IN ('uat','prod'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_psp_sources_station ON public.psp_sources(station_id, provider);
+
+-- ENABLE RLS EXPLICITLY. Do NOT rely on the project's "auto-enable on new tables"
+-- behaviour — verified 25-Aug-2026 that psp_sources came up with rls_enabled=false
+-- (auto-enable did not fire for a raw-SQL CREATE), leaving the policy below inert.
+-- ENABLE is idempotent; safe to re-run.
+ALTER TABLE public.psp_sources ENABLE ROW LEVEL SECURITY;
+
+-- RLS-on-with-no-policy denies everything silently, so the policy MUST accompany
+-- the ENABLE. Station isolation for the eventual tenant reads (Slice 2);
+-- superadmin config runs BYPASSRLS regardless.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='psp_sources'
+                   AND policyname='psp_sources_station_isolation') THEN
+    CREATE POLICY psp_sources_station_isolation ON public.psp_sources
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.psp_sources TO app_authenticated;

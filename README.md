@@ -128,6 +128,7 @@ npm run start
 | `DB_USER` | Database user |
 | `DB_PASSWORD` | Database password |
 | `JWT_SECRET` | Long random secret for JWT signing |
+| `PSP_ENC_KEY` | Long random secret — AES-256 key for per-outlet payment-provider credentials |
 | `JWT_EXPIRES_IN` | Token expiry (default 8h) |
 | `FMC_HOST` | Fuel Management Controller IP |
 | `FMC_PORT` | FMC TCP port (default 9100) |

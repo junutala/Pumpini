@@ -48,6 +48,13 @@ const LEAD_STATUS = [
 // together, ahead of the ones the owner types in by hand.
 const LEAD_SOURCE = ['website','direct','whatsapp','referral','call','other'];
 const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #ddd',borderRadius:8,fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit'};
+// Per-provider credential fields for the Payment Providers editor. Third item
+// true = a SECRET (password input; encrypted server-side, never shown back).
+const PSP_UI = {
+  phonepe:  [['merchant_id','Merchant ID'],['salt_key','Salt Key',true],['salt_index','Salt Index']],
+  paytm:    [['mid','MID'],['merchant_key','Merchant Key',true]],
+  pinelabs: [['mid','MID'],['store_id','Store ID'],['client_id','Client ID'],['client_secret','Client Secret',true],['webhook_secret','Webhook Secret',true]],
+};
 const btn = (bg='#FF6B00',color='#fff') => ({padding:'0 14px',height:34,background:bg,color,border:'none',borderRadius:7,cursor:'pointer',fontSize:13,fontWeight:600,display:'inline-flex',alignItems:'center',gap:5});
 
 function Field({label,children,required}){
@@ -216,10 +223,27 @@ export default function AdminPage(){
   const [attList,setAttList] = useState([]);
   const [attRows,setAttRows] = useState([]);
   const [gridBusy,setGridBusy] = useState(false);
+  const [pspList,setPspList]   = useState([]);   // configured payment providers for the outlet
+  const [pspForm,setPspForm]   = useState({provider:'phonepe',environment:'uat'});
   const loadCC  = async sid => { const r = await adminFetch(`/credit-customers/${sid}`); setCcList(Array.isArray(r)?r:[]); };
   const loadAtt = async sid => { const r = await adminFetch(`/attendants/${sid}`);        setAttList(Array.isArray(r)?r:[]); };
   const openCreditCustomers = s => { setModal({type:'creditCustomers',data:{station_id:s.id,name:s.name}}); setCcRows([{company_name:'',contact_phone:'',opening_balance:''}]); loadCC(s.id); };
   const openAttendants      = s => { setModal({type:'attendants',     data:{station_id:s.id,name:s.name}}); setAttRows([{name:'',phone:''}]); loadAtt(s.id); };
+  // ── Payment Providers (per-outlet PSP config; secrets encrypted server-side) ──
+  const loadPsp = async sid => { const r = await adminFetch(`/payment-providers/${sid}`); setPspList(Array.isArray(r)?r:[]); };
+  const openPaymentProviders = s => { setPspForm({provider:'phonepe',environment:'uat'}); setModal({type:'paymentProviders',data:{station_id:s.id,name:s.name}}); loadPsp(s.id); };
+  const pf = (k,v) => setPspForm(p=>({...p,[k]:v}));
+  const savePsp = async () => {
+    setGridBusy(true);
+    const r = await adminFetch('/payment-providers',{method:'POST',body:JSON.stringify({station_id:modal.data.station_id,...pspForm})});
+    setGridBusy(false);
+    if(r?.error){ alert(r.error); return; }
+    setPspForm({provider:pspForm.provider,environment:pspForm.environment});
+    loadPsp(modal.data.station_id);
+    showToast(tc('adminp.pspSaved','Provider saved — secret encrypted.'));
+  };
+  const delPsp    = async id => { await adminFetch(`/payment-providers/${id}`,{method:'DELETE'}); loadPsp(modal.data.station_id); };
+  const togglePsp = async p  => { await adminFetch(`/payment-providers/${p.id}`,{method:'PATCH',body:JSON.stringify({is_active:!p.is_active})}); loadPsp(modal.data.station_id); };
   const setCcRow  = (i,k,v) => setCcRows(rs=>rs.map((r,idx)=>idx===i?{...r,[k]:v}:r));
   const setAttRow = (i,k,v) => setAttRows(rs=>rs.map((r,idx)=>idx===i?{...r,[k]:v}:r));
   const saveCreditCustomers = async () => {
@@ -638,6 +662,7 @@ export default function AdminPage(){
                           <button style={btn('#fff7ed','#9a3412')} onClick={()=>{setForm({station_id:s.id,plan:s.plan||'pro',status:s.sub_status||'active',start_date:s.start_date||todayIST(),end_date:s.end_date||''});setModal({type:'editSub',data:s});}}><Calendar size={12}/>{tc('adminp.plan', 'Plan')}</button>
                           <button style={btn('#f0fdf4','#15803d')} onClick={()=>openCreditCustomers(s)}><IndianRupee size={12}/>{tc('adminp.creditCustomers', 'Credit Customers')}</button>
                           <button style={btn('#eff6ff','#1d4ed8')} onClick={()=>openAttendants(s)}><Users size={12}/>{tc('adminp.attendants', 'Attendants')}</button>
+                          <button style={btn('#f5f3ff','#6d28d9')} onClick={()=>openPaymentProviders(s)}><Key size={12}/>{tc('adminp.paymentProviders', 'Payment Providers')}</button>
                         </div>
                       </td>
                     </tr>
@@ -1305,6 +1330,51 @@ export default function AdminPage(){
           ))}
           <button onClick={()=>setAttRows(rs=>[...rs,{name:'',phone:''}])} style={{...btn('#f1f5f9','#334155'),marginTop:4}}><Plus size={14}/>{tc('adminp.addRow','Add row')}</button>
           <button style={{...btn(),width:'100%',justifyContent:'center',height:44,marginTop:14}} disabled={gridBusy} onClick={saveAttendants}>{gridBusy?tc('adminp.saving','Saving...'):tc('adminp.attSave','Save attendants')}</button>
+        </Modal>
+      )}
+      {modal?.type==='paymentProviders'&&(
+        <Modal title={tc('adminp.pspTitle','Payment Providers — {n}').replace('{n}',modal.data.name)} onClose={closeModal} width={640}>
+          <div style={{fontSize:12.5,color:'#666',marginBottom:14}}>{tc('adminp.pspHint','Pick a UPI/card provider for this outlet and paste its keys. Secrets are AES-256 encrypted before they touch the database and are never shown back — you only see proof they are stored.')}</div>
+          {pspList.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:6,textTransform:'uppercase',letterSpacing:'.04em'}}>{tc('adminp.pspExisting','Configured ({n})').replace('{n}',pspList.length)}</div>
+              {pspList.map(p=>(
+                <div key={p.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'#f8fafc',borderRadius:8,padding:'8px 10px',marginBottom:5,opacity:p.is_active?1:0.6}}>
+                  <div style={{minWidth:0}}>
+                    <span style={{fontWeight:700,fontSize:13,textTransform:'capitalize'}}>{p.provider}</span>
+                    <span style={{fontSize:11,color:'#6d28d9',marginLeft:6,textTransform:'uppercase'}}>{p.environment}</span>
+                    <div style={{fontSize:11,color:'#888',fontFamily:'monospace'}}>{Object.entries(p.public_config||{}).map(([k,v])=>`${k}=${v}`).join('  ')||'—'}</div>
+                    <div style={{fontSize:11,color:'#15803d',fontFamily:'monospace'}}>🔒 {tc('adminp.pspEnc','secret encrypted')}: {p.secret_cipher_preview||'—'}</div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                    <button onClick={()=>togglePsp(p)} title={p.is_active?'Disable':'Enable'} style={{background:'none',border:'none',cursor:'pointer',color:p.is_active?'#16a34a':'#aaa'}}>{p.is_active?<ToggleRight size={20}/>:<ToggleLeft size={20}/>}</button>
+                    <button onClick={()=>delPsp(p.id)} style={{background:'none',border:'none',cursor:'pointer',color:'#dc2626'}}><Trash2 size={15}/></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:4,textTransform:'uppercase'}}>{tc('adminp.pspProvider','Provider')}</div>
+              <select style={inp} value={pspForm.provider} onChange={e=>setPspForm({provider:e.target.value,environment:pspForm.environment})}>
+                <option value="phonepe">PhonePe</option><option value="paytm">Paytm</option><option value="pinelabs">Pine Labs</option>
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:4,textTransform:'uppercase'}}>{tc('adminp.pspEnv','Environment')}</div>
+              <select style={inp} value={pspForm.environment} onChange={e=>pf('environment',e.target.value)}>
+                <option value="uat">Sandbox (UAT)</option><option value="prod">Production</option>
+              </select>
+            </div>
+          </div>
+          {(PSP_UI[pspForm.provider]||[]).map(([key,label,secret])=>(
+            <div key={key} style={{marginBottom:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#888',marginBottom:4}}>{label}{secret&&<span style={{color:'#dc2626'}}> (secret)</span>}</div>
+              <input style={inp} type={secret?'password':'text'} autoComplete="new-password" value={pspForm[key]||''} onChange={e=>pf(key,e.target.value)} placeholder={secret?'•••• stored encrypted':''}/>
+            </div>
+          ))}
+          <button style={{...btn('#6d28d9'),width:'100%',justifyContent:'center',height:44,marginTop:10}} disabled={gridBusy} onClick={savePsp}>{gridBusy?tc('adminp.saving','Saving...'):tc('adminp.pspSave','Save provider (encrypt & store)')}</button>
         </Modal>
       )}
       {modal?.type==='lead'&&(

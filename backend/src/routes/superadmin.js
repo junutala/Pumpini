@@ -1416,4 +1416,94 @@ router.post('/backfill/meter-photos', authAdmin, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── Payment Providers (per-outlet PSP config for UPI/card verification) ──────
+// docs/upi-verification-fsd.md. Credentials are SPLIT: non-secret identifiers go
+// in public_config (readable in the UI); the true secrets are AES-256-GCM
+// encrypted via secretBox and stored as an opaque blob. This API NEVER returns a
+// decrypted secret. Column/table-tolerant: safe to deploy before the owner runs
+// the DDL (42P01 → empty list / clear 503).
+const secretBox = require('../utils/secretBox');
+
+const PSP_FIELDS = {
+  paytm:    { public: ['mid'],                          secret: ['merchant_key'] },
+  phonepe:  { public: ['merchant_id', 'salt_index'],    secret: ['salt_key'] },
+  pinelabs: { public: ['mid', 'store_id', 'client_id'], secret: ['client_secret', 'webhook_secret'] },
+};
+const isMissingPsp = e => e.code === '42P01';
+
+// What the admin UI is allowed to see: identifiers + PROOF the secret is
+// encrypted (a preview of the ciphertext) — never the secret itself.
+function shapePsp(row) {
+  const blob = row.secret_encrypted || '';
+  return {
+    id: row.id, station_id: row.station_id, provider: row.provider,
+    environment: row.environment, is_active: row.is_active,
+    public_config: row.public_config || {},
+    has_secret: !!blob,
+    secret_cipher_preview: blob ? (blob.slice(0, 28) + '…') : '',
+    created_at: row.created_at, updated_at: row.updated_at,
+  };
+}
+
+router.get('/payment-providers/:station_id', authAdmin, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM psp_sources WHERE station_id=$1 ORDER BY provider, environment`,
+      [req.params.station_id]);
+    res.json(rows.map(shapePsp));
+  } catch (err) {
+    if (isMissingPsp(err)) return res.json([]);
+    next(err);
+  }
+});
+
+router.post('/payment-providers', authAdmin, async (req, res, next) => {
+  try {
+    const { station_id, provider, environment = 'uat' } = req.body || {};
+    if (!station_id) return res.status(400).json({ error: 'station_id is required.' });
+    const spec = PSP_FIELDS[provider];
+    if (!spec) return res.status(400).json({ error: 'Unknown provider. Use paytm / phonepe / pinelabs.' });
+    if (!['uat', 'prod'].includes(environment)) return res.status(400).json({ error: 'environment must be uat or prod.' });
+    if (!secretBox.configured()) return res.status(503).json({ error: 'Encryption key not configured on the server (set PSP_ENC_KEY).' });
+
+    const public_config = {};
+    for (const k of spec.public) if (req.body[k] != null && String(req.body[k]).trim() !== '') public_config[k] = String(req.body[k]).trim();
+    const secretObj = {};
+    for (const k of spec.secret) if (req.body[k] != null && String(req.body[k]).trim() !== '') secretObj[k] = String(req.body[k]).trim();
+    if (!Object.keys(secretObj).length) return res.status(400).json({ error: `Paste the secret: ${spec.secret.join(', ')}.` });
+
+    const { rows } = await pool.query(
+      `INSERT INTO psp_sources(station_id, provider, environment, public_config, secret_encrypted)
+       VALUES($1,$2,$3,$4::jsonb,$5) RETURNING *`,
+      [station_id, provider, environment, JSON.stringify(public_config), secretBox.encrypt(secretObj)]);
+    res.status(201).json(shapePsp(rows[0]));
+  } catch (err) {
+    if (isMissingPsp(err)) return res.status(503).json({ error: 'Payment providers are not set up on this database yet (run the DDL).' });
+    next(err);
+  }
+});
+
+router.patch('/payment-providers/:id', authAdmin, async (req, res, next) => {
+  try {
+    if (req.body?.is_active === undefined) return res.json({ ok: true });
+    const { rows } = await pool.query(
+      `UPDATE psp_sources SET is_active=$2, updated_at=now() WHERE id=$1 RETURNING *`,
+      [req.params.id, !!req.body.is_active]);
+    res.json(rows[0] ? shapePsp(rows[0]) : { ok: true });
+  } catch (err) {
+    if (isMissingPsp(err)) return res.status(503).json({ error: 'Payment providers are not set up yet.' });
+    next(err);
+  }
+});
+
+router.delete('/payment-providers/:id', authAdmin, async (req, res, next) => {
+  try {
+    await pool.query(`DELETE FROM psp_sources WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    if (isMissingPsp(err)) return res.json({ ok: true });
+    next(err);
+  }
+});
+
 module.exports = { router, authAdmin };
