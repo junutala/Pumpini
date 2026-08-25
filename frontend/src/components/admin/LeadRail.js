@@ -14,7 +14,7 @@
 // read the same GET /leads and write through the same PATCH — no second writer.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, MapPin, Loader2, Phone, User, CalendarClock,
-         UserPlus, Download, Trash2, X } from 'lucide-react';
+         UserPlus, Download, Trash2, X, AlertTriangle } from 'lucide-react';
 import InteractionRecorder from '../shared/InteractionRecorder';
 import { toInstant } from '../../lib/appointment';
 import { leadTitle, phoneHref, outletSubtitle } from '../../lib/lead';
@@ -238,8 +238,16 @@ function LeadContacts({ lead, adminFetch, tc }) {
 
   const load = useCallback(async () => {
     const d = await adminFetch(`/leads/${lead.id}/contacts`);
-    setItems(Array.isArray(d?.contacts) ? d.contacts : []);
-  }, [lead.id, adminFetch]);
+    // Same rule as the history: a failure must not read as "no contacts".
+    if (!d || d.error) {
+      setItems(null);
+      setErr(d?.error === 'SESSION_EXPIRED'
+        ? tc('lead.sessionExpired', 'Your session ended. Sign in again — nothing has been lost.')
+        : tc('lead.contactsFailed', 'Could not load contacts.'));
+      return;
+    }
+    setItems(Array.isArray(d.contacts) ? d.contacts : []);
+  }, [lead.id, adminFetch, tc]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -399,10 +407,24 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr]       = useState('');
 
+  const [loadErr, setLoadErr] = useState('');
+
+  // A failed fetch is a FAILURE, never an empty history. This used to be
+  // `setItems(data?.interactions || [])`, so a rejected session rendered as
+  // "Nothing logged against this lead yet" — and a day of real interactions
+  // looked deleted.
   const load = useCallback(async () => {
+    setLoadErr('');
     const data = await adminFetch(`/leads/${lead.id}/interactions`);
-    setItems(data?.interactions || []);
-  }, [lead.id, adminFetch]);
+    if (!data || data.error) {
+      setItems(null);
+      setLoadErr(data?.error === 'SESSION_EXPIRED'
+        ? tc('lead.sessionExpired', 'Your session ended. Sign in again — nothing has been lost.')
+        : tc('lead.historyFailed', 'Could not load the history. Nothing is lost — tap to retry.'));
+      return;
+    }
+    setItems(data.interactions || []);
+  }, [lead.id, adminFetch, tc]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -466,7 +488,20 @@ function LeadLog({ lead, adminFetch, tc, onChanged }) {
 
       <div style={{ ...lbl, marginBottom: 9, paddingLeft: 2 }}>{tc('lead.history', 'History')}</div>
 
-      {items === null ? (
+      {loadErr ? (
+        <div style={{ ...card, background: '#fff7ed', border: '1px solid #fed7aa' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <AlertTriangle size={16} color="#9a3412" style={{ marginTop: 1, flexShrink: 0 }} />
+            <div style={{ fontSize: 13.5, color: '#9a3412', lineHeight: 1.5 }}>
+              {loadErr}
+              <button onClick={load} style={{
+                display: 'block', marginTop: 7, background: 'none', border: 'none', padding: 0,
+                color: ORANGE, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              }}>{tc('lead.retry', 'Try again')}</button>
+            </div>
+          </div>
+        </div>
+      ) : items === null ? (
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 8, color: '#666', fontSize: 13.5 }}>
           <Loader2 size={15} className="spin" />{tc('lead.loadingHistory', 'Loading…')}
         </div>

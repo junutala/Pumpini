@@ -3,6 +3,7 @@ const router  = require('express').Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
+const logger  = require('../utils/logger');
 const { MANAGER_LITE_MODULES, MANAGER_LITE_DESCRIPTION } = require('../config/responsibilities');
 // Role-affinity guardrails (docs/access-model-cleanup.md §10.2): even the admin
 // console cannot assign a role-locked module to the wrong role (e.g. POS to a
@@ -66,7 +67,16 @@ const authAdmin = (req, res, next) => {
     }
 
     next();
-  } catch { return res.status(401).json({ error: 'Invalid token' }); }
+  } catch (err) {
+    // Name the reason. On 25-Aug a session died a second after every page load
+    // and the only evidence was a 25-byte "Invalid token" body — expired,
+    // malformed and wrong-signature are three different faults with three
+    // different fixes, and telling them apart took an hour of log archaeology.
+    // The reason is logged, never returned: the client learns nothing useful
+    // from it and an attacker would.
+    logger.warn(`authAdmin rejected a token: ${err.name} — ${err.message}`);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 };
 
 // POST /api/superadmin/login
