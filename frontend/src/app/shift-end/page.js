@@ -150,6 +150,11 @@ export default function ShiftEndPage() {
   // Where those litres came from: 'gauge' when a console photo filled them. Only a
   // console figure counts as NET — see lib/tankVolume.
   const [volSrc, setVolSrc] = useState({});       // tank_id -> 'gauge' | 'manual'
+  // Water under the fuel. From the console it comes off the screen; from a stick
+  // it is the paste reading, run through the SAME chart. Recorded so gross and
+  // net are both explainable — owner-set 25-Aug-2026.
+  const [wDip, setWDip]       = useState({});       // tank_id -> water dip cm
+  const [wLtr, setWLtr]       = useState({});       // tank_id -> water litres (console)
   const [savedDips, setSavedDips] = useState({});
   const [dipArtifact, setDipArtifact] = useState({});  // tank_id -> artifact_id of the gauge photo that filled it
   const [gaugeBusy, setGaugeBusy] = useState(false);
@@ -556,6 +561,9 @@ export default function ShiftEndPage() {
         // The console's NET — water already excluded. Marked so it wins over a
         // dip, which is gross. Owner-set 25-Aug-2026.
         setVolSrc(p => ({ ...p, [tank.id]: 'gauge' }));
+        // The console reports its own water, so gross stays derivable from net.
+        if (r.water_ltrs   != null) setWLtr(p => ({ ...p, [tank.id]: r.water_ltrs }));
+        if (r.water_dip_mm != null) setWDip(p => ({ ...p, [tank.id]: +(r.water_dip_mm / 10).toFixed(2) }));
         setDips(p => ({ ...p, [tank.id]: '' }));
         setSavedDips(p => ({ ...p, [tank.id]: false }));
         // Remember WHICH photograph produced this figure, so the Save below can
@@ -603,6 +611,7 @@ export default function ShiftEndPage() {
   // dip through this tank's chart. Shared with Shift Start; see lib/tankVolume.
   const tankBasis = (tk) => tankVolume({
     dip: dips[tk.id], litres: dipVol[tk.id], source: volSrc[tk.id],
+    waterDip: wDip[tk.id], waterLtrs: wLtr[tk.id],
     diameter_cm: tk.diameter_cm, length_cm: tk.length_cm,
   });
   const tankVol = (tk) => tankBasis(tk).volume;
@@ -611,16 +620,19 @@ export default function ShiftEndPage() {
     const hasDip    = dip !== '' && dip != null;
     const hasLitres = litres !== '' && litres != null;
     if (!hasDip && !hasLitres) return false;
-    const { volume: vol, basis } = tankBasis(tk);
+    const { volume: vol, basis, waterLtrs, fromDip } = tankBasis(tk);
     if (vol == null || !Number.isFinite(vol)) { setErr(tc('send.tankEnterVolume', 'Tank {n}: enter a volume.').replace('{n}', tk.tank_number)); return false; }
     // A dip is stored only when the volume actually came FROM it — beside a
     // console-net figure it would be a fiction, and `dip_cm IS NULL` is how a
     // system reading is told from a physical one downstream.
-    const dip_cm = tankDipCm({ dip, basis, diameter_cm: tk.diameter_cm, length_cm: tk.length_cm });
+    const dip_cm = tankDipCm({ dip, basis, fromDip, diameter_cm: tk.diameter_cm, length_cm: tk.length_cm });
     setBusy('dip'+tk.id); setErr('');
     try {
       await api.post('/dipstick', { station_id: stationId, tank_id: tk.id, shift_id: shift.id,
         reading_type: 'closing', dip_cm, volume_ltrs: vol,
+        // Water alongside the stock, so gross = net + water is answerable later.
+        // Silently ignored by a backend whose columns are not there yet.
+        water_dip_cm: wDip[tk.id] ?? null, water_ltrs: waterLtrs ?? null,
         // Optional, and ignored by a backend whose column isn't there yet.
         artifact_id: dipArtifact[tk.id] || undefined });
       setSavedDips(p => ({ ...p, [tk.id]: true }));
@@ -1076,7 +1088,7 @@ export default function ShiftEndPage() {
             {dipTanks.length===0 && <div style={{color:'#aaa',fontSize:13}}>{tc('send.noDipTanks','No dip-measured tanks configured.')}</div>}
             {dipTanks.map(tk => {
               const hasChart = tk.diameter_cm && tk.length_cm;
-              const { volume: vol, basis } = tankBasis(tk);
+              const { volume: vol, basis, waterLtrs: waterL, gross: grossL } = tankBasis(tk);
               // A dip on a charted tank OWNS the litres box — the figure is computed,
               // not typed. Otherwise the box is live, which is what lets a scanned
               // (or typed) system reading be saved on a charted tank with dip_cm null.
@@ -1118,6 +1130,18 @@ export default function ShiftEndPage() {
                       {basis==='net'   ? tc('send.basisNet','NET from gauge screen (water excluded)')
                      : basis==='chart' ? tc('send.basisChart','from dip × chart (gross)')
                      :                   tc('send.basisEntered','entered by hand')}
+                    </span>
+                  )}
+                  {/* Water under the fuel. Optional: leave it blank and the reading
+                      behaves exactly as before (net = gross). Filled from the console
+                      on a scan; typed from the paste reading on a stick dip. */}
+                  <input style={{...inp,padding:'4px 8px',width:96,fontSize:11.5}} type="number" step="0.1" inputMode="decimal"
+                    placeholder={tc('send.waterDip','water cm')}
+                    value={wDip[tk.id] ?? ''}
+                    onChange={e=>{ setWDip(p=>({...p,[tk.id]:e.target.value})); setWLtr(p=>({...p,[tk.id]:undefined})); setSavedDips(p=>({...p,[tk.id]:false})); }}/>
+                  {waterL != null && grossL != null && (
+                    <span style={{fontSize:11,color:'var(--text-3)'}}>
+                      {tc('send.grossNet','gross')} {fmtL(grossL)} − {tc('send.water','water')} {fmtL(waterL)} = <strong>{fmtL(vol)}</strong> L
                     </span>
                   )}
                     {/* No per-tank Save button. Close Shift writes every typed
