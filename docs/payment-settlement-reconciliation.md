@@ -63,6 +63,16 @@ concrete endpoints, auth, and fields.
 
 ## 3. Paytm — **GTM APIs frozen**
 
+> **Update — the Paytm *for-Business outlet* model (§8.1, raw spec Appendix E §13) is the
+> grounded reference for our fuel outlets, and matches the Pine Labs shape.** Intra-shift =
+> **Webhook** + **Transaction Status** (`POST /v3/order/status`); EOD = **Settlement Detail**
+> (`POST /merchant-settlement/v1/settlement/detail`, checksum). The Order-List-first framing
+> below predates that package — **Order List is now an *optional* date-range enumerator** (its
+> response fields were never confirmed); the **Webhook** is the shift enumerator instead.
+> ⚠️ Two Settlement-Detail variants exist in Paytm's docs — JWT `/merchant-settlement/SettlementDetail`
+> (§3.6) vs checksum `/merchant-settlement/v1/settlement/detail` (§8.1/§13); confirm which is
+> enabled on the outlet's MID.
+
 Paytm serves **both** objectives, with **different** APIs. Match the API to the job:
 
 **Part A — settlement-time verification (PRIMARY).** Use the **Order List API** to pull
@@ -138,6 +148,8 @@ fallback; **Split Settlement** only for vendor split payouts. Payout-bound.
 ### 3.4 Transaction Status API  *(verification — per order)*
 - **Use case:** real-time status of **one `orderId`** for a MID — the per-payment
   confirm / drill-down (resolve a PENDING line, verify a disputed one).
+- **Endpoint (confirmed):** `POST /v3/order/status` (prod `securegw.paytm.in`, staging
+  `securegw-stage.paytm.in`) — from the for-Business package (§8.1 / Appendix E §13).
 - **Auth:** checksum (`signature` ✔); optional `clientId` when the MID has multiple keys.
 - **Request — Body:** `mid` (✔), `orderId` (✔), `txnType` (–, for pre-auth/capture flows).
 - **Response (key fields):** `txnId`, `bankTxnId`, `orderId`, **`txnAmount`**,
@@ -480,13 +492,13 @@ compares. Shared code, per-outlet variables.
 
 ## 6. Status & next steps
 
-**Paytm — PRIMARY (GTM):**
-- [x] APIs frozen: **Order List** (shift-window sum) + **Transaction Status** (per-order).
-- [ ] Copy the last two page details: **Order List response fields** ("Orders+") +
-      **endpoint URL**.
-- [ ] Obtain prod **MID + Merchant Key** for one outlet (checksum auth) and confirm
-      **which `paymentMode`s** count as the attendant's "UPI" (`UPI` only, or `UPI+PPI`).
-- [ ] Confirm Order List returns **QR/Soundbox** collections, not just native-flow orders.
+**Paytm — GROUNDED (for-Business model; §8.1 / Appendix E §13):**
+- [x] Intra-shift = **Webhook** (`TXN_SUCCESS`, `paytmchecksum` verify) + **Transaction Status**
+      (`POST /v3/order/status`); EOD = **Settlement Detail** (`/merchant-settlement/v1/settlement/detail`).
+      Checksum auth (Merchant Key). Amounts in **rupees**; `paymentMode = UPI`.
+- [ ] Obtain per outlet: **MID + MERCHANT_KEY**; register the **webhook URL** in the Paytm Dashboard;
+      capture **SOUNDBOX_DEVICE_ID / STATIC_QR_ID / POS_ID** for attribution.
+- [ ] Confirm which **Settlement-Detail variant** (JWT vs checksum) is enabled on the MID.
 
 **PhonePe — FROZEN (Comprehensive Transaction Recon API, §4; raw spec §9):**
 - [x] **Frozen on `/v1/transactions/details`** — endpoint, X-VERIFY, request/response all
@@ -532,30 +544,37 @@ The standalone run's raw JSON becomes the **test fixture** for the eventual buil
 To run the outside-first test (§7), we need the following. Keys are secrets — have them sent
 directly into the secure store, **not** pasted into chat or email where avoidable.
 
-### 8.1 Paytm — to test first (per outlet)
-- **Production MID** (merchant id).
-- **Merchant Key** — the secret used to build the checksum/signature. If the MID has more
-  than one key, the **`clientId`** for the key to use.
-- Confirmation the **Order List API** and **Transaction Status API** are **enabled** on the MID.
-- The **production base URL** for the Order List API.
-- Product decision: does the attendant's "UPI" figure mean **`UPI` only**, or **`UPI` + `PPI`
-  (Paytm wallet)**?
+### 8.1 Paytm for Business — grounded (the outlet model)
+Same shape as the others: **intra-shift = Webhook + Transaction Status; EOD = Settlement Detail.**
+Raw spec + samples + verify code in **Appendix E (§13)**. ⚠️ Amounts are **rupee decimals** (`1500.00`).
 
-**Exact questions to ask the Paytm executive** (copy-paste):
-1. "Please share our **production MID** for the outlet *<outlet name>*."
-2. "Please share the **Merchant Key** used to generate the checksum/signature for that MID.
-   If the MID has multiple keys, also share the **`clientId`** of the key we should use."
-3. "Please **enable the Order List API and the Transaction Status API** on this MID for
-   reconciliation/reporting."
-4. "Do these report APIs authenticate with **checksum**, or do they need **JWT**? If JWT,
-   please share the **`clientId` + client secret** and the **token-generation endpoint**."
-5. "Our UPI is collected via **QR / Soundbox / EDC** — will those transactions appear in the
-   **Order List API**? And what **`payMode`** value will they carry (e.g. `UPI`, and wallet
-   as `PPI`)?"
-6. "What is the **production base URL** for the Order List API, and is there any **TPS / rate
-   limit** we should respect?"
-7. "Is the Order List API date range limited to **30 days** per call, with data available for
-   **18 months** — can you confirm?"
+**Auth (all):** every request `head` carries a `checksumHash` / `signature` from the **Paytm Merchant
+Key** (Paytm Checksum lib, AES-128 + SHA-256). **Hosts:** staging `https://securegw-stage.paytm.in` ·
+prod `https://securegw.paytm.in`.
+
+- **(1) Webhook — PRIMARY intra-shift.** Configure our backend URL in the Paytm Dashboard; Paytm
+  pushes each txn: `MID`, `ORDERID`, `TXNAMOUNT`, `TXNID`, **`BANKTXNID` (= RRN)**, `STATUS`
+  (`TXN_SUCCESS`), **`PAYMENTMODE` (`UPI`)**, `TXNDATE`, `BANKNAME`, `CHECKSUMHASH`. **Verify** with
+  the official `paytmchecksum` SDK (npm/pip):
+  `verifySignatureByString(JSON.stringify(body_without_CHECKSUMHASH), MERCHANT_KEY, checksum)`.
+- **(2) Transaction Status — enquiry.** `POST /v3/order/status`, body `{ mid, orderId }`. Response:
+  `resultInfo{ resultStatus: TXN_SUCCESS, resultCode: 01 }`, `txnAmount`, `txnDate`, `paymentMode`,
+  **`bankTxnId` (= RRN)**, `bankName`, `gatewayName`.
+- **(3) Settlement Detail — EOD.** `POST /merchant-settlement/v1/settlement/detail`, body
+  `{ MID, utrProcessedStartTime, utrProcessedEndTime, pageNum, pageSize }` (dates `YYYY-MM-DD`).
+  Response `settlementDetailList[]{ txnId, orderId, txnDate, txnAmount, settleAmount, **utr (= RRN)**,
+  utrProcessedTime, paymentMode, bankName, mercUnqRefVal }`. `mercUnqRefVal` can carry a
+  nozzle/attendant tag (e.g. `NOZZLE_1_ATTENDANT_KUMAR`). ⚠️ A different **JWT** variant
+  (`/merchant-settlement/SettlementDetail`, §3.6) also exists — confirm which is enabled on the MID.
+
+**Per-outlet config (collect & store; secrets encrypted):**
+| Key | Description | Scope |
+|---|---|---|
+| `MID` | Paytm Merchant ID (e.g. `INTEGR7769…`) | station |
+| `MERCHANT_KEY` | AES secret for checksum generation / verification | integration |
+| `SOUNDBOX_DEVICE_ID` | Soundbox hardware id (per attendant island, if mapped) | terminal |
+| `STATIC_QR_ID` / `POS_ID` | tag embedded in the dispenser QR sticker → auto-attendant attribution | terminal |
+| webhook URL | our callback, registered in the Paytm Dashboard | integration |
 
 ### 8.2 PhonePe — next (per outlet)
 - **`merchantId`** and **`storeId`** (and **`terminalId`** per pump, if terminals are used).
@@ -983,3 +1002,89 @@ def verify_pine_signature(raw_body, webhook_id, timestamp, signature_header, sec
     received = signature_header.split("v1,")[1] if "v1," in signature_header else signature_header
     return hmac.compare_digest(computed, received)
 ```
+
+---
+
+## 13. Appendix E — Paytm for Business (UPI): raw spec & samples
+
+_Preserved verbatim (docs unreachable here). Curated: §8.1. **Amounts are rupee decimals.**_
+
+Paytm at fuel stations: **static QR stickers, Soundbox, EDC (Smart POS)** → Paytm Payment Engine.
+Intra-shift = **Webhook** or **Transaction Status**; EOD = **Settlement API** (settled batches + bank UTRs).
+
+**Environment:** Staging `https://securegw-stage.paytm.in` · Prod `https://securegw.paytm.in`.
+**Auth:** request `head` includes a `signature` / `checksumHash` from the Paytm **Merchant Key**
+(Paytm Checksum lib, AES-128 + SHA-256).
+
+### E.1 Date-Range Batch Settlement (EOD) — `POST /merchant-settlement/v1/settlement/detail`
+Request:
+```json
+{
+  "head": { "version": "v1", "requestTimestamp": "1724580600", "channelId": "WEB", "checksumHash": "BASE64_GENERATED_CHECKSUM_HASH" },
+  "body": { "MID": "INTEGR7769XXXXXXXXX", "utrProcessedStartTime": "2026-08-25", "utrProcessedEndTime": "2026-08-25", "pageNum": 1, "pageSize": 50 }
+}
+```
+Response:
+```json
+{
+  "head": { "responseTimestamp": "1724580605", "version": "v1", "signature": "SIGNATURE_HASH" },
+  "body": {
+    "status": "SUCCESS", "resultCode": "00000000", "totalCount": 2,
+    "settlementDetailList": [
+      { "txnId": "20260825111212800110168516600919244", "orderId": "FUEL_ORD_20260825_P1_01",
+        "txnType": "TRANSACTION", "txnDate": "2026-08-25 10:14:22", "txnAmount": "1500.00",
+        "settleAmount": "1500.00", "utr": "423819002341", "utrProcessedTime": "2026-08-25 14:00:00",
+        "paymentMode": "UPI", "bankName": "SBI", "mercUnqRefVal": "NOZZLE_1_ATTENDANT_KUMAR" }
+    ]
+  }
+}
+```
+
+### E.2 Transaction Status (enquiry by Order ID) — `POST /v3/order/status`
+Request:
+```json
+{ "head": { "tokenType": "CHECKSUM", "signature": "BASE64_GENERATED_CHECKSUM" },
+  "body": { "mid": "INTEGR7769XXXXXXXXX", "orderId": "FUEL_ORD_20260825_P1_01" } }
+```
+Response:
+```json
+{
+  "head": { "responseTimestamp": "1724580710", "version": "v1", "signature": "SIGNATURE_HASH" },
+  "body": {
+    "resultInfo": { "resultStatus": "TXN_SUCCESS", "resultCode": "01", "resultMsg": "Txn Success" },
+    "txnId": "20260825111212800110168516600919244", "orderId": "FUEL_ORD_20260825_P1_01",
+    "txnAmount": "1500.00", "txnDate": "2026-08-25 10:14:22.0", "paymentMode": "UPI",
+    "bankTxnId": "423819002341", "gatewayName": "HDFC", "bankName": "STATE BANK OF INDIA"
+  }
+}
+```
+
+### E.3 Webhook + signature verification
+Configure the backend URL in the Paytm Dashboard. Sample payload:
+```json
+{
+  "MID": "INTEGR7769XXXXXXXXX", "ORDERID": "FUEL_ORD_20260825_P1_01", "TXNAMOUNT": "1500.00",
+  "CURRENCY": "INR", "TXNID": "20260825111212800110168516600919244", "BANKTXNID": "423819002341",
+  "STATUS": "TXN_SUCCESS", "RESPCODE": "01", "RESPMSG": "Txn Success", "TXNDATE": "2026-08-25 10:14:22",
+  "GATEWAYNAME": "UPI", "BANKNAME": "STATE BANK OF INDIA", "PAYMENTMODE": "UPI", "CHECKSUMHASH": "s9df8sdf...kjsdf8="
+}
+```
+Verify with the official `paytmchecksum` SDK (npm / pip):
+```javascript
+const PaytmChecksum = require('paytmchecksum');
+const paytmChecksum = req.body.CHECKSUMHASH;
+delete req.body.CHECKSUMHASH;
+const isVerifySignature = PaytmChecksum.verifySignatureByString(
+  JSON.stringify(req.body), MERCHANT_KEY, paytmChecksum);
+// if (isVerifySignature) -> clear attendant's claimed UPI amount, match bankTxnId (RRN)
+```
+```python
+import PaytmChecksum
+received_checksum = request_dict.pop('CHECKSUMHASH', None)
+is_valid = PaytmChecksum.verifySignature(request_dict, MERCHANT_KEY, received_checksum)
+# if is_valid: match request_dict['BANKTXNID'] with attendant-claimed RRN
+```
+
+### E.4 Per-outlet config
+`MID` (station), `MERCHANT_KEY` (integration, AES secret), `SOUNDBOX_DEVICE_ID` (terminal),
+`STATIC_QR_ID` / `POS_ID` (terminal — tag in dispenser QR sticker for auto-attendant attribution).
