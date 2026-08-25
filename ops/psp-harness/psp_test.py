@@ -99,26 +99,34 @@ def _print_table(name, env, rows):
 def run_phonepe(cfg):
     base = "https://mercury-uat.phonepe.com"
     path = "/v1/transactions/details"
-    start, end = _day_bounds_epoch(DATE)
-    payload = {"merchantId": cfg["merchant_id"], "size": 50,
-               "startTimestamp": start, "endTimestamp": end, "searchAfter": {}}
-    b64 = base64.b64encode(json.dumps(payload).encode()).decode()
-    xverify = hashlib.sha256((b64 + path + cfg["salt_key"]).encode()).hexdigest() + "###" + cfg["salt_index"]
-    r = requests.post(base + path, json={"request": b64},
-                      headers={"Content-Type": "application/json", "X-VERIFY": xverify}, timeout=30)
-    if not r.ok: return _bad("PhonePe", r)
-    data = (r.json().get("data") or {})
-    rows = []
-    for t in data.get("transactionDetails", []):
-        pm = (t.get("paymentModes") or [{}])
-        rows.append({
-            "time": (t.get("transactionDate") or "")[:19] if isinstance(t.get("transactionDate"), str) else str(t.get("transactionDate")),
-            "amount": (t.get("amount") or 0) / 100.0,            # PhonePe = paise
-            "mode": (pm[0].get("mode") if pm else "") or t.get("paymentMode") or "UPI",
-            "rrn": (pm[0].get("utr") if pm else "") or "",
-            "status": t.get("paymentState") or t.get("code") or "",
-        })
-    return _print_table("PhonePe", "UAT", rows)
+    d0 = datetime.datetime.strptime(DATE, "%Y-%m-%d")
+    sec = (int(d0.timestamp()), int((d0 + datetime.timedelta(days=1)).timestamp()))
+    units = [("seconds", sec), ("millis", (sec[0] * 1000, sec[1] * 1000))]
+    last = None
+    for unit, (start, end) in units:                 # try seconds, then millis
+        payload = {"merchantId": cfg["merchant_id"], "size": 50,
+                   "startTimestamp": start, "endTimestamp": end, "searchAfter": {}}
+        b64 = base64.b64encode(json.dumps(payload).encode()).decode()
+        xverify = hashlib.sha256((b64 + path + cfg["salt_key"]).encode()).hexdigest() + "###" + cfg["salt_index"]
+        r = requests.post(base + path, json={"request": b64},
+                          headers={"Content-Type": "application/json", "X-VERIFY": xverify}, timeout=30)
+        last = r
+        if not r.ok:
+            continue
+        data = (r.json().get("data") or {})
+        rows = []
+        for t in data.get("transactionDetails", []):
+            pm = (t.get("paymentModes") or [{}])
+            rows.append({
+                "time": str(t.get("transactionDate", ""))[:19],
+                "amount": (t.get("amount") or 0) / 100.0,        # PhonePe = paise
+                "mode": (pm[0].get("mode") if pm else "") or t.get("paymentMode") or "UPI",
+                "rrn": (pm[0].get("utr") if pm else "") or "",
+                "status": t.get("paymentState") or t.get("code") or "",
+            })
+        print(f"  (timestamps accepted as {unit})")
+        return _print_table("PhonePe", "UAT", rows)
+    return _bad("PhonePe", last)
 
 
 # ---------------------------- Pine Labs --------------------------------------
