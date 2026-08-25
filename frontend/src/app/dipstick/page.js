@@ -273,12 +273,14 @@ export default function DipstickPage() {
                     {tc('dip_page.last_dip','Last dip')}: {new Date(tank.last_reading_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </div>
                 )}
-                {/* Tank type (calibration) — auto dip→volume once set */}
+                {/* Tank SIZE (AAcm × BBcm) — auto dip→volume once set. Sizes are
+                    named by dimensions, never by nominal KL: two tanks both called
+                    "16 KL" were 1,255 L apart. New sizes are added in Settings. */}
                 <div style={{ marginTop: 8 }}>
                   <select className="input" style={{ fontSize: 11, padding: '4px 6px' }}
                     value={tank.calibration_chart_id || ''}
                     onChange={e => assignChart(tank.id, e.target.value)}>
-                    <option value="">{tc('dip_page.set_type','Set tank type…')}</option>
+                    <option value="">{tc('dip_page.set_size','Set tank size…')}</option>
                     {charts.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtL(c.capacity_ltrs)} L</option>)}
                   </select>
                 </div>

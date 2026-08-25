@@ -5,6 +5,7 @@ const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const pumpService = require('../services/pumpService');
 const slipParser  = require('../services/slipParser');
+const calibrationService = require('../services/calibrationService');
 
 // Does the self-settlement switch exist yet? This route is a HOT READ — POS, Shifts
 // and Settings all call it — so naming a not-yet-migrated column here would 42703 all
@@ -495,7 +496,8 @@ router.get('/:id/tanks', authenticate, requireStationId('id'), async (req, res, 
 router.post('/:id/tanks', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
-    const calibration_chart_id = req.body.calibration_chart_id || null;
+    // Dimensions in, chart out — one writer, shared with the Dipstick screen.
+    const { calibration_chart_id } = await calibrationService.resolveChartId(req.body);
     const { rows } = await pool.query(
       `INSERT INTO tanks(station_id,tank_number,fuel_type,capacity_ltrs,current_stock,density,calibration_chart_id)
        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
@@ -509,9 +511,11 @@ router.post('/:id/tanks', authenticate, requireStationId('id'), requirePerm('set
 router.patch('/:id/tanks/:tank_id', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { tank_number, fuel_type, capacity_ltrs, current_stock, density } = req.body;
-    // Only touch calibration when the field is actually sent; null then means "clear to manual".
-    const calProvided = Object.prototype.hasOwnProperty.call(req.body, 'calibration_chart_id');
-    const calibration_chart_id = req.body.calibration_chart_id || null;
+    // Only touch calibration when it is actually sent — an edit that renames a tank
+    // must not silently clear its chart. `provided` carries that distinction out of
+    // the one writer, which also resolves dimensions to a chart row.
+    const { provided: calProvided, calibration_chart_id } =
+      await calibrationService.resolveChartId(req.body);
     const { rows } = await pool.query(
       `UPDATE tanks SET
          tank_number=COALESCE($1,tank_number),
