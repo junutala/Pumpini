@@ -17,10 +17,10 @@ during the shift — **on any day, weekends included** — and flags any varianc
 same APIs carry both, tagged by `payment_method` (UPI / CARD); **cards get the same treatment as
 UPI — the fraud risk is identical and we close it.** Read-only: we fetch/receive transaction data
 and compare; **we never move money or write to money tables.**
-> ⚠️ **HP / fleet card (D6):** a **closed-loop OMC prepaid** HP card is **out of PSP scope**
-> (HPCL's own rail, no third-party merchant API) — reconcile it from HPCL dealer/RO reports
-> separately (later track). Only **EDC-swiped** cards (Visa/RuPay, incl any co-branded HP fleet
-> card) are covered here. Confirm which HP card products the outlet accepts.
+> ⚠️ **HP card (D6):** **co-branded** HP cards (Visa/RuPay) are covered like any EDC card. A
+> **closed-loop stored-value** HP card is **out of scope** — no merchant API, and it settles as a
+> **direct credit to the dealer's fuel running account** (not a bank UTR), so it isn't
+> independently trackable.
 
 **Out of scope (v1):** **GPay for Business** (a collection SDK, not a recon
 API — only relevant with a dedicated GPay VPA); bank-payout/settlement reconciliation (a
@@ -30,8 +30,9 @@ API — only relevant with a dedicated GPay VPA); bank-payout/settlement reconci
 
 ## 2. Objective & non-goals
 
-- **Objective:** a per-shift, per-attendant (where attributable) **UPI figure we can stand
-  behind**, matched against the attendant's declaration, available intra-shift.
+- **Objective:** confirm the **digital money the attendant reported actually reached the owner's
+  merchant account** — **instrument-agnostic** (UPI, UPI Lite, wallet, card; we don't care *how*
+  it was funded), per shift and per attendant where attributable, available intra-shift.
 - **Non-goal:** replacing the gateway's own dashboards, or bank reconciliation (that's the
   secondary EOD path). This is *transaction-time* verification, not *payout-time*.
 - **Completes the tender picture:** cash (denominations) + **UPI + card** (PSP/EDC) + credit
@@ -81,7 +82,7 @@ NormalizedTxn {
   tid             // terminal / device id (nullable)
   amount          // NUMERIC rupees (PhonePe paise ÷100; Paytm/PineLabs already rupees)
   status          // 'success' | 'pending' | 'refund' | 'failed'
-  payment_mode    // 'upi' | 'card' | 'wallet' | ...   (tender; card carries network/last4 in raw)
+  payment_mode    // 'upi' | 'upi_lite' | 'wallet'/'ppi' | 'card' | ...  (for display; NOT a filter)
   txn_time        // timestamptz
   raw             // original payload (jsonb, audit)
   source          // 'webhook' | 'enquiry' | 'settlement'
@@ -170,9 +171,10 @@ One writer per concern; all outbound signing server-side. Adapters live in
 ## 9. Verification logic (the core)
 
 Given `(station_id, window[from,to], optional attendant_id)`:
-1. Pull the station's transactions where `txn_time ∈ window` and `status='success'`,
-   **grouped by tender** — **scan** (`upi` + `wallet`, counted together — D3) and **card** —
-   across **all** the outlet's sources.
+1. Pull **every successful merchant-credited** transaction in the window (any instrument —
+   UPI, UPI Lite, wallet/`PPI`, card), across **all** the outlet's sources. Group by tender
+   **only for display/attribution, never to filter** — the question is *did the money reach the
+   owner*, not how it was funded.
 2. **De-dup** by `rrn` (a payment goes through exactly one QR, but guards double delivery).
 3. **Attribute** each txn: `tid → psp_terminal_map → pump → attendant on that pump this shift`.
    - one attendant on the pump → clean per-attendant figure;
@@ -227,9 +229,11 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
   money. Full posture in §17.
 - **D2 — RESOLVED:** PhonePe provides a real-time **S2S webhook** (§8.2 of the API doc) — it pushes
   like Paytm and Pine Labs. No polling needed.
-- **D3 — RESOLVED:** "wallet" = the app's stored prepaid balance (Paytm Wallet/`PPI`, PhonePe
-  Wallet) — a QR-scan payment the attendant can't distinguish from UPI. **Count UPI + wallet
-  together as the "scan" total**; EDC card is its own tender. (Wallet is *not* the HP card.)
+- **D3 — RESOLVED (instrument-agnostic):** we don't care *how* the customer funded the payment —
+  only whether **the money reached the owner's merchant account**. So **every successful
+  merchant-credited instrument** (UPI, **UPI Lite**, wallet / `PPI`, card…) is fetched and
+  reconciled; the instrument is recorded for display/attribution, **never used to filter**.
+  (Wallet is *not* the HP card.)
 - **D4 — DEFERRED to Phase 3:** the Paytm EOD **settlement-breakdown** API has two variants
   (JWT `/SettlementDetail` vs checksum `/v1/settlement/detail`); confirm which is live on the MID
   when we build the EOD path. Not v1-blocking.
@@ -237,11 +241,11 @@ for **owner-facing payout reconciliation** at EOD. Wire after v1 verification is
   test outlets** (Dilsukhnagar / Nagole / Hayat); swap to prod creds on real outlets only after a
   real-shift match. Read-only + inert unless a source is configured → blast radius stays on the
   test outlets. Schema still ships as **gated owner-run DDL first** (house rule).
-- **D6 — RESOLVED (pending HP-product confirm):** a **closed-loop OMC prepaid** HP card runs on
-  **HPCL's own rail — no third-party merchant API** → **out of PSP scope**; reconcile from HPCL
-  dealer/RO reports separately (later track). **EDC-swiped** cards (Visa/RuPay, incl co-branded HP
-  fleet) **are** covered (§5). Confirm which HP card products the outlets accept + how they
-  reconcile the closed-loop one today. *(HPCL's API can't be verified here — docs egress-blocked.)*
+- **D6 — RESOLVED:** **co-branded** HP cards (Visa/RuPay) are covered like any other EDC card. A
+  **closed-loop stored-value** HP card is **out of scope** — no third-party merchant API, *and* it
+  settles as a **direct credit to the dealer's fuel running account** with the OMC (not a bank UTR
+  we could reconcile), so it isn't independently trackable. Left to HPCL's dealer ledger, outside
+  this integration.
 
 ---
 
