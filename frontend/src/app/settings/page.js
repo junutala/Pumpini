@@ -15,6 +15,7 @@ import { INDIAN_STATES, getCities, displayMobile } from '../../lib/india';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { useTranslation } from 'react-i18next';
 import { nozName } from '../../lib/nozzle';
+import { dipToVolume } from '../../lib/calibration';
 
 const FUEL_TYPES = [
   {value:'petrol',         label:'Petrol (MS)'},
@@ -604,17 +605,39 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
   const [form,setForm]     = useState(empty);
   const [editTank,setEdit] = useState(null);
   const [loading,setLoading] = useState(false);
-  const [charts,setCharts] = useState([]);  // calibration library (15KL / 20KL …)
+  const [charts,setCharts] = useState([]);  // sizes already on file, named AAcm × BBcm
+  // Entering a size not yet on file. The sheet's own word decides radius vs diameter.
+  const [newSize,setNewSize] = useState(false);
+  const [dimIs,setDimIs]     = useState('radius');
+  const [dimVal,setDimVal]   = useState('');
+  const [lenVal,setLenVal]   = useState('');
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  // What the backend stores is always the DIAMETER.
+  const diameterCm = dimVal === '' ? null
+    : (dimIs === 'radius' ? Number(dimVal) * 2 : Number(dimVal));
+  const shellL = (diameterCm > 0 && Number(lenVal) > 0)
+    ? dipToVolume(diameterCm, Number(lenVal), diameterCm) : null;
+
+  const resetSize = () => { setNewSize(false); setDimIs('radius'); setDimVal(''); setLenVal(''); };
 
   useEffect(()=>{ getCalibrationCharts().then(c=>setCharts(Array.isArray(c)?c:[])).catch(()=>setCharts([])); },[]);
 
   const save = async(e) => {
     e.preventDefault(); setLoading(true);
     try {
-      if(editTank) await api.patch(`/stations/${stationId}/tanks/${editTank.id}`,form);
-      else         await api.post(`/stations/${stationId}/tanks`,form);
-      setForm(empty); setEdit(null); reload();
+      // Dimensions go to the ONE writer, which finds an existing row of that size or
+      // creates it. Never a nominal capacity.
+      const payload = newSize
+        ? { ...form, diameter_cm: diameterCm, length_cm: Number(lenVal) || null }
+        : form;
+      if(editTank) await api.patch(`/stations/${stationId}/tanks/${editTank.id}`,payload);
+      else         await api.post(`/stations/${stationId}/tanks`,payload);
+      setForm(empty); setEdit(null); resetSize();
+      // A new size must appear in the list straight away, or the next tank at this
+      // outlet gets typed in again and a duplicate row is what we were avoiding.
+      getCalibrationCharts().then(c=>setCharts(Array.isArray(c)?c:[])).catch(()=>{});
+      reload();
     } catch(err){ alert(err.error||tc('setp.failed', 'Failed')); }
     finally{ setLoading(false); }
   };
@@ -626,6 +649,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
 
   const startEdit = (t) => {
     setEdit(t);
+    resetSize();
     setForm({ tank_number:t.tank_number, fuel_type:t.fuel_type,
       capacity_ltrs:t.capacity_ltrs, calibration_chart_id:t.calibration_chart_id||'' });
   };
@@ -659,17 +683,66 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
                 onChange={e=>f('capacity_ltrs',parseFloat(e.target.value))}/>
             </div>
           )}
+          {/* A TANK IS ITS DIMENSIONS. Owner-set 25-Aug-2026: "we will call the tank
+              as AAcm X BBcm". The nominal-size dropdown (15KL / 16KL / 22KL) is gone
+              — two tanks called "16 KL" were 1,255 L apart, and reading Sri Balaji's
+              petrol off the wrong one over-stated it by 726 L for weeks. Pick a size
+              already on file, or type the dimensions off the calibration sheet. */}
           <div style={{marginBottom:'1.25rem'}}>
-            <label className="label">{tc('setp.tankCalibration', 'Tank Calibration (size)')}</label>
-            <select className="input" value={form.calibration_chart_id||''}
-              onChange={e=>f('calibration_chart_id', e.target.value || null)}>
-              <option value="">{tc('setp.calibNone', '— None (enter volume manually at dip) —')}</option>
+            <label className="label">{tc('setp.tankSize', 'Tank Size (diameter × length) *')}</label>
+            <select className="input" value={newSize ? '__new' : (form.calibration_chart_id||'')}
+              onChange={e=>{
+                const v = e.target.value;
+                if (v === '__new') { setNewSize(true); f('calibration_chart_id', null); }
+                else { setNewSize(false); f('calibration_chart_id', v || null); }
+              }}>
+              <option value="">{tc('setp.calibNone', '— Not set (enter litres by hand at every dip) —')}</option>
               {charts.map(c=>(
-                <option key={c.id} value={c.id}>{c.name} · {Number(c.capacity_ltrs||0).toLocaleString('en-IN')} L</option>
+                <option key={c.id} value={c.id}>
+                  {c.name} · {Number(c.capacity_ltrs||0).toLocaleString('en-IN')} L
+                  {c.tanks_using ? ` · ${c.tanks_using} ${c.tanks_using===1?'tank':'tanks'}` : ''}
+                </option>
               ))}
+              <option value="__new">{tc('setp.calibNew', '+ New size — enter the dimensions')}</option>
             </select>
-            <div style={{fontSize:11,color:'var(--text-3)',marginTop:2}}>
-              {tc('setp.calibHint', 'Converts dip → litres automatically at shift open/close. Live stock & density come from dip readings, not here.')}
+
+            {newSize && (
+              <div style={{marginTop:8,padding:10,border:'1px solid var(--border)',borderRadius:8,background:'var(--bg-2)'}}>
+                {/* HP prints the RADIUS; we store the DIAMETER. Getting this backwards
+                    doubles or halves the tank, so the sheet's own word is asked for
+                    rather than assumed. See docs/reference/README.md. */}
+                <div style={{display:'flex',gap:6,marginBottom:6}}>
+                  <select className="input" style={{flex:'0 0 108px'}} value={dimIs}
+                    onChange={e=>setDimIs(e.target.value)}>
+                    <option value="radius">{tc('setp.radius', 'Radius')}</option>
+                    <option value="diameter">{tc('setp.diameter', 'Diameter')}</option>
+                  </select>
+                  <input className="input" type="number" step="0.1" min="1" style={{flex:1}}
+                    placeholder={tc('setp.egRadius', 'e.g. 101')} value={dimVal}
+                    onChange={e=>setDimVal(e.target.value)}/>
+                  <span style={{alignSelf:'center',fontSize:12,color:'var(--text-3)'}}>cm</span>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <span style={{flex:'0 0 108px',alignSelf:'center',fontSize:13}}>{tc('setp.length', 'Length')}</span>
+                  <input className="input" type="number" step="0.1" min="1" style={{flex:1}}
+                    placeholder={tc('setp.egLength', 'e.g. 500')} value={lenVal}
+                    onChange={e=>setLenVal(e.target.value)}/>
+                  <span style={{alignSelf:'center',fontSize:12,color:'var(--text-3)'}}>cm</span>
+                </div>
+                {/* The shell volume, shown live. It must match the LAST ROW of the
+                    calibration sheet. If it does not, the sheet is not this tank's
+                    sheet — which is exactly what went unnoticed at Sri Balaji. */}
+                {shellL != null && (
+                  <div style={{marginTop:8,fontSize:12}}>
+                    <strong>{Number(shellL).toLocaleString('en-IN',{maximumFractionDigits:0})} L</strong>
+                    {' '}{tc('setp.shellHint', 'full. Check this against the LAST row of the calibration sheet — if it disagrees, that sheet belongs to a different tank.')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{fontSize:11,color:'var(--text-3)',marginTop:4}}>
+              {tc('setp.calibHint2', 'Converts dip → litres at shift open/close. Enter the dimensions from the OMC calibration sheet, not the tank’s nominal size — two tanks both called "16 KL" can differ by over 1,000 litres.')}
             </div>
           </div>
           <div style={{display:'flex',gap:8}}>
@@ -678,7 +751,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
             </button>
             {editTank && (
               <button className="btn btn-secondary" type="button"
-                onClick={()=>{ setEdit(null); setForm(empty); }}>{tc('setp.cancel', 'Cancel')}</button>
+                onClick={()=>{ setEdit(null); setForm(empty); resetSize(); }}>{tc('setp.cancel', 'Cancel')}</button>
             )}
           </div>
         </form>
@@ -693,7 +766,7 @@ function TanksTab({ stationId, tanks, reload, askConfirm }) {
         {tanks.length>0 && (
           <div className="table-wrap">
             <table className="dms-table">
-              <thead><tr><th>{tc('setp.thTankNum', 'Tank #')}</th><th>{tc('setp.thFuel', 'Fuel')}</th><th>{tc('setp.thCapacity', 'Capacity')}</th><th>{tc('setp.thCalibration', 'Calibration')}</th><th>{tc('setp.thCurrentStock', 'Current Stock')}</th><th>{tc('setp.thFillPct', 'Fill %')}</th><th>{tc('setp.thActions', 'Actions')}</th></tr></thead>
+              <thead><tr><th>{tc('setp.thTankNum', 'Tank #')}</th><th>{tc('setp.thFuel', 'Fuel')}</th><th>{tc('setp.thCapacity', 'Capacity')}</th><th>{tc('setp.thSize', 'Size (D × L)')}</th><th>{tc('setp.thCurrentStock', 'Current Stock')}</th><th>{tc('setp.thFillPct', 'Fill %')}</th><th>{tc('setp.thActions', 'Actions')}</th></tr></thead>
               <tbody>
                 {tanks.map(t=>{
                   const pct = t.capacity_ltrs>0 ? Math.round((t.current_stock/t.capacity_ltrs)*100) : 0;
