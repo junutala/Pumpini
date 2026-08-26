@@ -445,6 +445,167 @@ Three traps, all of which cost a live morning at Sri Balaji on 25-Aug:
   whatever dip makes the litres match — and the volume then looks right while the dip
   is invented. Sri Balaji's petrol went in as 852.00 mm when the console read 912.30.
 
+## 🔴 FLOW v2 — the hub and three spokes. Sri Balaji only, behind a switch.
+### owner-set 26-Aug-2026. Design frozen; coding starts 27-Aug.
+
+> *"Srinivas is making a lot of noise around the shift and he does not understand
+> shifts. He says he has 4 shift patterns and we have only 3 shift definitions."*
+
+He is not being difficult. **A shift is our abstraction, not his.** He thinks in tanks,
+nozzles and men. So for his outlet the shift stops being the boundary for anything
+that matters, and becomes at most a label.
+
+**THE OUTLET IS THE HUB. THERE ARE THREE SPOKES, AND THEY DO NOT REACH INTO EACH
+OTHER.** Each owns one clock: the nozzle moves in seconds, the tank moves at
+readings, the money settles over days. Welding all three to one shift is what
+produced every failure of 25/26-Aug.
+
+### Spoke 1 — UGT reconciliation (the manager's act)
+
+Three inputs captured **together, at one moment**, which is what makes the boundary work:
+
+- **ATG** — enter or snap. Stock, the console's own sale figures, date & time.
+- **Deliveries** — scan. A decant belongs to the tank window it lands in.
+- **Nozzle slips, ALL nozzles, composite scan** — enter or snap.
+
+The tank reconciles between two of its own ATG readings. Because the composite slip
+scan happens **at the same instant as the ATG scan**, the tank window and the nozzle
+totals share a boundary by construction.
+
+**THIS IS WHAT KILLED THE STRADDLE PROBLEM.** An ATG reading is a point in time; a
+nozzle account is a span. Four ways out were argued (prorate by time; force a
+handover at every dip; refuse to reconcile until all accounts close; reconcile on
+closed accounts and declare completeness) and **all four were beaten by the owner's
+answer: take the nozzle reading at the tank boundary without disturbing anybody's
+account.** Do not re-open this. Prorating in particular is the back-solved dip
+wearing a different hat.
+
+### Spoke 2 — the nozzle account (events and co-events)
+
+**A nozzle carries ONE CHAIN of readings. Each reading closes the account before it
+and opens the one after — one number, stored once, read from both directions.**
+
+- An **event** is a nozzle slip scanned at a handover. It moves the account to the
+  next man.
+- A **co-event** is created **only when a scan produces the SAME reading as the one
+  immediately before it.** It carries no value. Its purpose is to record the **drift
+  in time** between the outgoing man's print and the incoming man's, so the owner has
+  data to push the manager on discipline. It is a metric, not a measurement.
+- Spoke 1's composite scan is also a reading on the same chain, but **it never moves
+  an attendant account.**
+
+**THE PUMP IS NEVER BLOCKED, AND THERE IS NO OVERRIDE TO BUILD.** If a man walks off
+without printing, the next man's scan IS the closing event and the outstanding
+strikes against the man who left. The act of taking over is the act of closing, so
+there is nothing to freeze and no break-glass. (An earlier design proposed a block
+with a manager override; the owner's model removes the need for both.)
+
+### Spoke 3 — the attendant
+
+- **Outstanding — CALCULATED, never typed.** Derived from his events. This is the
+  structural fix for the 25-Aug loss of ₹1,25,275: a manager cannot make a liability
+  vanish by leaving a field blank, because there is no field. The only manual entry
+  is what the man BROUGHT — cash, UPI, card, credit slips, petty.
+- **Settlement — manual entry**, and it may not complete silently at zero.
+- It degrades like the existing suspense ledgers: an outstanding clears when cash is
+  banked or a credit invoice is raised, the same shape `credit_suspense_entries`
+  already uses (316 per-attendant rows, direction + clearing reference).
+
+**The money clock never blocks the forecourt.** A man with an outstanding works his
+next shift; he simply cannot reach zero until he settles.
+
+### Reading drift — two tests that are physics, not judgement
+
+A handover where the two readings differ is usually just fuel sold in the gap, and
+must NOT raise an alarm — a manager who justifies three litres twice a day learns to
+click through it, and then a real reset sails past on the same habit. Only two
+conditions are certain, and both are loud on the owner dashboard:
+
+| Condition | Why it is certain |
+|---|---|
+| **The reading DECREASED** | A totaliser only counts up. Always a reset, a replacement or a misread |
+| **It rose faster than the pump can physically deliver** | ~40 L/min flat out; 400 L across a 3-minute gap is impossible |
+
+Everything else is trade. Record it as drift, stay silent.
+
+When a drift IS justified — new nozzle, meter reset, replacement — **the manager
+types the reason in his own words. Never a dropdown** (owner-set 25-Aug: a canned
+reason code becomes a reflex). A reset means the nozzle's chain needs a new starting
+point, and that is a **commissioning action in Settings under the owner's eye** — never
+a number entered on a handover screen.
+
+### 🔴 TWO TABLES FOR THE SLIP READINGS. Deliberate, priced, do not "fix" it.
+
+> *"The nozzle slips at two different hands serve different purposes... I know this
+> is duplicate, but I would pass it as design liability — clarity and separation of
+> duties."*
+
+Spoke 1's recon readings and Spoke 2's events live in **separate tables** and are
+written by the **same code**. This is a knowing exception to the one-writer rule, and
+the reason is control, not tidiness: **money flows from Spoke 2 only.** Two tables
+make "a recon scan moved an attendant's liability" unwritable; one table with an
+origin flag makes it a forgotten `WHERE` clause away.
+
+**There is no third table.** An assistant proposed splitting the chain out from the
+handover act and was corrected — the chain lives in Spoke 2, and Spoke 1 is a
+snapshot that is never asked *"what did this nozzle last read"*. The 01-Aug
+one-meter-store rule is not violated, because there is still exactly one chain.
+
+### 🔴 SRI BALAJI ONLY, behind a per-outlet switch. TEMPORARY.
+
+`station_settings` already carries four behaviour switches (`products_enabled`,
+`self_settlement_enabled`, `accounts_enabled`, `attendant_led_autoclose`). This is a
+fifth, and it is a **migration flag, not a feature** — name it so.
+
+- **Sri Balaji first.** One week of history, least to disturb, and the outlet with
+  the problem.
+- **Kamala, Adhoc Highway and Highway stay exactly as they are** until the new flow is
+  proven and its bugs are out. The two experienced managers become the LAST adopters,
+  not the test subjects.
+- **The liability is duration, not existence.** A route you plan to close is a
+  migration; a route nobody closes is the drift this repo spent months untangling.
+  Set the date when the switch goes on, and delete the old path when the last outlet
+  moves.
+
+**ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows,
+and if any of them is copied we no longer have two flows — we have two products:
+
+- nozzle naming (`pumpService.nozzleNameExpr`)
+- calibration and dip→litres (`lib/calibration`, `lib/tankVolume`)
+- artifact storage (`artifactService.save`)
+- prices, users, stations
+
+### What the evidence already ruled out — do not re-propose
+
+Checked against production on 26-Aug-2026, all four outlets:
+
+- **Do NOT block overlapping shifts.** Kamala opens a shift before closing the
+  previous one **12 times in 75** (Adhoc 5/68, Highway 2/59). It is how a night
+  handover works, not a fault. An assistant proposed this guardrail; the data killed
+  it.
+- **A literal "one open account per nozzle" lock on the ASSIGNMENT would have refused
+  8 Kamala handovers** — all one event, the 02-Aug 06:58 handover, where every one of
+  the eight nozzles closed and re-opened at the identical reading to three decimals.
+  A textbook handover. Gate on the READING, never on the shift clock.
+- **The empty-cash-box guard is safe**: 0 fires in Kamala's 264 settlements and
+  Highway's 114. Adhoc's 13 total ₹159.35 — rounding.
+- **Deliveries never belonged to a shift**: 172 of 172 rows have `tank_id` set and
+  `shift_id` NULL. Moving them to the tank window is recognising what is already true.
+
+### What is left of the shift
+
+Roster and attendance — who was on duty, and the label a report groups by. It answers
+*"how did the morning shift do"* as a **view over accounts**, never as the thing that
+owns them. Demoted, not deleted.
+
+### Still open when coding starts
+
+- **Recon cadence** — daily or per shift. Daily is 12 slip prints and cheap; per shift
+  is 24 a day and somebody starts skipping, which quietly puts the straddle back.
+- **Who may clear an outstanding.** Manager is weak control — he is often the one who
+  took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
+- **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
+
 ## House facts
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
