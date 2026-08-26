@@ -1,0 +1,18 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",          "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Spoke 1 · Tank Recon — step rail on the right" },
+    { "file": "TopCrumb.dc.html",      "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Spoke 1 · same screen — breadcrumb-stepper across the top" },
+    { "file": "NozzleEvents.dc.html",  "x": 0,    "y": 1060, "w": 1440, "h": 900, "title": "Spoke 2 · Nozzle Events — the chain" },
+    { "file": "Outstanding.dc.html",   "x": 1560, "y": 1060, "w": 1440, "h": 900, "title": "Spoke 3 · Attendant Dues" },
+    { "file": "Nav.dc.html",           "x": 0,    "y": 2120, "w": 660,  "h": 900, "title": "Sidebar — the new group" }
+  ],
+  "annotations": [
+    { "id": "crumb-choice", "x": 0, "y": -150, "w": 700,
+      "text": "BREADCRUMB — pick one.\nLeft: right-hand rail. Keeps all four steps visible with room for detail under each, but costs 250px of width.\nRight: top stepper. Full-width content, reads left-to-right like the work does — but each step gets one line only." },
+    { "id": "spokes-note", "x": 1560, "y": -150, "w": 700,
+      "text": "Both screens carry the SAME breadcrumb line above (Bunk View › Tank Recon). The stepper is the addition — it answers \"how far through am I\", which a breadcrumb alone does not." },
+    { "id": "data-note", "x": 0, "y": 3080, "w": 900,
+      "text": "Every figure is Sri Balaji's real data from 25-26 Aug: the three tanks on their corrected charts, the twelve nozzle names off their pump serials, and the Rs 1,25,275.25 standing against Nagamani, Premalatha and Manisha." }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -39,3 +39,8 @@ Thumbs.db
 # Python (ops/ harness build artifacts)
 __pycache__/
 *.pyc
+
+# Design canvas — seeded output carries a ~2.5 MB editor payload and is
+# rebuilt from the .dc.html sources on demand. Sources are tracked; this is not.
+design/*.html
+!design/*.dc.html
