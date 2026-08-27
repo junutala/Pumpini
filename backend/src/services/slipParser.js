@@ -119,9 +119,12 @@ OCR text:
 // function used to carry its own copy of the Vision-then-Claude pipeline; the copy
 // is gone, because three more readers needed the same thing and four copies of one
 // idea is exactly what the cardinal rule exists to stop.
+// Returns the reader's WHOLE result, parsed or not. It used to collapse a failed
+// read to null, which threw away the engine and the fallback reason at the only
+// moment they are interesting. Both callers already test `read?.parsed` before
+// touching it, so handing the object back changes nothing for them.
 async function readSlipJson({ file_base64, media_type, prompt, max_tokens = 1500 }) {
-  const r = await readImageAsJson({ file_base64, media_type, prompt, max_tokens, ocrPreamble: OCR_PREAMBLE });
-  return r.parsed ? r : null;
+  return readImageAsJson({ file_base64, media_type, prompt, max_tokens, ocrPreamble: OCR_PREAMBLE });
 }
 
 function warn(msg) {
@@ -218,8 +221,14 @@ function normalizeSlipNozzles(rawNozzles) {
 
 // Read one slip. Returns null when the image could not be parsed at all; the caller
 // decides what that means for its own screen.
-async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
+// `diag`, when passed, is FILLED IN with what the reader did — engine, fallback
+// reason, error — even on the null return. Without it a total failure told the
+// caller nothing but "no", so the one moment worth recording (the frame that beat
+// the reader) was the one moment we recorded nothing about. An out-param rather
+// than a changed return, so every existing caller is untouched.
+async function parseSlip({ file_base64, media_type = 'image/jpeg', diag = null }) {
   const read = await readSlipJson({ file_base64, media_type, prompt: SLIP_PROMPT });
+  if (diag && read) Object.assign(diag, { engine: read.engine ?? null, fallback_reason: read.fallback_reason ?? null, error: read.error ?? null });
   const parsed = read?.parsed;
   if (!parsed || !Array.isArray(parsed.nozzles)) return null;
 
@@ -247,11 +256,13 @@ async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
 // "scan all slips at shift open/close" flow. Mirrors parseSlip's AI call but uses the
 // composite prompt and returns one group per slip, each with its own serial and its
 // nozzles normalised by the SAME shared logic. Returns null on total parse failure.
-async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg' }) {
+async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg', diag = null }) {
   // A composite carries several slips, so its JSON is several times longer than a
   // single slip's — 1500 was tight enough that one more pump could truncate it,
   // and a truncated body fails JSON.parse and loses the WHOLE scan, not one slip.
   const read = await readSlipJson({ file_base64, media_type, prompt: COMPOSITE_SLIP_PROMPT, max_tokens: 8000 });
+  // See parseSlip: filled in even when the read fails, which is when it matters.
+  if (diag && read) Object.assign(diag, { engine: read.engine ?? null, fallback_reason: read.fallback_reason ?? null, error: read.error ?? null });
   const parsed = read?.parsed;
   if (!parsed || !Array.isArray(parsed.slips)) return null;
 
