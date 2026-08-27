@@ -43,6 +43,23 @@ async function loadOperatorLine(client, { shift_id, attendant_id, notFoundStatus
       JOIN shifts s ON s.id = sa.shift_id
      WHERE sa.shift_id=$1 AND sa.attendant_id=$2`, [shift_id, attendant_id]);
   if (!rows.length) throw new SettlementError(notFoundStatus, notFoundMessage);
+  // A CLOSED shift takes no settlement, and the check lives HERE — in the function
+  // both settlement paths call — rather than in one route.
+  //
+  // /self-settle carried this inline and /reconcile/manager never got it, so a
+  // manager could settle an operator into a shift that had already closed. On
+  // 27-Aug that is exactly what happened: two closing meters and a settlement were
+  // written into Dilsukhnagar's 27-Aug shift 20 minutes after it closed, because
+  // the screen still held the closed shift's id.
+  //
+  // That asymmetry is the drift CLAUDE.md names for this very pair — two trust
+  // boundaries over ONE settlement concept. Guarded in the shared writer, a rule
+  // added for one path reaches the other by construction instead of by somebody
+  // remembering.
+  if (rows[0].status !== 'open') {
+    throw new SettlementError(409,
+      'This shift is already closed, so its operators can no longer be settled. Pick the shift that is still open.');
+  }
   return rows[0];
 }
 
