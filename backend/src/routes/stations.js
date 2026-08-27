@@ -60,6 +60,24 @@ async function hasAttendantLedFlag() {
   return _hasAttendantLedFlag;
 }
 
+// Does the hub-and-spokes MIGRATION FLAG exist yet? Same hot-read guard as the three
+// flags above — GET /settings is called by POS, Shifts and Settings, so naming a
+// not-yet-migrated column here would 42703 all of them at once. Probed, never
+// try-and-caught. Cached only once TRUE, so the first read after the owner runs the
+// DDL picks it up with no restart.
+let _hasHubSpokesFlag = false;
+async function hasHubSpokesFlag() {
+  if (_hasHubSpokesFlag) return true;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='station_settings'
+          AND column_name='hub_spokes_migration_enabled' LIMIT 1`);
+    _hasHubSpokesFlag = rows.length > 0;
+  } catch { _hasHubSpokesFlag = false; }
+  return _hasHubSpokesFlag;
+}
+
 // Do the slip-mapping columns exist on nozzles yet? Owner-run DDL means this code
 // deploys first, so pump_id / slip_nozzle_no are named only once present. A catalog
 // probe, never a failing INSERT — inside a transaction that would abort the caller.
@@ -123,6 +141,41 @@ router.get('/:id/nozzles', authenticate, requireStationId('id'), async (req, res
 // POST /api/stations/:id/settings
 router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
+    // ── The hub-and-spokes MIGRATION FLAG — a temporary switch, not a feature ──
+    // Written through the SAME settings endpoint (cardinal rule, no route of its own),
+    // and checked HERE, before the upsert below, so a refused flip writes nothing at
+    // all — not even updated_at.
+    //
+    // TWO REFUSALS, both enforced in the backend rather than the screen. A guard that
+    // lives only in the frontend is not a guard:
+    //   1. OWNER ONLY. This changes the outlet's whole operating model; holding
+    //      settings.manage is not enough to decide it.
+    //   2. NOT WHILE A SHIFT IS OPEN, in EITHER direction. Half a shift under one model
+    //      and half under the other leaves an opening reading nobody can defend.
+    if (req.body.hub_spokes_migration_enabled !== undefined) {
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({
+          error: 'owner_only',
+          message: 'Only the outlet owner can change the outlet flow.',
+        });
+      }
+      const { rows: openShifts } = await pool.query(
+        `SELECT sh.shift_number, to_char(sh.date, 'DD Mon YYYY') AS on_date
+           FROM shifts sh
+          WHERE sh.station_id=$1 AND sh.status='open'
+          ORDER BY sh.date, sh.shift_number`, [req.params.id]);
+      if (openShifts.length) {
+        const which = openShifts.map(o => `shift ${o.shift_number} of ${o.on_date}`).join(', ');
+        return res.status(409).json({
+          error: 'shift_open',
+          open_shifts: openShifts.length,
+          message: openShifts.length === 1
+            ? `The outlet flow cannot change while a shift is open — ${which} is still running. Close it first.`
+            : `The outlet flow cannot change while shifts are open — ${which} are still running. Close them first.`,
+        });
+      }
+    }
+
     const { gstn, pan, tan, address, city, state, pincode, owner_whatsapp, owner_email,
             variance_threshold, invoice_prefix,
             latitude, longitude, geo_fence_radius, geo_fence_enabled } = req.body;
@@ -209,6 +262,20 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
       if (await hasAccountsFlag()) {
         const { rows: upd } = await pool.query(
           `UPDATE station_settings SET accounts_enabled=$2, updated_at=NOW()
+            WHERE station_id=$1 RETURNING *`, [req.params.id, on]);
+        if (upd.length) rows[0] = upd[0];
+      }
+    }
+
+    // The migration flag itself. Guarded like the two above so this code is harmless
+    // before the owner runs the DDL — an absent column leaves the outlet on the old
+    // flow. The owner-only and open-shift refusals already ran at the top of this
+    // handler, so reaching here means the flip is allowed.
+    if (req.body.hub_spokes_migration_enabled !== undefined) {
+      const on = req.body.hub_spokes_migration_enabled === true || req.body.hub_spokes_migration_enabled === 'true';
+      if (await hasHubSpokesFlag()) {
+        const { rows: upd } = await pool.query(
+          `UPDATE station_settings SET hub_spokes_migration_enabled=$2, updated_at=NOW()
             WHERE station_id=$1 RETURNING *`, [req.params.id, on]);
         if (upd.length) rows[0] = upd[0];
       }
@@ -405,6 +472,11 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
     const attendantLedCol = (await hasAttendantLedFlag())
       ? ', COALESCE(ss.attendant_led_autoclose, FALSE) AS attendant_led_autoclose'
       : ', FALSE AS attendant_led_autoclose';
+    // FALSE when the column is absent: an outlet that predates the migration flag reads
+    // as the old flow, which is what makes shipping this before the DDL harmless.
+    const hubSpokesCol = (await hasHubSpokesFlag())
+      ? ', COALESCE(ss.hub_spokes_migration_enabled, FALSE) AS hub_spokes_migration_enabled'
+      : ', FALSE AS hub_spokes_migration_enabled';
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
               ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
@@ -417,6 +489,7 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
               ${selfSettleCol}
               ${accountsCol}
               ${attendantLedCol}
+              ${hubSpokesCol}
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]

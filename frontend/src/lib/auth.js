@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
 import Cookies from 'js-cookie';
-import { login as apiLogin, getMe, logoutApi } from './api';
+import api, { login as apiLogin, getMe, logoutApi } from './api';
 
 const AuthContext = createContext(null);
 
@@ -12,6 +12,24 @@ export function AuthProvider({ children }) {
   // The shift the user is currently closing — kept global so a >24h-open banner
   // and (later) AI chat can reference it app-wide.
   const [activeShift, setActiveShiftState] = useState(null);
+
+  // WHICH FLOW THIS OUTLET RUNS — the hub-and-spokes MIGRATION FLAG, read once here
+  // rather than in the Sidebar. Each page mounts its own AppShell, so the sidebar
+  // remounts on every navigation and reading it there would cost one settings fetch
+  // per screen on a forecourt phone. This provider mounts once at the root.
+  //
+  // Defaults FALSE and fails to FALSE: an outlet whose settings cannot be read runs
+  // the flow it runs today. The flag never turns an outlet ON by accident.
+  const [hubSpokesFlow, setHubSpokesFlow] = useState(false);
+  const stationId = typeof station === 'object' ? station?.id : station;
+  useEffect(() => {
+    if (!stationId) { setHubSpokesFlow(false); return; }
+    let cancelled = false;
+    api.get(`/stations/${stationId}/settings`)
+      .then(s => { if (!cancelled) setHubSpokesFlow(!!s?.hub_spokes_migration_enabled); })
+      .catch(() => { if (!cancelled) setHubSpokesFlow(false); });
+    return () => { cancelled = true; };
+  }, [stationId]);
 
   useEffect(() => {
     const token = Cookies.get('token') || sessionStorage.getItem('token');
@@ -90,7 +108,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, station, activeShift, setActiveShift, login, logout, switchStation }}>
+    <AuthContext.Provider value={{ user, loading, station, activeShift, setActiveShift, login, logout, switchStation, hubSpokesFlow }}>
       {children}
     </AuthContext.Provider>
   );
@@ -100,7 +118,8 @@ export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) return {
     user: null, loading: true, station: null, activeShift: null,
-    setActiveShift: () => {}, login: async () => {}, logout: () => {}, switchStation: () => {}
+    setActiveShift: () => {}, login: async () => {}, logout: () => {}, switchStation: () => {},
+    hubSpokesFlow: false,
   };
   return ctx;
 };

@@ -141,5 +141,11 @@ jobs:
       # the opening carry-forward, margins and data health sat green-by-default in
       # the repo while CI checked only that routes export a router. A test nobody
       # runs is a comment.
+      # The glob is UNQUOTED so the SHELL expands it, not node. Quoted, node gets the
+      # literal string "test/*.test.js" — and node's own --test glob support only
+      # arrived in v21, while this job pins node 20. So the step could never find a
+      # test and failed every run from the day it was added (#352), red on main for
+      # two days while the suite underneath it was passing 31/31. A CI step that can
+      # never pass teaches everyone to ignore CI.
       - name: Unit tests
-        run: node --test 'test/*.test.js'
+        run: node --test test/*.test.js

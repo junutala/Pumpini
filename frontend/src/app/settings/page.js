@@ -1730,6 +1730,11 @@ function ShiftsTab({ stationId, onSaved }) {
   // behaviour it has today.
   const [selfSettle,setSelfSettle] = useState(true);
   const [selfBusy,setSelfBusy] = useState(false);
+  // The hub-and-spokes MIGRATION FLAG. Off is the default and stays the default —
+  // Kamala, Highway and Adhoc are working outlets and nothing here reaches them until
+  // the owner flips this on one outlet at a time.
+  const [hubSpokes,setHubSpokes] = useState(false);
+  const [hubBusy,setHubBusy] = useState(false);
   const isOwner = user?.role === 'owner';
 
   useEffect(()=>{
@@ -1738,6 +1743,7 @@ function ShiftsTab({ stationId, onSaved }) {
     api.get(`/stations/${sid}/settings`).then(s=>{
       setMgrMode(!!s?.manager_blind_drop);
       setSelfSettle(s?.self_settlement_enabled !== false);
+      setHubSpokes(!!s?.hub_spokes_migration_enabled);
     }).catch(()=>{});
   },[sid]);
 
@@ -1760,6 +1766,18 @@ function ShiftsTab({ stationId, onSaved }) {
     setSelfBusy(false);
   };
 
+  // Written through the EXISTING settings endpoint — no route of its own. The backend
+  // refuses the flip while any shift is open at this outlet and answers with a sentence
+  // naming the shift; errText() surfaces it as-is.
+  const toggleHubSpokes = async () => {
+    setHubBusy(true);
+    try {
+      const r = await api.post(`/stations/${sid}/settings`, { hub_spokes_migration_enabled: !hubSpokes });
+      setHubSpokes(!!r?.hub_spokes_migration_enabled);
+    } catch(e){ alert(errText(e, tc('setp.couldNotChangeMode', 'Could not change mode'))); }
+    setHubBusy(false);
+  };
+
   const save = async() => {
     setLoading(true);
     try { await api.post('/shifts/definitions',{station_id:sid,shifts:defs}); onSaved(); }
@@ -1769,6 +1787,39 @@ function ShiftsTab({ stationId, onSaved }) {
 
   return (
     <div style={{maxWidth:560}}>
+    {/* The hub-and-spokes MIGRATION FLAG (owner only). A switch that is meant to be
+        deleted once every outlet has moved — presented as a migration, not a feature,
+        so nobody mistakes it for a permanent setting. */}
+    {isOwner && (
+      <div className="card" style={{marginBottom:'1rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{paddingRight:12}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{fontWeight:700,fontSize:15}}>{tc('setp.hubSpokes', 'Hub-and-spokes flow')}</div>
+              <span style={{fontSize:10,fontWeight:700,letterSpacing:'.06em',padding:'2px 6px',
+                borderRadius:4,background:'#fdf0e3',color:'#b45309'}}>
+                {tc('setp.hubSpokesBadge', 'MIGRATION')}
+              </span>
+            </div>
+            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+              {tc('setp.hubSpokesDesc', 'When ON, this outlet stops working shift-by-shift. Shift Open and Shift Close leave the sidebar and the three spokes take their place — Tank Recon, Nozzle Events and Attendant Dues. One outlet at a time; every other outlet is untouched.')}
+            </div>
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
+              {tc('setp.hubSpokesUntouched', 'It does not touch history, credit, cash, petty cash or margins. It cannot be flipped while a shift is open here — close it first. To roll back, switch it off: the old sidebar and the old flow come straight back, and any recons taken meanwhile stay on file.')}
+            </div>
+          </div>
+          <button onClick={toggleHubSpokes} disabled={hubBusy}
+            style={{background:'none',border:'none',cursor:hubBusy?'wait':'pointer',padding:0,flexShrink:0}}>
+            <div style={{width:52,height:28,borderRadius:14,position:'relative',
+              background: hubSpokes ? '#16a34a' : '#e5e3de', transition:'all .2s'}}>
+              <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',top:3,
+                left: hubSpokes ? 27 : 3, transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
+            </div>
+          </button>
+        </div>
+      </div>
+    )}
+
     {/* Who closes an operator's line at this outlet (owner only) */}
     {isOwner && (
       <div className="card" style={{marginBottom:'1rem'}}>

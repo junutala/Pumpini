@@ -122,6 +122,23 @@ const NAV_GROUPS = [
   },
 ];
 
+// THE THREE SPOKES — shown only where the hub-and-spokes MIGRATION FLAG is on.
+// It replaces Shift Open / Shift Close in place, so the rest of the nav keeps its
+// order and its items. POS and Settlement stay: an operator still settles at
+// /settlement under either flow.
+//
+// The group NAME is a placeholder (design/Nav.dc.html says so in as many words).
+// Permissions REUSE the ones these acts already run under — a spoke is the same
+// job by a different route, not a new privilege.
+const SPOKES_GROUP = {
+  label: 'Daily Flow',
+  items: [
+    { key:'tankrecon',     href:'/tank-recon',     icon:Droplet, perm:'stock.reconcile' },
+    { key:'nozzleevents',  href:'/nozzle-events',  icon:Gauge,   perm:'reconcile.manage' },
+    { key:'attendantdues', href:'/attendant-dues', icon:Wallet,  perm:'reconcile.manage' },
+  ]
+};
+
 const NAV_LABELS = {
   dashboard:'Bunk View',   live:'Live Events',      pos:'POS Entry',
   shifts:'Shifts',          dispense:'Dispense Log', attendance:'Attendance',
@@ -151,6 +168,7 @@ const NAV_LABELS = {
   // what covers hi/ta/mr/kn, which are still partial locale files.
   settlement:'Settlement',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
+  tankrecon:'Tank Recon',    nozzleevents:'Nozzle Events',  attendantdues:'Attendant Dues',
   accounts:'Accounts',
   bills:'Bill & Payment',
   ownermoney:'Owner Money',
@@ -163,7 +181,7 @@ const NAV_LABELS = {
 // so every group translates as long as the key exists in the locale files.
 
 export default function Sidebar({ open, onClose }) {
-  const { user, logout, station, switchStation } = useAuth();
+  const { user, logout, station, switchStation, hubSpokesFlow } = useAuth();
   const { can }    = usePermissions();
   const { t }      = useTranslation();
   const pathname   = usePathname();
@@ -194,6 +212,15 @@ export default function Sidebar({ open, onClose }) {
     const tr = t(key);
     return tr === key ? label : tr;
   };
+
+  // Behind the migration flag the SHIFT stops being the boundary, so Shift Open and
+  // Shift Close leave and the three spokes take their place — in the same slot, so
+  // nothing else moves. Flag off (every outlet today) returns the array untouched.
+  const navGroups = !hubSpokesFlow ? NAV_GROUPS : NAV_GROUPS.flatMap(g => {
+    if (g.label !== 'Shift') return [g];
+    const kept = g.items.filter(i => i.key !== 'startshift' && i.key !== 'endshift');
+    return kept.length ? [{ ...g, items: kept }, SPOKES_GROUP] : [SPOKES_GROUP];
+  });
 
   const isVisible = (item) => {
     if (item.roles && !item.roles.includes(user?.role)) return false;
@@ -275,7 +302,7 @@ export default function Sidebar({ open, onClose }) {
 
         {/* Nav groups */}
         <nav style={{flex:1,padding:'0.5rem 0',overflowY:'auto'}}>
-          {NAV_GROUPS.map(group => {
+          {navGroups.map(group => {
             const visible = group.items.filter(isVisible);
             if (!visible.length) return null;
             return (
