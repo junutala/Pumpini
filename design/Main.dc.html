@@ -6,72 +6,94 @@
   <style>
     body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
     a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
-    .num{font-family:'DM Mono',monospace}
-    .amt::before{content:'₹';font-family:'DM Sans',sans-serif;font-weight:400;font-size:.9em}
+    .num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+    .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
+    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
+    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .bar{flex:1;height:2px;margin:0 3px}
+    .cta{width:100%;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .cta-p{background:#e07b0c;color:#fff}
+    .cta-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
+    /* camera and keyboard are SIBLINGS — same height, border, radius */
+    .row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:0 12px;height:50px}
+    .val{flex:1;text-align:right;font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums;font-size:15.5px;font-weight:600;min-width:0}
+    .ghost{color:#c9c6bf;font-weight:400}
+    .src{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+    .s-photo{background:#eef4fd;color:#2563eb}
+    .s-typed{background:#f3f2ef;color:#7a7773}
+    .cam{width:34px;height:34px;border-radius:8px;border:1px solid #e5e3de;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
   </style>
 </helmet>
-
 <div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
-
   <div style="background:#0F1923;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2" stroke-linecap="round"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
     <span style="font-weight:800;font-size:17px"><span style="color:#FF6B00">pump</span><span style="color:#4DC3E8">ini</span></span>
     <span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.4)">Sri Balaji</span>
   </div>
 
-  <div style="flex:1;overflow:hidden;padding:16px">
-    <div style="font-size:20px;font-weight:700;letter-spacing:-.01em">Tank Recon</div>
-    <div style="font-size:13px;color:#4a4845;margin-top:3px;line-height:1.5">ATG, deliveries and every nozzle slip — captured together.</div>
-
-    <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:16px;margin-top:16px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="width:8px;height:8px;border-radius:50%;background:#ca8a04"></span>
-        <span style="font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#ca8a04">Due now</span>
-      </div>
-      <div style="font-size:15px;font-weight:600;margin-top:10px">Last reconciled 14 h 20 m ago</div>
-      <div style="font-size:12.5px;color:#7a7773;margin-top:3px"><span class="num">26 Aug, 06:12</span> · by Sravan kumar</div>
-      <button style="width:100%;margin-top:14px;background:#e07b0c;color:#fff;border:none;border-radius:9px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-        Start a recon
+  <div style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:20px;font-weight:700;letter-spacing:-.01em">Tank Recon</div>
+      <button style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e5e3de;border-radius:8px;padding:8px 11px;font-size:12.5px;font-family:inherit;color:#4a4845;cursor:pointer;min-height:38px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        Jump to date
       </button>
-      <div style="font-size:11.5px;color:#7a7773;text-align:center;margin-top:9px">Takes about 4 minutes · 3 tanks, 12 nozzles</div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:20px 0 9px">Stock right now</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:11px">
-        <span style="width:9px;height:9px;border-radius:2px;background:#f59e0b;flex-shrink:0"></span>
-        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Tank 1 · Diesel</div><div style="font-size:11.5px;color:#7a7773">22 KL · 227×600cm</div></div>
-        <div style="text-align:right"><div style="font-size:16px;font-weight:700" class="num">8,087.56</div><div style="font-size:10.5px;color:#7a7773">litres</div></div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:18px 0 9px">Last recon</div>
+
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:14px 15px">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:15px;font-weight:700"><span class="num">26 Aug</span> · <span class="num">06:12</span></div>
+          <div style="font-size:11.5px;color:#7a7773;margin-top:2px">Sravan kumar · 3 tanks, 12 nozzles</div>
+        </div>
+        <span style="font-size:12px;background:#dcfce7;color:#166534;border-radius:99px;padding:4px 11px;font-weight:700" class="num">−4.24 L</span>
       </div>
-      <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:11px">
-        <span style="width:9px;height:9px;border-radius:2px;background:#3b82f6;flex-shrink:0"></span>
-        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Tank 3 · Petrol</div><div style="font-size:11.5px;color:#7a7773">16 KL · 202×500cm</div></div>
-        <div style="text-align:right"><div style="font-size:16px;font-weight:700" class="num">4,654.32</div><div style="font-size:10.5px;color:#7a7773">litres</div></div>
-      </div>
-      <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:11px">
-        <span style="width:9px;height:9px;border-radius:2px;background:#8b5cf6;flex-shrink:0"></span>
-        <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Tank 4 · Power</div><div style="font-size:11.5px;color:#7a7773">9 KL · 200×300cm</div></div>
-        <div style="text-align:right"><div style="font-size:16px;font-weight:700" class="num">6,823.10</div><div style="font-size:10.5px;color:#7a7773">litres</div></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;flex-shrink:0"></span>
+          <span style="font-size:12.5px;flex:1">Tank 1 · Diesel</span>
+          <span style="font-size:12.5px;color:#7a7773" class="num">8,087.56</span>
+          <span style="font-size:12px;font-weight:700;color:#16a34a;width:56px;text-align:right" class="num">+1.12</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="width:8px;height:8px;border-radius:2px;background:#3b82f6;flex-shrink:0"></span>
+          <span style="font-size:12.5px;flex:1">Tank 3 · Petrol</span>
+          <span style="font-size:12.5px;color:#7a7773" class="num">4,654.32</span>
+          <span style="font-size:12px;font-weight:700;color:#dc2626;width:56px;text-align:right" class="num">−5.18</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px">
+          <span style="width:8px;height:8px;border-radius:2px;background:#8b5cf6;flex-shrink:0"></span>
+          <span style="font-size:12.5px;flex:1">Tank 4 · Power</span>
+          <span style="font-size:12.5px;color:#7a7773" class="num">6,823.10</span>
+          <span style="font-size:12px;font-weight:700;color:#16a34a;width:56px;text-align:right" class="num">−0.18</span>
+        </div>
       </div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:20px 0 9px">Recent recons</div>
-    <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;overflow:hidden">
-      <div style="padding:11px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e3de">
-        <div style="flex:1"><div style="font-size:13px;font-weight:600">26 Aug · 06:12</div><div style="font-size:11.5px;color:#7a7773">3 tanks · 12 slips</div></div>
-        <span style="font-size:11.5px;background:#dcfce7;color:#166534;border-radius:99px;padding:3px 9px;font-weight:600" class="num">−4.2 L</span>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:20px 0 9px">Before that</div>
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;overflow:hidden;flex:1">
+      <div style="padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e3de">
+        <div style="flex:1"><div style="font-size:13px;font-weight:600"><span class="num">25 Aug</span> · <span class="num">20:41</span></div><div style="font-size:11.5px;color:#7a7773">12 of 12 nozzles</div></div>
+        <span style="font-size:11.5px;background:#dcfce7;color:#166534;border-radius:99px;padding:3px 9px;font-weight:700" class="num">+1.80 L</span>
       </div>
-      <div style="padding:11px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e3de">
-        <div style="flex:1"><div style="font-size:13px;font-weight:600">25 Aug · 20:41</div><div style="font-size:11.5px;color:#7a7773">3 tanks · 12 slips</div></div>
-        <span style="font-size:11.5px;background:#dcfce7;color:#166534;border-radius:99px;padding:3px 9px;font-weight:600" class="num">+1.8 L</span>
-      </div>
-      <div style="padding:11px 14px;display:flex;align-items:center;gap:10px">
-        <div style="flex:1"><div style="font-size:13px;font-weight:600">25 Aug · 11:54</div><div style="font-size:11.5px;color:#7a7773">3 tanks · <span style="color:#ca8a04">9 slips</span></div></div>
+      <div style="padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e5e3de">
+        <div style="flex:1"><div style="font-size:13px;font-weight:600"><span class="num">25 Aug</span> · <span class="num">11:54</span></div><div style="font-size:11.5px;color:#7a7773">9 of 12 nozzles</div></div>
         <span style="font-size:11.5px;background:#fbf0dc;color:#a96a05;border-radius:99px;padding:3px 9px;font-weight:600">Provisional</span>
       </div>
+      <div style="padding:12px 14px;display:flex;align-items:center;gap:10px">
+        <div style="flex:1"><div style="font-size:13px;font-weight:600"><span class="num">24 Aug</span> · <span class="num">21:07</span></div><div style="font-size:11.5px;color:#7a7773">12 of 12 nozzles</div></div>
+        <span style="font-size:11.5px;background:#dcfce7;color:#166534;border-radius:99px;padding:3px 9px;font-weight:700" class="num">−2.11 L</span>
+      </div>
+    </div>
+
+    <div style="padding-top:14px">
+      <button class="cta cta-p" style="font-size:16px;min-height:56px">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        Start a new recon
+      </button>
     </div>
   </div>
 </div>
-</x-dc>
-</body></html>
+</x-dc></body></html>

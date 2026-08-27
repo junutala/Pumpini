@@ -1,0 +1,156 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="./support.js"></script></head><body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+    .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
+    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
+    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .bar{flex:1;height:2px;margin:0 3px}
+    .cta{width:100%;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .cta-p{background:#e07b0c;color:#fff}
+    .cta-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
+    /* camera and keyboard are SIBLINGS — same height, border, radius */
+    .row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:0 12px;height:50px}
+    .val{flex:1;text-align:right;font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums;font-size:15.5px;font-weight:600;min-width:0}
+    .ghost{color:#c9c6bf;font-weight:400}
+    .src{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+    .s-photo{background:#eef4fd;color:#2563eb}
+    .s-typed{background:#f3f2ef;color:#7a7773}
+    .cam{width:34px;height:34px;border-radius:8px;border:1px solid #e5e3de;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+  </style>
+</helmet>
+<div style="width:1240px;height:880px;display:flex;background:#f8f7f5;overflow:hidden">
+
+  <!-- SIDEBAR -->
+  <div style="width:220px;background:#0F1923;flex-shrink:0;display:flex;flex-direction:column;padding:16px 0">
+    <div style="padding:0 18px 20px;font-weight:800;font-size:19px"><span style="color:#FF6B00">pump</span><span style="color:#4DC3E8">ini</span></div>
+    <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.32);padding:8px 18px 6px">TANK RECON</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Tank Recon</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Nozzle Events</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Attendant Dues</div>
+    <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.32);padding:18px 18px 6px">ADMIN</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Users</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Pumps &amp; Nozzles</div>
+    <div style="padding:8px 18px;font-size:13px;color:rgba(255,255,255,.72)">Tanks</div>
+    <div style="padding:8px 15px 8px 18px;font-size:13px;color:#FF6B00;font-weight:600;background:rgba(255,107,0,.10);border-left:3px solid #FF6B00;margin-left:-3px">Settings</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div style="flex:1;overflow:hidden;display:flex;flex-direction:column">
+    <div style="background:#fff;border-bottom:1px solid #e5e3de;padding:16px 32px;display:flex;align-items:center;gap:12px">
+      <div>
+        <div style="font-size:12px;color:#7a7773">Settings</div>
+        <div style="font-size:20px;font-weight:700;letter-spacing:-.01em">Outlet flow</div>
+      </div>
+      <div style="margin-left:auto;font-size:12.5px;color:#7a7773">Sri Balaji Oil Company</div>
+    </div>
+
+    <div style="flex:1;overflow:hidden;padding:26px 32px;display:flex;gap:26px">
+
+      <!-- LEFT: the switches -->
+      <div style="flex:1.35;min-width:0;display:flex;flex-direction:column;gap:14px">
+
+        <!-- THE NEW ONE — set apart, because it is a migration, not a preference -->
+        <div style="background:#fff;border:1.5px solid #e07b0c;border-radius:12px;overflow:hidden">
+          <div style="padding:18px 20px;display:flex;align-items:flex-start;gap:16px">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="font-size:16px;font-weight:700">Hub-and-spokes flow</span>
+                <span style="font-size:10px;font-weight:800;letter-spacing:.06em;background:#fdf0e0;color:#9a4607;border-radius:5px;padding:3px 8px">MIGRATION</span>
+              </div>
+              <div style="font-size:13px;color:#4a4845;line-height:1.6;margin-top:7px;max-width:52ch">
+                The tank, the nozzle and the money each keep their own clock. Recon runs on its own from the console; a nozzle's account closes when the next attendant's slip is read.
+              </div>
+            </div>
+            <!-- ON -->
+            <div style="width:50px;height:29px;border-radius:99px;background:#e07b0c;flex-shrink:0;position:relative;cursor:pointer;margin-top:2px">
+              <span style="position:absolute;top:3px;right:3px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #f0eeea;padding:15px 20px;background:#fdfcfa;display:flex;gap:26px">
+            <div style="flex:1">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#7a7773;margin-bottom:7px">TURNING IT ON</div>
+              <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4a4845">
+                <div style="display:flex;gap:7px"><span style="color:#16a34a;font-weight:700">→</span>Shift Open / Shift Close leave the sidebar</div>
+                <div style="display:flex;gap:7px"><span style="color:#16a34a;font-weight:700">→</span>The three spokes appear in their place</div>
+                <div style="display:flex;gap:7px"><span style="color:#16a34a;font-weight:700">→</span>Attendants keep settling at <span style="color:#7a7773">/settlement</span></div>
+              </div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#7a7773;margin-bottom:7px">WHAT IT DOES NOT TOUCH</div>
+              <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:#4a4845">
+                <div style="display:flex;gap:7px"><span style="color:#a5a29c;font-weight:700">·</span>Any shift already open — it must be closed first</div>
+                <div style="display:flex;gap:7px"><span style="color:#a5a29c;font-weight:700">·</span>History. Old shifts stay readable as they are</div>
+                <div style="display:flex;gap:7px"><span style="color:#a5a29c;font-weight:700">·</span>Credit, cash, petty cash, margins</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid #f0eeea;padding:12px 20px;display:flex;align-items:center;gap:9px;background:#fdf6ec">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+            <span style="font-size:12.5px;color:#8a6d1f">One outlet at a time. Off is the default and stays the default — Kamala, Highway and Adhoc are untouched by this switch.</span>
+          </div>
+        </div>
+
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin-top:6px">Existing outlet switches</div>
+
+        <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;overflow:hidden">
+          <div style="padding:15px 20px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #f0eeea">
+            <div style="flex:1"><div style="font-size:14px;font-weight:600">Attendant self-settlement</div><div style="font-size:12px;color:#7a7773;margin-top:2px">The attendant closes his own line at /settlement</div></div>
+            <div style="width:46px;height:27px;border-radius:99px;background:#e07b0c;flex-shrink:0;position:relative"><span style="position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span></div>
+          </div>
+          <div style="padding:15px 20px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #f0eeea">
+            <div style="flex:1"><div style="font-size:14px;font-weight:600">Attendant-led auto-close</div><div style="font-size:12px;color:#7a7773;margin-top:2px">The shift closes itself when the last operator settles</div></div>
+            <div style="width:46px;height:27px;border-radius:99px;background:#dedbd4;flex-shrink:0;position:relative"><span style="position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></div>
+          </div>
+          <div style="padding:15px 20px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #f0eeea">
+            <div style="flex:1"><div style="font-size:14px;font-weight:600">Lubes &amp; products</div><div style="font-size:12px;color:#7a7773;margin-top:2px">Sell non-fuel stock through the same settlement</div></div>
+            <div style="width:46px;height:27px;border-radius:99px;background:#e07b0c;flex-shrink:0;position:relative"><span style="position:absolute;top:3px;right:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span></div>
+          </div>
+          <div style="padding:15px 20px;display:flex;align-items:center;gap:16px">
+            <div style="flex:1"><div style="font-size:14px;font-weight:600">Accounts</div><div style="font-size:12px;color:#7a7773;margin-top:2px">Ledgers, day book and the trial balance</div></div>
+            <div style="width:46px;height:27px;border-radius:99px;background:#dedbd4;flex-shrink:0;position:relative"><span style="position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: what the manager will see -->
+      <div style="width:290px;flex-shrink:0">
+        <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:17px 18px">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin-bottom:13px">The manager's sidebar, after</div>
+
+          <div style="background:#0F1923;border-radius:9px;padding:13px 0;overflow:hidden">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.3);padding:5px 14px">DASHBOARD</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.7)">Overview</div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#FF6B00;padding:13px 14px 5px">TANK RECON</div>
+            <div style="padding:6px 12px 6px 14px;font-size:12px;color:#fff;background:rgba(255,107,0,.12);border-left:3px solid #FF6B00;margin-left:-3px">Tank Recon</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.7)">Nozzle Events</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.7)">Attendant Dues</div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.3);padding:13px 14px 5px">SHIFT</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.28);text-decoration:line-through">Shift Open</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.28);text-decoration:line-through">Shift Close</div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.3);padding:13px 14px 5px">STOCK</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.7)">Deliveries</div>
+            <div style="padding:6px 14px;font-size:12px;color:rgba(255,255,255,.7)">Dipstick</div>
+          </div>
+
+          <div style="font-size:12px;color:#7a7773;line-height:1.6;margin-top:13px">
+            Struck-through items disappear for this outlet only. Every other outlet's sidebar is unchanged.
+          </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:17px 18px;margin-top:14px">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin-bottom:10px">Rollback</div>
+          <div style="font-size:12.5px;color:#4a4845;line-height:1.6">Switch it off. The sidebar comes back, the old flow resumes, and the recons taken meanwhile stay on file as recons.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc></body></html>
