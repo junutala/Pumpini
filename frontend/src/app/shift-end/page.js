@@ -444,7 +444,20 @@ export default function ShiftEndPage() {
   const allClosed = attendants.length > 0 && unsettled.length === 0;
   // An empty shift (opened by mistake, no operators) has nothing to reconcile —
   // allow closing it directly so it doesn't sit open as an eyesore.
-  const emptyShift = !!shift && attendants.length === 0;
+  // NOTHING TO RECONCILE = nothing was ever RECORDED, not "nobody was assigned".
+  //
+  // An assignment on its own is an intention, not an event. Dilsukhnagar's 19-Aug
+  // shift had two operators assigned, zero closing meters and zero settlements, and
+  // sat open for 7d 22h — but because attendants.length was 2 this screen refused to
+  // offer the close, and demanded both men be settled and three tanks dipped, every
+  // figure invented eight days after the fact.
+  //
+  // Matches shiftCloseService.recordedNothing exactly, so the button and the server
+  // cannot disagree — which is the bug this pair already produced once, when the
+  // button said "nothing to reconcile" and the server answered missing_closing_dip.
+  const settledAny  = recoRows.length > 0;
+  const anyClosing  = attendants.some(a => (a.nozzles || []).some(nz => nz.closing_reading != null));
+  const emptyShift  = !!shift && !settledAny && !anyClosing;
 
   // ── Attendant-led auto-close: derived state + handlers ──────────────────
   // The flag lives on the station settings. FALSE (or absent) ⇒ everything below is
