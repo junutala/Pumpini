@@ -12,7 +12,7 @@
 // directly, and widening the return would have broken both.
 const test   = require('node:test');
 const assert = require('node:assert');
-const { visionOcr, visionOcrDetailed } = require('../src/services/visionOcr');
+const { visionOcr, visionOcrDetailed, readImageAsJson } = require('../src/services/visionOcr');
 
 const KEY = 'GOOGLE_VISION_API_KEY';
 // Each case swaps global fetch, so nothing here reaches Google.
@@ -76,4 +76,32 @@ test('visionOcr keeps its text-or-null contract for billScan and deliveries', as
   await withFetch(jsonRes({ responses: [{}] }), async () => {
     assert.strictEqual(await visionOcr('abc'), null, 'must be null, never an object');
   });
+});
+
+// THE CASE THAT USED TO RECORD NOTHING.
+//
+// When BOTH engines fail there is no parsed result to hang anything on, and the
+// pipeline used to return a bare failure — so the one moment worth recording, the
+// frame that beat the reader, was the one moment nothing was recorded about. The
+// composite route now saves that photograph as evidence, and this is what tells it
+// why. Runs fully offline: Vision is stubbed to find no text, and with no API key
+// the model call cannot be made either.
+test('a TOTAL failure still carries why the good engine did not read it', async () => {
+  const realFetch = global.fetch;
+  const realVision = process.env.GOOGLE_VISION_API_KEY;
+  const realAnthropic = process.env.ANTHROPIC_API_KEY;
+  process.env.GOOGLE_VISION_API_KEY = 'test-key';
+  delete process.env.ANTHROPIC_API_KEY;
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ responses: [{}] }) });
+  try {
+    const r = await readImageAsJson({ file_base64: 'abc', prompt: 'x' });
+    assert.strictEqual(r.parsed, null, 'nothing was read');
+    assert.strictEqual(r.error, 'api', 'and the model was never reached');
+    // The point of the whole change: the failure is explained, not merely reported.
+    assert.strictEqual(r.fallback_reason, 'vision_no_text');
+  } finally {
+    global.fetch = realFetch;
+    if (realVision === undefined) delete process.env.GOOGLE_VISION_API_KEY; else process.env.GOOGLE_VISION_API_KEY = realVision;
+    if (realAnthropic !== undefined) process.env.ANTHROPIC_API_KEY = realAnthropic;
+  }
 });

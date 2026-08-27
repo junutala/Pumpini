@@ -1249,8 +1249,33 @@ router.post('/parse-slips', authenticate,
     // ONE READER. parseCompositeSlips returns null on any failure and has already
     // applied the rupee/litre cross-check per nozzle, so each cumulative_volume is
     // litres or null.
-    const parsed = await slipParser.parseCompositeSlips({ file_base64: image_base64, media_type });
+    const readDiag = {};
+    const parsed = await slipParser.parseCompositeSlips({ file_base64: image_base64, media_type, diag: readDiag });
     if (!parsed || !Array.isArray(parsed.slips)) {
+      // A FAILED SCAN IS EVIDENCE, and it used to be thrown away. This answered 422
+      // and kept nothing — so the photograph that beat the reader was gone, and the
+      // failure was uncountable. That is how slip scanning could die in the first
+      // week of August with nobody able to see it, and it meant the HARDEST frames,
+      // the ones most worth replaying, were the only ones the bench never got.
+      //
+      // Best-effort, exactly like the success save below: keeping evidence must
+      // never turn a manager's 422 into a 500.
+      try {
+        await artifacts.save({
+          station_id: req.stationId,
+          entity_type: 'shift',
+          entity_id: shift_id,
+          kind: 'nozzle_slip',
+          file_base64: image_base64,
+          media_type,
+          ocr: { composite: true, read_failed: true,
+                 engine: readDiag.engine ?? null,
+                 fallback_reason: readDiag.fallback_reason ?? null,
+                 read_error: readDiag.error ?? null },
+          meta: { composite: true, read_failed: true },
+          uploaded_by: req.user.id,
+        });
+      } catch { /* evidence is best-effort; the manager still gets his answer */ }
       return res.status(422).json({ error: 'Could not read the slips — enter the readings manually.' });
     }
 
