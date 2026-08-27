@@ -33,6 +33,7 @@ import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
+import { COMPOSITE_SLIP_SCAN } from '../../lib/features';
 import { rejectNote } from '../../lib/slip';
 
 import { errPayload, errText } from '../../lib/apiError';
@@ -818,6 +819,11 @@ export default function ShiftEndPage() {
           )}
 
           {shift && attendants.length>0 && (<>
+            {/* COMPOSITE SCAN — hidden for everyone (lib/features.js).
+                Owner-set 27-Aug-2026. The route stays live; nothing calls it while the
+                flag is false, and it is how the button comes back — expected as an
+                owner-only capability rather than a manager one. */}
+            {COMPOSITE_SLIP_SCAN && (<>
             {/* ONE photo of all the pump slips fills every nozzle's closing meter.
                 While a composite is in force the per-nozzle cameras below are disabled
                 so they cannot overwrite it; the boxes stay hand-editable, and
@@ -834,6 +840,7 @@ export default function ShiftEndPage() {
                 </button>
               )}
             </div>
+            </>)}
 
             {/* The slips scanned for this shift. These are the printed evidence
                 behind every closing meter below — kept since the scan shipped, but
