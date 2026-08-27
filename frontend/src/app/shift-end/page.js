@@ -32,6 +32,7 @@ import { useAuth } from '../../lib/auth';
 import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
+import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -177,6 +178,10 @@ export default function ShiftEndPage() {
   const [slips, setSlips] = useState([]);
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
+  // The banner's TONE. Defaults to 'error' so every existing setErr() call behaves
+  // exactly as it did; only the paths that KNOW they succeeded say otherwise.
+  const [tone, setTone]   = useState('error');
+  const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [done, setDone]   = useState(false);
 
   // ── Attendant-led auto-close (per-outlet flag) ──────────────────────────
@@ -382,15 +387,25 @@ export default function ShiftEndPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('send.unknownSerial','unknown serial'));
 
-      let msg = tc('send.slipsFilled','Filled {n} closing reading(s) from {m} slip(s).')
-        .replace('{n}', matched).replace('{m}', slips.length);
-      if (unmatched.length)     msg += ' ' + tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
-      if (unknownSerials.length) msg += ' ' + tc('send.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
-      if (verify.length)        msg += ' ' + tc('send.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
-      if (refused.length)       msg += ' ' + tc('send.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
-      if (res.legible === false) msg += ' ' + tc('send.slipsVerify','⚠ Some digits unclear — verify.');
-      if (res.notes)            msg += ' ' + res.notes;
-      setErr(msg);
+      // Same rule as Shift Start, and it must STAY the same: only what needs the
+      // manager to act belongs in the message, and only that decides the colour.
+      const todo = [];
+      if (unmatched.length)      todo.push(tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', ')));
+      if (unknownSerials.length) todo.push(tc('send.slipsUnknownSerial','Pump {x} is not registered at this outlet — check the slip is from here.').replace('{x}', unknownSerials.join(', ')));
+      if (verify.length)         todo.push(tc('send.slipsVerifySwap','Check nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', ')));
+      if (refused.length)        todo.push(tc('send.slipsRefused','Enter by hand: {x}.').replace('{x}', refused.join(', ')));
+      if (res.legible === false) todo.push(tc('send.slipsVerify','Some digits were unclear — check the figures.'));
+
+      // A CLEAN SCAN SAYS SO, SHORTLY, IN GREEN. res.notes is the model explaining
+      // its own reasoning — useful in a log, never on a forecourt.
+      if (!todo.length) {
+        say(tc('send.slipsSaved','Saved — {n} closing reading(s) filled from {m} slip(s). Check the figures below.')
+              .replace('{n}', matched).replace('{m}', slips.length), 'ok');
+      } else {
+        say(tc('send.slipsFilled','Filled {n} closing reading(s) from {m} slip(s).')
+              .replace('{n}', matched).replace('{m}', slips.length)
+            + ' ' + todo.join(' '), matched > 0 ? 'warn' : 'error');
+      }
       // From here the per-nozzle cameras are disabled until Retake / clear — the
       // reading boxes stay hand-editable, only the competing camera is turned off.
       setCompositeScanned(true);
@@ -752,7 +767,7 @@ export default function ShiftEndPage() {
         ))}
       </div>
 
-      {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
+      <Banner tone={tone}>{err}</Banner>
 
       {/* SCREEN 1 — Settle attendants */}
       {step===0 && (

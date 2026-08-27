@@ -26,6 +26,7 @@ import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { nozName } from '../../lib/nozzle';
+import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -85,6 +86,10 @@ export default function ShiftStartPage() {
   const [resumed, setResumed] = useState(false);   // header tells the manager we picked up an existing shift
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+  // The banner's TONE. Defaults to 'error' so every existing setErr() call behaves
+  // exactly as it did; only the paths that KNOW they succeeded say otherwise.
+  const [tone, setTone]       = useState('error');
+  const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [prices, setPrices]   = useState([]);   // current selling price per fuel — parallel-run reminder
 
   // Screen 1 — gauge & dip
@@ -712,20 +717,35 @@ export default function ShiftStartPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('sstart.unknownSerial','unknown serial'));
 
-      let msg = tc('sstart.slipsFilled','Filled {n} nozzle(s) from {m} slip(s).')
-        .replace('{n}', matched).replace('{m}', slips.length);
-      if (unmatched.length)     msg += ' ' + tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
-      if (unknownSerials.length) msg += ' ' + tc('sstart.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
-      if (verify.length)        msg += ' ' + tc('sstart.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
-      if (refused.length)       msg += ' ' + tc('sstart.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
-      if (locked.length)        msg += ' ' + tc('sstart.slipsDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
-      if (res.legible === false) msg += ' ' + tc('sstart.slipsVerify','⚠ Some digits unclear — verify.');
-      if (res.notes)            msg += ' ' + res.notes;
-      setErr(msg);
+      // WHAT NEEDS THE MANAGER TO DO SOMETHING. Only these belong in the message —
+      // and only these decide whether the banner is a warning or a success.
+      const todo = [];
+      if (unmatched.length)      todo.push(tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', ')));
+      if (unknownSerials.length) todo.push(tc('sstart.slipsUnknownSerial','Pump {x} is not registered at this outlet — check the slip is from here.').replace('{x}', unknownSerials.join(', ')));
+      if (verify.length)         todo.push(tc('sstart.slipsVerifySwap','Check nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', ')));
+      if (refused.length)        todo.push(tc('sstart.slipsRefused','Enter by hand: {x}.').replace('{x}', refused.join(', ')));
+      if (locked.length)         todo.push(tc('sstart.slipsDisagrees','The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', ')));
+      if (res.legible === false) todo.push(tc('sstart.slipsVerify','Some digits were unclear — check the figures.'));
+
+      // A CLEAN SCAN SAYS SO, SHORTLY, IN GREEN. It used to render "Filled 2
+      // nozzle(s)..." plus the OCR's own reasoning in the same alarm red as a
+      // failure, so a manager who reads the colour rather than the sentence
+      // concluded nothing had saved (owner, 27-Aug-2026: "the wrong coloured alert
+      // is the killer... nobody reads it but thinks the data has not been
+      // recorded"). res.notes is the model explaining itself — useful in a log,
+      // never on a forecourt — so it is no longer shown when the scan worked.
+      if (!todo.length) {
+        say(tc('sstart.slipsSaved','Saved — {n} nozzle(s) filled from {m} slip(s). Check the figures below.')
+              .replace('{n}', matched).replace('{m}', slips.length), 'ok');
+      } else {
+        say(tc('sstart.slipsFilled','Filled {n} nozzle(s) from {m} slip(s).')
+              .replace('{n}', matched).replace('{m}', slips.length)
+            + ' ' + todo.join(' '), matched > 0 ? 'warn' : 'error');
+      }
       // From here the per-nozzle cameras are disabled until Retake / clear — the
       // reading boxes stay hand-editable, only the competing camera is turned off.
       setCompositeScanned(true);
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.')); }
+    } catch (e) { say(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.'), 'error'); }
     setScanning('');
   };
 
@@ -810,7 +830,7 @@ export default function ShiftStartPage() {
         ))}
       </div>
 
-      {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
+      <Banner tone={tone}>{err}</Banner>
 
       {/* Which shift are we working on — one compact strip instead of a whole step. */}
       <div style={{background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:'1rem'}}>
