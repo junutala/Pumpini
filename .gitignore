@@ -39,3 +39,7 @@ Thumbs.db
 # Python (ops/ harness build artifacts)
 __pycache__/
 *.pyc
+
+# npm workspace lockfile — the repo deliberately carries none (CLAUDE.md: CI runs
+# `npm install`, not `npm ci`), and an `npm i` at the root generates one.
+/package-lock.json
