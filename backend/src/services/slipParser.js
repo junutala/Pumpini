@@ -228,6 +228,8 @@ async function parseSlip({ file_base64, media_type = 'image/jpeg' }) {
   return {
     engine: read.engine,
     ocr_chars: read.ocr_chars,
+    // WHY the better engine did not read this one. Null when Vision succeeded.
+    fallback_reason: read.fallback_reason ?? null,
     slip_type: ['A', 'B', 'C'].includes(parsed.slip_type) ? parsed.slip_type : 'other',
     pump_id: cleanPumpId(parsed.pump_id),
     // Kept VERBATIM apart from case and surrounding space. Serials are alphanumeric
@@ -264,6 +266,7 @@ async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg' }) {
   return {
     engine: read.engine,
     ocr_chars: read.ocr_chars,
+    fallback_reason: read.fallback_reason ?? null,
     slips,
     legible: parsed.legible === true
       && slips.length > 0

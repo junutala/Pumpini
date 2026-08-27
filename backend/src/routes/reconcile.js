@@ -1164,8 +1164,12 @@ router.post('/parse-slip', authenticate,
       // row, not by inference from how the notes are phrased. That is exactly the
       // position we were in at 11:42 on 20-Aug: a scan went from 0/5 serials to 4/4
       // on an identical image and the only evidence of why was a turn of phrase.
+      // AND WHY IT WAS THAT ENGINE. A fallback to claude_vision used to be silent —
+      // on 26-Aug it fired on 3 of 8 scans and nothing recorded the cause, so the
+      // post-mortem had to infer it from absence. Stored, it is one query away.
       ocr: { pump_id: pump, pump_serial: serialRaw || null, serial_mapped: serialKnown, nozzles,
-             engine: parsed.engine ?? null, ocr_chars: parsed.ocr_chars ?? null },
+             engine: parsed.engine ?? null, ocr_chars: parsed.ocr_chars ?? null,
+             fallback_reason: parsed.fallback_reason ?? null },
       meta: { pump_id: pump, slip_type: parsed.slip_type ?? null },
       uploaded_by: req.user.id,
     });
@@ -1348,6 +1352,8 @@ router.post('/parse-slips', authenticate,
           // single-slip save above for why this is recorded rather than inferred.
           engine: parsed.engine ?? null,
           ocr_chars: parsed.ocr_chars ?? null,
+          // Why the fallback engine read it, when it did — see the single-slip save.
+          fallback_reason: parsed.fallback_reason ?? null,
           slips: slips.map(s => ({
             pump_serial: s.pump_serial,
             slip_type: s.slip_type,
