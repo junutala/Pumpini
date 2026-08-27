@@ -311,6 +311,60 @@ in its own right.
 3. **The fallback downgrade above**, unannounced and unrecorded.
 4. **No telemetry.** Scanning died in the first week of August and nobody could see it.
 
+### What the STORED readings show — pulled 27-Aug-2026 from `station_artifacts.ocr`
+### Full 152-line ledger: https://claude.ai/code/artifact/23cff5b0-ee32-424f-a68a-ac7be0b18c68
+
+Every reading Pumpini has kept, read straight out of the rows. Not a bench run — this
+is what each scan recorded at the time, so Sri Balaji's describe the reader BEFORE
+#353. The bench run that would describe it today still has to happen (§ below).
+
+**THE THREE LIVE OUTLETS STORED NOTHING.** Kamala (3 photographs), Highway (4), Adhoc
+Highway (2) and Hayat Nagar (4) scanned on 02 and 04-Aug — the week the managers tried
+it and quit — and **not one of those 13 photographs recorded what was read**. `ocr` is
+NULL on every one. Their accuracy cannot be reported at all, only re-measured by
+running the reader over the images again. This is the "reconstructed from absence"
+problem in its purest form, and it is why #367 now stores a failed scan too.
+
+**The engine split, on Sri Balaji's 13 scans:**
+
+| | `google_vision+claude_text` | `claude_vision` (fallback) |
+|---|---|---|
+| Scans | 9 | 4 |
+| Lines | 76 | 32 |
+| Serial matched a real pump | **76/76** | **20/32** |
+| Impossible volume (>10M L) | 0 | 5 |
+| …of those, marked `legible` anyway | 0 | **2** |
+| Carried a `serial.nozzle` name | **0** | **0** |
+
+Three findings that change what Step 3.5 has to build:
+
+1. **THE NOZZLE NAME WAS NEVER STORED.** `nozzle_name` is null on all 152 lines. A scan
+   kept `pump_serial` and a slip line number as separate fields and never assembled
+   `17CH2645V.2`. So there is **no stored record of which nozzle a reading was assigned
+   to** — only which serial the slip claimed. (Dilsukhnagar's 27-Aug scan does carry it,
+   so newer code stores it; Sri Balaji's predate that.)
+
+2. **THE A÷V BAND CANNOT CATCH A PAIR THAT IS WRONG TOGETHER.** It rejects an implied
+   price outside ₹40–200/L, which catches a digit lost on ONE side. On 26-Aug 12:59 the
+   fallback returned **168,018,917.48 L at ₹57.03/L** and **179,986,210 L at ₹54.43/L** —
+   both inside the band, both marked `legible: true`, both on a serial (`17CH2900V`)
+   that matches no pump at the outlet. The guard had nothing to object to. A physical
+   plausibility test on the VOLUME itself is a separate check the parser does not have.
+
+3. **ATTRIBUTION IS UNSTABLE ON THE GOOD ENGINE TOO.** Two Vision scans six minutes
+   apart return identical figures on opposite serials, and nothing flagged either:
+
+   ```
+   26 Aug 13:11   17CH2645V.2 = 2,221,650.62   17CH2653V.2 =   127,330.32
+   26 Aug 13:17   17CH2645V.2 =   127,330.32   17CH2653V.2 = 2,221,650.62
+   ```
+
+   The 25-Aug scans agree with 13:11, so 13:17 and 13:32 are the outliers. A manager
+   accepting the later scan would have put one pump's meter on another — a two-million-
+   litre error, silently. **This is the strongest evidence for rule 1 below:** the reader
+   alone does not reliably know which line belongs to which machine, so the serial and
+   its printed nozzle number must be captured once, from a real slip, and pinned.
+
 ### The rules this burns into Step 4
 
 1. **Commissioning is a verified act, and it gates the switch.** Every serial +
