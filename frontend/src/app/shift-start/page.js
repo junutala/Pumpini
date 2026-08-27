@@ -717,33 +717,27 @@ export default function ShiftStartPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('sstart.unknownSerial','unknown serial'));
 
-      // WHAT NEEDS THE MANAGER TO DO SOMETHING. Only these belong in the message —
-      // and only these decide whether the banner is a warning or a success.
-      const todo = [];
-      if (unmatched.length)      todo.push(tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', ')));
-      if (unknownSerials.length) todo.push(tc('sstart.slipsUnknownSerial','Pump {x} is not registered at this outlet — check the slip is from here.').replace('{x}', unknownSerials.join(', ')));
-      if (verify.length)         todo.push(tc('sstart.slipsVerifySwap','Check nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', ')));
-      if (refused.length)        todo.push(tc('sstart.slipsRefused','Enter by hand: {x}.').replace('{x}', refused.join(', ')));
-      if (locked.length)         todo.push(tc('sstart.slipsDisagrees','The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', ')));
-      if (res.legible === false) todo.push(tc('sstart.slipsVerify','Some digits were unclear — check the figures.'));
-
-      // A CLEAN SCAN SAYS SO, SHORTLY, IN GREEN. It used to render "Filled 2
-      // nozzle(s)..." plus the OCR's own reasoning in the same alarm red as a
-      // failure, so a manager who reads the colour rather than the sentence
-      // concluded nothing had saved (owner, 27-Aug-2026: "the wrong coloured alert
-      // is the killer... nobody reads it but thinks the data has not been
-      // recorded"). res.notes is the model explaining itself — useful in a log,
-      // never on a forecourt — so it is no longer shown when the scan worked.
-      if (!todo.length) {
-        say(tc('sstart.slipsSaved','Saved — {n} nozzle(s) filled from {m} slip(s). Check the figures below.')
-              .replace('{n}', matched).replace('{m}', slips.length), 'ok');
+      // THREE OUTCOMES, ONE SHORT LINE EACH. Nothing else.
+      //
+      // This used to be a paragraph: the fill count, the slip count, the layout, the
+      // pump serial, the model, and the OCR narrating its own reasoning — all in the
+      // same alarm red whether it had worked or not. Owner, 27-Aug-2026, watching a
+      // scan that had just succeeded: "the wrong coloured alert is the killer...
+      // nobody reads it but thinks the data has not been recorded", and then: "keep
+      // it simple - 'failed- enter manually' or 'success - proceed'. dont give all
+      // these stories to the user... he will not read nor understand."
+      //
+      // WHICH nozzle needs attention is already on the screen — its box is empty and
+      // its camera is right there. Naming them in the banner tells the manager
+      // nothing he cannot see, at the cost of him reading none of it.
+      const shortfall = unmatched.length + refused.length + unknownSerials.length;
+      if (matched > 0 && shortfall === 0 && res.legible !== false) {
+        say(tc('sstart.scanOk','Success — proceed'), 'ok');
+      } else if (matched > 0) {
+        say(tc('sstart.scanPartial','Some not read — enter the blank ones manually'), 'warn');
       } else {
-        say(tc('sstart.slipsFilled','Filled {n} nozzle(s) from {m} slip(s).')
-              .replace('{n}', matched).replace('{m}', slips.length)
-            + ' ' + todo.join(' '), matched > 0 ? 'warn' : 'error');
+        say(tc('sstart.scanFail','Failed — enter manually'), 'error');
       }
-      // From here the per-nozzle cameras are disabled until Retake / clear — the
-      // reading boxes stay hand-editable, only the competing camera is turned off.
       setCompositeScanned(true);
     } catch (e) { say(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.'), 'error'); }
     setScanning('');

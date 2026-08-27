@@ -387,27 +387,16 @@ export default function ShiftEndPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('send.unknownSerial','unknown serial'));
 
-      // Same rule as Shift Start, and it must STAY the same: only what needs the
-      // manager to act belongs in the message, and only that decides the colour.
-      const todo = [];
-      if (unmatched.length)      todo.push(tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', ')));
-      if (unknownSerials.length) todo.push(tc('send.slipsUnknownSerial','Pump {x} is not registered at this outlet — check the slip is from here.').replace('{x}', unknownSerials.join(', ')));
-      if (verify.length)         todo.push(tc('send.slipsVerifySwap','Check nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', ')));
-      if (refused.length)        todo.push(tc('send.slipsRefused','Enter by hand: {x}.').replace('{x}', refused.join(', ')));
-      if (res.legible === false) todo.push(tc('send.slipsVerify','Some digits were unclear — check the figures.'));
-
-      // A CLEAN SCAN SAYS SO, SHORTLY, IN GREEN. res.notes is the model explaining
-      // its own reasoning — useful in a log, never on a forecourt.
-      if (!todo.length) {
-        say(tc('send.slipsSaved','Saved — {n} closing reading(s) filled from {m} slip(s). Check the figures below.')
-              .replace('{n}', matched).replace('{m}', slips.length), 'ok');
+      // THREE OUTCOMES, ONE SHORT LINE EACH — identical to Shift Start, and it must
+      // STAY identical. See the note there for why the paragraph was removed.
+      const shortfall = unmatched.length + refused.length + unknownSerials.length;
+      if (matched > 0 && shortfall === 0 && res.legible !== false) {
+        say(tc('send.scanOk','Success — proceed'), 'ok');
+      } else if (matched > 0) {
+        say(tc('send.scanPartial','Some not read — enter the blank ones manually'), 'warn');
       } else {
-        say(tc('send.slipsFilled','Filled {n} closing reading(s) from {m} slip(s).')
-              .replace('{n}', matched).replace('{m}', slips.length)
-            + ' ' + todo.join(' '), matched > 0 ? 'warn' : 'error');
+        say(tc('send.scanFail','Failed — enter manually'), 'error');
       }
-      // From here the per-nozzle cameras are disabled until Retake / clear — the
-      // reading boxes stay hand-editable, only the competing camera is turned off.
       setCompositeScanned(true);
       // Attendant-led: the persisted drafts are what the operators self-settle from, so
       // pull the reconciliation rows back to move the progress bars as they come in.
