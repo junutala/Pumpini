@@ -43,9 +43,12 @@ Two rules run through all of them:
   have data on Current Stock. That's a trap."*
 - **The recon is THREE steps — ATG, nozzles, variance — and deliveries is an
   EXCEPTION, not a step** (owner, 27-Aug). A decant can be once a week; a daily
-  screen for a weekly event teaches the manager to tap through it. When a tank's
-  gain is about a tanker load, the variance leads to the deliveries screen so the
-  forgotten invoice gets scanned now — through the everyday Deliveries form.
+  screen for a weekly event teaches the manager to tap through it. A decant-sized
+  gain on the variance leads to the deliveries screen so the forgotten invoice gets
+  scanned now — through the everyday Deliveries form. **The trigger is compartment
+  scale, not tanker scale**: tankers are shared between unrelated outlets, so one
+  compartment (~3–4 KL) is a normal decant — fire when the gain is beyond tolerance
+  and at least ~1,000 L, and never ask a tanker question for a ~100 L difference.
 - **The landing holds one card, one line, one button.** The past lives behind
   "Jump to date"; no history list padding the screen.
 - **No mockup carries a readable invented figure where a photograph would be** — the

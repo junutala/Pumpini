@@ -42,7 +42,7 @@ at the console, not sitting at a desk. Each decision below was taken by the owne
 | `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error. Its CTA is the model of rule 3 below: grey and naming the missing nozzle until 12/12, with the provisional path as a quiet secondary |
 | `Variance` | 5 · The variance | **Testing gets its own line**, never folded into sales. Confirm or Start again. **Saved as a draft either way** |
 | `FlowSwitch` | 6 · Settings | The migration switch (1240×880 — owner work, at a desk) |
-| `Deliveries` | Exception · A tanker may be missing | Owner, 27-Aug: deliveries can be once a week, so it is NOT a recon step — a daily screen for a weekly event gets tapped through. The recon is 3 steps (ATG → nozzles → variance); a tanker-sized gain on the variance leads here, and "Yes — scan now" opens the everyday Deliveries form |
+| `Deliveries` | Exception · A tanker may be missing | Owner, 27-Aug: deliveries can be once a week, so it is NOT a recon step — a daily screen for a weekly event gets tapped through. The recon is 3 steps (ATG → nozzles → variance); a decant-sized gain on the variance leads here, and "Yes — scan now" opens the everyday Deliveries form. Trigger at COMPARTMENT scale (tankers are shared between outlets): gain beyond tolerance and ≥ ~1,000 L; never for a ~100 L difference |
 
 ### Three rules run through every screen
 
@@ -383,4 +383,10 @@ as the frozen design in `CLAUDE.md`.
    entry/correction, consolidated nozzle scan with manual entry for any line that
    fails — then the variance. Only when the variance shows a tanker-sized gain is
    the manager led to the deliveries screen, so an invoice forgotten at decant time
-   gets scanned at the moment he has a reason to remember it.
+   gets scanned at the moment he has a reason to remember it. **Refined the same
+   evening:** the trigger is COMPARTMENT scale, not full-tanker scale — tankers are
+   shared between unrelated outlets, one compartment discharged here and another
+   there, so a single compartment (~3–4 KL) is a normal decant. Fire when the gain
+   is beyond the outlet's variance tolerance AND at least ~1,000 L (a build-time
+   constant to tune with the owner); a difference around 100 L is dip noise and
+   never asks for a tanker invoice.

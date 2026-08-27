@@ -14,9 +14,10 @@
 </helmet>
 <div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
   <!-- EXCEPTION SCREEN — no stepper. The recon has 3 steps; this is not one of them.
-       The variance leads here only when a tank's gain is about a tanker load
-       (owner, 27-Aug: deliveries can be once a week — a daily screen for a weekly
-       event teaches the manager to tap through it). -->
+       TRIGGER: gain beyond the outlet's variance tolerance AND >= ~1,000 L — compartment
+       scale, NOT full-tanker scale. Tankers are shared between unrelated outlets (owner,
+       27-Aug), so one compartment (~3-4 KL) is a normal decant; and a gain in the low
+       hundreds of litres is dip noise — never ask a tanker question for ~100 L. -->
   <div class="crumb">
     <div style="display:flex;align-items:center;gap:8px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
