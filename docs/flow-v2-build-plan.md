@@ -232,6 +232,8 @@ And, from `CLAUDE.md`:
    is 24 a day and somebody starts skipping, which quietly puts the straddle back.
 2. **Who may clear an outstanding.** Manager is weak control — he is often the one who
    took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
+   *(Partly settled by ruling 1 in §11: the settlement entry itself brings the suspense
+   down. What remains open is only who may record/confirm that entry.)*
 3. **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
 4. **The empty state** for a first-ever recon on the landing screen is specified but not
    drawn.
@@ -330,3 +332,37 @@ Between Step 3 and Step 4 sits **Step 3.5 — the instrument slice**: commission
 gating the switch, match-and-confirm, the wrong-outlet card, the fallback made loud,
 telemetry, and the replay bench. The screens then follow the pattern deliveries proved:
 scan → editable review, every figure badged → confirm.
+
+---
+
+## 11. Owner rulings — 27-Aug evening. Settled; do not re-propose.
+
+Four points from the design review, answered by the owner. These carry the same weight
+as the frozen design in `CLAUDE.md`.
+
+1. **The money loop is complete, and the document must say so.** When a duty closes,
+   the CALCULATED outstanding registers as a liability against the attendant — the
+   suspense shape `credit_suspense_entries` already uses. He then settles: hands the
+   manager cash / UPI / card / credit slips / petty, and that settlement entry brings
+   his suspense down. Nothing silently zeroes it, and nobody walks off with the money
+   as a matter of design — the liability stands until cleared.
+
+2. **Price changes are NOT this system's problem. Build nothing for them.** The price
+   is updated manually at the forecourt controller and manually in Pumpini; we cannot
+   know a change we are not told about, and there is no way to gate sales pre/post
+   change. If the price changes at 6 AM, the manager closes and recommences around it —
+   his duty, and his loss if he sleeps through it. No price-boundary machinery, no
+   proration, no "reading at the price moment" requirement. (This retires the review's
+   6 AM-anchor argument; the recon-cadence question in §8 stands on discipline alone.)
+
+3. **The incoming man's slip closes the outgoing duty, and that is the whole design.**
+   On a normal day the outgoing man brings slip AND money to the manager. A man
+   running away without the slip is running away WITH the money — the slip is not his
+   incentive. It is a technical possibility, not a scenario to engineer for: no
+   missed-handover detection, no prompt system, no override. (Reaffirms the frozen
+   design's "the act of taking over is the act of closing".)
+
+4. **The sidebar stays as drawn. The badge is the nudge.** The manager chooses his
+   function from the side panel like everywhere else in Pumpini. The Attendant Dues
+   badge (men not yet cleared) and the landing screen's last-recon card are the
+   reminders; no task-queue layer, no guided-home redesign.
