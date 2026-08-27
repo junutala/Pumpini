@@ -46,7 +46,6 @@ async function hasAutocloseFlag(client = pool) {
 }
 const slipParser = require('../services/slipParser');
 const pumps      = require('../services/pumpService');
-const { readImageAsJson } = require('../services/visionOcr');
 const attendance = require('../services/attendanceService');
 
 // Do the slip-mapping columns exist on nozzles yet? ONE probe for that one question,
@@ -806,68 +805,113 @@ router.post('/pos-meter', authenticate,
   async (req, res, next) => {
   const { shift_id, nozzle_id, image_base64, media_type = 'image/jpeg' } = req.body;
   if (!shift_id || !nozzle_id || !image_base64) return res.status(400).json({ error: 'shift_id, nozzle_id and image are required' });
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const { rows: sh } = await client.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
-    if (!sh.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Shift not found' }); }
+    const { rows: sh } = await pool.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
+    if (!sh.length) return res.status(404).json({ error: 'Shift not found' });
 
-    // OCR the totalizer
-    // Through the ONE shared reader — Google Vision first, Claude on the text, the
-    // direct vision call as fallback. This one has the most to gain of the six: it
-    // runs on claude-haiku-4-5, the smallest model we use, against a mechanical
-    // counter that is routinely photographed mid-roll and under glare. Reading
-    // characters is Vision's job; deciding what they mean is the model's.
-    let reading = '', legible = false, notes = '', ocrEngine = null;
-    try {
-      const read = await readImageAsJson({
-        file_base64: image_base64, media_type, model: 'claude-haiku-4-5', max_tokens: 300,
-        prompt: 'This image is a fuel dispenser cumulative totalizer (the counter showing total litres dispensed for one nozzle). Read its digits exactly, left to right, ignoring separators (keep a decimal only if clearly shown). Respond with ONLY a JSON object: {"reading":"<digits>","legible":<true|false>,"notes":"<short>"}. legible=false if any digit is unclear, mid-roll, glare-obscured, or you are unsure.',
-      });
-      const parsed = read.parsed || {};
-      ocrEngine = read.engine ?? null;
-      reading = String(parsed.reading ?? '').replace(/[^\d.]/g, '');
-      legible = parsed.legible === true && reading !== '';
-      notes   = String(parsed.notes ?? '');
-      if (!read.parsed) notes = notes || 'Could not read the counter — type the reading.';
-    } catch (e) { notes = 'OCR failed: ' + (e.message || 'unknown'); }
+    // WHICH nozzle are we reading, and what does its own slip call it. Needed BEFORE
+    // the read, because that is what we go looking for on the paper.
+    const { rows: nzr } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial
+         FROM nozzles n
+         LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL
+        WHERE n.id = $1`, [nozzle_id]);
+    if (!nzr.length) return res.status(404).json({ error: 'Nozzle not found' });
+    const want       = nzr[0];
+    const wantSerial = String(want.pump_serial ?? '').trim().toUpperCase();
+    const wantNo     = String(want.slip_nozzle_no ?? '').trim() || pumps.defaultSlipNo(want.nozzle_number);
+    const wantName   = pumps.nozzleName(want);
 
-    // THIS ROUTE NO LONGER WRITES A METER READING. It reads the totalizer off a
-    // photograph and hands the number back; the settlement form submits it, and the
-    // settlement is the one writer into shift_attendant_nozzles. It used to write a
-    // second, parallel record into shift_nozzle_readings — a whole extra table whose
-    // only job was to disagree with the first one and report the disagreement. That
-    // is the drift, not a safeguard against it.
+    // ONE READER. This route used to carry its OWN prompt, describing "a fuel
+    // dispenser cumulative totalizer (the counter showing total litres dispensed for
+    // one nozzle)" — a mechanical dial, one number. What a manager actually
+    // photographs is a PRINTED slip: a header, two nozzles, and three LABELLED
+    // figures each (A: rupees, V: litres, TOT SALES: a count). The prompt named none
+    // of them, so the model returned the largest run of digits on the page — A, the
+    // money — and called itself legible because the DIGITS were sharp. `legible` was
+    // certifying character clarity, not field identity.
     //
-    // The phase is gone with it. Under the carry-forward rule an opening is never
-    // captured — it IS the last close — so every scan an operator takes is a closing
-    // candidate. There is nothing left to decide.
+    // It cost two outlets their trust in the camera:
+    //   Kamala   23-Jun  three attempts on one slip, three times the A line
+    //                    (149343626.920 / 195417174.200 against a true V of
+    //                     1654130.510 / 2131447.940)
+    //   Kamala   23-Aug  one number, 1692096.060, returned for TWO nozzles
+    //   Sri Bal. 25-Aug  17558851.620 on a nozzle whose real movement that shift
+    //                    was 5.78 L — then the same figure again for the next one
+    // Every one flagged legible. Both managers typed the readings by hand and
+    // stopped scanning, which is the correct response to a lying instrument.
+    //
+    // slipParser has known the A/V layout since #306 and already refuses a volume
+    // the printed amount disagrees with — `legible` on a parsed LINE means it passed
+    // that cross-check. It was simply never in this path. Calling it here DELETES a
+    // reader rather than adding one, and the guard, the swap detection and the
+    // rejection strings all arrive by construction.
+    let reading = '', legible = false, notes = '', ocrEngine = null;
+    const parsed = await slipParser.parseSlip({ file_base64: image_base64, media_type });
+    if (!parsed) {
+      notes = 'Could not read that slip — type the reading instead.';
+    } else {
+      ocrEngine = parsed.engine ?? null;
+      const gotSerial = String(parsed.pump_serial ?? '').trim().toUpperCase();
+      const line = (parsed.nozzles || []).find(n => String(n.nozzle_no) === String(wantNo));
+
+      // THE SLIP NAMES ITSELF, so check it is the one we asked for. Without this a
+      // slip photographed for one nozzle silently supplies another nozzle's meter —
+      // exactly what put one figure onto two nozzles at both outlets.
+      if (wantSerial && gotSerial && gotSerial !== wantSerial) {
+        notes = `That slip is from pump ${gotSerial}, not ${wantSerial}. Photograph ${wantName}'s own slip.`;
+      } else if (!line) {
+        const seen = (parsed.nozzles || []).map(n => n.nozzle_no).filter(Boolean).join(', ');
+        notes = seen
+          ? `That slip shows nozzle ${seen}, not ${wantNo}. Photograph ${wantName}'s own slip, or type the reading.`
+          : 'No nozzle reading found on that slip — type the reading instead.';
+      } else if (!line.legible) {
+        // REFUSED BY THE CROSS-CHECK, and say WHY. A figure it threw out is never
+        // offered as a pre-fill: a confident wrong meter is worse than no meter.
+        notes = line.reject_reason === 'implied_price_out_of_band'
+          ? `That reading implies Rs ${line.implied_price}/L — it looks like the amount, not the litres. Type it from the V line.`
+          : line.reject_reason === 'no_amount_to_cross_check'
+            ? 'The amount did not read, so there is nothing to check the litres against — type the reading.'
+            : line.swapped_amount_for_volume
+              ? 'The amount and the volume looked swapped on that slip — check it and type the V figure.'
+              : 'That line did not read cleanly — type the reading instead.';
+      } else {
+        reading = String(line.cumulative_volume);
+        legible = true;
+        notes   = parsed.notes || '';
+      }
+    }
+
+    // THIS ROUTE DOES NOT WRITE A METER. It reads the slip and hands the number back;
+    // the settlement submits it, and the settlement is the one writer into
+    // shift_attendant_nozzles.
+    //
+    // A totalizer cannot run backwards. If the scan is below the opening this nozzle
+    // was carried in at, either the photo was misread or it is the wrong nozzle — and
+    // the operator must see that before he settles against it, not after.
     let opening_reading = null, below_opening = false;
     if (reading) {
-      const num = Number(reading);
-      // The check worth keeping: a totalizer cannot run backwards. If the scan is
-      // below the opening this nozzle was carried in at, either the photo was
-      // misread or it is the wrong nozzle — and the operator should see that before
-      // he settles against it, not after.
-      const { rows: op } = await client.query(
+      const { rows: op } = await pool.query(
         `SELECT opening_reading FROM shift_attendant_nozzles
           WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL LIMIT 1`,
         [shift_id, nozzle_id]);
       if (op.length) {
         opening_reading = Number(op[0].opening_reading);
-        below_opening = num < opening_reading;
+        below_opening = Number(reading) < opening_reading;
       }
     }
-    await client.query('COMMIT');
-    // Audit image (best-effort) — stored AFTER commit so the slow bucket upload
-    // never holds the shift-close transaction open and a store failure can't touch
-    // the saved reading. bytes → private bucket, DB keeps only the path.
+
+    // NO TRANSACTION. This handler only ever SELECTed — it never wrote — yet it held
+    // BEGIN..COMMIT open across a 20-second OCR call, tying up a pool connection for
+    // the length of somebody's mobile upload for no atomicity at all.
+    //
+    // Audit image, best-effort: bytes -> private bucket, DB keeps only the path. A
+    // store failure must never cost the manager the reading he just took.
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
-    } catch { /* store failed — OCR + reading already saved and returned */ }
-    res.json({ reading, legible, notes, opening_reading, below_opening, engine: ocrEngine });
-  } catch (e) { await client.query('ROLLBACK'); next(e); }
-  finally { client.release(); }
+    } catch { /* store failed — the reading is already computed and returned */ }
+    res.json({ reading, legible, notes, opening_reading, below_opening, engine: ocrEngine, nozzle_name: wantName });
+  } catch (e) { next(e); }
 });
 
 // POST /api/reconcile/shift-opening-meters — REMOVED. Dead (no UI); the live
