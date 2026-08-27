@@ -1255,6 +1255,13 @@ router.post('/parse-slips', authenticate,
           nozzle_number: hit ? hit.nozzle_number : null,
           fuel_type: hit ? hit.fuel_type : null,
           slip_no: no || null,
+          // THE NAME, on every line, matched or not. The slip prints the pump serial
+          // and the nozzle number beside each reading, so a line can always name
+          // itself the way the convention requires — <pump serial>.<nozzle number>.
+          // Without this the field was never set, every consumer fell through to
+          // `nozzle_number`, and our INTERNAL index ("1.1") reached the manager in
+          // the one place he reads a nozzle name: the unmatched/refused list.
+          nozzle_name: serial && no ? `${serial}.${no}` : null,
           cumulative_volume: n.cumulative_volume ?? null,
           cumulative_amount: n.cumulative_amount ?? null,
           swapped_amount_for_volume: n.swapped_amount_for_volume || undefined,

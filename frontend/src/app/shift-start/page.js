@@ -677,17 +677,17 @@ export default function ShiftStartPage() {
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
-        if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
+        if (l.nozzle_id == null) { unmatched.push(nozName(l) || l.slip_no || '?'); return; }
         // Refused by the amount-vs-volume cross-check — never pre-filled. An opening
         // is what the whole shift is measured against, so a figure we cannot verify
         // must be typed deliberately rather than accepted by default.
         if (l.legible === false) {
           const why = rejectNote(l, tc);
-          refused.push(`${l.nozzle_name || l.nozzle_number || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
+          refused.push(`${nozName(l) || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
           return;
         }
         const noz = nozzles.find(x => x.id === l.nozzle_id);
-        if (!noz) { unmatched.push(l.nozzle_name || l.nozzle_number || String(l.nozzle_id)); return; }
+        if (!noz) { unmatched.push(nozName(l) || String(l.nozzle_id)); return; }
         if (l.cumulative_volume == null) return;
         // A nozzle whose opening is carried from the last close is left alone — the
         // server uses the carried close regardless, and writing the slip's number in
