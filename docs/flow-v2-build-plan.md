@@ -39,17 +39,26 @@ at the console, not sitting at a desk. Each decision below was taken by the owne
 | `AtgCapture` | 2 · Photograph the console | Asks for **landscape** (the console is a wide screen, and it reads better). A **SKIP** button goes straight to manual entry |
 | `AtgReading` | 3 · Reading | The bar fills to **~90% and holds** until the answer is actually back. Three real stages. **It never claims to be finished before it is** |
 | `AtgResult` | 3b · What we read | Every figure editable; each carries a badge saying whether a photo or a person produced it |
-| `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error |
+| `Deliveries` | 2 · Tankers in this window | Added 27-Aug: the stepper said 4 steps but step 2 had no screen. Confirmation only — decants are captured when the tanker lands; one question, "is the window complete?", with Add reusing the everyday form |
+| `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error. Its CTA is the model of rule 3 below: grey and naming the missing nozzle until 12/12, with the provisional path as a quiet secondary |
 | `Variance` | 5 · The variance | **Testing gets its own line**, never folded into sales. Confirm or Start again. **Saved as a draft either way** |
 | `FlowSwitch` | 6 · Settings | The migration switch (1240×880 — owner work, at a desk) |
 
-### Two rules run through every screen
+### Three rules run through every screen
 
 1. **Typing is not a fallback.** Camera and keyboard are the same size, the same height,
    the same border, side by side — and every figure carries a badge saying which one
    produced it.
 2. **Nothing dead-ends.** Every screen has a way forward, including the ones where the
    camera failed.
+3. **The CTA is earned, not offered** (owner, 27-Aug: the CTAs "illuminate and clamour
+   for attention even if the data is not captured"). A step's primary button sits grey
+   and unlit until the current screen's data is fully captured, and while grey it says
+   exactly what is missing ("Waiting on 1 nozzle — 15BC1412V.2"). It lights the moment
+   the job is done. Escape hatches — skip, provisional, add-later — stay available as
+   quiet secondary buttons, never as the shouting one. The three spokes gate
+   separately, so no spoke ever waits on another spoke's inputs. Mockups carry no
+   readable invented figures where a photograph would be.
 
 ### Deleted, and why — do not re-propose
 

@@ -15,6 +15,7 @@ screen is drawn at 390×844.
 | `AtgCapture` | 2 · Photograph the console — landscape prompt, and SKIP |
 | `AtgReading` | 3 · Reading — the bar that fills to 90% and holds |
 | `AtgResult` | 3b · What we read — every figure editable, source badged |
+| `Deliveries` | 2 · Tankers in this window — confirm the window is complete, enter nothing |
 | `Nozzles` | 4 · Nozzles — one shot for all, or one at a time |
 | `Variance` | 5 · The variance — testing on its own line, confirm or start again |
 | `FlowSwitch` | 6 · Settings — the switch that turns the flow on, 1240×880 |
@@ -26,6 +27,10 @@ Two rules run through all of them:
    which one produced it.
 2. **Nothing dead-ends.** Every screen has a way forward, including the ones where
    the camera failed.
+3. **The CTA is earned, not offered** (owner, 27-Aug). A step's button sits grey until
+   this screen's job is fully captured, and while grey it says what is missing
+   ("Waiting on 1 nozzle"). Escape hatches — skip, provisional, add-later — are quiet
+   secondary buttons. The spokes gate separately; no spoke waits on another.
 
 ### Decisions already taken, so they are not re-litigated
 
@@ -36,6 +41,13 @@ Two rules run through all of them:
   app showing every tank on one display — that photograph does not exist.
 - **The landing shows the LAST RECON, never current stock.** Owner: *"we will not
   have data on Current Stock. That's a trap."*
+- **Step 2 is the deliveries CONFIRMATION, not entry** (added 27-Aug — the stepper
+  always said 4 steps but no screen was step 2, so a tick appeared that the manager
+  never earned). Decants are captured when the tanker lands; this screen only asks
+  "is the window complete?" and its Add button opens the everyday Deliveries form.
+- **No mockup carries a readable invented figure where a photograph would be** — the
+  viewfinder and thumbnails glow with abstract bars. A mockup number gets taken for
+  a real one.
 - **Save before he decides, as a DRAFT.** His to resume, but not in the ledger and
   not on the owner's dashboard until he confirms. "Start again" marks it abandoned;
   it never deletes it.
