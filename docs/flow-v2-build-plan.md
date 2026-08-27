@@ -257,84 +257,76 @@ instead of letting anyone type it.
 
 ---
 
-## 10. Why nobody scans slips — the post-mortem that reshapes Step 4
-### added 27-Aug-2026, from production evidence, after the owner rejected the first review's assumptions
+## 10. Why nobody scans slips — the post-mortem, engine-corrected
+### 27-Aug-2026. Rewritten the same day after the owner corrected the first draft's
+### "one shared engine" claim — the engines and dates below are from the artifacts' own
+### `engine` stamps and the visionOcr.js history, not from assumption.
 
-The rethink exists because the users do not scan. That sentence was checked against
-every scan artifact in production on 27-Aug, and the diagnosis is precise enough to
-build against.
+**Deliveries prove the managers scan when the instrument works: 175 of 175 deliveries
+since June carry a scanned invoice, uploaded by the managers themselves** (`fuel_deliveries.invoice_id`
+→ `delivery_invoices.uploaded_by`, every uploader the outlet's manager bar Sri Balaji's owner).
+Deliveries have run **Google-Vision-first** for ~two months. Slips ran **direct Claude
+vision until 20-Aug**, when the Vision-first pipeline was centralised into
+`services/visionOcr.js` and extended to every reader; `/pos-meter` additionally carried
+the rupee-line prompt bug until #353 (27-Aug).
 
-### The control group: the SAME engine, the SAME managers, universal adoption
+So the timeline reads: the managers tried slip scanning on 02–04 Aug **under the old
+engine and the old prompt**, were lied to (`ocr_legible=true` on rupee-line readings —
+all 24 `meter_photos` ever taken say legible, including the wrong ones), got silent
+unmatched rows, and correctly quit. Those artifacts stored `ocr` NULL, so the evidence
+had to be reconstructed from absence. **The repaired path has never been offered to them.**
 
-**Every fuel delivery since June carries a scanned invoice — 175 of 175, at every
-outlet, uploaded by the managers themselves, month after month** (`fuel_deliveries.invoice_id`
-joined to `delivery_invoices.uploaded_by`; every uploader is the outlet's manager, except
-Sri Balaji's, which is the owner). Delivery scanning and slip scanning run through the
-one shared engine, `services/visionOcr.js` (`billScan.js:37`, `slipParser.js:18`).
+### The engines, measured against each other on the same pumps
 
-So the camera is not the problem, the OCR engine is not the problem, and the managers
-are not the problem. **The difference is structural: the delivery scan has no identity
-step.** It fills an editable form; the manager checks the figures and confirms. The slip
-scan inserted a matching layer between camera and manager — and that layer failed
-silently, on reference data that was partly invented.
+The 25/26-Aug Sri Balaji composites are stamped with the engine that read them:
 
-### The slip scans, exhaustively
-
-| Who | When | What happened (all VERIFIED from `station_artifacts`) |
+| Engine | Line-match | Notes |
 |---|---|---|
-| Kamala | 02-Aug ×3 | `ocr` stored as NULL — no structured result kept. Never scanned again |
-| Adhoc | 02-Aug ×2 | Same. Never again |
-| Highway / Hayat Nagar | 04-Aug ×4 each | Same. Never again |
-| Nagole | 20-Aug | **0 of 28 lines matched** — the slips were Sri Balaji's machines (17CH2645V…) scanned under Nagole, whose pumps are M1832149/M1831227. `serial_known:false` sat on every line and no screen shouted it |
-| Sri Balaji | 25-Aug | 42/44 matched. The 2 misses printed nozzle "4" on pumps whose `slip_nozzle_no` says "1","2" — because `defaultSlipNo()` DERIVED those from the internal number instead of anyone reading a slip |
-| Sri Balaji | 26-Aug | 52/64. The 12 misses are one-character serial misreads (`17CH2900V` for 17EH2900V, `H28253V`, `2444`) killed by exact-string matching |
-| Dilsukhnagar | 27-Aug | The 15BC1412V incident scans |
+| `google_vision+claude_text` | **74/76 (97%)** | Its only 2 misses are the invented-mapping rows below |
+| `claude_vision` (the fallback) | **20/32 (63%)** | ALL the garbled serials — `17CH2900V`, `H28253V`, `2444`, one scan with none |
 
-Plus: all 24 `meter_photos` ever taken say `ocr_legible = true` — including the ones
-that returned the rupee line. `legible` certified pixel clarity while lying about
-field identity. The fix (#353, route `/pos-meter` through the guarded reader) merged
-27-Aug and has never been used by a manager.
+**On 26-Aug the fallback fired on 3 of 8 scans** — Vision returned nothing usable and
+the pipeline silently handed the photo to the engine that already lost the users. Why
+Vision failed those frames is not recorded anywhere. That silent downgrade is a defect
+in its own right.
 
-**The managers behaved correctly.** They abandoned an instrument that lied with
-confidence and failed without explanation. Typing was the right response.
+### The defects that remain with the good engine in place
 
-### The four rules this burns into Step 4
+1. **Invented reference data.** 17CH2645V/17CH2653V slips print nozzle "4"; our
+   `slip_nozzle_no` says "1","2" because `defaultSlipNo()` derived it from the internal
+   number. Nobody ever read a slip at commissioning.
+2. **Wrong outlet fails silently.** Nagole, 20-Aug: 0 of 28 lines matched — the slips
+   were Sri Balaji's machines. `serial_known:false` sat on every line; no screen shouted.
+3. **The fallback downgrade above**, unannounced and unrecorded.
+4. **No telemetry.** Scanning died in the first week of August and nobody could see it.
 
-1. **Commissioning is a verified act, and it gates the switch.** Every
-   serial + printed-nozzle-number pair is captured by scanning a REAL slip at setup —
-   the machine reads it, the human confirms "this is the pump by the air tower", and
-   what the paper printed is stored. `defaultSlipNo()` guesses are abolished on
-   flow-v2 outlets. The switch refuses to turn on until every active nozzle's identity
-   is slip-proven; that commissioning reading is the chain's genesis event.
-2. **Match with tolerance, confirm with a human, never fail silently.** An outlet has
-   5–8 serials; an OCR read one character off PROPOSES the nearest ("Is this
-   17EH2900V?") — one tap. A slip with no close match is a loud red card — "not from
-   any machine at this outlet" (the Nagole case) — never a quiet unmatched row.
-3. **A reading enters the chain only through three independent checks:** the V-line
-   found by its label (#353), A÷V implies a sane price, and the physics pair (never
-   decreases; never faster than the pump can deliver). Wrong numbers fail loudly in
-   seconds, not at settlement.
-4. **The process measures itself.** Scans attempted / lines matched / lines typed,
-   per outlet per week, on the owner dashboard from day one — the PHOTO/TYPED badges
-   aggregated. Scanning died in the first week of August and nobody could see it;
-   that blindness is never rebuilt. Every scan stores its structured result, success
-   or failure (the 02–04 Aug artifacts kept nothing, so the evidence of why managers
-   quit had to be reconstructed from absence).
+### The rules this burns into Step 4
+
+1. **Commissioning is a verified act, and it gates the switch.** Every serial +
+   printed-nozzle-number pair captured by scanning a REAL slip at setup, human-confirmed,
+   stored as printed. `defaultSlipNo()` guesses are abolished on flow-v2 outlets; the
+   commissioning reading is the chain's genesis event.
+2. **Never fail silently.** A near-miss serial PROPOSES the nearest known machine —
+   one tap to confirm. No close match → a loud card: "not from any machine at this
+   outlet." A fallback-engine read is marked low-trust and always goes through human
+   confirmation; the fallback reason is recorded.
+3. **A reading enters the chain only through three checks:** V-line found by its label
+   (#353), A÷V implies a sane price, and the physics pair (never decreases, never
+   faster than the pump delivers).
+4. **The process measures itself.** Scans / matched / typed / engine / fallback-reason,
+   per outlet per week, on the owner dashboard from day one. Every scan stores its
+   structured result, success or failure.
 
 ### Validation is REPLAY, not a field trial
 
-No customer tests for a week. The failed scans are still in `station_artifacts` with
-their images: re-run the stored photos through the current reader plus the hardened
-matcher, offline, and measure the match rate before any screen ships. The 25/26-Aug
-Sri Balaji composites and the Nagole set are the regression bench — real slips, real
-glare, known right answers. Commissioning is likewise not a trial: one slip per pump,
-five minutes, part of switch-on.
+The stored artifacts — the 25/26-Aug composites, the Nagole set, the 02–04 Aug photos —
+are the regression bench: real slips, real glare, known right answers. Re-run them
+through the reader + hardened matcher offline and measure before any screen ships.
+Commissioning is not a trial either: one slip per pump, five minutes, part of switch-on.
 
 ### Build-order amendment
 
-Between Step 3 (sidebar swap) and Step 4 (the screens) sits **Step 3.5 — the
-instrument slice**: commissioning-by-slip + the gate on the switch, tolerant
-match-and-confirm, the wrong-outlet card, telemetry, and the replay bench run against
-the stored artifacts. Smaller than any screen, and everything after it drinks from it.
-The screens then follow the pattern deliveries already proved wins adoption: scan →
-editable review, every figure badged → confirm.
+Between Step 3 and Step 4 sits **Step 3.5 — the instrument slice**: commissioning-by-slip
+gating the switch, match-and-confirm, the wrong-outlet card, the fallback made loud,
+telemetry, and the replay bench. The screens then follow the pattern deliveries proved:
+scan → editable review, every figure badged → confirm.
