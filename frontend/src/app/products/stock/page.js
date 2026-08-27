@@ -7,6 +7,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const inp = {width:'100%',padding:'9px 11px',border:'1.5px solid #e5e3de',borderRadius:8,
   fontSize:14,outline:'none',boxSizing:'border-box',fontFamily:'inherit',background:'#fff'};
 
@@ -62,7 +63,7 @@ export default function ProductStockPage() {
       setMatched(arr.find(x=>x.id===linkId) || { id:linkId, name:'(linked)', barcode:newCode });
       setForm(prev => ({ ...prev, product_id: linkId }));
       setNewCode(null); setNewMode(null); setLinkId('');
-    } catch(e) { alert(e.response?.data?.error || tc('lubestk.couldNotLinkBarcode', 'Could not link barcode')); }
+    } catch(e) { alert(errText(e, tc('lubestk.couldNotLinkBarcode', 'Could not link barcode'))); }
     setBcBusy(false);
   };
 
@@ -80,7 +81,7 @@ export default function ProductStockPage() {
       setMatched(res);
       setForm(prev => ({ ...prev, product_id: res.id }));
       setNewCode(null); setNewMode(null); setNp({});
-    } catch(e) { alert(e.response?.data?.error || tc('lubestk.couldNotCreateProduct', 'Could not create product')); }
+    } catch(e) { alert(errText(e, tc('lubestk.couldNotCreateProduct', 'Could not create product'))); }
     setBcBusy(false);
   };
 
@@ -104,7 +105,7 @@ export default function ProductStockPage() {
     try {
       await api.post('/products/stock', { ...form, station_id: stationId });
       setModal(false); setForm({}); resetScan(); load();
-    } catch(e) { alert(e.response?.data?.error || tc('lubestk.saveFailed', 'Save failed')); }
+    } catch(e) { alert(errText(e, tc('lubestk.saveFailed', 'Save failed'))); }
     setSaving(false);
   };
 

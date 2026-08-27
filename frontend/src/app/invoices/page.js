@@ -13,6 +13,7 @@ import api, { getPricesAsAt } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
+import { errText } from '../../lib/apiError';
 const fmt   = n => Number(n||0).toLocaleString('en-IN', { minimumFractionDigits:2, maximumFractionDigits:2 });
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const inp   = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -210,7 +211,7 @@ export default function InvoicesPage() {
       setLines([emptyLine()]); setCorp(''); setCouponMode(false);
       load();
     } catch (e) {
-      setMsg({ ok:false, text: e.response?.data?.error || e.error || tc('invp.errGeneric', 'Could not raise the invoice.') });
+      setMsg({ ok:false, text: errText(e, tc('invp.errGeneric', 'Could not raise the invoice.')) });
     }
     setBusy(false);
   };

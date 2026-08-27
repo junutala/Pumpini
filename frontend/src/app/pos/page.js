@@ -10,6 +10,7 @@ import { useAuth } from '../../lib/auth';
 import { useSocket } from '../../hooks/useSocket';
 import { nozName } from '../../lib/nozzle';
 
+import { errText } from '../../lib/apiError';
 const PAYMENT_MODES = [
   { id:'cash',   labelKey:'pos_page.cash',   fallback:'💵 Cash',   color:'#16a34a' },
   { id:'upi',    labelKey:'pos_page.upi',    fallback:'📱 UPI',    color:'#2563eb' },
@@ -225,7 +226,7 @@ export default function POSPage() {
       const r = await api.post('/reconcile/pos-meter', { shift_id: activeShift.id, nozzle_id: nz.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       setScanResult(p => ({ ...p, [nz.id]: r }));
     } catch (e) {
-      setScanResult(p => ({ ...p, [nz.id]: { notes: e.response?.data?.error || e.error || 'Scan failed' } }));
+      setScanResult(p => ({ ...p, [nz.id]: { notes: errText(e, 'Scan failed') } }));
     }
     setScanningNz('');
   };

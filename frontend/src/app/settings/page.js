@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { nozName } from '../../lib/nozzle';
 import { dipToVolume } from '../../lib/calibration';
 
+import { errText } from '../../lib/apiError';
 const FUEL_TYPES = [
   {value:'petrol',         label:'Petrol (MS)'},
   {value:'diesel',         label:'Diesel (HSD)'},
@@ -414,7 +415,7 @@ function AccountsTab({ stationId }) {
     try {
       const r = await api.post(`/stations/${sid}/settings`, { accounts_enabled: !on });
       setOn(!!r?.accounts_enabled);
-    } catch(e){ alert(e.response?.data?.error || e.error || tc('setp.couldNotChangeMode', 'Could not change mode')); }
+    } catch(e){ alert(errText(e, tc('setp.couldNotChangeMode', 'Could not change mode'))); }
     setBusy(false);
   };
 
@@ -1745,7 +1746,7 @@ function ShiftsTab({ stationId, onSaved }) {
     try {
       const r = await api.patch(`/stations/${sid}/blind-drop-mode`, { manager_blind_drop: !mgrMode });
       setMgrMode(!!r?.manager_blind_drop);
-    } catch(e){ alert(e.response?.data?.error || e.error || tc('setp.couldNotChangeMode', 'Could not change mode')); }
+    } catch(e){ alert(errText(e, tc('setp.couldNotChangeMode', 'Could not change mode'))); }
     setModeBusy(false);
   };
 
@@ -1755,7 +1756,7 @@ function ShiftsTab({ stationId, onSaved }) {
     try {
       const r = await api.post(`/stations/${sid}/settings`, { self_settlement_enabled: !selfSettle });
       setSelfSettle(r?.self_settlement_enabled !== false);
-    } catch(e){ alert(e.response?.data?.error || e.error || tc('setp.couldNotChangeMode', 'Could not change mode')); }
+    } catch(e){ alert(errText(e, tc('setp.couldNotChangeMode', 'Could not change mode'))); }
     setSelfBusy(false);
   };
 

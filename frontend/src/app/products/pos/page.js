@@ -7,6 +7,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const PAYMENT_MODES = [
   { id:'cash',   label:'💵 Cash',   en:'Cash',   color:'#16a34a' },
   { id:'upi',    label:'📱 UPI',    en:'UPI',    color:'#2563eb' },
@@ -180,7 +181,7 @@ export default function ProductsPOSPage() {
       setCart([]);
       setCustType('cash'); setCustId(''); setCustName('Cash Customer');
       setPayMode('cash');
-    } catch(e) { alert(e.response?.data?.error || tc('lubepos.saleFailed', 'Sale failed')); }
+    } catch(e) { alert(errText(e, tc('lubepos.saleFailed', 'Sale failed'))); }
     setSaving(false);
   };
 

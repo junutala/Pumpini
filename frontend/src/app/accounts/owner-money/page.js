@@ -9,6 +9,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const todayISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -55,7 +56,7 @@ export default function OwnerMoneyPage() {
       await loadRecent();
       showToast(tc('om.saved', 'Recorded.'));
     } catch (e) {
-      showToast(e.response?.data?.error || e.error || tc('om.failed', 'Could not save.'));
+      showToast(errText(e, tc('om.failed', 'Could not save.')));
     }
     setSaving(false);
   };

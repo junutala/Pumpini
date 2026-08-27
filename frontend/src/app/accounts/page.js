@@ -14,6 +14,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../lib/apiError';
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function AccountsPage() {
@@ -57,7 +58,7 @@ export default function AccountsPage() {
         .replace('{s}', r.shifts_posted ?? 0).replace('{d}', r.deliveries_posted ?? 0));
       await loadLedger();
     } catch (e) {
-      setMsg(e.response?.data?.error || e.error || tc('acc.postFailed', 'Could not post entries.'));
+      setMsg(errText(e, tc('acc.postFailed', 'Could not post entries.')));
     }
     setBusy(false);
   };

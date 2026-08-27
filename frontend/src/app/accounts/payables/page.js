@@ -10,6 +10,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '';
 
@@ -45,7 +46,7 @@ export default function PayablesPage() {
       await api.patch('/deliveries/mark-paid', { station_id: sid, ids, paid });
       await load();
       showToast(tc('pay.markedRepost', 'Updated — Re-post on the Accounts screen to apply.'));
-    } catch (e) { showToast(e.response?.data?.error || tc('pay.failed', 'Could not update.')); }
+    } catch (e) { showToast(errText(e, tc('pay.failed', 'Could not update.'))); }
     setBusy(false);
   };
 
@@ -63,7 +64,7 @@ export default function PayablesPage() {
       await api.post('/accounts/pay-supplier', { station_id: sid, target, amount, payment_mode: payMode['acct_' + target] || 'bank' });
       setPayAmt(a => ({ ...a, [target]: '' }));
       await load(); showToast(tc('pay.done', 'Payment recorded.'));
-    } catch (e) { showToast(e.response?.data?.error || tc('pay.failed', 'Could not record.')); }
+    } catch (e) { showToast(errText(e, tc('pay.failed', 'Could not record.'))); }
     setBusy(false);
   };
 
@@ -72,7 +73,7 @@ export default function PayablesPage() {
     try {
       await api.post(`/accounts/expenses/${id}/pay`, { station_id: sid, payment_mode: payMode[id] || 'bank' });
       await load(); showToast(tc('pay.done', 'Payment recorded.'));
-    } catch (e) { showToast(e.response?.data?.error || tc('pay.failed', 'Could not record.')); }
+    } catch (e) { showToast(errText(e, tc('pay.failed', 'Could not record.'))); }
     setBusy(false);
   };
 

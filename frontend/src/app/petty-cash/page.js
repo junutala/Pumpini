@@ -9,6 +9,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
+import { errText } from '../../lib/apiError';
 const fmt = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const fmtDateTime = ts => ts ? new Date(ts).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
@@ -58,7 +59,7 @@ export default function PettyCashPage() {
         description: form.description || null,
       });
       setModal(null); load();
-    } catch (err) { alert(err.response?.data?.error || err.error || tc('petty.errSave', 'Failed to save')); }
+    } catch (err) { alert(errText(err, tc('petty.errSave', 'Failed to save'))); }
     finally { setSaving(false); }
   };
 

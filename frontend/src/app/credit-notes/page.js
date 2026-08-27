@@ -6,6 +6,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../lib/apiError';
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8,
   fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => Number(n||0).toLocaleString('en-IN',{ minimumFractionDigits:2, maximumFractionDigits:2 });
@@ -85,7 +86,7 @@ export default function CreditNotesPage() {
       });
       setModal(false); setSaved(tc('cnotes.savedCredit', 'Credit note issued — customer outstanding reduced.')); load();
       setTimeout(() => setSaved(''), 4000);
-    } catch(e) { setErr(e.response?.data?.error || e.error || tc('cnotes.errCreateFailed', 'Could not create credit note')); }
+    } catch(e) { setErr(errText(e, tc('cnotes.errCreateFailed', 'Could not create credit note'))); }
     setSaving(false);
   };
 
@@ -127,7 +128,7 @@ export default function CreditNotesPage() {
         items: toReturn,
       });
       setModal(false); load();
-    } catch(e) { setErr(e.response?.data?.error || e.error || tc('cnotes.errCreateFailed', 'Could not create credit note')); }
+    } catch(e) { setErr(errText(e, tc('cnotes.errCreateFailed', 'Could not create credit note'))); }
     setSaving(false);
   };
 

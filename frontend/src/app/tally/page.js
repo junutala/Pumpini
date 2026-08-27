@@ -9,6 +9,7 @@ import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 
+import { errText } from '../../lib/apiError';
 const fmt = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -41,7 +42,7 @@ export default function TallyPage() {
         company_name: company,
         mappings: rows.map(t => ({ touchpoint_key: t.key, ledger_name: t.ledger_name })),
       });
-    } catch (e) { alert(e.response?.data?.error || tc('tallyp.failedToSave', 'Failed to save')); }
+    } catch (e) { alert(errText(e, tc('tallyp.failedToSave', 'Failed to save'))); }
     setSaving(false);
   };
 
@@ -57,7 +58,7 @@ export default function TallyPage() {
     } catch (e) {
       let msg = tc('tallyp.exportFailed', 'Export failed');
       try { const t = await e.response?.data?.text?.(); if (t) { const j = JSON.parse(t); msg = j.detail || j.error || msg; } }
-      catch { msg = e.response?.data?.error || e.error || msg; }
+      catch { msg = errText(e, msg); }
       alert(msg);
     }
     setDownloading(false);
