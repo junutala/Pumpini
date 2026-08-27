@@ -35,7 +35,7 @@ import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
-import { errPayload, errText } from '../../lib/apiError';
+import { errPayload, errText, errCode } from '../../lib/apiError';
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '';
@@ -200,27 +200,34 @@ export default function ShiftEndPage() {
   // another open shift must not have the list yank him back.
   const autoPicked = useRef(false);
 
-  useEffect(() => {
-    if (!stationId) return;
-    api.get('/shifts', { params:{ station_id: stationId, status:'open' } })
-      .then(r => {
-        const list = Array.isArray(r) ? r : [];
-        setOpen(list);
-        if (autoPicked.current) return;
-        // ?shift=<id> — the Shifts screen's "End Shift" button has always sent this
-        // and nothing ever read it, so a manager who named a shift there still had
-        // to pick it again here. Honoured now; an unknown or already-closed id just
-        // falls through to the rules below.
-        const wanted = typeof window !== 'undefined'
-          ? new URLSearchParams(window.location.search).get('shift') : null;
-        const named = wanted && list.find(s => s.id === wanted);
-        if (named) { autoPicked.current = true; pickShift(named); return; }
-        // ONE open shift is the normal case at a single-outlet station, so choose
-        // it for him. Several open shifts is a real choice — the chips below stay.
-        if (list.length === 1) { autoPicked.current = true; pickShift(list[0]); }
-      })
-      .catch(()=>setOpen([]));
-  }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The open-shift list and the auto-pick. A named function, not an inline effect
+  // body, because the CLOSE path has to run it again — an outlet can have more than
+  // one shift open at a time (Kamala does it 12 times in 75), so closing one must
+  // advance the screen to the next rather than leave it holding a closed id.
+  // Returns the list so the caller can decide what to do when it is empty.
+  async function loadOpenShifts() {
+    if (!stationId) return [];
+    try {
+      const r = await api.get('/shifts', { params:{ station_id: stationId, status:'open' } });
+      const list = Array.isArray(r) ? r : [];
+      setOpen(list);
+      if (autoPicked.current) return list;
+      // ?shift=<id> — the Shifts screen's "End Shift" button has always sent this
+      // and nothing ever read it, so a manager who named a shift there still had
+      // to pick it again here. Honoured now; an unknown or already-closed id just
+      // falls through to the rules below.
+      const wanted = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('shift') : null;
+      const named = wanted && list.find(x => x.id === wanted);
+      if (named) { autoPicked.current = true; pickShift(named); return list; }
+      // ONE open shift is the normal case at a single-outlet station, so choose
+      // it for him. Several open shifts is a real choice — the chips below stay.
+      if (list.length === 1) { autoPicked.current = true; pickShift(list[0]); }
+      return list;
+    } catch { setOpen([]); return []; }
+  }
+
+  useEffect(() => { loadOpenShifts(); }, [stationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Station settings — the attendant-led flag rides on them. Station-scoped, so it is
   // loaded once per outlet, not per shift. Best-effort: a failed read leaves `st` null,
@@ -720,7 +727,23 @@ export default function ShiftEndPage() {
 
   const closeShift = async () => {
     setBusy('close'); setDipWarn(null);
-    try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
+    try {
+      await api.patch(`/shifts/${shift.id}/close`, { confirm:true });
+      setActiveShift(null);
+      // ADVANCE — never sit on the shift just closed. Re-arm the auto-pick and
+      // reload: a second open shift at this outlet gets selected, and only a
+      // genuinely empty list shows the done screen.
+      //
+      // Holding the closed id is what broke this on 27-Aug. The screen kept firing
+      // PATCH .../close at a shift it had already closed (two 404s), and then
+      // accepted a SETTLEMENT against it — two closing meters and a reconciliation
+      // row written into a closed shift, while the shift the manager was actually
+      // looking at never received a single request.
+      autoPicked.current = false;
+      setShift(null);
+      const rest = await loadOpenShifts();
+      if (!rest.length) setDone(true);
+    }
     catch(e){
       // errPayload, not e.response.data: lib/api.js has already unwrapped the
       // axios error, so e IS the payload and e.response is undefined.
@@ -732,9 +755,18 @@ export default function ShiftEndPage() {
       if (d?.error === 'missing_closing_dip' && Array.isArray(d.tanks) && d.tanks.length) {
         setDipWarn({ missing: d.tanks.map(t => ({ id:`srv-${t.tank_number}`, tank_number:t.tank_number })) });
       }
+      // shift_not_open = the screen is holding the id of a shift that is already
+      // closed. Saying so is not enough — reload, so the next press cannot repeat
+      // it. Branched on the CODE, never on the sentence.
+      if (errCode(e) === 'shift_not_open') {
+        autoPicked.current = false;
+        setShift(null);
+        const rest = await loadOpenShifts();
+        if (!rest.length) setDone(true);
+      }
       // errText, so a machine string can never reach him. `error` here is
-      // 'missing_closing_dip' / 'active_pos'; on 27-Aug the first of those was
-      // shown to a manager verbatim, in red, as the entire explanation.
+      // 'missing_closing_dip' / 'active_pos' / 'shift_not_open'; on 27-Aug the first
+      // of those was shown to a manager verbatim, in red, as the entire explanation.
       setErr(errText(e, tc('send.closeFailed', 'Close failed')));
     }
     setBusy('');

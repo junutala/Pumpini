@@ -413,7 +413,6 @@ router.post('/self-settle', authenticate,
       const sa = await settlement.loadOperatorLine(client, {
         shift_id, attendant_id,
         notFoundStatus: 403, notFoundMessage: 'You are not assigned to this shift.' });
-      if (sa.status !== 'open') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'This shift is already closed.' }); }
 
       // OUTLET POLICY, enforced here and not only in the menu. Some outlets run
       // operator self-service and others are manager-led (CLAUDE.md, owner-set

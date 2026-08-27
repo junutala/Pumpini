@@ -469,8 +469,14 @@ router.patch('/:id/close', authenticate, requireStationVia('SELECT station_id FR
           message: `${result.pending_count} attendant${result.pending_count > 1 ? 's have' : ' has'} not yet closed their POS session. Force close anyway?`,
         });
       }
-      // not_open — the shift was not open (already closed, or gone).
-      return res.status(404).json({ error: 'Shift not found or already closed' });
+      // not_open — the shift was not open (already closed, or gone). Machine code in
+      // `error`, sentence in `message`, like the two refusals above: the screen has to
+      // BRANCH on this one (reload its shift list, because it is holding a stale id),
+      // and branching on prose is how a message edit silently breaks a screen.
+      return res.status(404).json({
+        error: 'shift_not_open',
+        message: 'That shift is already closed. Pick the shift that is still open.',
+      });
     }
     res.json(result.shift);
   } catch (err) { next(err); }
