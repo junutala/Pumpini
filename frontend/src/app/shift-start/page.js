@@ -151,6 +151,7 @@ export default function ShiftStartPage() {
   // Save button any more; one photo fills every tank and one button commits them.
   const [gaugeBusy, setGaugeBusy] = useState(false);
   const [gaugeMsg,  setGaugeMsg]  = useState('');
+  const [gaugeTone, setGaugeTone] = useState('warn');
 
   const handleGaugeScan = async (file) => {
     if (!file) return;
@@ -219,33 +220,28 @@ export default function ShiftStartPage() {
       });
 
       const skipped = [...unplaced, ...dropped];
-      setGaugeMsg(
-        (pairs.length === 0
-          ? tc('sstart.gaugeNone','Could not match any tank on that screen — enter the readings manually.')
-          : tc('sstart.gaugeFilled','Filled {n} tank(s) from the screen. Check each figure, then Save.').replace('{n}', pairs.length))
-        + (skipped.length ? ' ' + tc('sstart.gaugeSkipped','Not matched: {list}.').replace('{list}', skipped.join(', ')) : '')
-        // Not an error and not a failure to match — the rule holds these.
-        + (heldByRule.length ? ' ' + tc('sstart.gaugeCarriedHeld','Tank {list} kept its carried opening from the last close — a photo cannot change it.')
-            .replace('{list}', heldByRule.join(', ')) : '')
-        // Advisory — these rows ARE filled. Fuel decided; the number disagreed.
-        + (renumbered.length ? ' ' + tc('sstart.gaugeRenumbered','Matched on fuel: console tank {list}. The tank numbers here do not match the console — worth correcting in Settings.')
-            .replace('{list}', renumbered.map(x => `${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
-        // Two tanks of one fuel and nothing to choose by. Filled in order and said
-        // so — a shift within a fuel is correctable, a blank box is a retype.
-        + (assumed.length ? ' ' + tc('sstart.gaugeAssumed','⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving.')
-            .replace('{list}', assumed.map(x => `console ${x.console} (${x.fuel}) → Tank ${x.tank}`).join(', ')) : '')
-        // NOT advisory. A volume above the installed capacity is physically
-        // impossible, so the figure was misread and is not offered at all.
-        + (overCapacity.length ? ' ' + tc('sstart.gaugeOverCapacity','⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.')
-            .replace('{list}', overCapacity.map(x => `Tank ${x.tank}: ${x.vol}L read against ${x.cap}L installed`).join(', ')) : '')
-        // The reader's OWN verdict on the photograph. This screen used to throw it
-        // away: on 20-Aug a console scan came back "confidence: low — treat all
-        // values as approximate" and the boxes filled in silence.
-        + (res.confidence === 'low' ? ' ' + tc('sstart.gaugeLowConfidence','⚠ The screen was hard to read — check every figure against the console before saving.') : '')
-        + (res.notes ? ' ' + res.notes : '')
-        + (capacityOff.length ? ' ' + tc('sstart.gaugeCapacity','Capacity differs for {list} — filled anyway, check the tank capacity in Settings.')
-            .replace('{list}', capacityOff.map(x => `Tank ${x.tank} (${x.readCap}L vs ${x.ourCap}L)`).join(', ')) : '')
-      );
+            // THREE OUTCOMES, ONE SHORT LINE EACH — the same rule as the nozzle scan.
+      //
+      // This was an eight-clause paragraph: matched count, unmatched list, tanks
+      // held by the carry rule, console-vs-our tank renumbering, same-fuel
+      // assumptions, over-capacity refusals, the reader's confidence verdict, its
+      // free-text notes, and capacity mismatches — concatenated into one amber line
+      // whether the scan had worked or not. Owner, 27-Aug-2026: "dont give all
+      // these stories to the user... he will not read nor understand. They will
+      // just abandon."
+      //
+      // The DETAIL is not lost, it is just not shouted: every figure is in a box on
+      // this screen, and a tank that was skipped has an empty one.
+      const needsALook = skipped.length + heldByRule.length + renumbered.length
+                       + assumed.length + overCapacity.length + capacityOff.length
+                       + (res.confidence === 'low' ? 1 : 0);
+      if (pairs.length === 0) {
+        setGaugeTone('error'); setGaugeMsg(tc('sstart.gaugeFail2','Failed — enter manually'));
+      } else if (needsALook) {
+        setGaugeTone('warn');  setGaugeMsg(tc('sstart.gaugeCheck','Check the figures before saving'));
+      } else {
+        setGaugeTone('ok');    setGaugeMsg(tc('sstart.gaugeOk','Success — proceed'));
+      }
     } catch (e) {
       setErr(e.error || e.response?.data?.error || tc('sstart.gaugeFail','Could not read the screen — enter the readings manually.'));
     } finally { setGaugeBusy(false); }
@@ -906,7 +902,7 @@ export default function ShiftStartPage() {
                   onChange={e=>{ handleGaugeScan(e.target.files?.[0]); e.target.value=''; }}/>
               </label>
               <div style={{fontSize:11.5,color:'#0c4a6e',marginTop:7}}>{tc('sstart.gaugeScanHint','The readings fill in below. Check every figure — they stay editable.')}</div>
-              {gaugeMsg && <div style={{fontSize:12,color:'#b45309',marginTop:6}}>{gaugeMsg}</div>}
+              {gaugeMsg && <div style={{marginTop:6}}><Banner tone={gaugeTone}>{gaugeMsg}</Banner></div>}
             </div>
           )}
 
