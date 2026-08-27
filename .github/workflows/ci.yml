@@ -127,3 +127,19 @@ jobs:
       # is exactly what took prod down on 2026-07-22.
       - name: Route export check
         run: node scripts/ci-route-check.js
+
+      # ONE NOZZLE NAME. A convention that lives in memory drifts back the week
+      # after it is fixed: PR #304 named every nozzle coming from the `nozzles`
+      # table and was believed complete, but the slip reader builds its lines from
+      # OCR output — no nozzles row — so `nozzle_name` was never set there and our
+      # internal index ("1.1") reached the manager for four months. It survived
+      # because it only shows when a slip FAILS to match. This makes it fail here.
+      - name: One nozzle name check
+        run: node scripts/ci-nozzle-name-check.js
+
+      # The unit tests existed since July and NOTHING RAN THEM. Three files pinning
+      # the opening carry-forward, margins and data health sat green-by-default in
+      # the repo while CI checked only that routes export a router. A test nobody
+      # runs is a comment.
+      - name: Unit tests
+        run: node --test 'test/*.test.js'
