@@ -27,6 +27,7 @@ import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
+import { COMPOSITE_SLIP_SCAN } from '../../lib/features';
 import { rejectNote } from '../../lib/slip';
 
 import { errText } from '../../lib/apiError';
@@ -1021,6 +1022,11 @@ export default function ShiftStartPage() {
             {tc('sstart.nozzleReadingsHelp','Capture the opening meter for every nozzle. A nozzle carried from the last close is locked to that figure — the rest take a scan or a typed reading.')}
           </div>
 
+          {/* COMPOSITE SCAN — hidden for everyone (lib/features.js).
+              Owner-set 27-Aug-2026. The route stays live; nothing calls it while the
+              flag is false, and it is how the button comes back — expected as an
+              owner-only capability rather than a manager one. */}
+          {COMPOSITE_SLIP_SCAN && (<>
           {/* Composite — ONE photo of SEVERAL slips fills every matched nozzle's
               opening. While in force the per-nozzle cameras below are disabled so the
               two capture paths cannot fight; the boxes stay hand-editable and
@@ -1037,6 +1043,7 @@ export default function ShiftStartPage() {
               </button>
             )}
           </div>
+          </>)}
 
           {nozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.noNozzles','No active nozzles configured.')}</div>}
           {nozzles.map(n=>{
