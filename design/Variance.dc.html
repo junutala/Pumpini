@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="./support.js"></script></head><body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+    .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
+    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
+    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .bar{flex:1;height:2px;margin:0 3px}
+    .cta{width:100%;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .cta-p{background:#e07b0c;color:#fff}
+    .cta-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
+    /* camera and keyboard are SIBLINGS — same height, border, radius */
+    .row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:0 12px;height:50px}
+    .val{flex:1;text-align:right;font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums;font-size:15.5px;font-weight:600;min-width:0}
+    .ghost{color:#c9c6bf;font-weight:400}
+    .src{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+    .s-photo{background:#eef4fd;color:#2563eb}
+    .s-typed{background:#f3f2ef;color:#7a7773}
+    .cam{width:34px;height:34px;border-radius:8px;border:1px solid #e5e3de;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+  </style>
+</helmet>
+<div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
+  <div class="crumb">
+    <div style="display:flex;align-items:center;gap:8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span style="font-size:15px;font-weight:700">The variance</span>
+      <span style="margin-left:auto;font-size:11.5px;color:#7a7773" class="num">Step 4 of 4</span>
+    </div>
+    <div class="dots">
+      <span class="dot" style="background:#16a34a;color:#fff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+      <span class="bar" style="background:#16a34a"></span>
+      <span class="dot" style="background:#16a34a;color:#fff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+      <span class="bar" style="background:#16a34a"></span>
+      <span class="dot" style="background:#16a34a;color:#fff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
+      <span class="bar" style="background:#e07b0c"></span>
+      <span class="dot" style="background:#e07b0c;color:#fff">4</span>
+    </div>
+  </div>
+
+  <!-- draft is already safe. say so before he reads a number. -->
+  <div style="display:flex;align-items:center;gap:8px;background:#f3f2ef;padding:8px 16px;flex-shrink:0;border-bottom:1px solid #e5e3de">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+    <span style="font-size:11.5px;color:#4a4845">Saved as a draft at <span class="num">06:12</span>. Nothing here has been posted yet.</span>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column">
+
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:15px;text-align:center">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773">Total variance · 3 tanks</div>
+      <div style="font-size:34px;font-weight:800;color:#16a34a;letter-spacing:-.02em;margin:5px 0 2px" class="num">−4.24 L</div>
+      <div style="font-size:12px;color:#7a7773">Within tolerance (±0.30% of 4,842 L throughput)</div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:17px 0 8px">Tank by tank</div>
+
+    <!-- TANK 3 PETROL — expanded, with TESTING -->
+    <div style="background:#fff;border:1px solid #e5e3de;border-left:3px solid #3b82f6;border-radius:11px;padding:13px 14px">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:11px">
+        <span style="font-size:13.5px;font-weight:700">Tank 3</span>
+        <span style="font-size:11px;font-weight:700;background:#eef4fd;color:#2563eb;border-radius:5px;padding:2px 7px">PETROL</span>
+        <span style="margin-left:auto;font-size:14px;font-weight:800;color:#dc2626" class="num">−5.18 L</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+        <div style="display:flex"><span style="flex:1;color:#4a4845">Opening (last recon)</span><span class="num" style="font-weight:600">7,014.71</span></div>
+        <div style="display:flex"><span style="flex:1;color:#4a4845">+ Delivery <span style="color:#a5a29c;font-size:11px">· TT 4,000 L, 06:41</span></span><span class="num" style="font-weight:600;color:#16a34a">+4,000.00</span></div>
+        <div style="display:flex"><span style="flex:1;color:#4a4845">− Sold <span style="color:#a5a29c;font-size:11px">· 4 nozzles</span></span><span class="num" style="font-weight:600">−6,342.21</span></div>
+        <!-- TESTING, shown on its own line, never folded into sales -->
+        <div style="display:flex;align-items:center;padding:7px 9px;margin:1px -3px;background:#fdf6ec;border-radius:7px">
+          <span style="flex:1;color:#8a6d1f;font-weight:600;display:flex;align-items:center;gap:6px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v6.6a1 1 0 0 1-.14.5L4.3 18.4A1 1 0 0 0 5.16 20h13.68a1 1 0 0 0 .86-1.6l-5.56-9.3a1 1 0 0 1-.14-.5V2"/><path d="M8 2h8M7.5 13h9"/></svg>
+            − Testing returned
+          </span>
+          <span class="num" style="font-weight:700;color:#8a6d1f">−18.00</span>
+        </div>
+        <div style="display:flex;align-items:center;padding:9px 0 0;border-top:1px solid #e5e3de;margin-top:4px"><span style="flex:1;font-weight:700">Should be</span><span class="num" style="font-weight:700">4,654.50</span></div>
+        <div style="display:flex;align-items:center"><span style="flex:1;font-weight:700;display:flex;align-items:center;gap:6px">Console says<span class="src s-typed" style="font-size:9px">CORRECTED</span></span><span class="num" style="font-weight:700">4,649.32</span></div>
+      </div>
+    </div>
+
+    <!-- collapsed tanks -->
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:9px">
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-left:3px solid #f59e0b;border-radius:10px;padding:0 13px;height:50px">
+        <div style="min-width:0"><div style="font-size:13px;font-weight:700">Tank 1 · Diesel</div><div style="font-size:10.5px;color:#a5a29c">Testing <span class="num">−12.00</span> L</div></div>
+        <span style="flex:1"></span>
+        <span style="font-size:14px;font-weight:800;color:#16a34a" class="num">+1.12 L</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a5a29c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-left:3px solid #8b5cf6;border-radius:10px;padding:0 13px;height:50px">
+        <div style="min-width:0"><div style="font-size:13px;font-weight:700">Tank 4 · Power</div><div style="font-size:10.5px;color:#a5a29c">Testing <span class="num">−6.00</span> L</div></div>
+        <span style="flex:1"></span>
+        <span style="font-size:14px;font-weight:800;color:#16a34a" class="num">−0.18 L</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a5a29c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </div>
+    </div>
+
+    <div style="flex:1"></div>
+
+    <div style="display:flex;flex-direction:column;gap:9px;padding-top:14px">
+      <button class="cta cta-p" style="min-height:56px;font-size:16px">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        Confirm this recon
+      </button>
+      <button class="cta cta-s" style="min-height:50px;color:#4a4845">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4a4845" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v6h6"/><path d="M3.5 13a9 9 0 1 0 2.1-6.4L3 8"/></svg>
+        Start again
+      </button>
+      <div style="text-align:center;font-size:11.5px;color:#7a7773;line-height:1.5">Start again keeps this draft — it is filed, not deleted. Nothing reaches the owner's dashboard until you confirm.</div>
+    </div>
+  </div>
+</div>
+</x-dc></body></html>

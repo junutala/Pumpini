@@ -1,0 +1,176 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace}
+    .amt::before{content:'₹';font-family:'DM Sans',sans-serif;font-weight:400;font-size:.9em;margin-right:1px}
+  </style>
+</helmet>
+
+<div style="display:flex;width:1440px;height:900px;overflow:hidden">
+
+  <aside style="width:220px;background:#0F1923;display:flex;flex-direction:column;flex-shrink:0">
+    <div style="padding:1.1rem 1rem 0.9rem;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;background:#FF6B00;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <div style="font-weight:900;font-size:18px;line-height:1;letter-spacing:-.02em"><span style="color:#FF6B00">pump</span><span style="color:#4DC3E8">ini</span></div>
+        <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;line-height:1">Sri Balaji Oil Company</div>
+      </div>
+    </div>
+    <nav style="flex:1;padding:0.5rem 0;overflow:hidden">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:10px 16px 4px">Dashboard</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Bunk View</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px;display:flex;align-items:center;gap:6px">
+        Daily Flow <span style="font-size:8px;font-weight:700;letter-spacing:.06em;background:rgba(77,195,232,.16);color:#4DC3E8;border-radius:4px;padding:2px 5px">NEW</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Tank Recon</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12V10a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M15 13h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2"/><path d="M6 12h6"/></svg>Nozzle Events</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;background:rgba(255,107,0,.15);color:#FF6B00;font-size:13px;font-weight:600;border-left:3px solid #FF6B00">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>Attendant Dues
+        <span style="margin-left:auto;font-size:10px;font-weight:700;background:#dc2626;color:#fff;border-radius:9px;padding:1px 6px" class="num">2</span></div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px">Settings</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09z"/></svg>Settings</div>
+    </nav>
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:0.85rem 1rem;display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,0,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:12px;font-weight:700;color:#FF6B00">S</span></div>
+      <div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.85)">Sravan kumar</div><div style="font-size:10px;color:rgba(255,255,255,.35)">Manager</div></div>
+    </div>
+  </aside>
+
+  <main style="flex:1;padding:1.5rem 1.75rem;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:.5rem">
+      <span style="color:#7a7773;font-size:13px;display:flex;align-items:center;gap:4px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Bunk View</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span style="font-weight:800;font-size:15px">Attendant Dues</span>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:#0f172a;color:#fff;border-radius:14px;padding:1rem 1.25rem;margin-bottom:1.25rem">
+      <div>
+        <div style="font-size:12px;opacity:.7;text-transform:uppercase;letter-spacing:.05em">Standing against operators</div>
+        <div style="font-size:30px;font-weight:800;line-height:1.1;margin-top:2px" class="num amt">1,25,275.25</div>
+      </div>
+      <div style="display:flex;gap:30px;text-align:right">
+        <div><div style="font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em">Oldest</div><div style="font-size:18px;font-weight:700" class="num">2 days</div></div>
+        <div><div style="font-size:11px;opacity:.6;text-transform:uppercase;letter-spacing:.05em">Operators</div><div style="font-size:18px;font-weight:700" class="num">3</div></div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <thead>
+          <tr style="background:#f3f2ef;color:#4a4845;font-size:12.5px;font-weight:500">
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e5e3de">Operator</th>
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e5e3de">Owed on</th>
+            <th style="padding:10px 14px;text-align:right;border-bottom:1px solid #e5e3de">Sold</th>
+            <th style="padding:10px 14px;text-align:right;border-bottom:1px solid #e5e3de">Brought in</th>
+            <th style="padding:10px 14px;text-align:right;border-bottom:1px solid #e5e3de">Outstanding</th>
+            <th style="padding:10px 14px;text-align:left;border-bottom:1px solid #e5e3de">Age</th>
+            <th style="padding:10px 14px;border-bottom:1px solid #e5e3de"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #e5e3de;background:#fef6f6">
+            <td style="padding:12px 14px">
+              <div style="font-weight:600">Nagamani</div>
+              <div style="font-size:11.5px;color:#7a7773">4 nozzles · 17FH3756V</div>
+            </td>
+            <td style="padding:12px 14px;color:#4a4845"><span class="num">25 Aug</span> · 3 events</td>
+            <td style="padding:12px 14px;text-align:right" class="num amt">92,193.44</td>
+            <td style="padding:12px 14px;text-align:right;color:#4a4845" class="num amt">28,759.12</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;color:#dc2626" class="num amt">63,434.32</td>
+            <td style="padding:12px 14px"><span style="font-size:11.5px;background:#fbe9e7;color:#b3261e;border-radius:99px;padding:3px 9px;font-weight:600">2 days</span></td>
+            <td style="padding:12px 14px;text-align:right"><button style="background:#e07b0c;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer">Settle</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e3de;background:#fef6f6">
+            <td style="padding:12px 14px">
+              <div style="font-weight:600">Premalatha</div>
+              <div style="font-size:11.5px;color:#7a7773">2 nozzles · 17CH2645V</div>
+            </td>
+            <td style="padding:12px 14px;color:#4a4845"><span class="num">25 Aug</span> · 2 events</td>
+            <td style="padding:12px 14px;text-align:right" class="num amt">54,553.47</td>
+            <td style="padding:12px 14px;text-align:right;color:#4a4845" class="num amt">23,482.00</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;color:#dc2626" class="num amt">31,071.47</td>
+            <td style="padding:12px 14px"><span style="font-size:11.5px;background:#fbe9e7;color:#b3261e;border-radius:99px;padding:3px 9px;font-weight:600">2 days</span></td>
+            <td style="padding:12px 14px;text-align:right"><button style="background:#e07b0c;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer">Settle</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid #e5e3de">
+            <td style="padding:12px 14px">
+              <div style="font-weight:600">Manisha</div>
+              <div style="font-size:11.5px;color:#7a7773">2 nozzles · 17CH2653V</div>
+            </td>
+            <td style="padding:12px 14px;color:#4a4845"><span class="num">25 Aug</span> · 2 events</td>
+            <td style="padding:12px 14px;text-align:right" class="num amt">46,990.46</td>
+            <td style="padding:12px 14px;text-align:right;color:#4a4845" class="num amt">16,221.00</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;color:#dc2626" class="num amt">30,769.46</td>
+            <td style="padding:12px 14px"><span style="font-size:11.5px;background:#fbe9e7;color:#b3261e;border-radius:99px;padding:3px 9px;font-weight:600">2 days</span></td>
+            <td style="padding:12px 14px;text-align:right"><button style="background:#e07b0c;color:#fff;border:none;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer">Settle</button></td>
+          </tr>
+          <tr>
+            <td style="padding:12px 14px">
+              <div style="font-weight:600">Vaddepally Srinivas</div>
+              <div style="font-size:11.5px;color:#7a7773">4 nozzles · 17EH2900V, 17EH2910V</div>
+            </td>
+            <td style="padding:12px 14px;color:#4a4845"><span class="num">26 Aug</span> · 4 events</td>
+            <td style="padding:12px 14px;text-align:right" class="num amt">5,05,644.20</td>
+            <td style="padding:12px 14px;text-align:right;color:#4a4845" class="num amt">5,05,640.43</td>
+            <td style="padding:12px 14px;text-align:right;font-weight:700;color:#16a34a" class="num amt">0.00</td>
+            <td style="padding:12px 14px"><span style="font-size:11.5px;background:#dcfce7;color:#166534;border-radius:99px;padding:3px 9px;font-weight:600">Cleared</span></td>
+            <td style="padding:12px 14px;text-align:right;color:#7a7773;font-size:12.5px">26 Aug 11:36</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:1.1rem;margin-top:1.25rem">
+      <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:1.2rem 1.35rem">
+        <div style="font-size:14px;font-weight:600;margin-bottom:.35rem">Settle Nagamani</div>
+        <div style="font-size:12.5px;color:#7a7773;margin-bottom:1rem">What he owes is calculated from his events. Enter only what he brought.</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px">
+          <div><div style="font-size:13px;font-weight:500;color:#4a4845;margin-bottom:4px">Cash</div><div style="border:1px solid #e5e3de;border-radius:7px;padding:9px 11px;font-size:14px;background:#fff">63,434.32</div></div>
+          <div><div style="font-size:13px;font-weight:500;color:#4a4845;margin-bottom:4px">UPI</div><div style="border:1px solid #e5e3de;border-radius:7px;padding:9px 11px;font-size:14px;color:#7a7773">0.00</div></div>
+          <div><div style="font-size:13px;font-weight:500;color:#4a4845;margin-bottom:4px">Credit slips</div><div style="border:1px solid #e5e3de;border-radius:7px;padding:9px 11px;font-size:14px;color:#7a7773">0.00</div></div>
+          <div><div style="font-size:13px;font-weight:500;color:#4a4845;margin-bottom:4px">Petty vouchers</div><div style="border:1px solid #e5e3de;border-radius:7px;padding:9px 11px;font-size:14px;color:#7a7773">0.00</div></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.1rem;padding-top:.9rem;border-top:1px solid #e5e3de">
+          <span style="font-size:13.5px;color:#4a4845">Still outstanding after this</span>
+          <span style="font-size:20px;font-weight:700;color:#16a34a" class="num amt">0.00</span>
+        </div>
+        <button style="background:#e07b0c;color:#fff;border:none;border-radius:7px;padding:11px 16px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;width:100%;margin-top:.9rem">Record what he brought</button>
+      </div>
+
+      <div style="background:#fff8ed;border:1px solid #f0d9b5;border-radius:10px;padding:1.2rem 1.35rem">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:.7rem">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a4607" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <span style="font-size:13.5px;font-weight:700;color:#9a4607">Nothing here can be typed away</span>
+        </div>
+        <div style="font-size:12.5px;color:#4a4845;line-height:1.6">
+          The outstanding is worked out from his nozzle events — there is no field for it, so it cannot be left blank or set to zero.
+          <br><br>
+          A settlement that does not reach zero <strong>stays on his name</strong> and carries into his next shift. He keeps working; he simply does not clear.
+        </div>
+        <div style="margin-top:1rem;padding-top:.9rem;border-top:1px solid #f0d9b5;font-size:12px;color:#7a7773">
+          Clearing an unpaid balance — cash received, salary deduction, written off — needs the owner's confirmation.
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="./support.js"></script></head><body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
+    .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
+    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
+    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .bar{flex:1;height:2px;margin:0 3px}
+    .cta{width:100%;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .cta-p{background:#e07b0c;color:#fff}
+    .cta-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
+    /* camera and keyboard are SIBLINGS — same height, border, radius */
+    .row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:0 12px;height:50px}
+    .val{flex:1;text-align:right;font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums;font-size:15.5px;font-weight:600;min-width:0}
+    .ghost{color:#c9c6bf;font-weight:400}
+    .src{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
+    .s-photo{background:#eef4fd;color:#2563eb}
+    .s-typed{background:#f3f2ef;color:#7a7773}
+    .cam{width:34px;height:34px;border-radius:8px;border:1px solid #e5e3de;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+  </style>
+</helmet>
+<div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
+  <div class="crumb">
+    <div style="display:flex;align-items:center;gap:8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <span style="font-size:15px;font-weight:700">Reading the console</span>
+      <span style="margin-left:auto;font-size:11.5px;color:#7a7773" class="num">Step 1 of 4</span>
+    </div>
+    <div class="dots">
+      <span class="dot" style="background:#e07b0c;color:#fff">1</span>
+      <span class="bar" style="background:#e5e3de"></span>
+      <span class="dot" style="background:#f3f2ef;color:#a5a29c">2</span>
+      <span class="bar" style="background:#e5e3de"></span>
+      <span class="dot" style="background:#f3f2ef;color:#a5a29c">3</span>
+      <span class="bar" style="background:#e5e3de"></span>
+      <span class="dot" style="background:#f3f2ef;color:#a5a29c">4</span>
+    </div>
+  </div>
+
+  <div style="flex:1;padding:16px;display:flex;flex-direction:column;overflow:hidden">
+    <!-- the shot he just took -->
+    <div style="width:100%;aspect-ratio:16/10;background:#12181f;border-radius:12px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+      <div style="opacity:.9;display:flex;flex-direction:column;gap:7px;font-family:'DM Mono',monospace;color:#8ef0a0;font-size:12.5px">
+        <div style="display:flex;gap:16px"><span>T1</span><span>1104.6</span><span>8087.56</span></div>
+        <div style="display:flex;gap:16px"><span>T3</span><span>&nbsp;912.3</span><span>7014.71</span></div>
+        <div style="display:flex;gap:16px"><span>T4</span><span>&nbsp;884.1</span><span>6823.10</span></div>
+      </div>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 55%,rgba(0,0,0,.55))"></div>
+      <div style="position:absolute;bottom:10px;left:12px;font-size:11px;color:rgba(255,255,255,.75)">Your photo</div>
+    </div>
+
+    <!-- progress: fills to 90 and HOLDS. never claims done. -->
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:12px;padding:16px 15px;margin-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e07b0c" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6" opacity=".9"/></svg>
+        <span style="font-size:14.5px;font-weight:700">Matching your tanks</span>
+      </div>
+      <div style="height:7px;border-radius:99px;background:#f0eeea;overflow:hidden">
+        <div style="width:90%;height:100%;border-radius:99px;background:linear-gradient(90deg,#e07b0c,#f0a545)"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;margin-top:13px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#7a7773">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          Sent the photo
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#7a7773">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          Read the screen
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#1a1916">
+          <span style="width:14px;height:14px;border-radius:50%;border:2.5px solid #e07b0c;border-right-color:transparent;display:block"></span>
+          Matching your tanks
+        </div>
+      </div>
+      <div style="font-size:11.5px;color:#a5a29c;margin-top:14px;line-height:1.5">
+        The bar stops here until the answer is actually back. It will not tell you it is finished before it is.
+      </div>
+    </div>
+
+    <div style="flex:1"></div>
+    <button class="cta cta-s" style="min-height:50px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4a4845" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h12"/></svg>
+      Don't wait — type them myself
+    </button>
+  </div>
+</div>
+</x-dc></body></html>
