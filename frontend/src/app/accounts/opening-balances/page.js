@@ -9,6 +9,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const todayISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -67,7 +68,7 @@ export default function OpeningBalancesPage() {
       await api.post('/accounts/fixed-assets', { station_id: sid, ...newAsset });
       setNewAsset({ name: '', owned_by: 'outlet', cost: '', accum_depreciation: '', depreciation_rate: '', purchase_date: '' });
       await load();
-    } catch (e) { showToast(e.response?.data?.error || tc('ob.failed', 'Could not save.')); }
+    } catch (e) { showToast(errText(e, tc('ob.failed', 'Could not save.'))); }
   };
   const delAsset = async (id) => {
     try { await api.delete(`/accounts/fixed-assets/${id}?station_id=${sid}`); await load(); }
@@ -80,7 +81,7 @@ export default function OpeningBalancesPage() {
       await api.post('/accounts/opening-balances', { station_id: sid, ...form });
       showToast(tc('ob.saved', 'Opening balances saved.'));
       await load();
-    } catch (e) { showToast(e.response?.data?.error || tc('ob.failed', 'Could not save.')); }
+    } catch (e) { showToast(errText(e, tc('ob.failed', 'Could not save.'))); }
     setSaving(false);
   };
 

@@ -11,6 +11,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const todayISO = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
@@ -75,7 +76,7 @@ export default function BillPaymentPage() {
       }));
       showToast(tc('bill.scanned', 'Details read — please check them.'));
     } catch (e) {
-      showToast(e.response?.data?.error || tc('bill.scanFailed', 'Could not read the bill — enter it manually.'));
+      showToast(errText(e, tc('bill.scanFailed', 'Could not read the bill — enter it manually.')));
     }
     setScanning(false);
   };
@@ -97,7 +98,7 @@ export default function BillPaymentPage() {
       await loadRecent();
       showToast(tc('bill.saved', 'Saved.'));
     } catch (e) {
-      showToast(e.response?.data?.error || e.error || tc('bill.saveFailed', 'Could not save.'));
+      showToast(errText(e, tc('bill.saveFailed', 'Could not save.')));
     }
     setSaving(false);
   };

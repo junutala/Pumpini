@@ -20,6 +20,7 @@ import {
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
+import { errText } from '../../lib/apiError';
 const STATUS_BADGE = {
   active:    { cls: 'badge-success', label: 'Active' },
   exhausted: { cls: 'badge-gray',    label: 'Exhausted' },
@@ -99,7 +100,7 @@ export default function CreditSlipBooksPage() {
       setShowForm(false); setForm({}); setSlip(null); setSlipSlot(n => n + 1);
       safeLoad();
     } catch (e2) {
-      setErr(e2.error || e2.response?.data?.error || tc('slipbook.errIssue', 'Could not issue the book.'));
+      setErr(errText(e2, tc('slipbook.errIssue', 'Could not issue the book.')));
     } finally { setBusy(false); }
   };
 

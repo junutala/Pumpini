@@ -39,6 +39,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { nozName } from '../../lib/nozzle';
 
+import { errText } from '../../lib/apiError';
 // Flip to true once outlets are printing testing slips (see header).
 const SHOW_SLIP_SCAN = false;
 
@@ -123,7 +124,7 @@ export default function TestingPage() {
       if (tanksForFuel.length > 1) setTankId('');
       load();
     } catch (e) {
-      setErr(e.response?.data?.error || e.error || tc('testing.errSave','Could not record the draw.'));
+      setErr(errText(e, tc('testing.errSave','Could not record the draw.')));
     } finally { setBusy(false); }
   };
 

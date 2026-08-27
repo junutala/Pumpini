@@ -19,6 +19,7 @@ import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../lib/apiError';
 const L = n => `${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })} L`;
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 // DD MMM YYYY, en-IN — never a raw ISO string in front of a user.
@@ -121,7 +122,7 @@ export default function StockRecoPage() {
         (breaches ? tc('streco.breachAlert', '⚠️ {n} beyond tolerance — owner alerted.').replace('{n}', breaches)
                   : tc('streco.allWithinTol', 'All within tolerance.')));
       reload();
-    } catch (e) { alert(e.response?.data?.error || e.error || tc('streco.failed', 'Failed')); }
+    } catch (e) { alert(errText(e, tc('streco.failed', 'Failed'))); }
     setBusy(false);
   };
 
@@ -134,7 +135,7 @@ export default function StockRecoPage() {
       setDrift(r);
     } catch (e) {
       setDrift(null);
-      setDErr(e.response?.data?.error || e.error || tc('streco.failed', 'Failed'));
+      setDErr(errText(e, tc('streco.failed', 'Failed')));
     }
     setDBusy(false);
   };
@@ -148,7 +149,7 @@ export default function StockRecoPage() {
         stock_tol_floor_ltrs: parseFloat(tol.stock_tol_floor_ltrs),
       });
       reload();
-    } catch (e) { alert(e.response?.data?.error || tc('streco.failed', 'Failed')); }
+    } catch (e) { alert(errText(e, tc('streco.failed', 'Failed'))); }
     setSavingTol(false);
   };
 

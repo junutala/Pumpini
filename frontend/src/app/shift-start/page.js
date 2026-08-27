@@ -29,6 +29,7 @@ import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
+import { errText } from '../../lib/apiError';
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const fmtL = n => Number(n||0).toFixed(2);
@@ -243,7 +244,7 @@ export default function ShiftStartPage() {
         setGaugeTone('ok');    setGaugeMsg(tc('sstart.gaugeOk','Success — proceed'));
       }
     } catch (e) {
-      setErr(e.error || e.response?.data?.error || tc('sstart.gaugeFail','Could not read the screen — enter the readings manually.'));
+      setErr(errText(e, tc('sstart.gaugeFail','Could not read the screen — enter the readings manually.')));
     } finally { setGaugeBusy(false); }
   };
 
@@ -484,7 +485,7 @@ export default function ShiftStartPage() {
       setResumed(true);
       setSlot({ shift_number: s.shift_number, date: dateKey(s.date) });
     }
-    catch (e) { shiftRef.current = null; setErr(e.response?.data?.error || e.error || tc('sstart.errLoadShift','Could not load that shift')); }
+    catch (e) { shiftRef.current = null; setErr(errText(e, tc('sstart.errLoadShift','Could not load that shift'))); }
     setBusy(false);
   };
 
@@ -496,7 +497,7 @@ export default function ShiftStartPage() {
     if (!window.confirm(tc('sstart.confirmDeleteShift','Delete this empty shift opened by mistake? This cannot be undone.'))) return;
     setBusy(true); setErr('');
     try { await api.delete(`/shifts/${s.id}`); refreshOpen(); }
-    catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errDeleteShift','Could not delete shift')); }
+    catch (e) { setErr(errText(e, tc('sstart.errDeleteShift','Could not delete shift'))); }
     setBusy(false);
   };
 
@@ -556,7 +557,7 @@ export default function ShiftStartPage() {
             last_reading_at: new Date().toISOString(), last_reading_type: type }
         : t));
       return true;
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errSaveDip','Could not save dip')); return false; }
+    } catch (e) { setErr(errText(e, tc('sstart.errSaveDip','Could not save dip'))); return false; }
   };
 
 
@@ -611,7 +612,7 @@ export default function ShiftStartPage() {
       if (missing.length) { setDipWarn(missing); return; }
       setStep(1);
     } catch (e) {
-      setErr(e.response?.data?.error || e.error || tc('sstart.errOpenShift','Could not open shift'));
+      setErr(errText(e, tc('sstart.errOpenShift','Could not open shift')));
     } finally { setBusy(false); }
   };
 
@@ -653,7 +654,7 @@ export default function ShiftStartPage() {
       // is already assigned.
       if (r.reading) setReading(nozzle.id, r.reading);
       if (!r.legible) setErr(tc('sstart.errScanUnclear','Nozzle {n}: scan unclear').replace('{n}', nozName(nozzle)) + (r.notes ? ` (${r.notes})` : '') + tc('sstart.errScanCheck',' — check the reading.'));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.errScanFailed','Scan failed')); }
+    } catch (e) { setErr(errText(e, tc('sstart.errScanFailed','Scan failed'))); }
     setScanning('');
   };
 
@@ -735,7 +736,7 @@ export default function ShiftStartPage() {
         say(tc('sstart.scanFail','Failed — enter manually'), 'error');
       }
       setCompositeScanned(true);
-    } catch (e) { say(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.'), 'error'); }
+    } catch (e) { say(errText(e, tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.')), 'error'); }
     setScanning('');
   };
 
@@ -771,7 +772,7 @@ export default function ShiftStartPage() {
       setFaceMsg(''); setFaceVerdict(null);
       await refreshShift(s.id); refreshOpen();
     } catch (e) {
-      setErr(e.response?.data?.error || e.error || tc('sstart.errStartAttendant','Could not start this attendant'));
+      setErr(errText(e, tc('sstart.errStartAttendant','Could not start this attendant')));
     } finally { setBusy(false); }
   };
 

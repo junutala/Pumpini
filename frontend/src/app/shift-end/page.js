@@ -35,6 +35,7 @@ import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
+import { errPayload, errText } from '../../lib/apiError';
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '';
@@ -293,7 +294,7 @@ export default function ShiftEndPage() {
       (Array.isArray(dr)?dr:[]).forEach(x => { if (x.reading_type === 'closing') stored[x.tank_id] = x; });
       setShiftDips(stored);
       setStep(0);
-    } catch(e){ setErr(e.response?.data?.error||e.error||tc('send.couldNotLoadShift', 'Could not load shift')); }
+    } catch(e){ setErr(errText(e, tc('send.couldNotLoadShift', 'Could not load shift'))); }
     setBusy('');
   };
 
@@ -329,7 +330,7 @@ export default function ShiftEndPage() {
       const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
       if (r.reading) setCl(a.attendant_id, nozzle.nozzle_id, r.reading);
       if (!r.legible) setErr(tc('send.scanUnclear', 'Nozzle {n}: scan unclear{notes} — check the reading.').replace('{n}', nozName(nozzle)).replace('{notes}', r.notes ? ` (${r.notes})` : ''));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.scanFailed', 'Scan failed')); }
+    } catch (e) { setErr(errText(e, tc('send.scanFailed', 'Scan failed'))); }
     setScanning('');
   };
 
@@ -402,7 +403,7 @@ export default function ShiftEndPage() {
       // Attendant-led: the persisted drafts are what the operators self-settle from, so
       // pull the reconciliation rows back to move the progress bars as they come in.
       if (attendantLed) loadReco();
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.slipsFailed','Could not read the slips — enter the readings manually.')); }
+    } catch (e) { setErr(errText(e, tc('send.slipsFailed','Could not read the slips — enter the readings manually.'))); }
     setScanning('');
   };
 
@@ -434,7 +435,7 @@ export default function ShiftEndPage() {
       // close time the server actually recorded. Best-effort: a failed refresh is
       // cosmetic, the settlement is already banked.
       api.get(`/shifts/${shift.id}`).then(d => { if (d) setShift(d); }).catch(()=>{});
-    } catch(e){ setErr(e.response?.data?.error||e.error||tc('send.couldNotCloseOperator', 'Could not close operator')); }
+    } catch(e){ setErr(errText(e, tc('send.couldNotCloseOperator', 'Could not close operator'))); }
     setBusy('');
   };
 
@@ -485,7 +486,7 @@ export default function ShiftEndPage() {
       setClosed(p => ({ ...p, [a.attendant_id]: {
         variance: num(res?.variance ?? (num(r.cash_actual) - num(r.cash_expected))),
         total_sales: num(r.total_sales), at: new Date().toISOString() } }));
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.couldNotAccept','Could not accept operator')); }
+    } catch (e) { setErr(errText(e, tc('send.couldNotAccept','Could not accept operator'))); }
     setAccepting('');
   };
 
@@ -498,7 +499,7 @@ export default function ShiftEndPage() {
       if (!(await flushDips())) { setBusy(''); return; }
       const res = await autocloseCheck(shift.id);
       if (res?.closed) applyAutoClose(res); else { setAutoState(res); await loadReco(); }
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('send.closeFailed','Close failed')); }
+    } catch (e) { setErr(errText(e, tc('send.closeFailed','Close failed'))); }
     setBusy('');
   };
 
@@ -601,7 +602,7 @@ export default function ShiftEndPage() {
         setGaugeTone('ok');    setGaugeMsg(tc('send.gaugeOk','Success — proceed'));
       }
     } catch (e) {
-      setErr(e.error || e.response?.data?.error || tc('send.gaugeFail','Could not read the screen — enter the readings manually.'));
+      setErr(errText(e, tc('send.gaugeFail','Could not read the screen — enter the readings manually.')));
     } finally { setGaugeBusy(false); }
   };
 
@@ -648,7 +649,7 @@ export default function ShiftEndPage() {
       setBusy('');
       return true;
     } catch (e) {
-      setErr(e.response?.data?.error || e.error || tc('send.couldNotSaveDip', 'Could not save dip'));
+      setErr(errText(e, tc('send.couldNotSaveDip', 'Could not save dip')));
       setBusy('');
       return false;
     }
@@ -708,7 +709,9 @@ export default function ShiftEndPage() {
     setBusy('close'); setDipWarn(null);
     try { await api.patch(`/shifts/${shift.id}/close`, { confirm:true }); setActiveShift(null); setDone(true); }
     catch(e){
-      const d = e.response?.data;
+      // errPayload, not e.response.data: lib/api.js has already unwrapped the
+      // axios error, so e IS the payload and e.response is undefined.
+      const d = errPayload(e);
       // The server is the authority on whether every tank has been read — the
       // screen can be out of date (a second manager, another device, a reading
       // entered from the Dipstick screen). When it refuses, reopen the dialog on
@@ -716,10 +719,10 @@ export default function ShiftEndPage() {
       if (d?.error === 'missing_closing_dip' && Array.isArray(d.tanks) && d.tanks.length) {
         setDipWarn({ missing: d.tanks.map(t => ({ id:`srv-${t.tank_number}`, tank_number:t.tank_number })) });
       }
-      // Prefer the server's sentence over its error CODE: `error` here is a
-      // machine string ('missing_closing_dip', 'active_pos') and showing it to a
-      // manager explains nothing.
-      setErr(d?.message || d?.error || e.error || tc('send.closeFailed', 'Close failed'));
+      // errText, so a machine string can never reach him. `error` here is
+      // 'missing_closing_dip' / 'active_pos'; on 27-Aug the first of those was
+      // shown to a manager verbatim, in red, as the entire explanation.
+      setErr(errText(e, tc('send.closeFailed', 'Close failed')));
     }
     setBusy('');
   };

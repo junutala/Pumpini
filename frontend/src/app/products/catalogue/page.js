@@ -7,6 +7,7 @@ import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
+import { errText } from '../../../lib/apiError';
 const GST_RATES = [0, 5, 12, 18, 28];
 const UNITS     = ['piece','litre','kg','pack','box','set'];
 const HSN_COMMON = [
@@ -62,7 +63,7 @@ export default function ProductCataloguePage() {
         await api.post('/products/catalogue', { ...form, station_id: stationId });
       }
       setModal(null); setForm({}); load();
-    } catch(e) { alert(e.response?.data?.error || tc('lubecat.saveFailed', 'Save failed')); }
+    } catch(e) { alert(errText(e, tc('lubecat.saveFailed', 'Save failed'))); }
     setSaving(false);
   };
 

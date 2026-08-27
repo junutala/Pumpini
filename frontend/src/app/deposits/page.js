@@ -10,6 +10,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 
+import { errText } from '../../lib/apiError';
 const fmt = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const toDate = ts => ts ? new Date(ts).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -51,14 +52,14 @@ export default function DepositsPage() {
     try {
       await api.post('/cash-deposits', { station_id: stationId, ...form, amount: amt });
       setModal(false); setForm({}); load();
-    } catch (err) { alert(err.response?.data?.error || err.error || tc('deppage.failed', 'Failed')); }
+    } catch (err) { alert(errText(err, tc('deppage.failed', 'Failed'))); }
     setSaving(false);
   };
 
   const confirmDeposit = async (d) => {
     if (!confirm(tc('deppage.confirmReflected', 'Confirm {amount} ({date}) is reflected in the bank?').replace('{amount}', fmt(d.amount)).replace('{date}', toDate(d.deposit_date)))) return;
     try { await api.patch(`/cash-deposits/${d.id}/confirm`); load(); }
-    catch (err) { alert(err.response?.data?.error || tc('deppage.failed', 'Failed')); }
+    catch (err) { alert(errText(err, tc('deppage.failed', 'Failed'))); }
   };
 
   const saveCfg = async () => {
@@ -68,7 +69,7 @@ export default function DepositsPage() {
         deposit_alert_amount: parseFloat(cfg.deposit_alert_amount || 0),
       });
       load();
-    } catch (err) { alert(err.response?.data?.error || tc('deppage.failed', 'Failed')); }
+    } catch (err) { alert(errText(err, tc('deppage.failed', 'Failed'))); }
   };
 
   const stale = status?.stale;
