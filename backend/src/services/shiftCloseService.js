@@ -29,27 +29,40 @@ const NON_DIPPABLE_FUELS = ['cng'];
 //   -> { closed:false, reason:'not_open' }              shift was not open (already closed / gone)
 //   -> { closed:true,  shift }                          closed; shift:closed emitted, recon run
 async function closeShiftIfReady(db = pool, shift_id, { force = false, io = null, user_id = null } = {}) {
-  // 0. AN EMPTY SHIFT HAS NOTHING TO MEASURE. No operator was ever assigned to it,
-  //    so no nozzle moved through it and no fuel left a tank on its account. A
-  //    closing dip would not be measuring this shift — it would be measuring
-  //    whatever the outlet did while this row sat forgotten.
+  // 0. A SHIFT THAT RECORDED NOTHING HAS NOTHING TO MEASURE.
   //
-  //    Shift End already knows this and offers "Close empty shift (nothing to
-  //    reconcile)", but the rule below ran first and refused with
-  //    missing_closing_dip, so the button promised one thing and the server
-  //    demanded another. To clear a stale shift a manager had to invent dips he
-  //    never took — on Dilsukhnagar today, one open 2 days and one open 7 days,
-  //    both with zero operators. Owner: "If I have to do shift close for an open
-  //    shift that does not have any assignments before I delete the shift, then
-  //    this is absolute chaos."
+  //    "Nothing to reconcile" is not "no operator was assigned" — it is "no operator
+  //    ever recorded anything". An assignment on its own is an intention, not an
+  //    event: no closing meter was read, no settlement was taken, so Pumpini holds
+  //    not one figure this shift could be reconciled against.
   //
-  //    Narrow on purpose: NO operators at all. One operator means real meters and
-  //    the dip is mandatory again, exactly as before.
-  const { rows: [{ operators }] } = await db.query(
-    'SELECT COUNT(*)::int AS operators FROM shift_attendants WHERE shift_id = $1', [shift_id]);
-  const isEmpty = operators === 0;
+  //    A closing dip cannot rescue that. Entered today against a shift that has been
+  //    open eight days, it measures TODAY'S stock — everything the outlet did in
+  //    those eight days, on this shift's account. That is not a control; it is a
+  //    fiction with a timestamp, and CLAUDE.md already records where back-solved
+  //    readings lead.
+  //
+  //    THE FIRST CUT OF THIS RULE WAS TOO NARROW. It keyed on operators === 0, which
+  //    cleared Dilsukhnagar's 25-Aug shift and left the 19-Aug one — two operators
+  //    ASSIGNED, zero closing meters, zero settlements, open 7d 22h — still demanding
+  //    both operators be settled and three tanks dipped, every number invented.
+  //    Owner: "this is absolute chaos and users are confused on the intent and
+  //    content."
+  //
+  //    STILL NARROW, and this is the line that keeps it safe: ONE closing meter or
+  //    ONE settlement anywhere on the shift means real trade was recorded, and the
+  //    dip is mandatory again exactly as before. The exemption cannot be reached by
+  //    a shift that did any business, only by one that did none.
+  const { rows: [act] } = await db.query(
+    `SELECT
+       (SELECT COUNT(*) FROM shift_attendants          a WHERE a.shift_id = $1)                              AS operators,
+       (SELECT COUNT(*) FROM shift_attendant_nozzles   n WHERE n.shift_id = $1 AND n.closing_reading IS NOT NULL) AS closes,
+       (SELECT COUNT(*) FROM shift_reconciliation      r WHERE r.shift_id = $1)                              AS settlements`,
+    [shift_id]);
+  const recordedNothing = Number(act.closes) === 0 && Number(act.settlements) === 0;
 
-  // 1. Mandatory closing dip — never forced, but never asked of an empty shift.
+  // 1. Mandatory closing dip — never forced, but never asked of a shift that
+  //    recorded nothing.
   const { rows: unread } = await db.query(
     `SELECT t.tank_number, t.fuel_type
        FROM tanks t
@@ -65,7 +78,7 @@ async function closeShiftIfReady(db = pool, shift_id, { force = false, io = null
       ORDER BY t.tank_number`,
     [shift_id, NON_DIPPABLE_FUELS]
   );
-  if (unread.length && !isEmpty) return { closed: false, reason: 'missing_dip', tanks: unread };
+  if (unread.length && !recordedNothing) return { closed: false, reason: 'missing_dip', tanks: unread };
 
   // 2. Operators without a reconciliation row — skipped only when force is set.
   const { rows: pending } = await db.query(
