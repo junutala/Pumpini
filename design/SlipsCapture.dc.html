@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="./support.js"></script></head><body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace}
+    .btn{border:none;border-radius:9px;padding:14px;font-size:14.5px;font-weight:600;font-family:inherit;cursor:pointer;width:100%;min-height:48px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .btn-p{background:#e07b0c;color:#fff}
+    .btn-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
+    .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
+    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
+    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .bar{flex:1;height:2px;margin:0 3px}
+  </style>
+</helmet>
+<div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
+  <div class="crumb">
+    <div style="display:flex;align-items:center;gap:6px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      <span style="font-size:12.5px;color:#7a7773">Tank Recon</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      <span style="font-size:13.5px;font-weight:700">All nozzle slips</span>
+      <span style="margin-left:auto;font-size:12px;color:#7a7773">Step <span class="num">3</span>/<span class="num">4</span></span>
+    </div>
+    <div class="dots">
+      <span class="dot" style="background:#16a34a;color:#fff"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="bar" style="background:#16a34a"></span>
+      <span class="dot" style="background:#16a34a;color:#fff"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span class="bar" style="background:#e07b0c"></span>
+      <span class="dot" style="background:#e07b0c;color:#fff">3</span><span class="bar" style="background:#e5e3de"></span>
+      <span class="dot" style="background:#f3f2ef;color:#7a7773">4</span>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow:hidden;padding:16px;display:flex;flex-direction:column">
+    <div style="font-size:18px;font-weight:700">Lay the slips out and shoot once</div>
+    <div style="font-size:13px;color:#4a4845;margin-top:3px;line-height:1.5">All twelve in one frame. <strong>Take this now</strong>, while the ATG reading is minutes old — the shared moment is what makes the two agree.</div>
+
+    <div style="flex:1;background:#0F1923;border-radius:14px;margin-top:14px;position:relative;overflow:hidden;padding:20px;display:flex;flex-direction:column;justify-content:center">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+        <div style="aspect-ratio:.62;border:1.5px dashed rgba(255,107,0,.6);border-radius:4px"></div>
+      </div>
+      <div style="text-align:center;color:rgba(255,255,255,.4);font-size:12px;margin-top:16px;line-height:1.5">Flat surface · no overlap<br>the printed nozzle number must be visible</div>
+    </div>
+
+    <div style="display:flex;align-items:flex-start;gap:9px;background:#fff8ed;border:1px solid #f0d9b5;border-radius:10px;padding:11px 13px;margin-top:12px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a4607" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      <div style="font-size:12.5px;color:#4a4845;line-height:1.5">Each slip prints its own <strong>pump serial and nozzle number</strong> — that's how we match them, so no sorting is needed.</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px;margin-top:12px">
+      <button class="btn btn-p">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+        Shoot all twelve
+      </button>
+      <button class="btn btn-s">One slip at a time instead</button>
+    </div>
+  </div>
+</div>
+</x-dc></body></html>

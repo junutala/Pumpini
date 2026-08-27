@@ -1,18 +1,31 @@
 {
+  "pages": [
+    { "id": "page-1", "name": "Tank Recon flow" },
+    { "id": "page-2", "name": "Other spokes + desktop" }
+  ],
   "artboards": [
-    { "file": "Main.dc.html",          "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Spoke 1 · Tank Recon — step rail on the right" },
-    { "file": "TopCrumb.dc.html",      "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Spoke 1 · same screen — breadcrumb-stepper across the top" },
-    { "file": "NozzleEvents.dc.html",  "x": 0,    "y": 1060, "w": 1440, "h": 900, "title": "Spoke 2 · Nozzle Events — the chain" },
-    { "file": "Outstanding.dc.html",   "x": 1560, "y": 1060, "w": 1440, "h": 900, "title": "Spoke 3 · Attendant Dues" },
-    { "file": "Nav.dc.html",           "x": 0,    "y": 2120, "w": 660,  "h": 900, "title": "Sidebar — the new group" }
+    { "file": "Main.dc.html",          "page": "page-1", "x": 0,    "y": 0,    "w": 390, "h": 844, "title": "1 · Landing — Tank Recon" },
+    { "file": "AtgCapture.dc.html",    "page": "page-1", "x": 490,  "y": 0,    "w": 390, "h": 844, "title": "2 · Step 1 — photograph the console" },
+    { "file": "AtgReview.dc.html",     "page": "page-1", "x": 980,  "y": 0,    "w": 390, "h": 844, "title": "3 · Step 1 — check what we read" },
+    { "file": "AtgFallback.dc.html",   "page": "page-1", "x": 1470, "y": 0,    "w": 390, "h": 844, "title": "3a · ATG unreadable — four ways on" },
+    { "file": "SlipsCapture.dc.html",  "page": "page-1", "x": 0,    "y": 1000, "w": 390, "h": 844, "title": "4 · Step 3 — all twelve slips, one shot" },
+    { "file": "SlipsPartial.dc.html",  "page": "page-1", "x": 490,  "y": 1000, "w": 390, "h": 844, "title": "4a · 9 of 12 read — what now" },
+    { "file": "Variance.dc.html",      "page": "page-1", "x": 980,  "y": 1000, "w": 390, "h": 844, "title": "5 · Step 4 — the variance" },
+
+    { "file": "TopCrumb.dc.html",      "page": "page-2", "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Desktop · Tank Recon with the chosen top stepper" },
+    { "file": "NozzleEvents.dc.html",  "page": "page-2", "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Spoke 2 · Nozzle Events — the chain" },
+    { "file": "Outstanding.dc.html",   "page": "page-2", "x": 0,    "y": 1060, "w": 1440, "h": 900, "title": "Spoke 3 · Attendant Dues" },
+    { "file": "Nav.dc.html",           "page": "page-2", "x": 1560, "y": 1060, "w": 660,  "h": 900, "title": "Sidebar — the new group" }
   ],
   "annotations": [
-    { "id": "crumb-choice", "x": 0, "y": -150, "w": 700,
-      "text": "BREADCRUMB — pick one.\nLeft: right-hand rail. Keeps all four steps visible with room for detail under each, but costs 250px of width.\nRight: top stepper. Full-width content, reads left-to-right like the work does — but each step gets one line only." },
-    { "id": "spokes-note", "x": 1560, "y": -150, "w": 700,
-      "text": "Both screens carry the SAME breadcrumb line above (Bunk View › Tank Recon). The stepper is the addition — it answers \"how far through am I\", which a breadcrumb alone does not." },
-    { "id": "data-note", "x": 0, "y": 3080, "w": 900,
-      "text": "Every figure is Sri Balaji's real data from 25-26 Aug: the three tanks on their corrected charts, the twelve nozzle names off their pump serials, and the Rs 1,25,275.25 standing against Nagamani, Premalatha and Manisha." }
+    { "id": "flow-note", "page": "page-1", "x": 0, "y": -190, "w": 900,
+      "text": "THE FLOW, PHONE FIRST — the manager doing this is standing at the console, not at a desk.\n\nLanding → photograph the ATG → check what was read → (if it failed, four ways on) → shoot all twelve slips → (if some didn't read, three choices each) → variance.\n\nNothing in this flow can dead-end. Every failure screen offers a way forward, and each records WHERE the figure came from — photo, typed, or dip." },
+    { "id": "fail-note", "page": "page-1", "x": 1470, "y": -190, "w": 390,
+      "text": "This is the 25-Aug glare, designed for. Nothing is saved on a failed read, and \"read it off the screen and type it\" is offered plainly — a man's eyes beat a camera on a glared LCD." },
+    { "id": "partial-note", "page": "page-1", "x": 490, "y": 1890, "w": 390,
+      "text": "Partial is normal, not an error. Nine good slips still reconcile — marked provisional, and it firms up on its own when the last three arrive." },
+    { "id": "desktop-note", "page": "page-2", "x": 0, "y": -150, "w": 900,
+      "text": "TOP STEPPER CHOSEN (owner, 27-Aug) — the right-hand rail is gone. It broke on a phone, and the phone is where this work actually happens." }
   ],
-  "launch": { "view": "canvas" }
+  "launch": { "view": "canvas", "page": "page-1" }
 }

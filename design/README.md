@@ -4,19 +4,36 @@ Mockups for the three-spoke flow (`CLAUDE.md` → *FLOW v2 — the hub and three
 spokes*). These are **design source, not shipped code** — nothing here is
 imported by the app.
 
+### Page 1 — the Tank Recon flow (phone, 390x844)
+
+The manager doing this is standing at the console, so the flow is phone-first.
+
 | File | Artboard |
 |---|---|
-| `Main.dc.html` | Spoke 1 · Tank Recon — step rail on the RIGHT |
-| `TopCrumb.dc.html` | Spoke 1 · same screen — breadcrumb-stepper across the TOP |
+| `Main.dc.html` | Landing — last recon, stock now, one big *Start a recon* |
+| `AtgCapture.dc.html` | Step 1 · photograph the console, framing guides |
+| `AtgReview.dc.html` | Step 1 · check what was read, per tank, correct in place |
+| `AtgFallback.dc.html` | **ATG unreadable — four ways on, nothing saved** |
+| `SlipsCapture.dc.html` | Step 3 · all twelve slips in one frame |
+| `SlipsPartial.dc.html` | **9 of 12 read — retake, type, or reconcile provisionally** |
+| `Variance.dc.html` | Step 4 · the result, tank by tank, with the working |
+
+**Nothing in the flow can dead-end.** Every failure screen offers a way forward,
+and every figure records where it came from — photo, typed, or dip.
+
+### Page 2 — the other spokes, desktop (1440x900)
+
+| File | Artboard |
+|---|---|
+| `TopCrumb.dc.html` | Spoke 1 on desktop, with the **chosen** top stepper |
 | `NozzleEvents.dc.html` | Spoke 2 · the nozzle's chain, co-events, drift alarm |
 | `Outstanding.dc.html` | Spoke 3 · attendant dues and the settle panel |
 | `Nav.dc.html` | the new sidebar group, annotated |
-| `canvas.json` | layout, titles and the sticky notes |
+| `canvas.json` | pages, layout, titles and the sticky notes |
 
-**The two Spoke 1 artboards are a CHOICE, not two screens.** Right rail keeps
-four steps visible with detail under each and costs 250 px of width; the top
-stepper gives full-width content and one line per step. Owner picks one; delete
-the other.
+**Breadcrumb settled (owner, 27-Aug): top stepper.** The right-hand rail was
+drawn, rejected and deleted — it broke on a phone, and the phone is where this
+work happens.
 
 ## Rebuilding the canvas
 
@@ -27,9 +44,11 @@ rebuild it from these sources with the `design` skill's helper, then publish:
 node "<skill base>/seed-canvas.mjs" \
   --template "<skill base>/payload.template.html" \
   --out pumpini-flow-v2-screens.html --title "Pumpini Flow v2 Screens" \
-  --artboard Main.dc.html --artboard TopCrumb.dc.html \
-  --artboard NozzleEvents.dc.html --artboard Outstanding.dc.html \
-  --artboard Nav.dc.html --canvas canvas.json
+  --artboard Main.dc.html --artboard AtgCapture.dc.html --artboard AtgReview.dc.html \
+  --artboard AtgFallback.dc.html --artboard SlipsCapture.dc.html \
+  --artboard SlipsPartial.dc.html --artboard Variance.dc.html \
+  --artboard TopCrumb.dc.html --artboard NozzleEvents.dc.html \
+  --artboard Outstanding.dc.html --artboard Nav.dc.html --canvas canvas.json
 ```
 
 ## What they are drawn from
