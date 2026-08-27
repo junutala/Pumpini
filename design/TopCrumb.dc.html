@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace}
+  </style>
+</helmet>
+
+<div style="display:flex;width:1440px;height:900px;overflow:hidden">
+
+  <aside style="width:220px;background:#0F1923;display:flex;flex-direction:column;flex-shrink:0">
+    <div style="padding:1.1rem 1rem 0.9rem;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;background:#FF6B00;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <div style="font-weight:900;font-size:18px;line-height:1;letter-spacing:-.02em"><span style="color:#FF6B00">pump</span><span style="color:#4DC3E8">ini</span></div>
+        <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;line-height:1">Sri Balaji Oil Company</div>
+      </div>
+    </div>
+    <nav style="flex:1;padding:0.5rem 0;overflow:hidden">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:10px 16px 4px">Dashboard</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Bunk View</div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px;display:flex;align-items:center;gap:6px">
+        Daily Flow <span style="font-size:8px;font-weight:700;letter-spacing:.06em;background:rgba(77,195,232,.16);color:#4DC3E8;border-radius:4px;padding:2px 5px">NEW</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;background:rgba(255,107,0,.15);color:#FF6B00;font-size:13px;font-weight:600;border-left:3px solid #FF6B00">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Tank Recon</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12V10a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M15 13h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2"/><path d="M6 12h6"/></svg>Nozzle Events</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>Attendant Dues
+        <span style="margin-left:auto;font-size:10px;font-weight:700;background:#dc2626;color:#fff;border-radius:9px;padding:1px 6px" class="num">2</span></div>
+    </nav>
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:0.85rem 1rem;display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,0,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:12px;font-weight:700;color:#FF6B00">S</span></div>
+      <div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.85)">Sravan kumar</div><div style="font-size:10px;color:rgba(255,255,255,.35)">Manager</div></div>
+    </div>
+  </aside>
+
+  <main style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- ── TOP BREADCRUMB-STEPPER ────────────────────────── -->
+    <div style="background:#fff;border-bottom:1px solid #e5e3de;padding:.85rem 1.75rem">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:.75rem">
+        <span style="color:#7a7773;font-size:13px;display:flex;align-items:center;gap:4px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Bunk View</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        <span style="font-weight:800;font-size:15px">Tank Recon</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        <span style="font-size:13px;color:#e07b0c;font-weight:600">All-nozzle slips</span>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:0">
+        <div style="display:flex;align-items:center;gap:9px;padding-right:14px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div><div style="font-size:13px;font-weight:600">ATG reading</div><div style="font-size:11px;color:#7a7773">3 tanks · 20:34</div></div>
+        </div>
+        <div style="flex:1;height:2px;background:#16a34a;margin:0 4px"></div>
+
+        <div style="display:flex;align-items:center;gap:9px;padding:0 14px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+          <div><div style="font-size:13px;font-weight:600">Deliveries</div><div style="font-size:11px;color:#7a7773">1 tanker · 10,000 L</div></div>
+        </div>
+        <div style="flex:1;height:2px;background:#e07b0c;margin:0 4px"></div>
+
+        <div style="display:flex;align-items:center;gap:9px;padding:0 14px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#e07b0c;color:#fff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">3</span>
+          <div><div style="font-size:13px;font-weight:700;color:#e07b0c">All-nozzle slips</div><div style="font-size:11px;color:#4a4845">9 of 12 scanned</div></div>
+        </div>
+        <div style="flex:1;height:2px;background:#e5e3de;margin:0 4px"></div>
+
+        <div style="display:flex;align-items:center;gap:9px;padding-left:14px">
+          <span style="width:24px;height:24px;border-radius:50%;background:#f3f2ef;color:#7a7773;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">4</span>
+          <div><div style="font-size:13px;font-weight:600;color:#7a7773">Variance</div><div style="font-size:11px;color:#7a7773">Waiting on slips</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;padding:1.35rem 1.75rem;overflow:hidden">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:1.1rem">
+        <div>
+          <div style="font-size:1.25rem;font-weight:600">Scan every nozzle slip</div>
+          <div style="font-size:13px;color:#4a4845;margin-top:2px">Taken at the same moment as the ATG — that shared instant is what makes the two agree.</div>
+        </div>
+        <button style="background:#e07b0c;color:#fff;border:none;border-radius:7px;padding:10px 18px;font-size:13.5px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:7px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          Scan next slip
+        </button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17EH2900V.1</div><div style="font-size:17px;font-weight:700" class="num">1739986.21</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:36</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17EH2900V.2</div><div style="font-size:17px;font-weight:700" class="num">1131712.66</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:36</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17EH2910V.1</div><div style="font-size:17px;font-weight:700" class="num">4022304.57</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:37</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17EH2910V.2</div><div style="font-size:17px;font-weight:700" class="num">1815506.08</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:37</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17CH2653V.1</div><div style="font-size:17px;font-weight:700" class="num">1521124.39</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:38</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17CH2653V.2</div><div style="font-size:17px;font-weight:700" class="num">127330.32</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:38</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17CH2645V.1</div><div style="font-size:17px;font-weight:700" class="num">93255.64</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:39</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17CH2645V.2</div><div style="font-size:17px;font-weight:700" class="num">2221650.62</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:39</div></div>
+        <div style="background:#fff;border:1px solid #dcfce7;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17FH3756V.1</div><div style="font-size:17px;font-weight:700" class="num">178499.41</div><div style="font-size:11px;color:#16a34a;margin-top:5px">✓ scanned 20:40</div></div>
+        <div style="background:#fff8ed;border:2px solid #e07b0c;border-radius:9px;padding:.9rem 1rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e07b0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          <div style="font-size:12px;font-weight:600;color:#9a4607">17FH3756V.2</div>
+        </div>
+        <div style="background:#fff;border:1px dashed #c9c6bf;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17FH3756V.3</div><div style="font-size:17px;color:#c9c6bf">— — —</div><div style="font-size:11px;color:#7a7773;margin-top:5px">not scanned</div></div>
+        <div style="background:#fff;border:1px dashed #c9c6bf;border-radius:9px;padding:.9rem 1rem"><div style="font-size:11.5px;color:#7a7773;margin-bottom:3px">17FH3756V.4</div><div style="font-size:17px;color:#c9c6bf">— — —</div><div style="font-size:11px;color:#7a7773;margin-top:5px">not scanned</div></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:.9rem 1.15rem;margin-top:1.1rem">
+        <div style="flex:1">
+          <div style="height:6px;background:#f3f2ef;border-radius:3px;overflow:hidden"><div style="width:75%;height:100%;background:#e07b0c"></div></div>
+        </div>
+        <span style="font-size:13px;color:#4a4845;white-space:nowrap"><strong class="num">9</strong> of <span class="num">12</span> · <span class="num">3</span> left</span>
+        <button style="background:#f3f2ef;border:1px solid #e5e3de;color:#7a7773;border-radius:7px;padding:9px 15px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;white-space:nowrap">Save and finish later</button>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

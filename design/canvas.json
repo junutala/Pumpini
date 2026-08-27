@@ -1,0 +1,37 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Tank Recon flow" },
+    { "id": "page-2", "name": "Other spokes + desktop" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",       "page": "page-1", "x": 0,    "y": 0,    "w": 390, "h": 844, "title": "1 · Landing — last recon, and a way in" },
+    { "file": "AtgCapture.dc.html", "page": "page-1", "x": 470,  "y": 0,    "w": 390, "h": 844, "title": "2 · Photograph the console — landscape, or skip" },
+    { "file": "AtgReading.dc.html", "page": "page-1", "x": 940,  "y": 0,    "w": 390, "h": 844, "title": "3 · Reading — the bar that does not lie" },
+    { "file": "AtgResult.dc.html",  "page": "page-1", "x": 1410, "y": 0,    "w": 390, "h": 844, "title": "3b · What we read — every figure editable" },
+    { "file": "Nozzles.dc.html",    "page": "page-1", "x": 1880, "y": 0,    "w": 390, "h": 844, "title": "4 · Nozzles — one shot for all, or one at a time" },
+    { "file": "Variance.dc.html",   "page": "page-1", "x": 2350, "y": 0,    "w": 390, "h": 844, "title": "5 · The variance — testing shown, confirm or start again" },
+    { "file": "FlowSwitch.dc.html", "page": "page-1", "x": 0,    "y": 1000, "w": 1240, "h": 880, "title": "6 · Settings — the switch that turns this flow on" },
+
+    { "file": "TopCrumb.dc.html",     "page": "page-2", "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Desktop · Tank Recon with the chosen top stepper" },
+    { "file": "NozzleEvents.dc.html", "page": "page-2", "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Spoke 2 · Nozzle Events — the chain" },
+    { "file": "Outstanding.dc.html",  "page": "page-2", "x": 0,    "y": 1060, "w": 1440, "h": 900, "title": "Spoke 3 · Attendant Dues" },
+    { "file": "Nav.dc.html",          "page": "page-2", "x": 1560, "y": 1060, "w": 660,  "h": 900, "title": "Sidebar — the new group" }
+  ],
+  "annotations": [
+    { "id": "flow-note", "page": "page-1", "x": 0, "y": -230, "w": 1100,
+      "text": "THE FLOW, PHONE FIRST — the manager doing this is standing at the console, not at a desk.\n\nLanding → photograph the console → wait → check what was read → nozzle slips → variance → confirm.\n\nTwo rules run through every screen. (1) TYPING IS NOT A FALLBACK. Camera and keyboard are the same size, the same border, the same height, side by side — and each figure carries a badge saying which one produced it. (2) NOTHING DEAD-ENDS. Every screen has a way forward, including the ones where the camera failed." },
+    { "id": "skip-note", "page": "page-1", "x": 470, "y": -230, "w": 390,
+      "text": "SKIP lands straight on the editable readings — it does not pass through the progress bar. A man who has decided to type should not be made to watch a spinner first.\n\nEXIF ORIENTATION: the landscape prompt is worth nothing if the upload arrives rotated. Honour the EXIF tag before the image reaches OCR." },
+    { "id": "bar-note", "page": "page-1", "x": 940, "y": -230, "w": 390,
+      "text": "THE BAR FILLS TO 90% AND HOLDS. It never animates to 100 before the answer is back, and the labels are three real stages, not decoration. A bar that claims to be finished and then sits there is exactly how a manager learns not to trust the camera." },
+    { "id": "merge-note", "page": "page-1", "x": 1880, "y": -230, "w": 390,
+      "text": "SCREENS 4 AND 4a ARE ONE SCREEN (owner, 27-Aug). Partial is the normal state, not an error screen — the nine that read sit beside the three that didn't, and each unread one offers camera and keyboard together.\n\nMATT SHEET, IN SHADE — not a transparent folder. Plastic throws glare, and glare is what killed the 25-Aug console shot." },
+    { "id": "draft-note", "page": "page-1", "x": 2350, "y": -230, "w": 390,
+      "text": "SAVED BEFORE HE DECIDES — as a DRAFT. His to resume, but not in the ledger and not on the owner's dashboard until he presses Confirm.\n\nStart again does NOT delete it: the draft is marked abandoned and kept. A recon that vanishes when a man changes his mind is a recon he will not start twice.\n\nTESTING GETS ITS OWN LINE. Folded into sales it becomes an unexplained variance every single day." },
+    { "id": "switch-note", "page": "page-1", "x": 0, "y": 1930, "w": 1240,
+      "text": "THE SWITCH IS A MIGRATION FLAG, NOT A FEATURE (owner, 27-Aug: \"do not forget. we have to have the switch in the settings\").\n\nIt joins the four that already live on station_settings — products_enabled, self_settlement_enabled, accounts_enabled, attendant_led_autoclose — and it is OFF by default and stays off. Kamala, Adhoc and Highway are working; nothing about this reaches them.\n\nIT REFUSES TO FLIP WITH A SHIFT OPEN. Half a shift under one model and half under another leaves an opening reading nobody can defend.\n\nROLLBACK IS THE SWITCH ITSELF. Off restores the old sidebar and the old flow; the recons taken meanwhile stay on file as recons." },
+    { "id": "desktop-note", "page": "page-2", "x": 0, "y": -150, "w": 900,
+      "text": "TOP STEPPER CHOSEN (owner, 27-Aug) — the right-hand rail is gone. It broke on a phone, and the phone is where this work actually happens." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

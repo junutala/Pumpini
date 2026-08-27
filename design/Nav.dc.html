@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&family=DM+Mono:wght@400;500&display=swap">
+  <style>
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916}
+    a{color:#e07b0c;text-decoration:none} a:hover{color:#9a4607}
+    .num{font-family:'DM Mono',monospace}
+  </style>
+</helmet>
+
+<div style="display:flex;width:660px;height:900px">
+
+  <aside style="width:220px;background:#0F1923;display:flex;flex-direction:column;flex-shrink:0">
+    <div style="padding:1.1rem 1rem 0.9rem;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;background:#FF6B00;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <div style="font-weight:900;font-size:18px;line-height:1;letter-spacing:-.02em"><span style="color:#FF6B00">pump</span><span style="color:#4DC3E8">ini</span></div>
+        <div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:2px;line-height:1">Sri Balaji Oil Company</div>
+      </div>
+    </div>
+
+    <nav style="flex:1;padding:0.5rem 0">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:10px 16px 4px">Dashboard</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Bunk View</div>
+
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px;display:flex;align-items:center;gap:6px">
+        Daily Flow <span style="font-size:8px;font-weight:700;letter-spacing:.06em;background:rgba(77,195,232,.16);color:#4DC3E8;border-radius:4px;padding:2px 5px">NEW</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;background:rgba(255,107,0,.15);color:#FF6B00;font-size:13px;font-weight:600;border-left:3px solid #FF6B00">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Tank Recon</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12V10a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/><path d="M15 13h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2"/><path d="M6 12h6"/></svg>Nozzle Events</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-6"/></svg>Attendant Dues
+        <span style="margin-left:auto;font-size:10px;font-weight:700;background:#dc2626;color:#fff;border-radius:9px;padding:1px 6px" class="num">2</span></div>
+
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px">Credit</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Invoices</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/></svg>Receipts</div>
+
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px">Cash</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>Petty Cash</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>Deposits</div>
+
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.25);padding:14px 16px 4px">Settings</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 16px;color:rgba(255,255,255,.6);font-size:13px;border-left:3px solid transparent">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09z"/></svg>Settings</div>
+    </nav>
+
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:0.85rem 1rem;display:flex;align-items:center;gap:8px">
+      <div style="width:28px;height:28px;border-radius:50%;background:rgba(255,107,0,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:12px;font-weight:700;color:#FF6B00">S</span></div>
+      <div><div style="font-size:12px;font-weight:600;color:rgba(255,255,255,.85)">Sravan kumar</div><div style="font-size:10px;color:rgba(255,255,255,.35)">Manager</div></div>
+    </div>
+  </aside>
+
+  <!-- annotation column -->
+  <div style="flex:1;padding:1.5rem 1.4rem;display:flex;flex-direction:column;gap:1.1rem">
+    <div>
+      <div style="font-size:1.05rem;font-weight:600;margin-bottom:4px">What changes in the nav</div>
+      <div style="font-size:13px;color:#4a4845;line-height:1.6">One new group. Nothing else moves — the existing groups keep their order and their items.</div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:1rem 1.1rem">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#7a7773;margin-bottom:.7rem">The three spokes</div>
+      <div style="display:flex;flex-direction:column;gap:.75rem">
+        <div style="display:flex;gap:9px">
+          <span style="width:7px;height:7px;border-radius:2px;background:#e07b0c;margin-top:6px;flex-shrink:0"></span>
+          <div><div style="font-size:13px;font-weight:600">Tank Recon</div><div style="font-size:12px;color:#7a7773;line-height:1.5">ATG, deliveries and the all-nozzle scan, taken together</div></div>
+        </div>
+        <div style="display:flex;gap:9px">
+          <span style="width:7px;height:7px;border-radius:2px;background:#e07b0c;margin-top:6px;flex-shrink:0"></span>
+          <div><div style="font-size:13px;font-weight:600">Nozzle Events</div><div style="font-size:12px;color:#7a7773;line-height:1.5">One chain per nozzle — handovers and co-events</div></div>
+        </div>
+        <div style="display:flex;gap:9px">
+          <span style="width:7px;height:7px;border-radius:2px;background:#e07b0c;margin-top:6px;flex-shrink:0"></span>
+          <div><div style="font-size:13px;font-weight:600">Attendant Dues</div><div style="font-size:12px;color:#7a7773;line-height:1.5">Calculated outstanding, settled by hand. Badge counts men who have not cleared</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:1rem 1.1rem">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#7a7773;margin-bottom:.7rem">Behind the switch</div>
+      <div style="font-size:12.5px;color:#4a4845;line-height:1.6">
+        The <strong>Daily Flow</strong> group appears only where the migration flag is on. Sri Balaji sees it; Kamala, Adhoc and Highway keep <strong>Shift</strong> and <strong>Stock</strong> exactly as they are today.
+      </div>
+      <div style="margin-top:.8rem;padding-top:.8rem;border-top:1px dashed #e5e3de;font-size:12px;color:#7a7773">
+        The <span style="font-size:9px;font-weight:700;letter-spacing:.06em;background:rgba(77,195,232,.16);color:#2b8ba8;border-radius:4px;padding:2px 5px">NEW</span> chip is temporary — it goes when the last outlet moves over.
+      </div>
+    </div>
+
+    <div style="background:#fff8ed;border:1px solid #f0d9b5;border-radius:10px;padding:1rem 1.1rem">
+      <div style="font-size:12.5px;color:#4a4845;line-height:1.6">
+        <strong style="color:#9a4607">Group name is a placeholder.</strong> “Daily Flow” describes what it is to us, not to Srinivas. He may prefer something in his own words — worth asking him before it ships.
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
