@@ -272,4 +272,7 @@ async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg' }) {
   };
 }
 
-module.exports = { parseSlip, parseCompositeSlips, SLIP_PROMPT };
+// normalizeSlipNozzles is exported for its TESTS. It is the rupee/litre cross-check
+// itself — the thing that decides whether a scanned figure may become a meter — so
+// it is pinned directly against real slips rather than only through a network call.
+module.exports = { parseSlip, parseCompositeSlips, SLIP_PROMPT, normalizeSlipNozzles };
