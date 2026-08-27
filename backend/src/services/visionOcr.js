@@ -32,9 +32,21 @@ const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const OCR_TIMEOUT_MS = 20000;
 
-async function visionOcr(base64) {
+// WHY VISION GAVE US NOTHING — returned, not just logged.
+//
+// The pipeline below falls back to the engine that already lost the managers
+// (claude_vision, 63% line-match against Vision's 97%), and until now it did so in
+// silence: the reason went to warn() and no further. On 26-Aug-2026 the fallback
+// fired on 3 of 8 Sri Balaji scans and NOTHING in the database says why — the
+// post-mortem had to reconstruct it from absence. A downgrade nobody can see is a
+// defect in its own right, so the reason now travels with the result.
+//
+// visionOcr() keeps its text-or-null contract; billScan and deliveries call it
+// directly and must not change. This is the same call reporting one extra fact.
+async function visionOcrDetailed(base64) {
   const key = process.env.GOOGLE_VISION_API_KEY;
-  if (!key || !base64) return null;
+  if (!key)    return { text: null, reason: 'vision_key_unset' };
+  if (!base64) return { text: null, reason: 'no_image' };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), OCR_TIMEOUT_MS);
   try {
@@ -44,15 +56,23 @@ async function visionOcr(base64) {
       body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
       signal: ctrl.signal,
     });
-    if (!r.ok) { warn(`vision-ocr http ${r.status}`); return null; }
+    if (!r.ok) { warn(`vision-ocr http ${r.status}`); return { text: null, reason: `vision_http_${r.status}` }; }
     const j = await r.json();
     const resp = j?.responses?.[0];
-    if (resp?.error) { warn('vision-ocr error: ' + (resp.error.message || '')); return null; }
-    return resp?.fullTextAnnotation?.text || null;
+    if (resp?.error) { warn('vision-ocr error: ' + (resp.error.message || '')); return { text: null, reason: 'vision_error' }; }
+    const text = resp?.fullTextAnnotation?.text || null;
+    return { text, reason: text ? null : 'vision_no_text' };
   } catch (e) {
     warn('vision-ocr failed: ' + (e.message || e));
-    return null;
+    // An abort is the timeout above, which is worth telling apart from a network
+    // failure: one says the frame was too slow, the other that we never got there.
+    return { text: null, reason: e?.name === 'AbortError' ? 'vision_timeout' : 'vision_failed' };
   } finally { clearTimeout(timer); }
+}
+
+// The original contract, unchanged, for the two callers that want only the text.
+async function visionOcr(base64) {
+  return (await visionOcrDetailed(base64)).text;
 }
 
 // Enough characters to be worth handing to a text model. A near-empty read means
@@ -105,9 +125,14 @@ async function readImageAsJson({
   max_tokens = 1500, model = 'claude-sonnet-4-6', ocrPreamble = DEFAULT_PREAMBLE,
 }) {
   let reachedModel = false;
+  // Why the Vision path did not produce the answer. Null on the happy path; set on
+  // every route to the claude_vision fallback so a stored scan can say WHICH engine
+  // read it and WHY it was not the better one.
+  let fallbackReason = null;
 
   try {
-    const ocrText = await visionOcr(file_base64);
+    const { text: ocrText, reason } = await visionOcrDetailed(file_base64);
+    if (reason) fallbackReason = reason;
     if (usable(ocrText)) {
       const msg = await ai.messages.create({
         model, max_tokens,
@@ -115,9 +140,17 @@ async function readImageAsJson({
       });
       reachedModel = true;
       const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, error: null };
+      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, fallback_reason: null, error: null };
+      // Vision read the characters, but the text model did not answer with JSON.
+      fallbackReason = 'text_model_unparsed';
+    } else if (!fallbackReason) {
+      // Vision answered with something, just not enough of it to be worth structuring.
+      fallbackReason = 'vision_text_too_short';
     }
-  } catch (e) { warn('vision-ocr read path failed: ' + (e.message || e)); }
+  } catch (e) {
+    warn('vision-ocr read path failed: ' + (e.message || e));
+    if (!fallbackReason) fallbackReason = 'vision_path_threw';
+  }
 
   try {
     const msg = await ai.messages.create({
@@ -130,12 +163,12 @@ async function readImageAsJson({
     reachedModel = true;
     const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
     return parsed
-      ? { parsed, engine: 'claude_vision', ocr_chars: 0, error: null }
-      : { parsed: null, engine: 'claude_vision', ocr_chars: 0, error: 'unparsed' };
+      ? { parsed, engine: 'claude_vision', ocr_chars: 0, fallback_reason: fallbackReason, error: null }
+      : { parsed: null, engine: 'claude_vision', ocr_chars: 0, fallback_reason: fallbackReason, error: 'unparsed' };
   } catch (e) {
     warn('image read failed: ' + (e.message || e));
-    return { parsed: null, engine: null, ocr_chars: 0, error: reachedModel ? 'unparsed' : 'api' };
+    return { parsed: null, engine: null, ocr_chars: 0, fallback_reason: fallbackReason, error: reachedModel ? 'unparsed' : 'api' };
   }
 }
 
-module.exports = { visionOcr, usable, readImageAsJson };
+module.exports = { visionOcr, visionOcrDetailed, usable, readImageAsJson };

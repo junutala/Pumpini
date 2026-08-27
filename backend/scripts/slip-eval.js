@@ -20,6 +20,9 @@
 // — i.e. run it where the backend runs.
 const pool = require('../src/db/pool');
 const { parseCompositeSlips } = require('../src/services/slipParser');
+// The bench reads its images through the SAME resolver every screen uses, so it can
+// reach an artifact wherever it lives. See loadArtifacts for why that matters.
+const artifacts = require('../src/services/artifactService');
 
 function args() {
   const a = process.argv.slice(2);
@@ -33,18 +36,31 @@ function args() {
   return out;
 }
 
-async function loadArtifacts({ artifacts, latest, station }) {
-  if (artifacts.length) {
+// THE CORPUS IS WHATEVER HAS BYTES ANYWHERE — bucket or inline.
+//
+// This used to require `file_base64 IS NOT NULL`, which quietly made the bench a
+// measure of the storage migration rather than of the reader. Of the 40 nozzle_slip
+// artifacts on 27-Aug-2026, ALL 40 are in the bucket and only 21 are still inline —
+// so half the regression corpus was already invisible here. After the documented
+// prune step clears the base64 column it would have been all of it, and the bench
+// would have said "no artifacts" rather than "the reader got worse".
+//
+// A regression bench that shrinks as a migration proceeds is worse than none: it
+// reports success by having nothing left to test. Selection now asks only whether
+// the row HAS an image; getImage() below fetches the bytes from wherever they are.
+async function loadArtifacts({ artifacts: ids, latest, station }) {
+  const has = `(a.file_base64 IS NOT NULL OR a.storage_path IS NOT NULL)`;
+  if (ids.length) {
     const { rows } = await pool.query(
-      `SELECT a.id, a.media_type, a.file_base64, a.captured_at, s.name AS outlet
+      `SELECT a.id, a.media_type, a.captured_at, s.name AS outlet
          FROM station_artifacts a JOIN stations s ON s.id = a.station_id
-        WHERE a.id = ANY($1::uuid[]) AND a.file_base64 IS NOT NULL`, [artifacts]);
+        WHERE a.id = ANY($1::uuid[]) AND ${has}`, [ids]);
     return rows;
   }
   const { rows } = await pool.query(
-    `SELECT a.id, a.media_type, a.file_base64, a.captured_at, s.name AS outlet
+    `SELECT a.id, a.media_type, a.captured_at, s.name AS outlet
        FROM station_artifacts a JOIN stations s ON s.id = a.station_id
-      WHERE a.kind = 'nozzle_slip' AND a.file_base64 IS NOT NULL
+      WHERE a.kind = 'nozzle_slip' AND ${has}
         AND ($1::uuid IS NULL OR a.station_id = $1::uuid)
       ORDER BY a.captured_at DESC LIMIT $2`, [station, latest || 2]);
   return rows;
@@ -83,7 +99,7 @@ const fmt = v => (v == null ? 'null' : String(v));
 async function main() {
   const opt = args();
   const rows = await loadArtifacts(opt);
-  if (!rows.length) { console.error('No artifacts found with an inline image.'); process.exit(1); }
+  if (!rows.length) { console.error('No slip artifacts found carrying an image.'); process.exit(1); }
 
   console.log(`\nslip-eval — ${rows.length} image(s) x ${opt.runs} run(s)`);
   console.log(`vision key: ${process.env.GOOGLE_VISION_API_KEY ? 'SET' : 'NOT SET (vision path will be skipped)'}\n`);
@@ -100,11 +116,20 @@ async function main() {
     console.log(`${art.outlet}  ·  ${when}  ·  ${art.id}`);
     console.log('='.repeat(78));
 
+    // Bytes via the shared resolver — inline rows answer immediately, bucket rows are
+    // downloaded. Fetched ONCE per artifact, not once per run, so -n measures the
+    // reader's variance and not the network's.
+    const img = await artifacts.getImage(art.id);
+    if (!img?.file_base64) {
+      console.log('  image could not be fetched (bucket download failed?) — SKIPPED\n');
+      continue;
+    }
+
     for (let r = 1; r <= opt.runs; r++) {
       const t0 = Date.now();
       let res = null;
       try {
-        res = await parseCompositeSlips({ file_base64: art.file_base64, media_type: art.media_type || 'image/jpeg' });
+        res = await parseCompositeSlips({ file_base64: img.file_base64, media_type: img.media_type || art.media_type || 'image/jpeg' });
       } catch (e) { console.error(`  run ${r}: threw — ${e.message}`); continue; }
       const sum = summarise(res);
       const hits = sum.lines.filter(l => knownSerials.has(String(l.serial).toUpperCase())).length;
