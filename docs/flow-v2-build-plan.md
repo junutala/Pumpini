@@ -39,17 +39,26 @@ at the console, not sitting at a desk. Each decision below was taken by the owne
 | `AtgCapture` | 2 · Photograph the console | Asks for **landscape** (the console is a wide screen, and it reads better). A **SKIP** button goes straight to manual entry |
 | `AtgReading` | 3 · Reading | The bar fills to **~90% and holds** until the answer is actually back. Three real stages. **It never claims to be finished before it is** |
 | `AtgResult` | 3b · What we read | Every figure editable; each carries a badge saying whether a photo or a person produced it |
-| `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error |
+| `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error. Its CTA is the model of rule 3 below: grey and naming the missing nozzle until 12/12, with the provisional path as a quiet secondary |
 | `Variance` | 5 · The variance | **Testing gets its own line**, never folded into sales. Confirm or Start again. **Saved as a draft either way** |
 | `FlowSwitch` | 6 · Settings | The migration switch (1240×880 — owner work, at a desk) |
+| `Deliveries` | Exception · A tanker may be missing | Owner, 27-Aug: deliveries can be once a week, so it is NOT a recon step — a daily screen for a weekly event gets tapped through. The recon is 3 steps (ATG → nozzles → variance); a decant-sized gain on the variance leads here, and "Yes — scan now" opens the everyday Deliveries form. Trigger at COMPARTMENT scale (tankers are shared between outlets): gain beyond tolerance and ≥ ~1,000 L; never for a ~100 L difference |
 
-### Two rules run through every screen
+### Three rules run through every screen
 
 1. **Typing is not a fallback.** Camera and keyboard are the same size, the same height,
    the same border, side by side — and every figure carries a badge saying which one
    produced it.
 2. **Nothing dead-ends.** Every screen has a way forward, including the ones where the
    camera failed.
+3. **The CTA is earned, not offered** (owner, 27-Aug: the CTAs "illuminate and clamour
+   for attention even if the data is not captured"). A step's primary button sits grey
+   and unlit until the current screen's data is fully captured, and while grey it says
+   exactly what is missing ("Waiting on 1 nozzle — 15BC1412V.2"). It lights the moment
+   the job is done. Escape hatches — skip, provisional, add-later — stay available as
+   quiet secondary buttons, never as the shouting one. The three spokes gate
+   separately, so no spoke ever waits on another spoke's inputs. Mockups carry no
+   readable invented figures where a photograph would be.
 
 ### Deleted, and why — do not re-propose
 
@@ -232,6 +241,8 @@ And, from `CLAUDE.md`:
    is 24 a day and somebody starts skipping, which quietly puts the straddle back.
 2. **Who may clear an outstanding.** Manager is weak control — he is often the one who
    took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
+   *(Partly settled by ruling 1 in §11: the settlement entry itself brings the suspense
+   down. What remains open is only who may record/confirm that entry.)*
 3. **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
 4. **The empty state** for a first-ever recon on the landing screen is specified but not
    drawn.
@@ -254,3 +265,128 @@ Srinivas, not ours to fix in data**:
 
 **Do not touch either.** They are the evidence for why Spoke 3 calculates the outstanding
 instead of letting anyone type it.
+
+---
+
+## 10. Why nobody scans slips — the post-mortem, engine-corrected
+### 27-Aug-2026. Rewritten the same day after the owner corrected the first draft's
+### "one shared engine" claim — the engines and dates below are from the artifacts' own
+### `engine` stamps and the visionOcr.js history, not from assumption.
+
+**Deliveries prove the managers scan when the instrument works: 175 of 175 deliveries
+since June carry a scanned invoice, uploaded by the managers themselves** (`fuel_deliveries.invoice_id`
+→ `delivery_invoices.uploaded_by`, every uploader the outlet's manager bar Sri Balaji's owner).
+Deliveries have run **Google-Vision-first** for ~two months. Slips ran **direct Claude
+vision until 20-Aug**, when the Vision-first pipeline was centralised into
+`services/visionOcr.js` and extended to every reader; `/pos-meter` additionally carried
+the rupee-line prompt bug until #353 (27-Aug).
+
+So the timeline reads: the managers tried slip scanning on 02–04 Aug **under the old
+engine and the old prompt**, were lied to (`ocr_legible=true` on rupee-line readings —
+all 24 `meter_photos` ever taken say legible, including the wrong ones), got silent
+unmatched rows, and correctly quit. Those artifacts stored `ocr` NULL, so the evidence
+had to be reconstructed from absence. **The repaired path has never been offered to them.**
+
+### The engines, measured against each other on the same pumps
+
+The 25/26-Aug Sri Balaji composites are stamped with the engine that read them:
+
+| Engine | Line-match | Notes |
+|---|---|---|
+| `google_vision+claude_text` | **74/76 (97%)** | Its only 2 misses are the invented-mapping rows below |
+| `claude_vision` (the fallback) | **20/32 (63%)** | ALL the garbled serials — `17CH2900V`, `H28253V`, `2444`, one scan with none |
+
+**On 26-Aug the fallback fired on 3 of 8 scans** — Vision returned nothing usable and
+the pipeline silently handed the photo to the engine that already lost the users. Why
+Vision failed those frames is not recorded anywhere. That silent downgrade is a defect
+in its own right.
+
+### The defects that remain with the good engine in place
+
+1. **Invented reference data.** 17CH2645V/17CH2653V slips print nozzle "4"; our
+   `slip_nozzle_no` says "1","2" because `defaultSlipNo()` derived it from the internal
+   number. Nobody ever read a slip at commissioning.
+2. **Wrong outlet fails silently.** Nagole, 20-Aug: 0 of 28 lines matched — the slips
+   were Sri Balaji's machines. `serial_known:false` sat on every line; no screen shouted.
+3. **The fallback downgrade above**, unannounced and unrecorded.
+4. **No telemetry.** Scanning died in the first week of August and nobody could see it.
+
+### The rules this burns into Step 4
+
+1. **Commissioning is a verified act, and it gates the switch.** Every serial +
+   printed-nozzle-number pair captured by scanning a REAL slip at setup, human-confirmed,
+   stored as printed. `defaultSlipNo()` guesses are abolished on flow-v2 outlets; the
+   commissioning reading is the chain's genesis event.
+2. **Never fail silently.** A near-miss serial PROPOSES the nearest known machine —
+   one tap to confirm. No close match → a loud card: "not from any machine at this
+   outlet." A fallback-engine read is marked low-trust and always goes through human
+   confirmation; the fallback reason is recorded.
+3. **A reading enters the chain only through three checks:** V-line found by its label
+   (#353), A÷V implies a sane price, and the physics pair (never decreases, never
+   faster than the pump delivers).
+4. **The process measures itself.** Scans / matched / typed / engine / fallback-reason,
+   per outlet per week, on the owner dashboard from day one. Every scan stores its
+   structured result, success or failure.
+
+### Validation is REPLAY, not a field trial
+
+The stored artifacts — the 25/26-Aug composites, the Nagole set, the 02–04 Aug photos —
+are the regression bench: real slips, real glare, known right answers. Re-run them
+through the reader + hardened matcher offline and measure before any screen ships.
+Commissioning is not a trial either: one slip per pump, five minutes, part of switch-on.
+
+### Build-order amendment
+
+Between Step 3 and Step 4 sits **Step 3.5 — the instrument slice**: commissioning-by-slip
+gating the switch, match-and-confirm, the wrong-outlet card, the fallback made loud,
+telemetry, and the replay bench. The screens then follow the pattern deliveries proved:
+scan → editable review, every figure badged → confirm.
+
+---
+
+## 11. Owner rulings — 27-Aug evening. Settled; do not re-propose.
+
+Four points from the design review, answered by the owner. These carry the same weight
+as the frozen design in `CLAUDE.md`.
+
+1. **The money loop is complete, and the document must say so.** When a duty closes,
+   the CALCULATED outstanding registers as a liability against the attendant — the
+   suspense shape `credit_suspense_entries` already uses. He then settles: hands the
+   manager cash / UPI / card / credit slips / petty, and that settlement entry brings
+   his suspense down. Nothing silently zeroes it, and nobody walks off with the money
+   as a matter of design — the liability stands until cleared.
+
+2. **Price changes are NOT this system's problem. Build nothing for them.** The price
+   is updated manually at the forecourt controller and manually in Pumpini; we cannot
+   know a change we are not told about, and there is no way to gate sales pre/post
+   change. If the price changes at 6 AM, the manager closes and recommences around it —
+   his duty, and his loss if he sleeps through it. No price-boundary machinery, no
+   proration, no "reading at the price moment" requirement. (This retires the review's
+   6 AM-anchor argument; the recon-cadence question in §8 stands on discipline alone.)
+
+3. **The incoming man's slip closes the outgoing duty, and that is the whole design.**
+   On a normal day the outgoing man brings slip AND money to the manager. A man
+   running away without the slip is running away WITH the money — the slip is not his
+   incentive. It is a technical possibility, not a scenario to engineer for: no
+   missed-handover detection, no prompt system, no override. (Reaffirms the frozen
+   design's "the act of taking over is the act of closing".)
+
+4. **The sidebar stays as drawn. The badge is the nudge.** The manager chooses his
+   function from the side panel like everywhere else in Pumpini. The Attendant Dues
+   badge (men not yet cleared) and the landing screen's last-recon card are the
+   reminders; no task-queue layer, no guided-home redesign.
+
+5. **Deliveries is an exception, not a recon step** (same evening). A decant can be
+   once a week; putting a deliveries screen in the daily path "just because the
+   mathematical formula says so is pure hypocrisy." The recon runs three steps —
+   landing (last recon + jump-to-date + one CTA), ATG capture with manual
+   entry/correction, consolidated nozzle scan with manual entry for any line that
+   fails — then the variance. Only when the variance shows a tanker-sized gain is
+   the manager led to the deliveries screen, so an invoice forgotten at decant time
+   gets scanned at the moment he has a reason to remember it. **Refined the same
+   evening:** the trigger is COMPARTMENT scale, not full-tanker scale — tankers are
+   shared between unrelated outlets, one compartment discharged here and another
+   there, so a single compartment (~3–4 KL) is a normal decant. Fire when the gain
+   is beyond the outlet's variance tolerance AND at least ~1,000 L (a build-time
+   constant to tune with the owner); a difference around 100 L is dip noise and
+   never asks for a tanker invoice.
