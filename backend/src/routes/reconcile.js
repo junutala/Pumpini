@@ -1255,13 +1255,23 @@ router.post('/parse-slips', authenticate,
           nozzle_number: hit ? hit.nozzle_number : null,
           fuel_type: hit ? hit.fuel_type : null,
           slip_no: no || null,
-          // THE NAME, on every line, matched or not. The slip prints the pump serial
-          // and the nozzle number beside each reading, so a line can always name
-          // itself the way the convention requires — <pump serial>.<nozzle number>.
-          // Without this the field was never set, every consumer fell through to
-          // `nozzle_number`, and our INTERNAL index ("1.1") reached the manager in
-          // the one place he reads a nozzle name: the unmatched/refused list.
-          nozzle_name: serial && no ? `${serial}.${no}` : null,
+          // THE NAME, on every line, matched or not. Without this the field was
+          // never set, every consumer fell through to `nozzle_number`, and our
+          // INTERNAL index ("1.1") reached the manager in the one place he reads a
+          // nozzle name: the unmatched/refused list after a scan.
+          //
+          // MATCHED -> the ONE JS writer, off the nozzle's own row, so this name is
+          // character-for-character the name every other screen shows. Composing it
+          // here instead would fork the convention on case alone: the matcher
+          // upper-cases the serial it read (OCR case is unreliable) while
+          // nozzleNameExpr only btrim()s the stored one, so a serial saved
+          // lower-case in Settings would read `15bc1412v.1` on Shift Close and
+          // `15BC1412V.1` here. Every serial in prod is upper-case today and
+          // nothing enforces it — which is precisely how the last drift started.
+          //
+          // UNMATCHED -> no row exists, so the slip's own printed identity IS the
+          // name; that is what the convention means by "as its own slip prints it".
+          nozzle_name: hit ? pumps.nozzleName(hit) : (serial && no ? `${serial}.${no}` : null),
           cumulative_volume: n.cumulative_volume ?? null,
           cumulative_amount: n.cumulative_amount ?? null,
           swapped_amount_for_volume: n.swapped_amount_for_volume || undefined,
