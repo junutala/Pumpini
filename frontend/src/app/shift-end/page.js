@@ -352,7 +352,7 @@ export default function ShiftEndPage() {
       slips.forEach(s => (s.lines || []).forEach(l => {
         // Not matched to one of our nozzles — surface the printed number/serial so
         // the manager can register the pump in Settings, but do not apply it.
-        if (l.nozzle_id == null) { unmatched.push(l.nozzle_name || l.nozzle_number || l.slip_no || '?'); return; }
+        if (l.nozzle_id == null) { unmatched.push(nozName(l) || l.slip_no || '?'); return; }
         if (l.cumulative_volume == null) return;
         // REFUSED BY THE CROSS-CHECK. Until now an illegible line still pre-filled
         // the box and `legible:false` was only a sentence at the end — which is how
@@ -360,7 +360,7 @@ export default function ShiftEndPage() {
         // all; the manager types that one nozzle and the rest still fill.
         if (l.legible === false) {
           const why = rejectNote(l, tc);
-          refused.push(`${l.nozzle_name || l.nozzle_number || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
+          refused.push(`${nozName(l) || l.slip_no || '?'}${why ? ` (${why})` : ''}`);
           return;
         }
         let found = false;
@@ -374,7 +374,7 @@ export default function ShiftEndPage() {
           }
         }));
         // Matched to a nozzle_id that no operator on this shift is manning.
-        if (!found) unmatched.push(l.nozzle_name || l.nozzle_number || String(l.nozzle_id));
+        if (!found) unmatched.push(nozName(l) || String(l.nozzle_id));
       }));
       // Slips whose printed serial is not a registered pump — name the serial so the
       // manager knows to add the machine in Settings.
