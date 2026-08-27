@@ -32,6 +32,7 @@ import { useAuth } from '../../lib/auth';
 import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
+import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -177,6 +178,10 @@ export default function ShiftEndPage() {
   const [slips, setSlips] = useState([]);
   const [busy, setBusy]   = useState('');
   const [err, setErr]     = useState('');
+  // The banner's TONE. Defaults to 'error' so every existing setErr() call behaves
+  // exactly as it did; only the paths that KNOW they succeeded say otherwise.
+  const [tone, setTone]   = useState('error');
+  const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [done, setDone]   = useState(false);
 
   // ── Attendant-led auto-close (per-outlet flag) ──────────────────────────
@@ -382,17 +387,16 @@ export default function ShiftEndPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('send.unknownSerial','unknown serial'));
 
-      let msg = tc('send.slipsFilled','Filled {n} closing reading(s) from {m} slip(s).')
-        .replace('{n}', matched).replace('{m}', slips.length);
-      if (unmatched.length)     msg += ' ' + tc('send.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
-      if (unknownSerials.length) msg += ' ' + tc('send.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
-      if (verify.length)        msg += ' ' + tc('send.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
-      if (refused.length)       msg += ' ' + tc('send.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
-      if (res.legible === false) msg += ' ' + tc('send.slipsVerify','⚠ Some digits unclear — verify.');
-      if (res.notes)            msg += ' ' + res.notes;
-      setErr(msg);
-      // From here the per-nozzle cameras are disabled until Retake / clear — the
-      // reading boxes stay hand-editable, only the competing camera is turned off.
+      // THREE OUTCOMES, ONE SHORT LINE EACH — identical to Shift Start, and it must
+      // STAY identical. See the note there for why the paragraph was removed.
+      const shortfall = unmatched.length + refused.length + unknownSerials.length;
+      if (matched > 0 && shortfall === 0 && res.legible !== false) {
+        say(tc('send.scanOk','Success — proceed'), 'ok');
+      } else if (matched > 0) {
+        say(tc('send.scanPartial','Some not read — enter the blank ones manually'), 'warn');
+      } else {
+        say(tc('send.scanFail','Failed — enter manually'), 'error');
+      }
       setCompositeScanned(true);
       // Attendant-led: the persisted drafts are what the operators self-settle from, so
       // pull the reconciliation rows back to move the progress bars as they come in.
@@ -752,7 +756,7 @@ export default function ShiftEndPage() {
         ))}
       </div>
 
-      {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
+      <Banner tone={tone}>{err}</Banner>
 
       {/* SCREEN 1 — Settle attendants */}
       {step===0 && (

@@ -26,6 +26,7 @@ import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { describe as describeFace, bestMatch, preload as preloadFace } from '../../lib/face';
 import { nozName } from '../../lib/nozzle';
+import Banner from '../../components/shared/Banner';
 import { rejectNote } from '../../lib/slip';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -85,6 +86,10 @@ export default function ShiftStartPage() {
   const [resumed, setResumed] = useState(false);   // header tells the manager we picked up an existing shift
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+  // The banner's TONE. Defaults to 'error' so every existing setErr() call behaves
+  // exactly as it did; only the paths that KNOW they succeeded say otherwise.
+  const [tone, setTone]       = useState('error');
+  const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [prices, setPrices]   = useState([]);   // current selling price per fuel — parallel-run reminder
 
   // Screen 1 — gauge & dip
@@ -712,20 +717,29 @@ export default function ShiftStartPage() {
         .filter(s => s.serial_known === false)
         .map(s => s.pump_serial || tc('sstart.unknownSerial','unknown serial'));
 
-      let msg = tc('sstart.slipsFilled','Filled {n} nozzle(s) from {m} slip(s).')
-        .replace('{n}', matched).replace('{m}', slips.length);
-      if (unmatched.length)     msg += ' ' + tc('sstart.slipsUnmatched','Not matched: {x}.').replace('{x}', unmatched.join(', '));
-      if (unknownSerials.length) msg += ' ' + tc('sstart.slipsUnknownSerial','⚠ Unregistered pump serial: {x} — add it under Settings.').replace('{x}', unknownSerials.join(', '));
-      if (verify.length)        msg += ' ' + tc('sstart.slipsVerifySwap','⚠ Verify nozzle {x}: a rupee/litre swap was auto-corrected.').replace('{x}', verify.join(', '));
-      if (refused.length)       msg += ' ' + tc('sstart.slipsRefused','⚠ Not filled — enter by hand: {x}.').replace('{x}', refused.join(', '));
-      if (locked.length)        msg += ' ' + tc('sstart.slipsDisagrees','⚠ The slip disagrees with the last close for {x}. The last close stands — report this.').replace('{x}', locked.join(', '));
-      if (res.legible === false) msg += ' ' + tc('sstart.slipsVerify','⚠ Some digits unclear — verify.');
-      if (res.notes)            msg += ' ' + res.notes;
-      setErr(msg);
-      // From here the per-nozzle cameras are disabled until Retake / clear — the
-      // reading boxes stay hand-editable, only the competing camera is turned off.
+      // THREE OUTCOMES, ONE SHORT LINE EACH. Nothing else.
+      //
+      // This used to be a paragraph: the fill count, the slip count, the layout, the
+      // pump serial, the model, and the OCR narrating its own reasoning — all in the
+      // same alarm red whether it had worked or not. Owner, 27-Aug-2026, watching a
+      // scan that had just succeeded: "the wrong coloured alert is the killer...
+      // nobody reads it but thinks the data has not been recorded", and then: "keep
+      // it simple - 'failed- enter manually' or 'success - proceed'. dont give all
+      // these stories to the user... he will not read nor understand."
+      //
+      // WHICH nozzle needs attention is already on the screen — its box is empty and
+      // its camera is right there. Naming them in the banner tells the manager
+      // nothing he cannot see, at the cost of him reading none of it.
+      const shortfall = unmatched.length + refused.length + unknownSerials.length;
+      if (matched > 0 && shortfall === 0 && res.legible !== false) {
+        say(tc('sstart.scanOk','Success — proceed'), 'ok');
+      } else if (matched > 0) {
+        say(tc('sstart.scanPartial','Some not read — enter the blank ones manually'), 'warn');
+      } else {
+        say(tc('sstart.scanFail','Failed — enter manually'), 'error');
+      }
       setCompositeScanned(true);
-    } catch (e) { setErr(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.')); }
+    } catch (e) { say(e.response?.data?.error || e.error || tc('sstart.slipsFailed','Could not read the slips — enter the readings manually.'), 'error'); }
     setScanning('');
   };
 
@@ -810,7 +824,7 @@ export default function ShiftStartPage() {
         ))}
       </div>
 
-      {err && <div style={{background:'#fee2e2',color:'#991b1b',borderRadius:8,padding:'10px 12px',fontSize:13,marginBottom:12}}>{err}</div>}
+      <Banner tone={tone}>{err}</Banner>
 
       {/* Which shift are we working on — one compact strip instead of a whole step. */}
       <div style={{background:'#f8fafc',border:'1px solid #eef0f2',borderRadius:10,padding:'10px 12px',marginBottom:'1rem'}}>
