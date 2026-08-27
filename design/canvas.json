@@ -47,18 +47,9 @@
       "title": "3b · What we read — every figure editable"
     },
     {
-      "file": "Deliveries.dc.html",
-      "page": "page-1",
-      "x": 1880,
-      "y": 0,
-      "w": 390,
-      "h": 844,
-      "title": "2·Tankers in this window — confirm, never enter"
-    },
-    {
       "file": "Nozzles.dc.html",
       "page": "page-1",
-      "x": 2350,
+      "x": 1880,
       "y": 0,
       "w": 390,
       "h": 844,
@@ -67,11 +58,20 @@
     {
       "file": "Variance.dc.html",
       "page": "page-1",
-      "x": 2820,
+      "x": 2350,
       "y": 0,
       "w": 390,
       "h": 844,
       "title": "5 · The variance — testing shown, confirm or start again"
+    },
+    {
+      "file": "Deliveries.dc.html",
+      "page": "page-1",
+      "x": 2820,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Exception · A tanker may be missing — the variance leads here"
     },
     {
       "file": "FlowSwitch.dc.html",
@@ -147,7 +147,7 @@
     {
       "id": "merge-note",
       "page": "page-1",
-      "x": 2350,
+      "x": 1880,
       "y": -230,
       "w": 390,
       "text": "SCREENS 4 AND 4a ARE ONE SCREEN (owner, 27-Aug). Partial is the normal state, not an error screen — the nine that read sit beside the three that didn't, and each unread one offers camera and keyboard together.\n\nMATT SHEET, IN SHADE — not a transparent folder. Plastic throws glare, and glare is what killed the 25-Aug console shot."
@@ -155,7 +155,7 @@
     {
       "id": "draft-note",
       "page": "page-1",
-      "x": 2820,
+      "x": 2350,
       "y": -230,
       "w": 390,
       "text": "SAVED BEFORE HE DECIDES — as a DRAFT. His to resume, but not in the ledger and not on the owner's dashboard until he presses Confirm.\n\nStart again does NOT delete it: the draft is marked abandoned and kept. A recon that vanishes when a man changes his mind is a recon he will not start twice.\n\nTESTING GETS ITS OWN LINE. Folded into sales it becomes an unexplained variance every single day."
@@ -179,10 +179,10 @@
     {
       "id": "deliveries-note",
       "page": "page-1",
-      "x": 1880,
+      "x": 2820,
       "y": -230,
       "w": 390,
-      "text": "STEP 2 EXISTED IN THE STEPPER BUT HAD NO SCREEN — the manager arrived at Nozzles with a tick he never earned. Spoke 1 is THREE inputs (ATG, deliveries, slips); this screen is the second. NOTHING IS ENTERED HERE: decants were captured when the tanker landed. One question — is the window complete? ‘Add’ opens the everyday Deliveries form (cardinal rule: reuse)."
+      "text": "EXCEPTION, NOT A STEP (owner, 27-Aug). Deliveries can be once a week — a daily screen for a weekly event teaches the manager to tap through it. The recon is 3 steps: ATG → nozzles → variance. When a tank's gain is about a tanker load, the variance screen leads HERE, so the man who forgot to scan the invoice at 06:41 scans it now. 'Yes' opens the everyday Deliveries form (cardinal rule: reuse) and the variance recalculates on the spot."
     },
     {
       "id": "cta-gate-note",

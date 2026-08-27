@@ -15,9 +15,9 @@ screen is drawn at 390×844.
 | `AtgCapture` | 2 · Photograph the console — landscape prompt, and SKIP |
 | `AtgReading` | 3 · Reading — the bar that fills to 90% and holds |
 | `AtgResult` | 3b · What we read — every figure editable, source badged |
-| `Deliveries` | 2 · Tankers in this window — confirm the window is complete, enter nothing |
 | `Nozzles` | 4 · Nozzles — one shot for all, or one at a time |
 | `Variance` | 5 · The variance — testing on its own line, confirm or start again |
+| `Deliveries` | Exception · A tanker may be missing — the variance leads here when a tank's gain is about a tanker load |
 | `FlowSwitch` | 6 · Settings — the switch that turns the flow on, 1240×880 |
 
 Two rules run through all of them:
@@ -41,10 +41,13 @@ Two rules run through all of them:
   app showing every tank on one display — that photograph does not exist.
 - **The landing shows the LAST RECON, never current stock.** Owner: *"we will not
   have data on Current Stock. That's a trap."*
-- **Step 2 is the deliveries CONFIRMATION, not entry** (added 27-Aug — the stepper
-  always said 4 steps but no screen was step 2, so a tick appeared that the manager
-  never earned). Decants are captured when the tanker lands; this screen only asks
-  "is the window complete?" and its Add button opens the everyday Deliveries form.
+- **The recon is THREE steps — ATG, nozzles, variance — and deliveries is an
+  EXCEPTION, not a step** (owner, 27-Aug). A decant can be once a week; a daily
+  screen for a weekly event teaches the manager to tap through it. When a tank's
+  gain is about a tanker load, the variance leads to the deliveries screen so the
+  forgotten invoice gets scanned now — through the everyday Deliveries form.
+- **The landing holds one card, one line, one button.** The past lives behind
+  "Jump to date"; no history list padding the screen.
 - **No mockup carries a readable invented figure where a photograph would be** — the
   viewfinder and thumbnails glow with abstract bars. A mockup number gets taken for
   a real one.

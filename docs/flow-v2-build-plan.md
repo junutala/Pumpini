@@ -39,10 +39,10 @@ at the console, not sitting at a desk. Each decision below was taken by the owne
 | `AtgCapture` | 2 · Photograph the console | Asks for **landscape** (the console is a wide screen, and it reads better). A **SKIP** button goes straight to manual entry |
 | `AtgReading` | 3 · Reading | The bar fills to **~90% and holds** until the answer is actually back. Three real stages. **It never claims to be finished before it is** |
 | `AtgResult` | 3b · What we read | Every figure editable; each carries a badge saying whether a photo or a person produced it |
-| `Deliveries` | 2 · Tankers in this window | Added 27-Aug: the stepper said 4 steps but step 2 had no screen. Confirmation only — decants are captured when the tanker lands; one question, "is the window complete?", with Add reusing the everyday form |
 | `Nozzles` | 4 · Nozzle readings | **4 and 4a are ONE screen.** Partial is the normal state, not an error. Its CTA is the model of rule 3 below: grey and naming the missing nozzle until 12/12, with the provisional path as a quiet secondary |
 | `Variance` | 5 · The variance | **Testing gets its own line**, never folded into sales. Confirm or Start again. **Saved as a draft either way** |
 | `FlowSwitch` | 6 · Settings | The migration switch (1240×880 — owner work, at a desk) |
+| `Deliveries` | Exception · A tanker may be missing | Owner, 27-Aug: deliveries can be once a week, so it is NOT a recon step — a daily screen for a weekly event gets tapped through. The recon is 3 steps (ATG → nozzles → variance); a tanker-sized gain on the variance leads here, and "Yes — scan now" opens the everyday Deliveries form |
 
 ### Three rules run through every screen
 
@@ -375,3 +375,12 @@ as the frozen design in `CLAUDE.md`.
    function from the side panel like everywhere else in Pumpini. The Attendant Dues
    badge (men not yet cleared) and the landing screen's last-recon card are the
    reminders; no task-queue layer, no guided-home redesign.
+
+5. **Deliveries is an exception, not a recon step** (same evening). A decant can be
+   once a week; putting a deliveries screen in the daily path "just because the
+   mathematical formula says so is pure hypocrisy." The recon runs three steps —
+   landing (last recon + jump-to-date + one CTA), ATG capture with manual
+   entry/correction, consolidated nozzle scan with manual entry for any line that
+   fails — then the variance. Only when the variance shows a tanker-sized gain is
+   the manager led to the deliveries screen, so an invoice forgotten at decant time
+   gets scanned at the moment he has a reason to remember it.

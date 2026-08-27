@@ -7,69 +7,49 @@
     body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#f8f7f5;color:#1a1916;-webkit-font-smoothing:antialiased}
     .num{font-family:'DM Mono',monospace;font-variant-numeric:tabular-nums}
     .crumb{background:#fff;border-bottom:1px solid #e5e3de;padding:11px 16px;flex-shrink:0}
-    .dots{display:flex;align-items:center;gap:0;margin-top:9px}
-    .dot{width:22px;height:22px;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-    .bar{flex:1;height:2px;margin:0 3px}
     .cta{width:100%;border:none;border-radius:10px;padding:15px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
     .cta-p{background:#e07b0c;color:#fff}
     .cta-s{background:#fff;border:1px solid #e5e3de;color:#1a1916}
-    .src{font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:2px 5px;border-radius:4px;white-space:nowrap}
-    .s-photo{background:#eef4fd;color:#2563eb}
   </style>
 </helmet>
 <div style="width:390px;height:844px;display:flex;flex-direction:column;background:#f8f7f5;overflow:hidden">
+  <!-- EXCEPTION SCREEN — no stepper. The recon has 3 steps; this is not one of them.
+       The variance leads here only when a tank's gain is about a tanker load
+       (owner, 27-Aug: deliveries can be once a week — a daily screen for a weekly
+       event teaches the manager to tap through it). -->
   <div class="crumb">
     <div style="display:flex;align-items:center;gap:8px">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7a7773" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-      <span style="font-size:15px;font-weight:700">Tankers in this window</span>
-      <span style="margin-left:auto;font-size:11.5px;color:#7a7773" class="num">Step 2 of 4</span>
-    </div>
-    <div class="dots">
-      <span class="dot" style="background:#16a34a;color:#fff"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
-      <span class="bar" style="background:#16a34a"></span>
-      <span class="dot" style="background:#e07b0c;color:#fff">2</span>
-      <span class="bar" style="background:#e5e3de"></span>
-      <span class="dot" style="background:#f3f2ef;color:#a5a29c">3</span>
-      <span class="bar" style="background:#e5e3de"></span>
-      <span class="dot" style="background:#f3f2ef;color:#a5a29c">4</span>
+      <span style="font-size:15px;font-weight:700">A tanker may be missing</span>
     </div>
   </div>
 
   <div style="flex:1;display:flex;flex-direction:column;padding:16px;overflow:hidden">
-    <!-- nothing to type here: the system already knows. The manager only confirms
-         the window is complete — a missed tanker is the biggest phantom variance. -->
-    <div style="font-size:12.5px;color:#4a4845;line-height:1.55;background:#fff;border:1px solid #e5e3de;border-radius:10px;padding:11px 13px">
-      Since the last recon <b class="num">(26 Aug · 06:12)</b> these decants are on record.
-      They were captured when the tanker landed — nothing to enter here.
+    <!-- why he is here — the variance itself, restated in tanker terms -->
+    <div style="background:#fdf6ec;border:1px solid #f0dcbc;border-radius:12px;padding:13px 14px">
+      <div style="display:flex;align-items:center;gap:9px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a96a05" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div style="font-size:14px;font-weight:700;color:#8a6d1f">Tank 3 · Petrol gained <span class="num">+4,012 L</span> over book</div>
+      </div>
+      <div style="font-size:12.5px;color:#8a6d1f;line-height:1.55;margin-top:8px">That is about one tanker compartment. A decant whose invoice was never scanned looks exactly like this.</div>
     </div>
 
-    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7773;margin:16px 0 8px">1 decant on record</div>
-
-    <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e5e3de;border-left:3px solid #3b82f6;border-radius:10px;padding:11px 12px">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M1 7h14v10H1zM15 10h4l4 4v3h-8z"/><circle cx="6" cy="19" r="1.8"/><circle cx="18.5" cy="19" r="1.8"/></svg>
-      <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:700">Tank 3 · Petrol</div>
-        <div style="font-size:11px;color:#7a7773;margin-top:1px" class="num">06:41 · DC 8821</div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center">
+      <div style="text-align:center;padding:0 10px">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#c9c6bf" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 7h14v10H1zM15 10h4l4 4v3h-8z"/><circle cx="6" cy="19" r="1.8"/><circle cx="18.5" cy="19" r="1.8"/></svg>
+        <div style="font-size:14.5px;font-weight:700;margin-top:12px">Did a tanker decant into Tank 3<br>since the last recon (<span class="num">26 Aug · 06:12</span>)?</div>
       </div>
-      <div style="flex:1;text-align:right" class="num">
-        <div style="font-size:15px;font-weight:700;color:#16a34a">+4,000.00 L</div>
-      </div>
-      <span class="src s-photo">FROM SCAN</span>
     </div>
 
-    <div style="flex:1"></div>
-
-    <!-- the one question this screen asks -->
-    <div style="font-size:13px;font-weight:700;text-align:center;margin-bottom:10px">Did any other tanker decant after 06:12?</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <button class="cta cta-p" style="min-height:54px;font-size:15.5px">
-        No — that is all
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Yes — scan the invoice now
       </button>
       <button class="cta cta-s" style="min-height:50px">
-        Yes — add it (scan the invoice)
+        No tanker came — keep the variance
       </button>
-      <div style="text-align:center;font-size:11.5px;color:#7a7773;line-height:1.5">Adding one opens the same Deliveries form used every day — nothing new to learn.</div>
+      <div style="text-align:center;font-size:11.5px;color:#7a7773;line-height:1.5">Scanning opens the everyday Deliveries form and the variance recalculates on the spot. Either way the recon stays a draft until you confirm.</div>
     </div>
   </div>
 </div>
