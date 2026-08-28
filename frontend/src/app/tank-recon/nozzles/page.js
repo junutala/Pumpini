@@ -106,7 +106,12 @@ export default function ReconNozzlesPage() {
       const next = {}; const said = [];
       for (const slip of (Array.isArray(r?.slips) ? r.slips : [])) {
         for (const ln of (slip.lines || [])) {
-          const label = ln.nozzle_name || `${slip.pump_serial || '?'}.${ln.slip_no || '?'}`;
+          // THE ONE READER. The backend names EVERY line — matched through
+          // pumpService.nozzleName, unmatched from the slip's own printed identity —
+          // so there is nothing to rebuild here. The inline fallback this replaces was
+          // both a second naming convention and dead weight, and the CI guard caught
+          // it on the first push. That is the guard doing its job.
+          const label = nozName(ln);
           if (ln.nozzle_id && ln.cumulative_volume != null && ln.legible) {
             next[ln.nozzle_id] = {
               value: String(ln.cumulative_volume),
