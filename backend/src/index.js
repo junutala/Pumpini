@@ -124,6 +124,10 @@ app.use('/api/leads',     require('./routes/leads'));
 app.use('/api/product-credit-notes', require('./routes/productReturns'));
 app.use('/api/petty-cash', require('./routes/pettyCash'));
 app.use('/api/tank-reco', require('./routes/tankReco'));
+// Flow v2 · Spoke 1 — the recon RECORD. Distinct from /tank-reco above, which computes
+// a reconciliation over a shift or a date range and stores nothing of its own. The
+// arithmetic is shared (lib/varianceMath); only the window and the record differ.
+app.use('/api/tank-recon', require('./routes/tankRecon'));
 app.use('/api/cash-deposits', require('./routes/cashDeposits'));
 app.use('/api/tally', require('./routes/tally'));
 app.use('/api/credit-reports', require('./routes/creditReports'));
