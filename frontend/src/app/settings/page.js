@@ -1712,7 +1712,7 @@ function RfidTab({ stationId, tags, reload, askConfirm }) {
 
 // ── Shift Timings Tab ──────────────────────────────────────
 function ShiftsTab({ stationId, onSaved }) {
-  const { station, user } = useAuth();
+  const { station, user, refreshStationFlags } = useAuth();
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const sid = stationId || (typeof station==='object'?station?.id:station);
@@ -1774,6 +1774,11 @@ function ShiftsTab({ stationId, onSaved }) {
     try {
       const r = await api.post(`/stations/${sid}/settings`, { hub_spokes_migration_enabled: !hubSpokes });
       setHubSpokes(!!r?.hub_spokes_migration_enabled);
+      // TELL THE SIDEBAR. The flag is read once in AuthProvider (the sidebar remounts
+      // on every navigation, so reading it there would cost a fetch per screen), and
+      // that read keys on the STATION — which does not change when the switch is
+      // flipped. Without this the new sidebar only appeared after a page reload.
+      refreshStationFlags?.();
     } catch(e){ alert(errText(e, tc('setp.couldNotChangeMode', 'Could not change mode'))); }
     setHubBusy(false);
   };

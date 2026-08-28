@@ -157,6 +157,24 @@ function cleanPumpId(v) {
 const MIN_IMPLIED_PRICE = 40;
 const MAX_IMPLIED_PRICE = 200;
 
+// ── AND A CEILING ON THE VOLUME ITSELF ───────────────────────────────────────
+// The band above tests a RATIO, so it catches a digit lost on ONE side. It cannot
+// catch a pair that is wrong TOGETHER — and on 26-Aug-2026 that is exactly what
+// happened at Sri Balaji. The fallback engine returned, on a serial matching no pump
+// at the outlet:
+//
+//     168,018,917.48 L at Rs 57.03/L      179,986,210.00 L at Rs 54.43/L
+//
+// Both prices sit comfortably inside 40–200, so the cross-check had nothing to object
+// to and BOTH lines came back legible: true. A hundred and sixty-eight million litres.
+//
+// A lifetime totaliser is a physical object. India's largest outlets turn over a few
+// million litres a year, so a pump reading past ten million litres is either decades
+// of a very busy forecourt or — overwhelmingly more likely — a misread. Ten million is
+// deliberately far above any real machine: this is a ceiling for the absurd, not a
+// judgement about busy pumps, and no honest slip will ever meet it.
+const MAX_CUMULATIVE_VOLUME = 10000000;
+
 // The ONE nozzle normaliser, shared by the single-slip and composite readers so the
 // numeric clean, the rupee/litre swap guard and the legibility verdict cannot drift
 // between them. Takes the raw `nozzles` array off a parsed slip and returns cleaned rows.
@@ -195,6 +213,10 @@ function normalizeSlipNozzles(rawNozzles) {
         // guard had: with amt absent its `amt > 0` test was false, so a "volume" of
         // 140,500,859 litres passed through untouched (production, 20-Aug 08:59).
         reject = 'no_amount_to_cross_check';
+      } else if (vol > MAX_CUMULATIVE_VOLUME) {
+        // Checked BEFORE the ratio, because a proportionally-wrong pair passes the
+        // ratio and would otherwise be believed.
+        reject = 'volume_not_physical';
       } else {
         implied = +(A / vol).toFixed(2);
         if (implied < MIN_IMPLIED_PRICE || implied > MAX_IMPLIED_PRICE) {
