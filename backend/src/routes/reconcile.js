@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
-const { requireStationVia } = require('../middleware/stationAccess');
+const { requireStationVia, requireStationAccess } = require('../middleware/stationAccess');
 const invoiceNo = require('../services/invoiceNumberService');
 const { requirePerm, requireAnyPerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
@@ -1238,13 +1238,25 @@ router.post('/parse-slip', authenticate,
 // STORES the image as evidence, and RETURNS both cumulative volume and amount per line.
 // It writes NO meter reading anywhere — the settlement form still does the writing.
 // Same guards as /parse-slip so it scopes to the shift's station and needs the same perm.
+// EITHER A SHIFT OR A STATION. The shift flow scans at open and close; a Flow v2 tank
+// recon scans at its own moment and has no shift at all. ONE reader, ONE matcher, two
+// ways in — extending this endpoint rather than standing a second one beside it, which
+// is how /pos-meter and /ocr-meter became two copies of a single OCR call.
+//
+// requireStationVia calls next() when its key is absent, so a body carrying no shift_id
+// falls through to the station guard with req.stationId still unset.
+const stationIfNoShift = (req, res, next) =>
+  req.stationId ? next() : requireStationAccess({ required: true })(req, res, next);
+
 router.post('/parse-slips', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  stationIfNoShift,
   requirePerm('reconcile.manage'),
   async (req, res, next) => {
   try {
     const { shift_id, image_base64, media_type = 'image/jpeg', persist = false } = req.body;
-    if (!shift_id || !image_base64) return res.status(400).json({ error: 'shift_id and image are required' });
+    if (!image_base64) return res.status(400).json({ error: 'An image is required.' });
+    if (!shift_id && !req.stationId) return res.status(400).json({ error: 'A shift or a station is required.' });
 
     // ONE READER. parseCompositeSlips returns null on any failure and has already
     // applied the rupee/litre cross-check per nozzle, so each cumulative_volume is
@@ -1290,8 +1302,10 @@ router.post('/parse-slips', authenticate,
          FROM nozzles n
          ${extraJoin}
         WHERE n.is_active
-          AND n.station_id = (SELECT station_id FROM shifts WHERE id = $1)`,
-      [shift_id]
+          AND n.station_id = $1`,
+      // req.stationId is set by whichever guard ran — the shift's station, or the
+      // station itself. Scoping on it directly means the recon path needs no shift.
+      [req.stationId]
     );
 
     // SERIAL + PRINTED-NOZZLE-NUMBER -> our nozzle. The key is
@@ -1366,8 +1380,12 @@ router.post('/parse-slips', authenticate,
     try {
       await artifacts.save({
         station_id: req.stationId,
-        entity_type: 'shift',
-        entity_id: shift_id,
+        // A recon scan has no shift, so its evidence hangs off the OUTLET instead. Both
+        // are allowed entity types; what matters is that the photograph is kept either
+        // way, because a scan nobody can look at afterwards is how August became an
+        // exercise in reconstruction from absence.
+        entity_type: shift_id ? 'shift' : 'station',
+        entity_id: shift_id || req.stationId,
         kind: 'nozzle_slip',
         file_base64: image_base64,
         media_type,
