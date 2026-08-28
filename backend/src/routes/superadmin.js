@@ -15,6 +15,8 @@ const { moduleAllowedForRole, MODULE_ROLE_AFFINITY } = require('../config/roles'
 const { normalizePhone, validatePhone } = require('../utils/phone');
 // Single user-writer (one insert path for every creator — tenant + admin).
 const { createUser, linkUserToStation } = require('../services/userService');
+// The replay bench, so it can be run where its API keys live. See the /slip-eval route.
+const slipEval = require('../services/slipEvalService');
 // One writer for a lead interaction — shared with the public field tool
 // (routes/leads.js). Same table and validation; only the guard differs.
 const { addInteraction, listInteractions, listAppointments, listAllInteractions,
@@ -1388,6 +1390,62 @@ router.post('/prune-inline/delivery-invoices', authAdmin, async (req, res, next)
 router.post('/prune-inline/meter-photos', authAdmin, async (req, res, next) => {
   try { await runPrune({ table: 'meter_photos', blobCol: 'image_base64', limit: req.query.limit, res }); }
   catch (err) { next(err); }
+});
+
+// POST /api/superadmin/slip-eval?latest=4&runs=2[&station=<uuid>][&artifact=<uuid>]
+// THE REPLAY BENCH, run where its keys are.
+//
+// The plan requires the reader to be MEASURED against the stored slips before screens
+// ship — real photographs, real glare, known right answers — rather than validated by
+// asking the owner to scan more. The measurement needs ANTHROPIC_API_KEY and
+// GOOGLE_VISION_API_KEY, and those live on Railway, so a laptop cannot run it. Same
+// problem and same answer as the artifact backfill above: the job runs where the
+// credential is.
+//
+// READ-ONLY. It fetches stored images and parses them; it writes nothing, and the
+// figures it returns never touch a shift, a tank or a man's account. What it DOES spend
+// is API calls — one parse per image per run — so `runs` is capped rather than trusted.
+router.post('/slip-eval', authAdmin, async (req, res, next) => {
+  try {
+    const ids = [].concat(req.query.artifact || []).filter(Boolean);
+    res.json(await slipEval.runEval({
+      ids,
+      latest: Math.min(Math.max(parseInt(req.query.latest, 10) || (ids.length ? 0 : 2), 0), 40),
+      station: req.query.station || null,
+      // Two runs of one image say more than one run of two — the parse sets no
+      // temperature, so the same photograph can come back differently. Capped at 5
+      // because every run is a paid call.
+      runs: Math.min(Math.max(parseInt(req.query.runs, 10) || 1, 1), 5),
+    }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/superadmin/slip-eval?latest=4&runs=2[&station=<uuid>][&artifact=<uuid>]
+// THE REPLAY BENCH, run where its keys are.
+//
+// The plan requires the reader to be MEASURED against the stored slips before screens
+// ship — real photographs, real glare, known right answers — rather than validated by
+// asking the owner to scan more. The measurement needs ANTHROPIC_API_KEY and
+// GOOGLE_VISION_API_KEY, and those live on Railway, so a laptop cannot run it. Same
+// problem and same answer as the artifact backfill below: the job runs where the
+// credential is.
+//
+// READ-ONLY. It fetches stored images and parses them; it writes nothing, and the
+// figures it returns never touch a shift, a tank or a man's account. What it DOES spend
+// is API calls — one parse per image per run — so `runs` is capped rather than trusted.
+router.post('/slip-eval', authAdmin, async (req, res, next) => {
+  try {
+    const ids = [].concat(req.query.artifact || []).filter(Boolean);
+    res.json(await slipEval.runEval({
+      ids,
+      latest: Math.min(Math.max(parseInt(req.query.latest, 10) || (ids.length ? 0 : 2), 0), 40),
+      station: req.query.station || null,
+      // Two runs of one image say more than one run of two — the parse sets no
+      // temperature, so the same photograph can come back differently. Capped at 5
+      // because every run is a paid call.
+      runs: Math.min(Math.max(parseInt(req.query.runs, 10) || 1, 1), 5),
+    }));
+  } catch (err) { next(err); }
 });
 
 router.post('/backfill/delivery-invoices', authAdmin, async (req, res, next) => {
