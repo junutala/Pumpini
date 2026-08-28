@@ -1456,6 +1456,15 @@ router.post('/parse-slips', authenticate,
       legible: parsed.legible,
       notes: parsed.notes,
       persisted,
+      // WHICH ENGINE READ IT, SAID OUT LOUD. This was already being written into the
+      // artifact and then thrown away on the way back to the screen, so a fallback read
+      // — the weaker path, taken when Vision is unconfigured, errors or returns too
+      // little text — looked exactly like a good one to the person confirming it. On
+      // Sri Balaji's 13 stored scans the fallback took 4, and nobody could have known
+      // which 4. § 10 rule 2: a fallback read is marked low-trust and always goes
+      // through human confirmation, with the reason recorded.
+      engine: parsed.engine ?? null,
+      fallback_reason: parsed.fallback_reason ?? null,
     });
   } catch (err) { next(err); }
 });

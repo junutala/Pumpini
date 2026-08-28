@@ -4,6 +4,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const pumpService = require('../services/pumpService');
+const commissionService = require('../services/commissionService');
 const slipParser  = require('../services/slipParser');
 const calibrationService = require('../services/calibrationService');
 
@@ -152,6 +153,11 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
     //      settings.manage is not enough to decide it.
     //   2. NOT WHILE A SHIFT IS OPEN, in EITHER direction. Half a shift under one model
     //      and half under the other leaves an opening reading nobody can defend.
+    //   3. NOT UNTIL THE OUTLET IS COMMISSIONED BY SLIP (turning it ON only). The
+    //      hub-and-spokes flow matches money on <serial>.<printed nozzle no>, and until
+    //      a person has read that pair off real paper for every nozzle it is a guess
+    //      from our own index — one nozzle's meter on another nozzle's account, two
+    //      men's outstandings both wrong. See services/commissionService.
     if (req.body.hub_spokes_migration_enabled !== undefined) {
       if (req.user.role !== 'owner') {
         return res.status(403).json({
@@ -173,6 +179,27 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
             ? `The outlet flow cannot change while a shift is open — ${which} is still running. Close it first.`
             : `The outlet flow cannot change while shifts are open — ${which} are still running. Close them first.`,
         });
+      }
+      // Switching OFF is always allowed: a way back must never be gated on the thing
+      // that is going wrong. Only switching ON asks for the evidence.
+      const turningOn = req.body.hub_spokes_migration_enabled === true
+        || req.body.hub_spokes_migration_enabled === 'true';
+      if (turningOn) {
+        const ready = await commissionService.readiness(req.params.id);
+        if (!ready.ready) {
+          return res.status(409).json({
+            error: 'not_commissioned',
+            missing: ready.missing, total: ready.total,
+            nozzles: ready.nozzles.filter(n => !n.ready).map(n => ({
+              nozzle_name: n.nozzle_name, wants: n.wants,
+            })),
+            message: !ready.spokes_ready
+              ? 'The hub-and-spokes tables are not in this database yet, so there is nowhere for the chain to live.'
+              : !ready.total
+                ? 'This outlet has no active nozzles, so there is nothing to switch on.'
+                : `${ready.missing} of ${ready.total} nozzles have not been commissioned from a slip yet. Scan one slip per pump in Settings → Commissioning, so every nozzle carries the serial and printed number its own paper shows.`,
+          });
+        }
       }
     }
 
@@ -286,6 +313,43 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
 });
 
 // POST /api/stations/:id/nozzles
+// ── COMMISSIONING BY SLIP ─────────────────────────────────────────────────────
+// WHICH ROUTE THIS CLOSES: the `defaultSlipNo()` guess, for any outlet on the
+// hub-and-spokes flow. It adds no form of its own — it writes through the SAME two
+// writers Settings already uses (pumpService for the serial, the nozzles row for the
+// printed number) and through spokeService for the chain's genesis. See
+// services/commissionService for why the evidence is the genesis event and not a new
+// "confirmed" column.
+
+// GET /api/stations/:id/commissioning — what the outlet still owes before the switch.
+router.get('/:id/commissioning', authenticate, requireStationId('id'), async (req, res, next) => {
+  try {
+    res.json(await commissionService.readiness(req.params.id));
+  } catch (err) { next(err); }
+});
+
+// POST /api/stations/:id/commissioning — record what a slip printed, confirmed.
+//
+// OWNER ONLY, and for the same reason the switch itself is: this fixes the pair every
+// later match is made on, and a wrong pair here is a wrong outstanding for two men.
+router.post('/:id/commissioning', authenticate, requireStationId('id'),
+  requirePerm('settings.manage'), async (req, res, next) => {
+    try {
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({
+          error: 'owner_only',
+          message: 'Only the outlet owner can commission a nozzle from its slip.',
+        });
+      }
+      const out = await commissionService.commission({
+        station_id: req.params.id,
+        entries: Array.isArray(req.body?.entries) ? req.body.entries : [],
+        recorded_by: req.user.id,
+      });
+      res.status(201).json({ ...out, readiness: await commissionService.readiness(req.params.id) });
+    } catch (err) { next(err); }
+  });
+
 router.post('/:id/nozzles', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     const { nozzle_number, fuel_type, tank_id, pump_id, slip_nozzle_no } = req.body;
