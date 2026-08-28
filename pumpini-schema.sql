@@ -1519,3 +1519,121 @@ BEGIN
 END $$;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.psp_sources TO app_authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- FLOW v2 · SPOKE 1 — THE RECON RECORD                        (added 27-Aug-2026)
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- A recon is ONE ACT AT ONE MOMENT: the ATG read, every nozzle slip read, and the
+-- deliveries that landed in the window — captured together. That shared moment is
+-- what makes the tank window and the nozzle totals share a boundary by construction
+-- rather than by arithmetic afterwards, and it is what kills the straddle problem.
+--
+-- Backend reads these through a catalog probe (reconService.hasReconTables), so the
+-- code deploys before this DDL is run and is simply inert until it is.
+
+-- 1 ── THE RECON ITSELF.
+CREATE TABLE IF NOT EXISTS public.tank_recons (
+  id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id    uuid NOT NULL REFERENCES public.stations(id),
+  taken_at      timestamptz NOT NULL DEFAULT now(),
+  -- DRAFT IS THE DEFAULT AND IT IS SAVED BEFORE HE DECIDES. "Start again" marks it
+  -- abandoned and KEEPS it: a recon that vanishes when a man changes his mind is a
+  -- recon he will not start twice.
+  status        text NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft','confirmed','abandoned')),
+  created_by    uuid REFERENCES public.users(id),
+  confirmed_at  timestamptz,
+  confirmed_by  uuid REFERENCES public.users(id),
+  notes         text,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS tank_recons_station_taken_idx
+  ON public.tank_recons (station_id, taken_at DESC);
+
+ALTER TABLE public.tank_recons ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='tank_recons'
+                   AND policyname='tank_recons_station_isolation') THEN
+    CREATE POLICY tank_recons_station_isolation ON public.tank_recons
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tank_recons TO app_authenticated;
+
+-- 2 ── PER TANK. The ATG figure at that moment, and the arithmetic AS CONFIRMED, so
+--      a confirmed recon explains itself from its own row instead of by recomputation.
+CREATE TABLE IF NOT EXISTS public.tank_recon_tanks (
+  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  recon_id        uuid NOT NULL REFERENCES public.tank_recons(id) ON DELETE CASCADE,
+  tank_id         uuid NOT NULL REFERENCES public.tanks(id),
+  volume_ltrs     numeric,
+  dip_mm          numeric,
+  -- WHICH HAND PRODUCED IT. Typing is not a fallback, so the figure carries its
+  -- source rather than the screen implying one.
+  source          text CHECK (source IN ('photo','typed')),
+  opening_ltrs    numeric,
+  delivered_ltrs  numeric,
+  sales_ltrs      numeric,
+  testing_ltrs    numeric,
+  book_ltrs       numeric,
+  variance_ltrs   numeric,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (recon_id, tank_id)
+);
+ALTER TABLE public.tank_recon_tanks ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='tank_recon_tanks'
+                   AND policyname='tank_recon_tanks_isolation') THEN
+    CREATE POLICY tank_recon_tanks_isolation ON public.tank_recon_tanks
+      FOR ALL USING (EXISTS (SELECT 1 FROM public.tank_recons r
+                      WHERE r.id = tank_recon_tanks.recon_id
+                        AND r.station_id IN (SELECT my_stations())))
+      WITH CHECK (EXISTS (SELECT 1 FROM public.tank_recons r
+                   WHERE r.id = tank_recon_tanks.recon_id
+                     AND r.station_id IN (SELECT my_stations())));
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tank_recon_tanks TO app_authenticated;
+
+-- 3 ── PER NOZZLE. Spoke 1's readings, DELIBERATELY SEPARATE from Spoke 2's events
+--      (owner-set 26-Aug): money flows from Spoke 2 only. Two tables make "a recon
+--      scan moved an attendant's liability" unwritable; one table with an origin flag
+--      makes it a forgotten WHERE clause away. This is a knowing exception to the
+--      one-writer rule and the reason is control, not tidiness.
+--
+--      The serial and printed number are kept AS READ so a later argument about what
+--      the slip said is settled by the row rather than by inference.
+CREATE TABLE IF NOT EXISTS public.tank_recon_nozzles (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  recon_id          uuid NOT NULL REFERENCES public.tank_recons(id) ON DELETE CASCADE,
+  nozzle_id         uuid NOT NULL REFERENCES public.nozzles(id),
+  cumulative_volume numeric,
+  cumulative_amount numeric,
+  source            text CHECK (source IN ('photo','typed')),
+  read_pump_serial  text,
+  read_nozzle_no    text,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (recon_id, nozzle_id)
+);
+ALTER TABLE public.tank_recon_nozzles ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='tank_recon_nozzles'
+                   AND policyname='tank_recon_nozzles_isolation') THEN
+    CREATE POLICY tank_recon_nozzles_isolation ON public.tank_recon_nozzles
+      FOR ALL USING (EXISTS (SELECT 1 FROM public.tank_recons r
+                      WHERE r.id = tank_recon_nozzles.recon_id
+                        AND r.station_id IN (SELECT my_stations())))
+      WITH CHECK (EXISTS (SELECT 1 FROM public.tank_recons r
+                   WHERE r.id = tank_recon_nozzles.recon_id
+                     AND r.station_id IN (SELECT my_stations())));
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tank_recon_nozzles TO app_authenticated;

@@ -5,6 +5,9 @@
 // tolerance (+ litre floor) → owner alert. Works in BOTH POS and manager modes
 // (sales come from dispense_events, which manager mode synthesizes from the meter).
 const router = require('express').Router();
+// ONE COPY OF THE WET-STOCK SUM, shared with the Flow v2 recon. Different windows
+// (a shift, a date range, or two ATG readings), same arithmetic — see lib/varianceMath.
+const { reconcileTank } = require('../lib/varianceMath');
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
@@ -151,13 +154,12 @@ async function computeShiftReco(shift_id) {
     const sales      = parseFloat(r.sales_ltrs || 0);
     // Signed: + into this tank, − out of it. Zero unless a test draw crossed tanks.
     const testMove   = parseFloat(r.test_move_ltrs || 0);
-    const book       = hasBaseline ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
     const hasClosing = r.actual_closing != null;
     const actual     = hasClosing ? parseFloat(r.actual_closing) : null;
     // A variance needs BOTH an opening baseline and a closing dip. Without the
     // baseline we cannot reconcile — report null, never a phantom full-tank loss.
     const reconcilable = hasBaseline && hasClosing;
-    const variance   = reconcilable ? +(actual - book).toFixed(2) : null;
+    const { book, variance } = reconcileTank({ opening, deliveries, sales, testMove, actual });
     const base       = hasBaseline ? opening + deliveries : 0;
     const tolerance  = +Math.max(floor, base * tolPctForFuel(settings, r.fuel_type) / 100).toFixed(2);
     const variancePct = (reconcilable && base > 0) ? +(Math.abs(variance) / base * 100).toFixed(3) : 0;
@@ -285,8 +287,11 @@ async function computePeriodReco(station_id, dateFrom, dateTo) {
 
   const shape = (r, opening, deliveries, sales, actual, fuel, testMove = 0) => {
     const reconcilable = opening != null && actual != null;
-    const book      = reconcilable ? +(opening + deliveries + testMove - sales).toFixed(2) : null;
-    const variance  = reconcilable ? +(actual - book).toFixed(2) : null;
+    // Same sum, this caller's own gate: a period reco reports NO book until both ends
+    // exist, which is narrower than the shift reco above. Preserved deliberately.
+    const m         = reconcileTank({ opening, deliveries, sales, testMove, actual });
+    const book      = reconcilable ? m.book : null;
+    const variance  = reconcilable ? m.variance : null;
     const base      = reconcilable ? opening + deliveries : 0;
     const tolerance = +Math.max(floor, base * tolPctForFuel(settings, fuel) / 100).toFixed(2);
     const pct       = (reconcilable && base > 0) ? +(variance / base * 100).toFixed(2) : null;

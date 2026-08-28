@@ -61,12 +61,35 @@ export default function AtgCapturePage() {
   // tank_id -> { value, source: 'photo'|'typed' }
   const [figures, setFigures] = useState({});
   const [notes, setNotes]     = useState([]);
+  const [draft, setDraft]     = useState(null);
+  const [saving, setSaving]   = useState(false);
+  const [saveErr, setSaveErr] = useState('');
 
   useEffect(() => {
     if (!sid) return;
     api.get(`/dipstick/tanks/${sid}`)
       .then(r => setTanks((Array.isArray(r) ? r : []).filter(isDippable)))
       .catch(() => setTanks([]));
+  }, [sid]);
+
+  // THE DRAFT HE IS FILLING. Started on the landing, resumed here — and its stored
+  // figures are loaded back, so a man who closed the tab picks up where he left off
+  // rather than photographing the console a second time.
+  useEffect(() => {
+    if (!sid) return;
+    api.get('/tank-recon', { params: { station_id: sid } })
+      .then(r => {
+        const d = r?.draft || null;
+        setDraft(d);
+        if (d?.tanks?.length) {
+          const back = {};
+          for (const t of d.tanks) {
+            if (t.volume_ltrs != null) back[t.tank_id] = { value: String(t.volume_ltrs), source: t.source || 'typed' };
+          }
+          if (Object.keys(back).length) { setFigures(f => ({ ...back, ...f })); setPhase('result'); }
+        }
+      })
+      .catch(() => {});
   }, [sid]);
 
   const dippable = tanks;
@@ -81,6 +104,28 @@ export default function AtgCapturePage() {
 
   const setFigure = (tankId, value, source) =>
     setFigures(f => ({ ...f, [tankId]: { value, source } }));
+
+  // SAVED BEFORE HE DECIDES, then on to the nozzles. The figures land on the draft
+  // first: if the next screen fails to load, or the phone locks on the forecourt, the
+  // console reading is already kept and he resumes rather than re-photographs.
+  const saveAndContinue = async () => {
+    if (!draft?.id) { setSaveErr(tc('recon.noDraft', 'This recon is no longer open — start it again from Tank Recon.')); return; }
+    setSaving(true); setSaveErr('');
+    try {
+      await api.post(`/tank-recon/${draft.id}/figures`, {
+        station_id: sid,
+        tanks: dippable.map(t => ({
+          tank_id: t.id,
+          volume_ltrs: figures[t.id]?.value ?? null,
+          source: figures[t.id]?.source ?? null,
+        })),
+      });
+      router.push('/tank-recon/nozzles');
+    } catch (e) {
+      setSaveErr(errText(e, tc('recon.saveFailed', 'Could not save those figures just now.')));
+      setSaving(false);
+    }
+  };
 
   // SKIP LANDS STRAIGHT ON THE FIGURES. A man who has decided to type should not be
   // made to watch a spinner first — the progress bar belongs to the camera, not to him.
@@ -293,30 +338,26 @@ export default function AtgCapturePage() {
               </button>
             </div>
 
-            {/* THE CTA IS EARNED. Grey until every tank carries a figure, and while grey
-                it names what it is waiting for.
+            {saveErr && <div style={{ marginTop: 12 }}><Banner tone="error">{saveErr}</Banner></div>}
 
-                IT DOES NOT SAVE YET, AND SAYS SO. The recon record — a row per tank
-                window with its two ATG boundaries, its deliveries, its nozzle totals
-                and its draft state — is owner-run DDL that is not applied. Writing
-                these into dipstick_readings instead would need a reading_type, and the
-                three that exist are opening / mid_shift / closing: a recon reading is
-                none of them, and mislabelling it would put a recon figure inside the
-                shift flow's own arithmetic. Better an honest grey button than a figure
-                filed under the wrong name. */}
-            <button disabled
-              style={{ width: '100%', height: 48, marginTop: 14, background: '#e5e3de', color: '#8b9099',
+            {/* THE CTA IS EARNED. Grey until every tank carries a figure, and while grey
+                it NAMES the tank it is waiting on rather than just refusing. */}
+            <button onClick={saveAndContinue} disabled={!ready || saving}
+              style={{ width: '100%', height: 48, marginTop: 14,
+                       background: (!ready || saving) ? '#e5e3de' : 'var(--brand)',
+                       color: (!ready || saving) ? '#8b9099' : '#fff',
                        border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14.5,
-                       cursor: 'not-allowed' }}>
-              {!ready
-                ? (missing.length === 1
-                    ? tc('recon.waitingOne', `Waiting on Tank ${missing[0].tank_number}`)
-                    : tc('recon.waitingMany', `Waiting on ${missing.length} tanks`))
-                : tc('recon.savePending', 'Next: nozzle readings — needs the recon record')}
+                       cursor: (!ready || saving) ? 'not-allowed' : 'pointer' }}>
+              {saving ? tc('recon.saving', 'Saving…')
+                : !ready
+                  ? (missing.length === 1
+                      ? `${tc('recon.waitingOn', 'Waiting on Tank')} ${missing[0].tank_number}`
+                      : `${tc('recon.waitingOnMany', 'Waiting on')} ${missing.length} ${tc('recon.tanksWord', 'tanks')}`)
+                  : tc('recon.nextNozzles', 'Next: nozzle readings')}
             </button>
             <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8, textAlign: 'center' }}>
               {ready
-                ? tc('recon.savePendingWhy', 'The figures are captured. Saving arrives with the recon record.')
+                ? tc('recon.savedAsDraft', 'Saved as a draft — nothing is in the ledger until you confirm.')
                 : tc('recon.ctaWhy', 'Every tank needs a figure before this step can close.')}
             </div>
 
