@@ -128,6 +128,9 @@ app.use('/api/tank-reco', require('./routes/tankReco'));
 // a reconciliation over a shift or a date range and stores nothing of its own. The
 // arithmetic is shared (lib/varianceMath); only the window and the record differ.
 app.use('/api/tank-recon', require('./routes/tankRecon'));
+// Flow v2 · Spokes 2 and 3 — the nozzle chain, and what the attendant owes. The
+// outstanding is DERIVED in spokeService and no route accepts one as an input.
+app.use('/api/spokes', require('./routes/spokes'));
 app.use('/api/cash-deposits', require('./routes/cashDeposits'));
 app.use('/api/tally', require('./routes/tally'));
 app.use('/api/credit-reports', require('./routes/creditReports'));
