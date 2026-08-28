@@ -30,6 +30,9 @@ import { errText } from '../../../lib/apiError';
 // of a printed identity, so there is nothing here to photograph and nothing to confirm.
 // It is commissioned by typing, like any nozzle whose slip will not read.
 const WANT_WORDS = {
+  // A nozzle attached to no pump cannot hold a serial at all — that is a Settings act,
+  // not something to type here, so it is said as itself.
+  pump:       'not attached to a pump — define it in Settings first',
   serial:     'no serial on file',
   printed_no: 'printed number never read off a slip',
   genesis:    'no opening reading',
@@ -243,7 +246,11 @@ export default function CommissioningPage() {
                       )}
                     </div>
 
-                    {!n.ready && (
+                    {!n.ready && (n.wants || []).includes('pump') ? (
+                      <div style={{ marginTop: 8, fontSize: 12.5, color: '#9a3412' }}>
+                        {tc('comm.noPump', 'Attach this nozzle to a pump in Settings → Pumps, then come back. There is nowhere here for its serial to be stored.')}
+                      </div>
+                    ) : !n.ready && (
                       <div className="stack-mobile"
                         style={{ display: 'grid', gridTemplateColumns: '1.2fr .7fr 1fr', gap: 8, marginTop: 10 }}>
                         <div>

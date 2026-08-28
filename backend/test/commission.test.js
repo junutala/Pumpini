@@ -6,11 +6,11 @@ const { wantsFor } = require('../src/services/commissionService');
 
 test('a fully commissioned nozzle wants nothing', () => {
   assert.deepStrictEqual(
-    wantsFor({ pump_serial: '17EH2900V', slip_nozzle_no: '1', events: 2 }), []);
+    wantsFor({ pump_id: 'p1', pump_serial: '17EH2900V', slip_nozzle_no: '1', events: 2 }), []);
 });
 
 test('no serial on file is named', () => {
-  assert.ok(wantsFor({ pump_serial: null, slip_nozzle_no: '1', events: 1 }).includes('serial'));
+  assert.ok(wantsFor({ pump_id: 'p1', pump_serial: null, slip_nozzle_no: '1', events: 1 }).includes('serial'));
 });
 
 // THE ONE THAT MATTERS. A blank printed number is exactly what defaultSlipNo() used to
@@ -18,9 +18,9 @@ test('no serial on file is named', () => {
 // scan matched 0 of 28 lines.
 test('a missing printed number is named, not defaulted', () => {
   assert.deepStrictEqual(
-    wantsFor({ pump_serial: '17EH2900V', slip_nozzle_no: '', events: 1 }), ['printed_no']);
+    wantsFor({ pump_id: 'p1', pump_serial: '17EH2900V', slip_nozzle_no: '', events: 1 }), ['printed_no']);
   assert.deepStrictEqual(
-    wantsFor({ pump_serial: '17EH2900V', slip_nozzle_no: '   ', events: 1 }), ['printed_no']);
+    wantsFor({ pump_id: 'p1', pump_serial: '17EH2900V', slip_nozzle_no: '   ', events: 1 }), ['printed_no']);
 });
 
 // A NOZZLE WITH NO CHAIN WAS NEVER COMMISSIONED. Every nozzle in production is in this
@@ -28,7 +28,7 @@ test('a missing printed number is named, not defaulted', () => {
 // gate holds every outlet until somebody scans.
 test('no genesis event means not commissioned, however complete the pair looks', () => {
   assert.deepStrictEqual(
-    wantsFor({ pump_serial: '17EH2900V', slip_nozzle_no: '1', events: 0 }), ['genesis']);
+    wantsFor({ pump_id: 'p1', pump_serial: '17EH2900V', slip_nozzle_no: '1', events: 0 }), ['genesis']);
 });
 
 // "0" IS A REAL PRINTED NUMBER on some machines, and a falsy check would have thrown it
@@ -36,9 +36,22 @@ test('no genesis event means not commissioned, however complete the pair looks',
 // zero in varianceMath.
 test('a printed number of "0" counts as read', () => {
   assert.deepStrictEqual(
-    wantsFor({ pump_serial: 'M1832105', slip_nozzle_no: '0', events: 1 }), []);
+    wantsFor({ pump_id: 'p1', pump_serial: 'M1832105', slip_nozzle_no: '0', events: 1 }), []);
 });
 
-test('a bare nozzle wants all three', () => {
-  assert.deepStrictEqual(wantsFor({}), ['serial', 'printed_no', 'genesis']);
+test('a bare nozzle wants the pump first, then the rest', () => {
+  assert.deepStrictEqual(wantsFor({}), ['pump', 'printed_no', 'genesis']);
+});
+
+// A NOZZLE BELONGING TO NO PUMP has nowhere for a serial to go, and reporting "no
+// serial" would send the owner to type one into a screen that cannot store it.
+test('a nozzle with no pump asks for the pump, not for a serial', () => {
+  const w = wantsFor({ pump_id: null, slip_nozzle_no: '1', events: 1 });
+  assert.deepStrictEqual(w, ['pump']);
+  assert.ok(!w.includes('serial'));
+});
+
+test('a nozzle with a pump but no serial still asks for the serial', () => {
+  assert.deepStrictEqual(
+    wantsFor({ pump_id: 'p1', pump_serial: '', slip_nozzle_no: '1', events: 1 }), ['serial']);
 });

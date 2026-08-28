@@ -43,7 +43,12 @@ const spokes = require('./spokeService');
 // reading it.
 function wantsFor(row = {}) {
   const wants = [];
-  if (!String(row.pump_serial || '').trim())    wants.push('serial');
+  // A NOZZLE BELONGING TO NO PUMP HAS NOWHERE FOR A SERIAL TO GO, and saying "no serial
+  // on file" would send the owner to type one into a screen that cannot store it. That
+  // is a Settings act — define the pump, attach the nozzle — so it is named as its own
+  // want rather than folded into the one it looks like.
+  if (!row.pump_id)                             wants.push('pump');
+  else if (!String(row.pump_serial || '').trim()) wants.push('serial');
   // "0" IS A REAL PRINTED NUMBER on some machines, so this asks whether the field is
   // BLANK, never whether it is falsy — the same class of slip as Number(null) reading
   // as a baseline of zero in varianceMath.
