@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Wallet, Info, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import Banner from '../../components/shared/Banner';
+import SettlementBreakup, { emptyBreakup, breakupTotal } from '../../components/shared/SettlementBreakup';
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
@@ -26,14 +27,6 @@ const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractio
 const when = ts => ts ? new Date(ts).toLocaleString('en-IN', {
   timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
 }) : '';
-
-const FIELDS = [
-  ['cash',   'Cash'],
-  ['upi',    'UPI'],
-  ['card',   'Card'],
-  ['credit', 'Credit slips'],
-  ['petty',  'Petty / skim'],
-];
 
 export default function AttendantDuesPage() {
   const { station, hubSpokesFlow } = useAuth();
@@ -62,14 +55,14 @@ export default function AttendantDuesPage() {
   }, [sid]);
   useEffect(() => { load(); }, [load]);
 
-  const brought = Object.values(form).reduce((a, b) => a + (Number(b) || 0), 0);
+  const brought = breakupTotal(form);
 
   const settle = async (attendant_id) => {
     setBusy(true); setErr(''); setOk('');
     try {
       await api.post('/spokes/settle', { station_id: sid, attendant_id, ...form });
       setOk(tc('dues.recorded', 'Recorded.'));
-      setOpenId(null); setForm({});
+      setOpenId(null); setForm(emptyBreakup());
       await load();
     } catch (e) {
       setErr(errText(e, tc('dues.settleFailed', 'Could not record that settlement.')));
@@ -162,17 +155,13 @@ export default function AttendantDuesPage() {
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
                         {tc('dues.whatHeBrought', 'What he handed over')}
                       </div>
-                      {/* NO FIELD FOR THE OUTSTANDING. Deliberately. */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        {FIELDS.map(([k, label]) => (
-                          <label key={k} style={{ fontSize: 12.5, color: '#666' }}>
-                            {tc(`dues.${k}`, label)}
-                            <input className="input" inputMode="decimal" value={form[k] ?? ''}
-                              onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-                              style={{ marginTop: 4 }} />
-                          </label>
-                        ))}
-                      </div>
+                      {/* THE SAME FORM AS SHIFT CLOSE — components/shared/SettlementBreakup.
+                          The manager already knows these five boxes in that order; a
+                          second version of them, differing only in a label, is the drift
+                          the cardinal rule forbids. And there is still NO FIELD for the
+                          outstanding: it is calculated, so there is nothing to blank. */}
+                      <SettlementBreakup value={form}
+                        onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))} />
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
                         <span style={{ fontSize: 13, color: 'var(--text-3)' }}>
                           {tc('dues.total', 'Total brought')} <strong style={{ fontFamily: 'monospace' }}>{money(brought)}</strong>
@@ -187,7 +176,7 @@ export default function AttendantDuesPage() {
                                    cursor: (busy || !(brought > 0)) ? 'not-allowed' : 'pointer' }}>
                           {busy ? tc('dues.recording', 'Recording…') : tc('dues.record', 'Record what he brought')}
                         </button>
-                        <button onClick={() => { setOpenId(null); setForm({}); }}
+                        <button onClick={() => { setOpenId(null); setForm(emptyBreakup()); }}
                           style={{ background: 'none', border: 'none', color: 'var(--text-3)',
                                    fontSize: 13, cursor: 'pointer' }}>
                           {tc('dues.cancel', 'Cancel')}
@@ -206,7 +195,7 @@ export default function AttendantDuesPage() {
                       {r.last_settled ? ` · ${when(r.last_settled)}` : ''}
                     </div>
                   ) : (
-                    <button onClick={() => { setOpenId(r.attendant_id); setForm({}); setOk(''); }}
+                    <button onClick={() => { setOpenId(r.attendant_id); setForm(emptyBreakup()); setOk(''); }}
                       style={{ marginTop: 12, background: 'none', border: '1px solid #e5e3de',
                                borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
                       {tc('dues.settleCta', 'Settle him')}
