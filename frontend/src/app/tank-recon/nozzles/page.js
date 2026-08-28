@@ -43,6 +43,8 @@ export default function ReconNozzlesPage() {
   const [figures, setFigures] = useState({});
   const [banner, setBanner]   = useState(null);
   const [notes, setNotes]     = useState([]);
+  // Near-miss serials awaiting one tap. Never applied without it.
+  const [ask, setAsk]         = useState([]);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [err, setErr]         = useState('');
@@ -95,7 +97,7 @@ export default function ReconNozzlesPage() {
   // prompt is exactly what returned the rupee line as a meter for four months.
   const onComposite = async (cap) => {
     if (!cap) return;
-    setScanning(true); setBanner(null); setNotes([]);
+    setScanning(true); setBanner(null); setNotes([]); setAsk([]);
     try {
       // The SAME endpoint the shift flow scans with, given a station instead of a
       // shift. One reader, one matcher — a second endpoint here is exactly how
@@ -103,7 +105,7 @@ export default function ReconNozzlesPage() {
       const r = await api.post('/reconcile/parse-slips', {
         station_id: sid, image_base64: cap.base64, media_type: cap.media_type,
       });
-      const next = {}; const said = [];
+      const next = {}; const said = []; const proposals = [];
       for (const slip of (Array.isArray(r?.slips) ? r.slips : [])) {
         for (const ln of (slip.lines || [])) {
           // THE ONE READER. The backend names EVERY line — matched through
@@ -119,6 +121,14 @@ export default function ReconNozzlesPage() {
               source: 'photo',
               serial: slip.pump_serial || '', no: ln.slip_no || '',
             };
+          } else if (!slip.serial_known && slip.serial_suggestion) {
+            // A NEAR MISS PROPOSES — one tap, never an assumption. The engines misread
+            // a serial in small consistent ways (17CH2900V for 17EH2900V), and until
+            // now every one of those was dropped without a word.
+            proposals.push({
+              read: slip.pump_serial, suggest: slip.serial_suggestion.serial,
+              lines: (slip.lines || []).filter(x => x.cumulative_volume != null && x.legible),
+            });
           } else if (!slip.serial_known) {
             // WRONG OUTLET, SAID OUT LOUD. Nagole, 20-Aug: 0 of 28 lines matched
             // because the slips were another outlet's machines, and no screen said a
@@ -133,6 +143,8 @@ export default function ReconNozzlesPage() {
       }
       setFigures(f => ({ ...f, ...next }));
       setNotes(said);
+      // Deduped by the serial that was read: one card per machine, not one per line.
+      setAsk(Object.values(Object.fromEntries(proposals.map(x => [x.read, x]))));
       const filled = Object.keys(next).length;
       setBanner(filled === 0
         ? { tone: 'error', text: tc('recon.slipNone', 'Nothing usable on that photo — enter the readings below.') }
@@ -142,6 +154,27 @@ export default function ReconNozzlesPage() {
     } catch (e) {
       setBanner({ tone: 'error', text: errText(e, tc('recon.slipFailed', 'Could not read those slips — enter the readings below.')) });
     } finally { setScanning(false); }
+  };
+
+  // HE CONFIRMED IT, so the lines land — marked as read from a photo of THAT machine,
+  // carrying the serial he confirmed rather than the one the engine invented.
+  const applyProposal = (p) => {
+    const next = {};
+    for (const ln of p.lines) {
+      const hit = nozzles.find(n => String(nozName(n)) === `${p.suggest}.${ln.slip_no}`);
+      if (hit) {
+        next[hit.id] = {
+          value: String(ln.cumulative_volume),
+          amount: ln.cumulative_amount != null ? String(ln.cumulative_amount) : '',
+          source: 'photo', serial: p.suggest, no: ln.slip_no || '',
+        };
+      }
+    }
+    setFigures(f => ({ ...f, ...next }));
+    setAsk(a => a.filter(x => x.read !== p.read));
+    if (!Object.keys(next).length) {
+      setNotes(n => [...n, `${p.suggest} — ${tc('recon.proposalNoLines', 'none of those lines matched a nozzle here; type them instead.')}`]);
+    }
   };
 
   const saveAndContinue = async () => {
@@ -199,6 +232,32 @@ export default function ReconNozzlesPage() {
         </div>
 
         {banner && <Banner tone={banner.tone}>{banner.text}</Banner>}
+
+        {/* ONE TAP, NEVER AN ASSUMPTION. A serial we guessed silently is how one
+            pump's meter lands on another pump — and the 26-Aug scans showed the reader
+            is not steady enough to be trusted on its own. */}
+        {ask.map(p => (
+          <div key={p.read} className="card" style={{ marginBottom: 12, borderLeft: '3px solid var(--brand)' }}>
+            <div style={{ fontSize: 13.5, color: '#666' }}>
+              {tc('recon.readAs', 'The slip read as')}{' '}
+              <strong style={{ fontFamily: 'monospace' }}>{p.read}</strong>,{' '}
+              {tc('recon.whichIsNot', 'which is not a machine here. Did you mean')}{' '}
+              <strong style={{ fontFamily: 'monospace' }}>{p.suggest}</strong>?
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => applyProposal(p)}
+                style={{ background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8,
+                         padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                {tc('recon.yesItIs', 'Yes — it is')} {p.suggest}
+              </button>
+              <button onClick={() => setAsk(a => a.filter(x => x.read !== p.read))}
+                style={{ background: 'none', border: '1px solid #e5e3de', borderRadius: 8,
+                         padding: '8px 14px', fontSize: 13, cursor: 'pointer', color: 'var(--text-3)' }}>
+                {tc('recon.noItIsNot', 'No — I will type these')}
+              </button>
+            </div>
+          </div>
+        ))}
 
         {notes.length > 0 && (
           <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid #f59e0b' }}>

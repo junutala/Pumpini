@@ -3,6 +3,9 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationVia, requireStationAccess } = require('../middleware/stationAccess');
+// A near-miss serial PROPOSES the nearest known machine — one tap to confirm — rather
+// than being dropped in silence. See lib/serialMatch for why the threshold is one edit.
+const { proposeSerial } = require('../lib/serialMatch');
 const invoiceNo = require('../services/invoiceNumberService');
 const { requirePerm, requireAnyPerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
@@ -1370,6 +1373,13 @@ router.post('/parse-slips', authenticate,
         slip_type: ['A', 'B', 'C'].includes(s.slip_type) ? s.slip_type : (s.slip_type ?? null),
         // Is this machine registered at all? Any of its nozzles present in our map.
         serial_known: !!(serial && serialsKnown.has(serial)),
+        // A NEAR MISS NAMES ITS CANDIDATE. Null when the serial is already known, when
+        // nothing is close, or when two machines are equally close — an ambiguous
+        // proposal is a coin toss wearing a suggestion's clothes, and the line goes to
+        // the loud card instead. The screen offers it; nothing here accepts it.
+        serial_suggestion: (serial && !serialsKnown.has(serial))
+          ? proposeSerial(serial, Array.from(serialsKnown))
+          : null,
         lines,
       };
     });

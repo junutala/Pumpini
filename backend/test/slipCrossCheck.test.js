@@ -59,3 +59,30 @@ test('a line the model itself called illegible stays illegible', () => {
   const r = one({ nozzle_no: '1', cumulative_volume: '1654130.510', cumulative_amount: '149343626.920', legible: false });
   assert.strictEqual(r.legible, false);
 });
+
+// ── THE PAIR THAT WAS WRONG TOGETHER ────────────────────────────────────────────
+// The implied-price band tests a RATIO, so it catches a digit lost on ONE side and is
+// blind to a pair that is wrong in step. Sri Balaji, 26-Aug-2026 12:59, the fallback
+// engine, on a serial matching no pump at the outlet — both lines came back
+// legible: true because Rs 57 and Rs 54 sit comfortably inside 40–200.
+test('168 million litres is refused, however sane the price looks', () => {
+  const [a, b] = normalizeSlipNozzles([
+    { nozzle_no: '1', cumulative_volume: 168018917.48, cumulative_amount: 9582453838.501, legible: true },
+    { nozzle_no: '2', cumulative_volume: 179986210,    cumulative_amount: 9795824538.501, legible: true },
+  ]);
+  assert.strictEqual(a.reject_reason, 'volume_not_physical');
+  assert.strictEqual(b.reject_reason, 'volume_not_physical');
+  assert.strictEqual(a.legible, false, 'the model called it legible; the physics does not');
+  assert.strictEqual(b.legible, false);
+  // And the price it implied was never the problem — it was perfectly plausible.
+  assert.ok(a.implied_price === null || (a.implied_price > 40 && a.implied_price < 200));
+});
+
+test('a real lifetime totaliser is nowhere near the ceiling', () => {
+  // Sri Balaji's busiest nozzle on the same day: 4,022,304.57 L at Rs 91.56.
+  const [ok] = normalizeSlipNozzles([
+    { nozzle_no: '1', cumulative_volume: 4022304.57, cumulative_amount: 368264002, legible: true },
+  ]);
+  assert.strictEqual(ok.reject_reason, undefined);
+  assert.strictEqual(ok.legible, true);
+});

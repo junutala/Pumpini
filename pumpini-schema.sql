@@ -1637,3 +1637,97 @@ BEGIN
   END IF;
 END $$;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.tank_recon_nozzles TO app_authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- FLOW v2 · SPOKE 2 (the nozzle chain) and SPOKE 3 (the attendant)  27-Aug-2026
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Backend probes for these (spokeService.hasSpokeTables), so the code deploys first
+-- and is inert until this is run.
+
+-- 1 ── THE CHAIN. A nozzle carries ONE chain of readings, and each reading CLOSES the
+--      account before it and OPENS the one after. One number, stored once, read from
+--      both directions — never a closing column and an opening column that can differ.
+--
+--      A CO-EVENT carries no value. It is created only when a scan produces the SAME
+--      reading as the one immediately before it, and it exists to record the DRIFT IN
+--      TIME between the outgoing man's print and the incoming man's, so the owner has
+--      data to push the manager on discipline. A metric, not a measurement.
+CREATE TABLE IF NOT EXISTS public.nozzle_events (
+  id             uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id     uuid NOT NULL REFERENCES public.stations(id),
+  nozzle_id      uuid NOT NULL REFERENCES public.nozzles(id),
+  -- The man whose duty this reading CLOSES. Null on the chain's genesis event, which
+  -- opens the first account without closing anything.
+  closes_attendant_id uuid REFERENCES public.users(id),
+  -- The man whose duty it OPENS. Null when the nozzle goes idle.
+  opens_attendant_id  uuid REFERENCES public.users(id),
+  reading        numeric NOT NULL,
+  recorded_at    timestamptz NOT NULL DEFAULT now(),
+  source         text CHECK (source IN ('photo','typed')),
+  -- Same reading as the event before it: no fuel moved, only time passed.
+  is_co_event    boolean NOT NULL DEFAULT false,
+  prev_event_id  uuid REFERENCES public.nozzle_events(id),
+  -- Seconds between this print and the one before. The co-event's whole purpose.
+  drift_seconds  integer,
+  -- WHEN A DRIFT IS JUSTIFIED THE MANAGER TYPES THE REASON IN HIS OWN WORDS. Never a
+  -- dropdown (owner-set 25-Aug): a canned reason code becomes a reflex.
+  drift_reason   text,
+  read_pump_serial text,
+  read_nozzle_no   text,
+  recorded_by    uuid REFERENCES public.users(id),
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS nozzle_events_nozzle_time_idx
+  ON public.nozzle_events (nozzle_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS nozzle_events_station_time_idx
+  ON public.nozzle_events (station_id, recorded_at DESC);
+
+ALTER TABLE public.nozzle_events ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='nozzle_events'
+                   AND policyname='nozzle_events_station_isolation') THEN
+    CREATE POLICY nozzle_events_station_isolation ON public.nozzle_events
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.nozzle_events TO app_authenticated;
+
+-- 2 ── WHAT THE MAN BROUGHT. The OUTSTANDING is never stored: it is DERIVED from his
+--      events, which is the structural fix for the 25-Aug loss of Rs 1,25,275 — a
+--      manager cannot make a liability vanish by leaving a field blank, because there
+--      is no field. The only manual entry is what he handed over.
+CREATE TABLE IF NOT EXISTS public.attendant_settlements (
+  id           uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  station_id   uuid NOT NULL REFERENCES public.stations(id),
+  attendant_id uuid NOT NULL REFERENCES public.users(id),
+  settled_at   timestamptz NOT NULL DEFAULT now(),
+  -- What he BROUGHT. No column for the outstanding, deliberately.
+  cash         numeric NOT NULL DEFAULT 0,
+  upi          numeric NOT NULL DEFAULT 0,
+  card         numeric NOT NULL DEFAULT 0,
+  credit       numeric NOT NULL DEFAULT 0,
+  petty        numeric NOT NULL DEFAULT 0,
+  notes        text,
+  recorded_by  uuid REFERENCES public.users(id),
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS attendant_settlements_att_time_idx
+  ON public.attendant_settlements (attendant_id, settled_at DESC);
+CREATE INDEX IF NOT EXISTS attendant_settlements_station_time_idx
+  ON public.attendant_settlements (station_id, settled_at DESC);
+
+ALTER TABLE public.attendant_settlements ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE schemaname='public' AND tablename='attendant_settlements'
+                   AND policyname='attendant_settlements_station_isolation') THEN
+    CREATE POLICY attendant_settlements_station_isolation ON public.attendant_settlements
+      FOR ALL USING (station_id IN (SELECT my_stations()))
+      WITH CHECK (station_id IN (SELECT my_stations()));
+  END IF;
+END $$;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.attendant_settlements TO app_authenticated;

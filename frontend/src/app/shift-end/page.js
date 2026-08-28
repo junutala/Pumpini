@@ -33,6 +33,7 @@ import { tankVolume, tankDipCm } from '../../lib/tankVolume';
 import { matchGaugeRows } from '../../lib/gaugeMatch';
 import { nozName } from '../../lib/nozzle';
 import Banner from '../../components/shared/Banner';
+import SettlementBreakup from '../../components/shared/SettlementBreakup';
 import { COMPOSITE_SLIP_SCAN } from '../../lib/features';
 import { rejectNote } from '../../lib/slip';
 
@@ -976,13 +977,11 @@ export default function ShiftEndPage() {
 
                       {/* 3 — the settlement breakup. Cash is his OWN declaration —
                           the per-operator maker-checker that must stay per operator. */}
-                      <div className="stack-mobile" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginTop:10}}>
-                        <div><label className="label">{tc('send.cash','Cash')} ₹</label><input style={inp} type="number" step="0.01" value={fm.cash||''} onChange={e=>setF(a.attendant_id,'cash',e.target.value)}/></div>
-                        <div><label className="label">{tc('send.card','Card')} ₹</label><input style={inp} type="number" step="0.01" value={fm.card||''} onChange={e=>setF(a.attendant_id,'card',e.target.value)}/></div>
-                        <div><label className="label">UPI ₹</label><input style={inp} type="number" step="0.01" value={fm.upi||''} onChange={e=>setF(a.attendant_id,'upi',e.target.value)}/></div>
-                        <div><label className="label">{tc('send.credit','Credit')} ₹</label><input style={inp} type="number" step="0.01" value={fm.credit||''} onChange={e=>setF(a.attendant_id,'credit',e.target.value)}/></div>
-                        <div><label className="label">{tc('send.pettySkim','Petty/Skim')} ₹</label><input style={inp} type="number" step="0.01" value={fm.petty||''} onChange={e=>setF(a.attendant_id,'petty',e.target.value)}/></div>
-                      </div>
+                      {/* ONE FORM, BOTH FLOWS — components/shared/SettlementBreakup.
+                          Spoke 3's Attendant Dues asks for the same five figures, and a
+                          second copy of them is the drift the cardinal rule forbids. */}
+                      <SettlementBreakup value={fm}
+                        onChange={(k, v) => setF(a.attendant_id, k, v)} />
 
                       {/* 4 — live tally, 5 — his OWN settle button */}
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap',marginTop:10,paddingTop:10,borderTop:'1px solid #eef0f2'}}>

@@ -373,4 +373,66 @@ async function computeDataHealth(stationIds, today = istToday()) {
   return out;
 }
 
-module.exports = { computeDataHealth, THRESHOLDS };
+// ── SCAN TELEMETRY — the process measuring itself ────────────────────────────
+//
+// §10 rule 4: "Scans / matched / typed / engine / fallback-reason, per outlet per
+// week." It exists because slip scanning DIED IN THE FIRST WEEK OF AUGUST AND NOBODY
+// COULD SEE IT. Both managers were lied to by a reader returning the rupee line,
+// stopped scanning, and the only trace was an absence nobody was looking at.
+//
+// Read straight out of station_artifacts.ocr, which every scan has written since #366
+// and #367 — success AND failure. No new table, no new column: the evidence is already
+// there, it simply had nobody asking.
+//
+// READ-ONLY and best-effort, like every other query in this file: a failure degrades to
+// an empty series rather than 500-ing a dashboard.
+async function computeScanTelemetry(stationIds, { weeks = 8 } = {}) {
+  const ids = Array.from(new Set((stationIds || []).filter(Boolean)));
+  if (!ids.length) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.id AS station_id, s.name AS outlet,
+              date_trunc('week', a.captured_at AT TIME ZONE 'Asia/Kolkata')::date AS week,
+              count(*) AS scans,
+              count(*) FILTER (WHERE (a.ocr->>'read_failed')::bool IS TRUE)      AS failed,
+              count(*) FILTER (WHERE a.ocr->>'engine' = 'claude_vision')          AS fallback,
+              count(*) FILTER (WHERE a.ocr->>'engine' = 'google_vision+claude_text') AS vision,
+              count(*) FILTER (WHERE a.ocr->>'fallback_reason' IS NOT NULL)       AS with_reason,
+              -- THE ONE THAT MATTERS: lines the reader produced, and how many of them
+              -- landed on a machine this outlet actually has. A scan that matches
+              -- nothing is the Nagole case, and it used to pass in silence.
+              COALESCE(SUM((
+                SELECT count(*) FROM jsonb_array_elements(COALESCE(a.ocr->'slips','[]'::jsonb)) sl
+                CROSS JOIN LATERAL jsonb_array_elements(COALESCE(sl->'lines','[]'::jsonb)) ln
+              )), 0) AS lines,
+              COALESCE(SUM((
+                SELECT count(*) FROM jsonb_array_elements(COALESCE(a.ocr->'slips','[]'::jsonb)) sl
+                CROSS JOIN LATERAL jsonb_array_elements(COALESCE(sl->'lines','[]'::jsonb)) ln
+                 WHERE (sl->>'serial_known')::bool IS TRUE AND ln->>'nozzle_id' IS NOT NULL
+              )), 0) AS matched
+         FROM station_artifacts a
+         JOIN stations s ON s.id = a.station_id
+        WHERE a.kind = 'nozzle_slip'
+          AND a.station_id = ANY($1::uuid[])
+          AND a.captured_at >= now() - ($2 || ' weeks')::interval
+        GROUP BY s.id, s.name, week
+        ORDER BY week DESC, s.name`,
+      [ids, String(Math.min(Number(weeks) || 8, 52))]);
+    return rows.map(r => ({
+      station_id: r.station_id, outlet: r.outlet, week: r.week,
+      scans: Number(r.scans), failed: Number(r.failed),
+      vision: Number(r.vision), fallback: Number(r.fallback),
+      with_reason: Number(r.with_reason),
+      lines: Number(r.lines), matched: Number(r.matched),
+      // A percentage nobody has to compute in a screen, and that cannot be
+      // computed two different ways in two different screens.
+      matched_pct: Number(r.lines) > 0
+        ? +(Number(r.matched) / Number(r.lines) * 100).toFixed(1) : null,
+    }));
+  } catch (e) {
+    try { require('../utils/logger').warn('scan telemetry failed — ' + (e.message || e)); } catch { /* noop */ }
+    return [];
+  }
+}
+
+module.exports = { computeDataHealth, computeScanTelemetry, THRESHOLDS };

@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import api, { login as apiLogin, getMe, logoutApi } from './api';
 
@@ -22,6 +22,20 @@ export function AuthProvider({ children }) {
   // the flow it runs today. The flag never turns an outlet ON by accident.
   const [hubSpokesFlow, setHubSpokesFlow] = useState(false);
   const stationId = typeof station === 'object' ? station?.id : station;
+
+  // REFETCHED ON DEMAND, not only when the outlet changes.
+  //
+  // The effect below keys on stationId, so SWITCHING OUTLET updates the sidebar at
+  // once — but FLIPPING THE SWITCH does not change the station, so the sidebar kept
+  // the old value until the page was reloaded. The owner hit exactly that: "the
+  // sidebar changed, but I had to refresh once after the switch."
+  //
+  // Settings calls this after a successful flip, so the one place that knows the flag
+  // changed is the one place that says so. A bumped counter rather than a second
+  // fetcher: the fetch itself stays in one effect.
+  const [flagNonce, setFlagNonce] = useState(0);
+  const refreshStationFlags = useCallback(() => setFlagNonce(n => n + 1), []);
+
   useEffect(() => {
     if (!stationId) { setHubSpokesFlow(false); return; }
     let cancelled = false;
@@ -29,7 +43,7 @@ export function AuthProvider({ children }) {
       .then(s => { if (!cancelled) setHubSpokesFlow(!!s?.hub_spokes_migration_enabled); })
       .catch(() => { if (!cancelled) setHubSpokesFlow(false); });
     return () => { cancelled = true; };
-  }, [stationId]);
+  }, [stationId, flagNonce]);
 
   useEffect(() => {
     const token = Cookies.get('token') || sessionStorage.getItem('token');
@@ -108,7 +122,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, station, activeShift, setActiveShift, login, logout, switchStation, hubSpokesFlow }}>
+    <AuthContext.Provider value={{ user, loading, station, activeShift, setActiveShift, login, logout, switchStation, hubSpokesFlow, refreshStationFlags }}>
       {children}
     </AuthContext.Provider>
   );
@@ -119,7 +133,7 @@ export const useAuth = () => {
   if (!ctx) return {
     user: null, loading: true, station: null, activeShift: null,
     setActiveShift: () => {}, login: async () => {}, logout: () => {}, switchStation: () => {},
-    hubSpokesFlow: false,
+    hubSpokesFlow: false, refreshStationFlags: () => {},
   };
   return ctx;
 };

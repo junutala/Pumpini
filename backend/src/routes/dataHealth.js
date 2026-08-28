@@ -14,7 +14,7 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
-const { computeDataHealth, THRESHOLDS } = require('../services/dataHealthService');
+const { computeDataHealth, computeScanTelemetry, THRESHOLDS } = require('../services/dataHealthService');
 
 // GET /api/data-health/station?station_id=
 // Per-outlet flags for the manager dashboard (and the owner's embedded cockpit).
@@ -59,6 +59,21 @@ router.get('/group/:id', authenticate, authorize('owner'), async (req, res, next
     const total = stations.reduce((sum, s) => sum + s.count, 0);
 
     res.json({ total, stations, thresholds: THRESHOLDS });
+  } catch (err) { next(err); }
+});
+
+// GET /api/data-health/scans?station_id=&weeks=
+// THE PROCESS MEASURING ITSELF. Scans, matched lines, engine and fallback per week —
+// read out of station_artifacts.ocr, which every scan already writes.
+//
+// It lives here rather than on a route of its own because this file is already the
+// read-only tripwire: same guard, same scoping, same "never 500 a dashboard" contract.
+// Slip scanning died in the first week of August and nobody could see it; this is the
+// screen that would have shown it, and it needed no new table to exist.
+router.get('/scans', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const series = await computeScanTelemetry([req.query.station_id], { weeks: req.query.weeks });
+    res.json({ station_id: req.query.station_id, weeks: series });
   } catch (err) { next(err); }
 });
 
