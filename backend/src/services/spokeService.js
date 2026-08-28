@@ -60,7 +60,12 @@ async function lastEvent(nozzle_id, client = pool) {
 // RECORD A HANDOVER. One reading, which closes one man's account and opens the next's.
 // Returns { event, refused } — refused when the physics says the figure cannot be true
 // and no reason was given for it.
-async function recordEvent({ station_id, nozzle_id, reading, closes_attendant_id,
+// WHO IT CLOSES IS DERIVED, NEVER TYPED. It is the man the previous event OPENED — the
+// chain already knows, and asking a screen to say so is asking for the wrong man to be
+// struck. A manager who is himself short would only have to pick a different name.
+// Spoke 3's outstanding is calculated from these rows, so this is the same rule one
+// step upstream: the only thing a person enters is what he BROUGHT.
+async function recordEvent({ station_id, nozzle_id, reading,
                              opens_attendant_id, source, recorded_by, drift_reason,
                              read_pump_serial, read_nozzle_no, at }) {
   if (!(await hasSpokeTables())) return null;
@@ -86,6 +91,9 @@ async function recordEvent({ station_id, nozzle_id, reading, closes_attendant_id
       return { refused: verdict };
     }
 
+    // Read off the chain inside the same lock, so two handovers on one nozzle cannot
+    // both close the same man.
+    const closes_attendant_id = prev?.opens_attendant_id || null;
     const isCo = prev != null && Number(prev.reading) === Number(reading);
     const driftSeconds = prev
       ? Math.round((now - new Date(prev.recorded_at)) / 1000)
@@ -107,6 +115,42 @@ async function recordEvent({ station_id, nozzle_id, reading, closes_attendant_id
   } catch (e) {
     await client.query('ROLLBACK'); throw e;
   } finally { client.release(); }
+}
+
+// WHERE EVERY NOZZLE STANDS RIGHT NOW — its last reading, when it was taken, and the
+// man it is currently open against. This is what the handover screen needs before it
+// can ask for anything: the manager sees the number the pump last printed and the name
+// the account stands against, so he is confirming rather than remembering.
+//
+// A nozzle with no events at all has not been commissioned. It appears with nulls
+// rather than being hidden, because a missing nozzle is a question and an empty row is
+// an answer.
+async function nozzleState(station_id) {
+  const pumps = require('./pumpService');
+  const nm = await pumps.nozzleNameSelect(pool);
+  if (!(await hasSpokeTables())) {
+    const { rows } = await pool.query(
+      `SELECT n.id, n.nozzle_number, n.fuel_type ${nm.col}
+         FROM nozzles n ${nm.join}
+        WHERE n.station_id=$1 AND COALESCE(n.is_active, TRUE)
+        ORDER BY n.nozzle_number`, [station_id]);
+    return rows.map(r => ({ ...r, reading: null, recorded_at: null, on_attendant_id: null }));
+  }
+  const { rows } = await pool.query(
+    `SELECT n.id, n.nozzle_number, n.fuel_type ${nm.col},
+            e.reading, e.recorded_at, e.opens_attendant_id AS on_attendant_id,
+            u.name AS on_attendant_name
+       FROM nozzles n
+       ${nm.join}
+       LEFT JOIN LATERAL (
+         SELECT * FROM nozzle_events ev
+          WHERE ev.nozzle_id = n.id
+          ORDER BY ev.recorded_at DESC, ev.created_at DESC LIMIT 1
+       ) e ON true
+       LEFT JOIN users u ON u.id = e.opens_attendant_id
+      WHERE n.station_id=$1 AND COALESCE(n.is_active, TRUE)
+      ORDER BY n.nozzle_number`, [station_id]);
+  return rows;
 }
 
 // THE CHAIN, newest first, for one outlet.
@@ -204,6 +248,6 @@ async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
 const num = v => Number(v) || 0;
 
 module.exports = {
-  hasSpokeTables, physicsVerdict, recordEvent, chain, outstanding, settle,
+  hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding, settle,
   MAX_FLOW_LTRS_PER_MIN,
 };

@@ -159,8 +159,9 @@ async function commission({ station_id, entries, recorded_by }) {
       if (!has.length) {
         const r = await spokes.recordEvent({
           station_id, nozzle_id, reading: Number(e.reading),
-          // A genesis closes nobody. It opens the first account without closing one.
-          closes_attendant_id: null, opens_attendant_id: e.opens_attendant_id || null,
+          // A genesis closes nobody — there is no event before it, and recordEvent
+          // derives the closing man from the chain, so this needs saying only here.
+          opens_attendant_id: e.opens_attendant_id || null,
           source: e.source === 'typed' ? 'typed' : 'photo',
           recorded_by,
           read_pump_serial: serial || null, read_nozzle_no: printed,
