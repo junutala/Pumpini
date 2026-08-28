@@ -32,6 +32,19 @@ router.get('/chain', authenticate, requireStationAccess({ required: true }), asy
   } catch (err) { next(err); }
 });
 
+// GET /api/spokes/nozzles?station_id=
+// WHERE EVERY NOZZLE STANDS — last reading, when, and the man it is open against. The
+// handover screen shows this before it asks for anything, so the manager confirms
+// rather than remembers.
+router.get('/nozzles', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    res.json({
+      enabled: await spokes.hasSpokeTables(),
+      nozzles: await spokes.nozzleState(req.query.station_id),
+    });
+  } catch (err) { next(err); }
+});
+
 // POST /api/spokes/event
 // A HANDOVER. One reading closes one man's account and opens the next's.
 //
@@ -47,7 +60,15 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
       if (!nozzle_id || reading == null || reading === '') {
         return res.status(400).json({ error: 'bad_request', message: 'A nozzle and a reading are required.' });
       }
-      const out = await spokes.recordEvent({ ...req.body, station_id, recorded_by: req.user.id });
+      // NAMED, NOT SPREAD. The body is a manager's input; who a reading CLOSES is
+      // derived from the chain inside spokeService and must not be reachable from here.
+      const out = await spokes.recordEvent({
+        station_id, nozzle_id, reading,
+        opens_attendant_id: req.body.opens_attendant_id || null,
+        source: req.body.source, drift_reason: req.body.drift_reason,
+        read_pump_serial: req.body.read_pump_serial, read_nozzle_no: req.body.read_nozzle_no,
+        recorded_by: req.user.id,
+      });
       if (out?.refused) {
         const v = out.refused;
         return res.status(409).json({

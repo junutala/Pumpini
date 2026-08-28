@@ -20,6 +20,7 @@ import { Camera, Keyboard, Info } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
 import PhotoCapture from '../../../components/shared/PhotoCapture';
 import Banner from '../../../components/shared/Banner';
+import EngineNotice from '../../../components/shared/EngineNotice';
 import api from '../../../lib/api';
 import { useAuth } from '../../../lib/auth';
 import { nozName } from '../../../lib/nozzle';
@@ -45,6 +46,8 @@ export default function ReconNozzlesPage() {
   const [notes, setNotes]     = useState([]);
   // Near-miss serials awaiting one tap. Never applied without it.
   const [ask, setAsk]         = useState([]);
+  // Which reader produced these figures. Loud only when it was the weaker one.
+  const [engine, setEngine]   = useState(null);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [err, setErr]         = useState('');
@@ -97,7 +100,7 @@ export default function ReconNozzlesPage() {
   // prompt is exactly what returned the rupee line as a meter for four months.
   const onComposite = async (cap) => {
     if (!cap) return;
-    setScanning(true); setBanner(null); setNotes([]); setAsk([]);
+    setScanning(true); setBanner(null); setNotes([]); setAsk([]); setEngine(null);
     try {
       // The SAME endpoint the shift flow scans with, given a station instead of a
       // shift. One reader, one matcher — a second endpoint here is exactly how
@@ -143,6 +146,7 @@ export default function ReconNozzlesPage() {
       }
       setFigures(f => ({ ...f, ...next }));
       setNotes(said);
+      setEngine({ engine: r?.engine ?? null, reason: r?.fallback_reason ?? null });
       // Deduped by the serial that was read: one card per machine, not one per line.
       setAsk(Object.values(Object.fromEntries(proposals.map(x => [x.read, x]))));
       const filled = Object.keys(next).length;
@@ -232,6 +236,8 @@ export default function ReconNozzlesPage() {
         </div>
 
         {banner && <Banner tone={banner.tone}>{banner.text}</Banner>}
+
+        <EngineNotice engine={engine?.engine} reason={engine?.reason} />
 
         {/* ONE TAP, NEVER AN ASSUMPTION. A serial we guessed silently is how one
             pump's meter lands on another pump — and the 26-Aug scans showed the reader

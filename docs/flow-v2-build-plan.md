@@ -444,3 +444,56 @@ as the frozen design in `CLAUDE.md`.
    is beyond the outlet's variance tolerance AND at least ~1,000 L (a build-time
    constant to tune with the owner); a difference around 100 L is dip noise and
    never asks for a tanker invoice.
+
+---
+
+## 12. BUILD STATUS — 28-Aug-2026, end of the first coding day
+
+Written at the end of the session that built it, so the next one starts from what is
+true rather than from what the plan hoped for. Everything below is on `main` and in
+production, behind `station_settings.hub_spokes_migration_enabled`, which is **ON at
+Dilsukhnagar only** and OFF at Kamala, Adhoc Highway and Highway.
+
+### Built and shipped
+
+| | What |
+|---|---|
+| **Schema** | `tank_recons`, `tank_recon_tanks`, `tank_recon_nozzles`, `nozzle_events`, `attendant_settlements` — all five with RLS enabled, a `station_id IN (SELECT my_stations())` policy and `GRANT … TO app_authenticated` in the same DDL block. Run by the owner and verified live. |
+| **The switch** | Owner-only, refused while any shift is open at the outlet in either direction, refused ON until the outlet is commissioned. Off is never gated. |
+| **Spoke 1** | Tank Recon — ATG, deliveries by tank window, the composite nozzle scan, variance. Four screens; the nozzle and the "still to read" screens are ONE screen, because partial is the normal state. |
+| **Spoke 2** | The chain, and the handover that writes it. One reading closes the account before it and opens the one after. Co-events, drift in time, and the two physics alarms. |
+| **Spoke 3** | Attendant Dues. The outstanding is derived; the only entry is what he brought, on the same `SettlementBreakup` form Shift Close uses. |
+| **Commissioning** | Serial + printed nozzle number read off real paper, once per pump, gating the switch. No DDL — the genesis `nozzle_events` row is the evidence. |
+| **The reader** | Near-miss serials propose at one edit with a one-tap confirm; the backup engine says so on every screen that scans; a cumulative volume above 10,000,000 L is refused before the ratio band; scan telemetry per outlet per week. |
+| **The bench** | `POST /api/superadmin/slip-eval` — the replay measurement, running where its API keys are. |
+
+### The rules this build had to be corrected against — all of them caught, all in the log
+
+- **`Number(null) === 0`** in `varianceMath` read a missing opening dip as a baseline of
+  zero and produced a phantom full-tank loss. Caught by its own test, 2 of 7 red.
+- **A two-edit serial threshold** would have proposed changing Sri Balaji's *correct*
+  `17CH2645V` into its real neighbour `17CH2653V`. One edit, plus an exact-match early
+  return.
+- **The CI nozzle-name guard caught this session** building a label inline, in the very
+  commit whose comments quote the rule.
+- **A second settlement form** was written beside Shift Close's before the owner said
+  *"we can borrow the same screen"*. It is now one component in both.
+- **`closes_attendant_id` was accepted from the request body** until the handover screen
+  made the hole visible: a manager could have struck the outstanding against a different
+  name. It is derived from the chain inside the lock.
+
+### Still open — the owner's calls, unchanged from §8
+
+1. **Recon cadence** — daily or per shift. Daily is 12 slip prints and cheap; per shift
+   is 24 a day and somebody starts skipping, which quietly puts the straddle back.
+2. **Who may clear an outstanding.** Manager is weak control — he is often the one who
+   took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
+   *Today the route requires `settlement.enter` and nothing else.*
+3. **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
+
+### The first thing to do at Sri Balaji
+
+Commissioning, in Settings. Production carries **zero genesis events at all eight
+outlets** (checked 28-Aug), so every outlet is held by the gate until somebody scans —
+which is the intent, not a defect. Sri Balaji's 12 nozzles all have a serial and a
+printed number on file already, so it is 12 readings and five minutes.
