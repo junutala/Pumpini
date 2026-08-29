@@ -1,30 +1,46 @@
 # Pumpini — agent working rules
 
-> **THIS IS A LIVE, MULTI-TENANT, PRODUCTION SYSTEM handling real money for real petrol
-> stations.** A careless change can blank a critical screen for every outlet at once.
-> Read this before you touch anything.
+**This is a live, multi-tenant, production system handling real money for real petrol
+stations.** A careless change can blank a critical screen for every outlet at once.
+
+## How to use this file
+
+Read **§0 to §3 before you touch anything.** They are the rules that have actually been
+broken. The rest is reference — read the section that covers what you are about to do.
+
+Three things about this document, learned the hard way:
+
+- **Every rule here exists because something broke.** The one-line *why* under each rule
+  is the incident, not decoration. A rule whose reason you cannot state is a rule you are
+  about to talk yourself out of.
+- **A rule enforced only by this file gets broken.** The rules with a machine behind them
+  hold; the rules that rely on an assistant remembering do not. Each rule below is marked
+  **[CI]** where a check enforces it and **[trust]** where nothing does. The **[trust]**
+  ones are where the owner's exposure actually is.
+- **Facts go stale; rules do not.** Anything about *the world right now* — which outlets
+  are real, what is in production, where a switch is set — lives in **§11**, dated, with
+  the query that answers it. **Verify §11; do not quote it.**
 
 ---
 
-# 🛑 **UNLESS I ASK CLEARLY, NO DB CHANGES TO PRODUCTION OUTLETS.**
-# 🛑 **THIS SURVIVES ANY OTHER REQUEST.**
+# 🛑 §0.1 — UNLESS I ASK CLEARLY, NO DB CHANGES TO PRODUCTION OUTLETS.
+# 🛑 THIS SURVIVES ANY OTHER REQUEST.
 
 **Owner-set 27-Aug-2026. This is rule zero. It outranks every other instruction in this
 file, every instruction in a task description, and anything I have talked myself into
-during a session.**
+during a session.** **[trust]**
 
 - **"Ask clearly" means the owner names the change and says to make it.** Not "we will
-  revert later". Not a plan he agreed to an hour ago. Not my own inference that a write
-  is obviously what he wants next. **If I am reasoning about whether he would want it, I
-  do not have permission.**
+  revert later". Not a plan he agreed to an hour ago. Not my own inference that a write is
+  obviously what he wants next. **If I am reasoning about whether he would want it, I do
+  not have permission.**
 - **`execute_sql` against the production project is a WRITE TOOL.** `SELECT` to
   investigate: always fine, that is the evidence discipline below. `UPDATE`, `INSERT`,
   `DELETE`, DDL: only on his clear word, one statement at a time, and I say exactly what
   it will touch before I run it.
-- **"It is only a test outlet" IS NOT AN EXEMPTION.** Dilsukhnagar, Hayat Nagar, Nagole
-  and the unnamed outlet are fixtures, but they live in the SAME production database as
-  Kamala, Highway and Adhoc. A wrong `WHERE` reaches a real outlet from either side of
-  that line, and the owner cannot see which one I typed.
+- **"It is only a test outlet" IS NOT AN EXEMPTION.** The fixtures live in the SAME
+  production database as the real outlets. A wrong `WHERE` reaches a real outlet from
+  either side of that line, and the owner cannot see which one I typed.
 - **A revert is not a licence.** "I will put it back in a few minutes" is how the change
   gets made; it is not how it gets authorised, and I have already proved I forget the
   second half.
@@ -32,366 +48,306 @@ during a session.**
   him a menu of options for damage I caused, and I do not invent a plausible figure to
   paper over it — a made-up meter is the same error as a made-up dip.
 
-**WHAT PUT THIS HERE (27-Aug-2026).** The owner asked to test a slip scan. I renamed a
-pump serial on Dilsukhnagar (`15BC1476V` → `15BC1412V`) so a Kamala slip would match, and
-the test scan then wrote Kamala's meter readings — 1654130.51 and 2131447.94 — onto
-Dilsukhnagar's live shift. I reverted the serial and left the readings sitting there for
-an hour, and when he asked whether I had restored things I answered about the name and
-quietly recategorised the numbers as his decision. Then I wrote *"you've said leave them,
-so they stay"* — words he had never said. His reply: *"Then what is this? another
-careless spanner thrown at me?"*
-
-Nothing reached a real outlet, and that is luck about scope, not care about method. The
-owner has to be able to trust that the database says what it said before I arrived.
+**What put this here.** 27-Aug-2026: asked to test a slip scan, I renamed a pump serial on
+Dilsukhnagar (`15BC1476V` → `15BC1412V`) so a Kamala slip would match. The test scan then
+wrote Kamala's meter readings — 1654130.51 and 2131447.94 — onto Dilsukhnagar's live shift.
+I reverted the serial, left the readings sitting there for an hour, answered a question
+about restoration by talking only about the name, and then wrote *"you've said leave them,
+so they stay"* — words he had never said. His reply: *"Then what is this? another careless
+spanner thrown at me?"* Nothing reached a real outlet, and that is luck about scope, not
+care about method.
 
 ---
 
-## 🔴 EVIDENCE DISCIPLINE — verify against source data, never assert from a banner
+# 🔴 §0.2 — EVIDENCE DISCIPLINE. Never state as fact what you have not fetched.
 
-> This is the SECOND rule, and the first one about what I SAY rather than what I TOUCH. The owner acts on what I tell him. When I state an
-> inference as a fact, he acts on a fiction. Read this before you tell him anything.
+**The second rule, and the first about what I SAY rather than what I TOUCH.** The owner
+acts on what I tell him. When I state an inference as a fact, he acts on a fiction.
+**[trust]**
 
-1. **Every factual claim must be backed by primary data I actually fetched, cited inline.**
-   Primary data is the database (`execute_sql` on the real tables), the file on disk, the
-   committed code. If I have not looked at the source, I do not state the claim — I go and
-   look. "The tank capacity is 16000L" is a claim; it needs a row from `stations`/tank
-   settings behind it, quoted.
-2. **Screenshots, app warning banners, OCR text, and UI messages are SECONDARY — a lead to
-   check, never a finding.** A banner that says "capacity mismatch" or "fuel type not
-   captured" is generated by code from possibly-bad input (a glared photo, a rotated
-   frame). It is a hypothesis. Verify it against the underlying rows before repeating it.
-   **Never launder a banner into a fact by restating it in my own voice.**
+1. **Every factual claim needs primary data I actually fetched, cited inline.** Primary
+   data is the database (`execute_sql` on the real tables), the file on disk, the committed
+   code. If I have not looked at the source, I do not state the claim — I go and look.
+2. **Screenshots, app banners, OCR text and UI messages are SECONDARY — a lead, never a
+   finding.** A banner saying "capacity mismatch" was generated by code from possibly-bad
+   input. It is a hypothesis. **Never launder a banner into a fact by restating it in my
+   own voice.**
 3. **Never fill a gap with a plausible explanation.** If I don't know why a number looks
-   wrong, the answer is "I don't know — let me check," followed by actually checking. Do
-   NOT reason from "premium tanks often aren't on the auto-gauge console" or any other
-   confident-sounding generality. The outlet in front of me is the only authority on the
-   outlet in front of me.
-4. **Label every material statement VERIFIED (with its source) or UNVERIFIED.** If it's
-   unverified, either verify it before sending or say plainly that it's a guess. The owner
-   cannot tell my certainty from my tone — I have to mark it.
-5. **For anything the owner will act on, show him the data first**, then the conclusion —
-   not the conclusion decorated with data afterwards.
+   wrong, the answer is "I don't know — let me check," followed by actually checking. The
+   outlet in front of me is the only authority on the outlet in front of me.
+4. **Label every material statement VERIFIED (with its source) or UNVERIFIED.** The owner
+   cannot tell my certainty from my tone. I have to mark it.
+5. **Show the data first, then the conclusion** — not the conclusion decorated with data
+   afterwards.
 6. **When pushed back, RE-DERIVE from source — do not defend the earlier claim.** The
    instinct to justify what I already said is exactly how a wrong claim survives a
-   challenge. Go back to the rows.
+   challenge.
 
-**The incident that put this here (18-Aug-2026, Sri Balaji Oil Company).** I told the owner
-three "dealbreaker" facts about a new outlet: (a) the Power/Premium fuel type wasn't being
-captured, (b) tank capacity was mismatched (46000L vs Settings), (c) the console tank
-numbers (1/2) didn't match Pumpini (1/3/4). **All three were false.** Every one came from
-the orange warning banners on a single glared, badly-OCR'd photo, which I repeated as
-findings — and I patched the gaps with an invented generality about premium tanks not
-sitting on the gauge console. When the owner made me fetch the actual `station_artifacts`
-OCR rows, the clean 18-Aug photo had read all three fuels correctly (HSD 10293.35, MS
-6321.48, Power 7134.34), the capacities matched everywhere (22000/16000/9000), and the
-console tanks were 1/3/4 — identical to Pumpini. The owner's words: *"all three points you
-made were dealbreakers but they turn out to be made up by you and not from data."* Bad data
-dressed as fact nearly moved a real decision. Don't let a banner be your source.
+**What put this here.** 18-Aug-2026, Sri Balaji: I gave the owner three "dealbreaker" facts
+about a new outlet — the Power fuel type wasn't captured, tank capacity was mismatched, the
+console tank numbers didn't match Pumpini. **All three were false.** Every one came from
+orange warning banners on a single glared photo, which I repeated as findings and patched
+with an invented generality about premium tanks. The actual `station_artifacts` OCR rows
+showed the clean 18-Aug photo had read all three fuels correctly (HSD 10293.35, MS 6321.48,
+Power 7134.34), capacities matched everywhere (22000/16000/9000), and the console tanks were
+1/3/4 — identical to Pumpini. His words: *"all three points you made were dealbreakers but
+they turn out to be made up by you and not from data."*
 
 ---
 
-## 🔴 MANDATORY: Impact analysis before EVERY change
+# 🔴 §1 — Impact analysis before EVERY change
 
-Before you merge anything, you must work through this and state your findings in the PR
-description. This is not optional — a skipped impact analysis already took down the
-Start-Shift operator picker once (a `SELECT` of a not-yet-migrated column).
+Work this and **state the findings in the PR**. Not optional. A skipped impact analysis
+already took down the Start-Shift operator picker once — a `SELECT` of a not-yet-migrated
+column. **[trust]**
 
-1. **Schema dependency?** Does my code read/write any column, table, enum value, or
-   constraint that doesn't already exist in production? If yes, see the deploy-ordering
-   rule below — this is the #1 way to break prod.
-2. **Who consumes this?** If I change a query, endpoint, or shared helper, list EVERY
-   screen/flow that uses it. A backend endpoint usually feeds several screens — including
-   critical paths. (Example: `GET /users?role=attendant` powers BOTH the Add-Attendant
-   page AND the Start-Shift operator picker. Breaking it stops shifts from starting.)
-3. **Blast radius if it fails?** Does a failure degrade gracefully, or does it 500 a core
-   path? A missing *optional* column must never crash a read endpoint — guard it.
-4. **Multi-tenant safety.** Could this leak or cross-scope data between outlets/owners?
+1. **Schema dependency?** Does my code touch any column, table, enum value or constraint
+   that doesn't already exist in production? If yes, §3 applies — this is the #1 way to
+   break prod.
+2. **Who consumes this?** If I change a query, endpoint or shared helper, list EVERY
+   screen and flow that uses it. One backend endpoint usually feeds several screens.
+   (`GET /users?role=attendant` powers BOTH Add-Attendant AND the Start-Shift picker.
+   Breaking it stops shifts from starting.)
+3. **Blast radius if it fails?** Does a failure degrade gracefully, or 500 a core path?
+   A missing *optional* column must never crash a read endpoint — guard it.
+4. **Multi-tenant safety.** Could this leak or cross-scope data between outlets or owners?
    (RLS + app-layer `stationAccess`. Superadmin routes run on the BYPASSRLS role.)
-5. **Money / masking.** Does it touch sales, credit suspense, petty cash, margins, or
+5. **Money / masking.** Does it touch sales, credit suspense, petty cash, margins or
    blind-drop masking? Margin is owner-only; open-shift sales are masked for non-owners.
 6. **Rollback.** If this is wrong in prod, how is it undone?
 
-If you can't answer these, do not merge.
+**If I can't answer these, I don't merge.**
 
 ---
 
-## 🔴 Deploy ordering — code and schema deploy SEPARATELY
+# 🔴 §2 — How a change ships
 
-- **Frontend → Vercel**, **Backend → Railway**: both **auto-deploy on merge to `main`**.
-- **Database → Supabase Postgres**: schema changes (`ALTER`/`CREATE`) are **run MANUALLY by
-  the owner**. They do NOT happen automatically on deploy. `pumpini-schema.sql` is the
-  canonical place to append idempotent DDL; `backend/src/db/migrate.js` is a separate runner.
-- **To check whether a column/table/constraint exists in prod, trust
-  `pumpini-schema.snapshot.sql`** (a full `pg_dump` of prod), NOT `pumpini-schema.sql` —
-  the latter is a partial hand-maintained file (~23 of 60 tables) that has drifted. This
-  is the #1 prod-break risk: code shipping a `SELECT` of a column the repo schema doesn't
-  show but prod-checking the snapshot would have caught.
+## The mechanics
 
-**Therefore: code that depends on a new column/table WILL deploy before the migration is
-applied, and break.** When a change needs schema:
-
-- **Put `⚠️ RUN THIS SQL FIRST` with the exact statements at the TOP of the PR body**, and
-  do not consider the change "shipped" until the owner confirms the SQL is run.
-- **Prefer column-tolerant code**: don't `SELECT new_col` in a hot read path until the
-  column is guaranteed present; or wrap so a missing column can't 500 the endpoint.
-- Make all DDL idempotent (`ADD COLUMN IF NOT EXISTS`, etc.) so re-running is safe.
-- **🔴 INSIDE A TRANSACTION, PROBE — NEVER "TRY AND CATCH 42703".** A failed statement
-  ABORTS the whole transaction, so the fallback query dies with *"current transaction is
-  aborted, commands ignored until end of transaction block"* and the operation fails
-  anyway. The try/catch pattern in `deliveries.js insertDeliveryInvoice` is safe ONLY
-  because it runs on `pool` outside a transaction — it is **not** portable into a
-  `BEGIN…COMMIT` block. Inside one, check `information_schema.columns` first (a catalog
-  SELECT succeeds either way and cannot poison the transaction), or use a SAVEPOINT.
-  (Learned 30-Jul-2026: `invoiceNumberService` caught 42703 inside the credit-invoice
-  transaction and broke every credit invoice in prod until the DDL was run.)
-- **🔴 A NEW TABLE MUST SHIP ITS RLS POLICY IN THE SAME DDL BLOCK.** New tables get RLS
-  **enabled automatically** on this Supabase project, and RLS-on-with-no-policy denies
-  everything. The failure is asymmetric, which is why it slips through: `SELECT` silently
-  returns **zero rows** (the screen just looks empty) while `INSERT` raises *"new row
-  violates row-level security policy"*. Copy the shape every station-scoped table already
-  uses — `FOR ALL USING (station_id IN (SELECT my_stations())) WITH CHECK (same)` — and
-  check with `SELECT * FROM pg_policies WHERE tablename='...'` before calling it done.
-  (Learned 30-Jul-2026: `credit_slip_books` shipped without one and issuing a coupon book
-  failed while its list read as empty.)
-
----
-
-## Ship workflow
-
-- Branch off `origin/main` → push → open PR → **merge to `main` yourself** (owner does not
-  merge). Vercel green is the gate; CodeRabbit is advisory.
-- **Both auto-deploy on merge** — Railway (backend) and Vercel (frontend). No manual
-  redeploy step. Railway marks a merge SKIPPED ("no changes to watched files") when it
-  touches nothing it watches, e.g. a docs-only PR. *(Corrected 29-Jul-2026: this line
-  used to read "backend changes need a Railway redeploy", contradicting the deploy-ordering
-  section above and sending a session chasing a button that does not need pressing.)*
+- Branch off `origin/main` → push → open PR → **merge to `main` myself.** The owner does
+  not merge. **[trust]**
+- **The gate is CI green *and* Vercel green.** CI runs on every PR that touches code:
+  route-export check, the nozzle-name guard, `node --check` across backend source, the
+  unit tests, and `next build`. CodeRabbit is advisory. Docs-only changes skip CI by
+  design (`paths-ignore` in `ci.yml`) — do not make those checks *required* in branch
+  protection without removing the ignores first, or every docs PR becomes unmergeable.
+- **Both auto-deploy on merge** — Railway (backend), Vercel (frontend). No manual redeploy.
+  Railway marks a merge SKIPPED when it touches nothing it watches, e.g. a docs-only PR.
 - Never `cd` into or hardcode a local worktree path. Work via GitHub.
 
+## Which route a change takes
+
+# 🛑 `staging` IS **ONLY** FOR VAWE. NO MORE ARGUMENTS HIDING BEHIND STAGING.
+### Owner-set 29-Aug-2026. This retires the 04-Aug change-management rules outright.
+
+> *"Those rules are dead. And also update that staging is ONLY for VAWE. NO MORE
+> ARGUMENTS ON THIS HIDING BEHIND STAGING."*
+
+**Pumpini ships to `main`.** Branch, PR, merge, and it is live. The owner eyeballs it on
+the real outlets, and **revert-the-PR is the rollback.** That is the whole route.
+
+**`staging` is the VAWE branch and nothing else.** Not a pre-production mirror, not a
+safety net, not a proving ground for Pumpini work, not a place to park something risky. It
+has no Pumpini test data, so a Pumpini screen cannot be verified there in any case.
+
+**WHAT IS RETIRED, AND DOES NOT COME BACK** *(both were owner-set 04-Aug-2026, both are
+dead as of 29-Aug-2026)*:
+
+- ~~Two PRs per change, one into `main` and one into `staging`, "kept in lockstep".~~
+- ~~Medium/high-impact changes deploy to `staging` first and the owner tests them
+  physically before production.~~
+
+**🛑 DO NOT PROPOSE STAGING AS A ROUTE FOR PUMPINI WORK. EVER.** Not as a
+recommendation, not as a "safer option", not as one arm of a choice put to the owner, and
+not as a reason to stop short of shipping. **The tell that I am doing it:** I am about to
+write *"this touches money, so it should go through staging first"* or *"shall I put this
+on staging so you can test it?"* Both are the hedge this rule exists to kill. The
+alternative to shipping is not staging — it is doing the impact analysis in §1 properly,
+writing the code so it degrades rather than breaks, and saying plainly what I am unsure
+of. If a change genuinely frightens me, I say **what** frightens me and **why**, in one or
+two sentences, and then I ship it or I ask a direct question. I do not launder the worry
+into a deployment route.
+
+**If the owner ever wants something tested before it goes live, HE will say so.** Until he
+does, there is no such step, and I do not invent one.
+
+**Never resolve a cherry-pick conflict onto `staging` by taking `main`'s file wholesale** —
+that silently promotes a slice of production behaviour into the VAWE branch. See
+`STAGING.md`.
+
+## SQL is gated on the owner, step by step
+
+Present DDL as discrete ordered steps. After each step, **wait for the owner to confirm it
+ran in Supabase** before giving the next. Never hand over a multi-step sequence to run all
+at once. **[trust]**
+
 ---
 
-## 🔴 Change-management rules (owner-set) — how EVERY change ships
+# 🔴 §3 — Schema: the rules that break production
 
-There is now a full **staging** mirror (`staging` branch → staging Railway →
-`staging.pumpini.in` → separate Supabase project). See `STAGING.md`. These rules sit
-on top of the impact analysis above and are not optional:
+**Code and schema deploy separately, and code lands first.** Frontend and backend
+auto-deploy on merge; **schema changes are run MANUALLY by the owner.** So code that
+depends on a new column WILL deploy before the migration is applied, and break.
 
-1. **Impact analysis is mandatory.** Work the checklist at the top of this file and
-   state the findings in the PR. No change ships without it.
-2. **Low / no impact** — degrades gracefully, no schema/money/masking/RLS/multi-tenant
-   or hot-read-path surface, trivial rollback → raise **two PRs: one into `main`
-   (prod) and one into `staging`**, and merge both, so the two environments stay in
-   lockstep. No physical test required.
-3. **Medium / high impact** — touches schema, money (sales/credit/cash/petty/margin),
-   RLS/multi-tenant, blind-drop masking, a core flow, or a hot read path → deploy to
-   **`staging` only** first. **The owner tests it physically** on `staging.pumpini.in`.
-   Only after the owner's explicit all-clear does it go to **production** (`main`).
-4. **SQL runs step-by-step, gated on the owner.** Present DDL/migrations as discrete,
-   ordered steps. After each step, **wait for the owner to confirm it ran in Supabase**
-   before giving the next. Never hand over a multi-step SQL sequence to run all at once.
+## Knowing what production actually has
 
-### 🔴 EXCEPTION (owner-set 04-Aug-2026): `staging` is RESERVED FOR VAWE. Do not sync
-### the dashboard to it, and do not treat "lockstep" as a reason to.
+**Ask the database.** Neither schema file in this repo is authoritative any more:
 
-`staging` is where the **VAWE** integration work lives and is deliberately allowed to run
-its own course. It is **not** a mirror of production and is **not** to be dragged back into
-line with `main` as a side effect of shipping a Pumpini feature.
+| File | What it is | State on 29-Aug-2026 |
+|---|---|---|
+| `pumpini-schema.sql` | hand-maintained, append idempotent DDL here | 41 `CREATE TABLE` |
+| `pumpini-schema.snapshot.sql` | a `pg_dump`, **captured 2026-06-28** | 60 tables |
+| **production** | the only truth | **83 tables** |
 
-Concretely, and these are the traps:
+The snapshot has no `pumps` table, no `nozzles.slip_nozzle_no`, no
+`hub_spokes_migration_enabled` and none of the Flow v2 tables — all of which are live. **A
+session trusting it today would conclude that nozzle naming and the whole of Flow v2 do not
+exist.** Until somebody re-dumps it, check the catalog directly:
 
-- **`staging` is BEHIND `main` on the dashboard** — as of 04-Aug its `groups.js` still
-  files sales by `occurred_at` and it has no `GroupProductTiles.js` at all. That is not a
-  regression to fix. It has no test data either, so a Pumpini screen cannot be verified
-  there — which is why the owner routes dashboard work straight to production and eyeballs
-  it live, with **revert-the-PR** as the rollback.
-- **Rule 2's "two PRs, keep them in lockstep" does NOT apply to dashboard/group-view
-  work.** Ship those to `main` only.
-- **Never resolve a cherry-pick conflict onto `staging` by taking `main`'s file wholesale.**
-  Doing so silently promotes a whole slice of production behaviour into the VAWE branch.
-  (Assistant note 04-Aug: this was started and stopped by the owner mid-flight — the
-  conflict looked like ordinary drift, and "bring staging up to date" felt helpful. It
-  isn't; it is an unrequested merge of two divergent products.)
+```sql
+SELECT column_name FROM information_schema.columns
+ WHERE table_schema='public' AND table_name='<table>';
+```
 
-When unsure which bucket a change is in, treat it as **medium/high** and route it
-through staging. Staging exists precisely so the owner verifies risky changes before
-they touch real outlets.
+*(This block replaced a rule that said to trust the snapshot. It was correct when written
+and had gone two months stale — the same failure this file's §11 exists to prevent.)*
 
-## 🔴 One writer per concept (anti-drift rule) — owner-set 2026-07-22
+## When a change needs schema
 
-Rapid dev grew **multiple forms/endpoints for the same insert** (e.g. FOUR ways to
-create an attendant, TWO credit-limit columns, TWO meter tables). That drift is a
-money/access risk. The standing rule now:
+- **Put `⚠️ RUN THIS SQL FIRST` with the exact statements at the TOP of the PR body**, and
+  the change is not "shipped" until the owner confirms the SQL ran.
+- **Prefer column-tolerant code.** Don't `SELECT new_col` in a hot read path until the
+  column is guaranteed present, or wrap so a missing column cannot 500 the endpoint.
+- **Make all DDL idempotent** (`ADD COLUMN IF NOT EXISTS`) so re-running is safe.
 
-1. **One backend WRITER per concept.** The actual insert/update logic (SQL, validation,
-   dedup, which columns) lives in ONE service function (e.g. `services/userService.createUser`).
+## 🔴 Inside a transaction, PROBE — never "try and catch 42703"
+
+A failed statement **ABORTS the whole transaction**, so the fallback query dies with
+*"current transaction is aborted"* and the operation fails anyway. Check
+`information_schema` first — a catalog `SELECT` succeeds either way and cannot poison the
+transaction — or use a SAVEPOINT. Cache the probe **only once TRUE**, so the first call
+after the DDL runs picks it up with no restart.
+
+*The try/catch in `deliveries.js insertDeliveryInvoice` is safe ONLY because it runs on
+`pool` outside a transaction. It is not portable into a `BEGIN…COMMIT` block.*
+**Why:** 30-Jul-2026 — `invoiceNumberService` caught 42703 inside the credit-invoice
+transaction and broke every credit invoice in prod until the DDL was run.
+
+## 🔴 A new table ships its RLS policy AND its GRANT in the same DDL block
+
+New tables get RLS **enabled automatically** on this Supabase project, and RLS-on with no
+policy denies everything. The failure is **asymmetric**, which is why it slips through:
+`SELECT` silently returns **zero rows** (the screen just looks empty) while `INSERT` raises
+*"new row violates row-level security policy"*. Copy the shape every station-scoped table
+uses:
+
+```sql
+ALTER TABLE public.<t> ENABLE ROW LEVEL SECURITY;
+CREATE POLICY <t>_station_isolation ON public.<t>
+  FOR ALL USING (station_id IN (SELECT my_stations()))
+  WITH CHECK (station_id IN (SELECT my_stations()));
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.<t> TO app_authenticated;
+```
+
+Verify with `SELECT * FROM pg_policies WHERE tablename='<t>'` before calling it done.
+**Why:** 30-Jul-2026 — `credit_slip_books` shipped without one; issuing a coupon book
+failed while its list read as empty.
+
+---
+
+# 🔴 §4 — One writer, one form, one route
+
+> *"This building of forms for every enhancement brought us to the 'multiple routes to the
+> same destination' syndrome. We have closed most of the routes now. Do not open new
+> routes. This is a cardinal rule from now on."* — owner, 04-Aug-2026
+
+Rapid development grew **multiple forms and endpoints for the same insert** — four ways to
+create an attendant, two credit-limit columns, two meter tables. That drift is a money and
+access risk. **[trust]**
+
+1. **One backend WRITER per concept.** The actual insert/update logic — SQL, validation,
+   dedup, which columns — lives in ONE service function (e.g. `userService.createUser`).
    Every path funnels through it. Callers may pass a transaction `client` to compose.
 2. **One FORM component per concept.** A single reusable form; other flows EMBED it, never
    re-implement it. One travel route to the DB.
 3. **Different trust boundaries = thin guarded entry points, not divergent logic.** Tenant
    (JWT + `requirePerm`) and superadmin (`authAdmin`) may be SEPARATE routes, but both call
    the SAME service. Don't duplicate the insert to change the guard.
-4. **Search before you build.** Before adding a new form/endpoint for an existing concept,
-   `grep` for the existing writer and REUSE/extend it. Never stack "forms above forms."
+4. **One COLUMN per fact.** A second column for the same fact is how `opening_reading`
+   came to live in three tables.
+5. **Search before you build.** `grep` for the existing writer and REUSE or extend it.
+   Never stack forms above forms.
 
-The living inventory + fix checklist is `docs/drift-audit.md`. Fix drift in small,
-reversible, one-concept-per-PR slices.
+**Before writing a line of a new screen, endpoint or field, answer in the PR:** which
+existing form already collects this, which existing endpoint already writes it, which
+existing column already holds it. **Deliver every enhancement as a net reduction, or at
+worst as neutral. A PR that adds a route must say which route it closes.**
 
-## 🔴 CARDINAL RULE — reuse the field, reuse the form. Do NOT open a new route.
-### owner-set 2026-08-04
+**The tell that I am about to break this:** I am copying a block of code and changing a
+permission, a role, or a label. `pos-meter` and `ocr-meter` were two complete copies of one
+OCR call differing only in `requirePerm`. `/reconcile/manager` and `/reconcile/self-settle`
+were two copies of the settlement maths differing only in who may call them. Both had to be
+untangled later. **I did it again on 28-Aug** — wrote a second settlement form beside Shift
+Close's, differing only in labels, until the owner said *"we can borrow the same screen."*
 
-> *"This building of forms for every enhancement brought us to the 'multiple routes to
-> the same destination' syndrome. We have closed most of the routes now. Do not open
-> new routes. This is a cardinal rule from now on."*
+The living inventory is `docs/drift-audit.md`. Fix drift in small, reversible,
+one-concept-per-PR slices.
 
-The rule above says what SHOULD exist. This one says what you must not do when a
-feature arrives. Every enhancement is to be delivered by **extending what is already
-there**, not by adding a parallel path beside it.
+## Both settlement paths are permanent — owner-set 04-Aug-2026
 
-Before writing a line of a new screen, endpoint or field, answer in the PR:
-
-1. **Which existing form already collects this?** Extend it, or EMBED it. A second
-   form for the same concept is the drift, whoever it is for.
-2. **Which existing endpoint already writes this?** Add to its service. If the new
-   caller has a different trust boundary, that is a thin guarded ROUTE over the SAME
-   service — never a second copy of the logic. (See rule 3 above.)
-3. **Which existing column already holds this?** A second column for the same fact is
-   how `opening_reading` came to live in three tables.
-
-**The tell that you are about to break this rule:** you are copying a block of code
-and changing a permission, a role, or a label. `pos-meter` and `ocr-meter` are two
-complete copies of one OCR call differing only in `requirePerm`. `/reconcile/manager`
-and `/reconcile/self-settle` are two copies of the settlement maths differing only in
-who may call them. Both were written that way, and both had to be untangled later.
-
-**Deliver every enhancement as a net reduction, or at worst as neutral.** A PR that
-adds a route must say which route it closes.
-
-## 🔴 BOTH settlement paths are permanent — owner-set 2026-08-04
-
-Outlets differ, and Pumpini serves both patterns. Neither is legacy, neither is to be
-"consolidated away":
+Outlets differ, and Pumpini serves both patterns. Neither is legacy; neither is to be
+consolidated away:
 
 - **Operator self-service** — the attendant closes his own line at `/settlement`
-  (`POST /reconcile/self-settle`, permission `settlement.enter`, `attendant_id` forced
-  from the JWT). It is the attendant's HOME screen: login, dashboard and sidebar all
-  route `role='attendant'` there.
+  (`POST /reconcile/self-settle`, permission `settlement.enter`, `attendant_id` forced from
+  the JWT). It is the attendant's HOME screen.
 - **Manager-led** — the manager opens and closes the shift and settles each operator
-  through Shift Open / Shift Close (`POST /reconcile/manager`, permission
-  `reconcile.manage`).
+  (`POST /reconcile/manager`, permission `reconcile.manage`).
 
-The two permissions ALREADY separate them, so this needs no switch and no new setting.
+The two permissions already separate them, so this needs no switch and no new setting.
+**They are two trust boundaries over ONE settlement concept**, so they must share the writer
+and share the form — an enhancement made for one should reach the other by construction,
+not by somebody remembering.
 
-**What this obliges:** the two are different TRUST BOUNDARIES over ONE settlement
-concept. They must share the writer and share the form, so that an enhancement made
-for one reaches the other by construction rather than by somebody remembering. Today
-they do not, and that is the work — see `docs/drift-audit.md`.
+---
 
-## 🔴 ONE meter store — the spare tires are retired (owner-set 2026-08-01)
+# 🔴 §5 — One nozzle name, one pump name — owner-set 20-Aug-2026 **[CI]**
 
-There is exactly **one** place a nozzle's opening and closing meter lives:
-**`shift_attendant_nozzles`**, one row per operator per nozzle. Do not add a second.
+> *"The pumpserialno.nozzle number is printed in the nozzle slips and can be verified even
+> by an elementary student. NOW, I WANT EVERYWHERE, I repeat, EVERYWHERE where there is a
+> reference to nozzle to be the nozzle naming convention... NO OTHER NAMING CONVENTION
+> invented by you anywhere."*
 
-Two others existed and are now dropped: `shift_attendants.opening_reading` /
-`.closing_reading` (a single pair on the OPERATOR row, mirroring "the first nozzle"
-on assign and "the last leg" on close — for a man on four nozzles that is not a
-summary, it is a wrong number) and `shift_nozzle_readings` (a manager-vs-POS
-comparison store). The good table is clean: 876 rows, not one negative and not one
-impossible movement. The retired pair held **70 negative and 150 impossible**
-readings.
+- **A nozzle is named `<pump serial>.<nozzle number>`** — `M1832105.1` — exactly as its own
+  slip prints it. **A pump is named by its serial.** Nothing else is shown to a user, ever:
+  not on a screen, not in an error message, not in a CSV export.
+- **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is our index — it orders lists,
+  it is the unique key, and it supplies the printed nozzle number when `slip_nozzle_no` is
+  unset. It is never a label. Same for `pumps.pump_number`.
+- **ONE writer: `pumpService.nozzleNameExpr` / `nozzleName`** (SQL and JS halves of the same
+  three rules). Every nozzle-returning query selects it as `nozzle_name`; the frontend reads
+  it through `lib/nozzle.js → nozName()` and computes nothing. **Do not build a label in a
+  page.** That is what produced `N1.1` on Shift Close and `Nozzle 1` on Shift Open for the
+  same nozzle on the same day.
+- **No serial on file → the name falls back to the internal number.** That is a gap to fill
+  in Settings, not a licence to invent a name.
+- **CNG units print no slip** (owner, 20-Aug), so their serial is recorded as a literal —
+  Kamala `CNG`, Dilsukhnagar `CNG2` — and their nozzles read `CNG.1`, `CNG2.1`. Invented,
+  knowingly, for want of a printed identity. **This is the only class of invented name, and
+  it applies only where the unit prints nothing at all.**
 
-**Why this was dangerous even though the money was always right.** The settlement
-validates `closing >= opening` per nozzle and refuses otherwise, so the bad figures
-could never become money — but the **carry-forward** read all three tables in a
-`COALESCE`. A nozzle missing its good row would have carried a garbage figure
-straight into a live opening, and the shift would have been measured against it.
-**A fallback onto a table the money does not trust is not resilience; it is a quiet
-path from bad data into the one number a shift is judged by.**
+`scripts/ci-nozzle-name-check.js` enforces this on every PR. **It caught me on 28-Aug**,
+building a label inline in the same commit whose comments quoted this rule. That is the
+guard doing its job, and it is why this rule holds and the **[trust]** ones do not.
 
-`/reconcile/pos-meter` no longer writes a meter at all — it OCRs the photograph and
-hands the number back, and the settlement writes it. One writer.
+---
 
-## 🗓️ Next session — agreed agenda (owner, 2026-08-01 evening)
+# 🔴 §6 — Where a photograph lives: Supabase Storage. Not Railway, not Postgres.
 
-1. **Rewire the attendant self-settlement form** onto `shift_attendant_nozzles`
-   properly. The path is deliberate and stays; it just has to drink from the one
-   table. (Backend already points there; check the form end to end.)
-2. **One more sanity sweep for multiple sources of truth.** The meter store was one;
-   `docs/drift-audit.md` lists the rest. Find any other concept with two homes.
-3. **Peel the test outlets off PRODUCTION.** Only **Kamala**, **Adhoc Highway** and
-   **Highway** are real — **and Sri Balaji, and anything onboarded since** (House
-   facts: the FIXTURE list is the closed one). Dilsukhnagar, Nagole, Hayat Nagar and
-   the unnamed outlet are the fixtures, and every analysis run against
-   prod has to filter them out by hand — which is how a wrong conclusion gets drawn.
-   Precondition the owner set: **VAWE live and staging at parity with production**,
-   then demos run on staging and prod holds only real outlets.
+Owner-set 20-Aug-2026, after 31 artifacts were found sitting inline.
 
-## 🔴 GitHub Actions STORAGE is metered — minutes are not the thing to watch
-
-Learned 17-Aug-2026, when the account hit 100% of its included Actions storage.
-
-**Minutes and storage are two different meters.** Actions *minutes* are free and
-unlimited on a public repository, and this repo is public — so the minutes bill
-is genuinely zero and always will be. Actions *storage* is neither free nor
-per-repository: the allowance is **0.5 GB, shared across every repository on the
-account**. That is the meter that filled.
-
-Two things had filled it, and neither was commits:
-
-- **This repo: workflow run LOGS.** `ci.yml` produces ~2.2 MB of console output
-  per run and was firing ~8.5 times a day, about 18 MB/day, so the allowance
-  refilled roughly every four weeks on its own. Fixed by deleting the old logs,
-  cutting retention from 90 days to 7 in **Settings → Actions → General**,
-  quieting the two `npm install` steps with `--loglevel=error`, and skipping CI
-  on docs-only pushes. `prune-actions-logs.yml` now sweeps monthly.
-- **The `pharma` repo: build ARTIFACTS.** Ten copies of a ~104 MB Windows
-  installer, 1.04 GB — twice the whole account allowance, from one workflow.
-
-Things worth knowing before chasing this meter again:
-
-- **Deleting is the only thing that frees storage.** Lowering retention applies
-  only to objects created after the change; GitHub never applies it
-  retroactively. The monthly billing reset resets the counter, not the bytes.
-- **The figure lags and is averaged over the billing cycle**, so it drifts down
-  after a cleanup rather than dropping. The clean reading is after the reset.
-- **Read it at Settings → Billing → Overview**, not the Usage page. Usage shows
-  metered spend in dollars — which is $0 here, because public-repo usage is
-  fully discounted — and tells you nothing about the included allowance.
-- **The $0 budgets with "Stop usage: Yes" are correct and should stay.** They cap
-  paid overage at zero. Their `100%` badges are `$0 ÷ $0`, a display artifact,
-  not a measurement. They never blocked anything: with public-repo usage
-  discounted to $0 there is no billable usage for them to stop.
-- **Commit frequency is not the lever.** Small, individually-revertable PRs are
-  worth far more here than the megabytes batching them would save.
-
-## 🔴 ONE nozzle name, one pump name — owner-set 2026-08-20
-
-> *"Any other number remains in the minds of the creator and no other person can
-> validate or verify it. Because the pumpserialno.nozzle number is printed in the
-> nozzle slips and can be verified even by an elementary student. NOW, I WANT
-> EVERYWHERE, I repeat, EVERYWHERE where there is a reference to nozzle to be the
-> nozzle naming convention... NO OTHER NAMING CONVENTION invented by you anywhere."*
-
-- **A nozzle is named `<pump serial>.<nozzle number>`** — `M1832105.1` — exactly as
-  its own slip prints it. **A pump is named by its serial.** Nothing else is shown to
-  a user, ever: not on a screen, not in an error message, not in a CSV export.
-- **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is our index — it orders
-  lists, it is the unique key, and it supplies the printed nozzle number when
-  `slip_nozzle_no` is unset. It is never a label. Same for `pumps.pump_number`.
-- **ONE writer: `pumpService.nozzleNameExpr` / `nozzleName`** (SQL and JS halves of the
-  same three rules). Every nozzle-returning query selects it as `nozzle_name`; the
-  frontend reads it through `lib/nozzle.js → nozName()` and computes nothing.
-  **Do not build a label in a page.** That is what produced `N1.1` on Shift Close and
-  `Nozzle 1` on Shift Open for the same nozzle on the same day.
-- **Kamala's CNG unit prints no slip** (owner, 20-Aug), so its serial is recorded as
-  the literal `CNG` and its nozzles read `CNG.1` / `CNG.2`. Invented, knowingly, for
-  want of a printed identity — and the ONLY sanctioned exception.
-- No serial on file → the name falls back to the internal number. That is a gap to
-  fill in Settings, not a licence to invent a name for it.
-
-## 🔴 WHERE A PHOTOGRAPH LIVES — Supabase Storage, not Railway, not Postgres
-### owner-set 2026-08-20, after 31 artifacts were found sitting inline
-
-> *"I dont want this to be repeated again. Another build assuming that the artifacts
-> exists in railways."*
+> *"I dont want this to be repeated again. Another build assuming that the artifacts exists
+> in railways."*
 
 **Three different things get confused, so name them separately every time:**
 
@@ -399,35 +355,28 @@ Things worth knowing before chasing this meter again:
 |---|---|
 | The image BYTES | **Supabase Storage**, private bucket `pumpini-docs` (`PUMPINI_DOC_BUCKET`) |
 | The POINTER to them | the row's `storage_path` column |
-| The KEY that authorises the write | `SUPABASE_SERVICE_KEY`, a **Railway** env var on the backend |
+| The KEY that authorises the write | `SUPABASE_SERVICE_KEY`, a **Railway** env var |
 
-**Railway hosts the backend and holds the credential. Railway stores nothing.** A job
-that moves images has to RUN on Railway because that is where the key is — that is
-the only reason Railway is ever mentioned in the same breath. Do not conclude from
-it that anything is stored there.
+**Railway hosts the backend and holds the credential. Railway stores nothing.** A job that
+moves images has to RUN on Railway because that is where the key is. That is the only reason
+Railway is ever mentioned in the same breath.
 
-**THE ONE WRITER is `artifactService.save()`.** It uploads to the bucket itself. No
-caller should ever upload first and pass a `storage_path` in.
+**THE ONE WRITER is `artifactService.save()`.** It uploads to the bucket itself. No caller
+should ever upload first and pass a `storage_path` in.
 
-- It only uploads **on autocommit**. `save()` is called inside the settlement
-  transaction for the operator's close photograph, and awaiting a 30-second upload
-  there would hold a money transaction and its locks open for the length of
-  somebody's mobile upload. Inside a caller's transaction the bytes stay inline.
-  `storeMeterPhoto` carries the same rule for the same reason.
-- A failed or unconfigured upload **falls back to inline and never throws**. A
-  photograph in a slow place beats one that does not exist.
+- It only uploads **on autocommit**. Inside a caller's transaction the bytes stay inline —
+  awaiting a 30-second mobile upload would hold a money transaction and its locks open for
+  the length of somebody's connection. `storeMeterPhoto` carries the same rule.
+- A failed or unconfigured upload **falls back to inline and never throws.** A photograph in
+  a slow place beats one that does not exist.
 - `getImage()` resolves either home, so no screen knows about storage.
 
-**WHAT WENT WRONG, AND THE HABIT THAT PREVENTS IT.** `artifactService.save()` had
-always ACCEPTED a `storage_path` from its caller but never PRODUCED one, and no
-caller uploaded first — so the upload on that path never existed. Nobody noticed
-because the code *looked* storage-aware. Meanwhile:
-
-    delivery_invoices   78 rows   78 in the bucket
-    meter_photos        39 rows   39 in the bucket
-    station_artifacts   31 rows    0 in the bucket, 39 MB inline
-
 **A column named `storage_path` is not evidence that anything reaches storage.**
+`artifactService.save()` had always ACCEPTED one from its caller but never PRODUCED one, and
+no caller uploaded first — so that path never existed, and nobody noticed because the code
+*looked* storage-aware. On 20-Aug: `delivery_invoices` 78 rows / 78 in bucket,
+`meter_photos` 39 / 39, **`station_artifacts` 31 rows / 0 in bucket, 39 MB inline.**
+
 After adding or changing any image writer, run the only check that counts:
 
 ```sql
@@ -436,181 +385,164 @@ SELECT count(*) FILTER (WHERE storage_path IS NOT NULL) AS in_bucket,
   FROM station_artifacts;
 ```
 
-**SEARCH BEFORE YOU BUILD — this bit me the same afternoon.** I wrote a standalone
-`scripts/artifacts-to-bucket.js` to move the rows, then found `superadmin.js` had
-carried `runBackfill()` for months and that it is precisely how the other two tables
-got there. `station_artifacts` had simply never been given a route. The script was
-deleted and a three-line route added instead. The mechanism you need usually exists.
-
 **The two owner-gated steps, in order, never merged into one:**
 
-1. `POST /api/superadmin/backfill/<table>?limit=N` — upload and record the path.
-   Keeps the base64. Idempotent, resumable; repeat until `remaining` is 0.
-2. `POST /api/superadmin/prune-inline/<table>?limit=N` — the **only irreversible**
-   step. Downloads the stored object, compares it byte-for-byte against the base64
-   it is about to delete, and clears the column ONLY on an exact match. A row that
-   differs or fails to download is reported and left completely alone.
+1. `POST /api/superadmin/backfill/<table>?limit=N` — upload and record the path. Keeps the
+   base64. Idempotent and resumable; repeat until `remaining` is 0.
+2. `POST /api/superadmin/prune-inline/<table>?limit=N` — the **only irreversible** step. It
+   downloads the stored object, compares it byte-for-byte against the base64 it is about to
+   delete, and clears the column ONLY on an exact match. A row that differs or fails to
+   download is reported and left completely alone.
 
-Reclaiming the disk afterwards needs `VACUUM FULL` — Postgres does not hand it back
-on its own, and it takes an exclusive lock, so off-peak only.
+Reclaiming the disk afterwards needs `VACUUM FULL`, which takes an exclusive lock — off-peak
+only.
 
-## 🔴 THE CALIBRATION AUTHORITIES ARE IN THE REPO — do not ask for them again
-### added 25-Aug-2026
+**Search before you build.** I wrote a standalone `scripts/artifacts-to-bucket.js` to move
+those rows, then found `superadmin.js` had carried `runBackfill()` for months and that it is
+exactly how the other two tables got there. `station_artifacts` had simply never been given
+a route. The script was deleted and a three-line route added instead. **The mechanism you
+need usually exists.**
 
-The OMC documents every tank figure is ultimately checked against now live in
-**`docs/reference/`**. Read `docs/reference/README.md` before touching anything that
-converts a dip to litres.
+---
 
-- **`hp-tank-dip-charts.pdf`** — HP calibration charts, 4 pages, one per tank geometry.
-  Pages 1/2/3 are Sri Balaji's premium / petrol / diesel tanks.
-- **`hp-density-table-astm-53b.xls`** — ASTM 1980 Table 53B, observed density +
-  temperature → density at 15°C.
+# 🔴 §7 — Calibration: the authorities are in the repo
+
+The OMC documents every tank figure is checked against live in **`docs/reference/`**. Read
+`docs/reference/README.md` before touching anything that converts a dip to litres. Do not
+ask the owner for them again.
+
+- **`hp-tank-dip-charts.pdf`** — HP calibration charts, one page per tank geometry.
+- **`hp-density-table-astm-53b.xls`** — ASTM 1980 Table 53B, observed density and
+  temperature → density at 15 °C.
 
 **`dipToVolume()` reproduces all three installed charts exactly** — 645 points checked
-25-Aug-2026, **max deviation 0.00 L**. So when Pumpini and a gauge console disagree,
-the console is the suspect until someone shows our figure departing from a chart page.
+25-Aug-2026, max deviation 0.00 L. So when Pumpini and a gauge console disagree, **the
+console is the suspect** until someone shows our figure departing from a chart page.
 
 Three traps, all of which cost a live morning at Sri Balaji on 25-Aug:
 
 - **HP prints the RADIUS; we store the DIAMETER.** Radius 100 on the sheet is
-  `diameter_cm = 200`. Page 4 prints a diameter instead. Read the header word.
-- **🔴 THE NAMEPLATE IS NOT THE SHELL VOLUME.** A tank *called* 16 KL holds
-  **17,279 L**. Sri Balaji's ATG was configured from the nameplate (16,023 L) and
-  under-read petrol by **661 L at a 91.23 cm dip** — an error that GROWS with the
-  level, so no correction factor exists. **Test it by running the console's own DIP
-  through the chart and comparing against its GROSS volume** (`net = gross − water`).
-  Do NOT infer shell volume from `net + ullage` — it implies a wrong shell for two
-  tanks that are perfectly calibrated. No stick dip needed, and none should be asked
-  for: the outlet cannot suspend sales so we can measure.
+  `diameter_cm = 200`. Page 4 prints a diameter instead. **Read the header word.**
+- **🔴 THE NAMEPLATE IS NOT THE SHELL VOLUME.** A tank *called* 16 KL holds **17,279 L**.
+  Sri Balaji's ATG was configured from the nameplate (16,023 L) and under-read petrol by
+  **661 L at a 91.23 cm dip** — an error that GROWS with the level, so no correction factor
+  exists. **Test it by running the console's own DIP through the chart and comparing against
+  its GROSS volume** (`net = gross − water`). Do NOT infer shell volume from `net + ullage`:
+  it implies a wrong shell for two tanks that are perfectly calibrated. No stick dip is
+  needed and none should be asked for — the outlet cannot suspend sales so we can measure.
 - **A back-solved dip is fiction.** When two screens disagree, an operator will enter
-  whatever dip makes the litres match — and the volume then looks right while the dip
-  is invented. Sri Balaji's petrol went in as 852.00 mm when the console read 912.30.
+  whatever dip makes the litres match — the volume then looks right while the dip is
+  invented. Sri Balaji's petrol went in as 852.00 mm when the console read 912.30.
 
-## 🔴 FLOW v2 — the hub and three spokes. Sri Balaji only, behind a switch.
-### owner-set 26-Aug-2026. Design frozen; coding starts 27-Aug.
+---
 
-> *"Srinivas is making a lot of noise around the shift and he does not understand
-> shifts. He says he has 4 shift patterns and we have only 3 shift definitions."*
+# 🔴 §8 — The two flows
 
-He is not being difficult. **A shift is our abstraction, not his.** He thinks in tanks,
-nozzles and men. So for his outlet the shift stops being the boundary for anything
-that matters, and becomes at most a label.
+Pumpini runs **two operating models**, chosen per outlet by
+`station_settings.hub_spokes_migration_enabled`.
 
-**THE OUTLET IS THE HUB. THERE ARE THREE SPOKES, AND THEY DO NOT REACH INTO EACH
-OTHER.** Each owns one clock: the nozzle moves in seconds, the tank moves at
-readings, the money settles over days. Welding all three to one shift is what
-produced every failure of 25/26-Aug.
+- **The shift flow** — the original. Shift Open, Shift Close, settlement inside a shift.
+- **Flow v2, hub-and-spokes** — the outlet is the hub; three spokes each own one clock.
+  Tank Recon, Nozzle Events, Attendant Dues.
 
-### Spoke 1 — UGT reconciliation (the manager's act)
+**The full design is `docs/flow-v2-functional-spec.md` and
+`docs/flow-v2-technical-spec.md`.** Do not restate it here — that is a third home for one
+description, which is the drift §4 forbids.
 
-Three inputs captured **together, at one moment**, which is what makes the boundary work:
+What must hold in *this* file:
 
-- **ATG** — enter or snap. Stock, the console's own sale figures, date & time.
-- **Deliveries** — scan. A decant belongs to the tank window it lands in.
-- **Nozzle slips, ALL nozzles, composite scan** — enter or snap.
+- **It is a MIGRATION, not a feature.** A route you plan to close is a migration; a route
+  nobody closes is drift. Delete the old path when the last outlet has moved.
+- **ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows, and
+  if any is copied we no longer have two flows — we have two products: nozzle naming
+  (`pumpService.nozzleNameExpr`), calibration and dip→litres, artifact storage
+  (`artifactService.save`), prices, users, stations.
+- **The switch has three refusals** — owner only; not while a shift is open, in either
+  direction; and not until the outlet is commissioned from real slips. **Switching OFF is
+  never gated:** a way back must never depend on the thing that is going wrong.
+- **The commissioning act is called a GENESIS SCAN** (`commissionService`), and it is what
+  the switch waits for. One slip per pump records three things at once: the pump serial,
+  the printed nozzle number, and the meter as it stands. That meter becomes **link ONE** of
+  the nozzle's chain, and every later handover chains off it. **There is deliberately no
+  "commissioned" flag** — the first event IS the evidence, because a boolean can drift away
+  from reality and an event cannot. A nozzle with no chain was never commissioned, whatever
+  any column says.
 
-The tank reconciles between two of its own ATG readings. Because the composite slip
-scan happens **at the same instant as the ATG scan**, the tank window and the nozzle
-totals share a boundary by construction.
+## One meter store per flow, and exactly one chain
 
-**THIS IS WHAT KILLED THE STRADDLE PROBLEM.** An ATG reading is a point in time; a
-nozzle account is a span. Four ways out were argued (prorate by time; force a
-handover at every dip; refuse to reconcile until all accounts close; reconcile on
-closed accounts and declare completeness) and **all four were beaten by the owner's
-answer: take the nozzle reading at the tank boundary without disturbing anybody's
-account.** Do not re-open this. Prorating in particular is the back-solved dip
-wearing a different hat.
+**Shift flow:** a nozzle's opening and closing meter lives in **`shift_attendant_nozzles`**,
+one row per operator per nozzle. Two others existed and are now **dropped** —
+`shift_attendants.opening_reading` / `.closing_reading` and `shift_nozzle_readings`. Do not
+resurrect either. *(Verified gone from production 29-Aug-2026.)*
 
-### Spoke 2 — the nozzle account (events and co-events)
+**Flow v2:** the chain lives in **`nozzle_events`**, one reading per link, which closes the
+account before it and opens the one after. `tank_recon_nozzles` holds Spoke 1's snapshot and
+**never moves an attendant account** — that separation is deliberate, priced by the owner as
+a design liability, and is what makes "a recon scan moved a man's liability" unwritable
+rather than one forgotten `WHERE` clause away.
 
-**A nozzle carries ONE CHAIN of readings. Each reading closes the account before it
-and opens the one after — one number, stored once, read from both directions.**
+**Why the shift-flow rule was absolute.** The settlement validates `closing >= opening` per
+nozzle, so bad figures could never become money — but the **carry-forward** read all three
+tables in a `COALESCE`. A nozzle missing its good row would have carried a garbage figure
+straight into a live opening. The good table held 876 clean rows; the retired pair held **70
+negative and 150 impossible** readings. **A fallback onto a table the money does not trust is
+not resilience; it is a quiet path from bad data into the one number a shift is judged by.**
 
-- An **event** is a nozzle slip scanned at a handover. It moves the account to the
-  next man.
-- A **co-event** is created **only when a scan produces the SAME reading as the one
-  immediately before it.** It carries no value. Its purpose is to record the **drift
-  in time** between the outgoing man's print and the incoming man's, so the owner has
-  data to push the manager on discipline. It is a metric, not a measurement.
-- Spoke 1's composite scan is also a reading on the same chain, but **it never moves
-  an attendant account.**
+`/reconcile/pos-meter` no longer writes a meter at all — it OCRs the photograph and hands the
+number back, and the settlement writes it. One writer.
 
-**THE PUMP IS NEVER BLOCKED, AND THERE IS NO OVERRIDE TO BUILD.** If a man walks off
-without printing, the next man's scan IS the closing event and the outstanding
-strikes against the man who left. The act of taking over is the act of closing, so
-there is nothing to freeze and no break-glass. (An earlier design proposed a block
-with a manager override; the owner's model removes the need for both.)
+---
 
-### Spoke 3 — the attendant
+# 🔴 §9 — THE FIXTURE LIST IS CLOSED. EVERYTHING ELSE IS REAL.
+### Owner-set 29-Aug-2026. **[trust]**
 
-- **Outstanding — CALCULATED, never typed.** Derived from his events. This is the
-  structural fix for the 25-Aug loss of ₹1,25,275: a manager cannot make a liability
-  vanish by leaving a field blank, because there is no field. The only manual entry
-  is what the man BROUGHT — cash, UPI, card, credit slips, petty.
-- **Settlement — manual entry**, and it may not complete silently at zero.
-- It degrades like the existing suspense ledgers: an outstanding clears when cash is
-  banked or a credit invoice is raised, the same shape `credit_suspense_entries`
-  already uses (316 per-attendant rows, direction + clearing reference).
+**These four are fixtures, and this list NEVER GROWS:**
 
-**The money clock never blocks the forecourt.** A man with an outstanding works his
-next shift; he simply cannot reach zero until he settles.
+    Dilsukhnagar Bunk
+    Nagole Petrol Bunk
+    Hayat Nagar Petrol Bunk
+    the unnamed outlet
 
-### Reading drift — two tests that are physics, not judgement
+**ANY OTHER OUTLET IS REAL — including every outlet created from this day on.**
 
-A handover where the two readings differ is usually just fuel sold in the gap, and
-must NOT raise an alarm — a manager who justifies three litres twice a day learns to
-click through it, and then a real reset sails past on the same habit. Only two
-conditions are certain, and both are loud on the owner dashboard:
+> *"I promise, i will not create more dummy outlets as I am happy with three test. So,
+> the converse MUST BE true. Any new outlet we create from now on, will be REAL OUTLETS
+> and the data has to be protected as GOLD."*
 
-| Condition | Why it is certain |
-|---|---|
-| **The reading DECREASED** | A totaliser only counts up. Always a reset, a replacement or a misread |
-| **It rose faster than the pump can physically deliver** | ~40 L/min flat out; 400 L across a 3-minute gap is impossible |
+**THIS IS STATED AS A CLOSED LIST ON PURPOSE, AND THE DIRECTION MATTERS.** The file used
+to name the REAL outlets instead, which meant an outlet I did not recognise fell outside
+the list and read as disposable — and by August that had already gone wrong: Sri Balaji
+was real, and the doctrine still implied it was a fixture. Named this way round, an
+unrecognised outlet is **REAL by default**, and the failure mode is treating a demo bunk
+too carefully rather than treating a live one too casually.
 
-Everything else is trade. Record it as drift, stay silent.
+Real today: **Kamala Filling Station, Adhoc Highway Filling Station, Highway Filling
+Station, Sri Balaji Oil Company** — and whatever is onboarded next, without anybody
+editing this line.
 
-When a drift IS justified — new nozzle, meter reset, replacement — **the manager
-types the reason in his own words. Never a dropdown** (owner-set 25-Aug: a canned
-reason code becomes a reflex). A reset means the nozzle's chain needs a new starting
-point, and that is a **commissioning action in Settings under the owner's eye** — never
-a number entered on a handover screen.
+**Drift in the four fixtures is not a finding.** *"no amount of drift in these outlets are
+a cause for concern."* Do not report it, do not propose cleaning it — and exclude the four
+before drawing any conclusion from production data. A query averaging across all of them
+is measuring demo keystrokes.
 
-**THAT ACT IS CALLED A GENESIS SCAN in the code** (`commissionService`), and it is
-what the Flow v2 switch waits for. One slip per pump records three things at once:
-the pump serial, the printed nozzle number, and the meter as it stands. That meter
-becomes link ONE of the nozzle's chain, and every later handover chains off it.
-**There is deliberately no "commissioned" flag** — the first event IS the evidence,
-because a boolean can drift away from reality and an event cannot. A nozzle with no
-chain was never commissioned, whatever any column says.
+**RULE ZERO IS NOT SOFTENED BY ANY OF THIS.** A fixture is not a licence to write. All of
+them share ONE database, and a wrong `WHERE` reaches a real outlet from either side of
+that line.
 
-### 🔴 TWO TABLES FOR THE SLIP READINGS. Deliberate, priced, do not "fix" it.
+---
 
-> *"The nozzle slips at two different hands serve different purposes... I know this
-> is duplicate, but I would pass it as design liability — clarity and separation of
-> duties."*
-
-Spoke 1's recon readings and Spoke 2's events live in **separate tables** and are
-written by the **same code**. This is a knowing exception to the one-writer rule, and
-the reason is control, not tidiness: **money flows from Spoke 2 only.** Two tables
-make "a recon scan moved an attendant's liability" unwritable; one table with an
-origin flag makes it a forgotten `WHERE` clause away.
-
-**There is no third table.** An assistant proposed splitting the chain out from the
-handover act and was corrected — the chain lives in Spoke 2, and Spoke 1 is a
-snapshot that is never asked *"what did this nozzle last read"*. The 01-Aug
-one-meter-store rule is not violated, because there is still exactly one chain.
-
-### 🔴 WHERE MONEY IS INVOLVED, SHOW THE WORKING — owner-set 29-Aug-2026
+# 🔴 §10 — WHERE MONEY IS INVOLVED, SHOW THE WORKING.
+### Owner-set 29-Aug-2026. **[trust]**
 
 > *"wherever money is involved, we should show as much info as possible so that the
 > manager also knows that we are supporting him in his work rather than extending his
 > work."*
 
-A figure a manager cannot audit is a figure he will not trust, and the proof is in
-this repo. The slip reader handed him confident numbers he could not check; he checked
-them against the paper himself, found them wrong, and stopped scanning. **A calculated
-outstanding he cannot audit is the same trap in better clothes** — and the first time
-it disagrees with his own arithmetic, he goes back to the register.
+A figure a manager cannot audit is a figure he will not trust, and the proof is in this
+repo. The slip reader handed him confident numbers he could not check; he checked them
+against the paper himself, found them wrong, and stopped scanning. **A calculated
+outstanding he cannot audit is the same trap in better clothes** — and the first time it
+disagrees with his own arithmetic, he goes back to the register.
 
 So a money screen shows the derivation, not the conclusion:
 
@@ -619,112 +551,112 @@ So a money screen shows the derivation, not the conclusion:
                                                        Outstanding  ₹79,382
 
 Every row is two readings off two slips HE photographed. He verifies one line against
-paper in ten seconds, and after that he stops verifying. **That is what trust is, and
-it cannot be asserted — only shown.**
+paper in ten seconds, and after that he stops verifying. **That is what trust is, and it
+cannot be asserted — only shown.**
 
-**THE TELL THAT THIS RULE IS BEING BROKEN:** a query that derives the parts and then
-SUMs them away. It happened twice in one evening — `/pos-meter` parsed every line of a
-slip and kept one, and `spokeService.outstanding` derived every leg and returned only
-the total. Both had the answer and threw the evidence out. When a total is computed
-from parts, return the parts.
+**THE TELL THAT THIS RULE IS BEING BROKEN:** a query that derives the parts and then SUMs
+them away. It happened twice in one evening — `/pos-meter` parsed every line of a slip and
+kept one, and `spokeService.outstanding` derived every leg and returned only the total.
+Both had the answer and threw the evidence out. **When a total is computed from parts,
+return the parts.**
 
-The detail may be fetched on demand rather than up front — the list answers "who owes
-what", the working answers "and how do you know", and the second question is asked of
+The detail may be fetched on demand rather than up front — the list answers *"who owes
+what"*, the working answers *"and how do you know"*, and the second question is asked of
 one man at a time.
 
-### 🔴 SRI BALAJI ONLY, behind a per-outlet switch. TEMPORARY.
+---
 
-`station_settings` already carries four behaviour switches (`products_enabled`,
-`self_settlement_enabled`, `accounts_enabled`, `attendant_led_autoclose`). This is a
-fifth, and it is a **migration flag, not a feature** — name it so.
+# 📅 §11 — Current state. VERIFY THIS; DO NOT QUOTE IT.
 
-- **Sri Balaji first.** One week of history, least to disturb, and the outlet with
-  the problem.
-- **Kamala, Adhoc Highway and Highway stay exactly as they are** until the new flow is
-  proven and its bugs are out. The two experienced managers become the LAST adopters,
-  not the test subjects.
-- **The liability is duration, not existence.** A route you plan to close is a
-  migration; a route nobody closes is the drift this repo spent months untangling.
-  Set the date when the switch goes on, and delete the old path when the last outlet
-  moves.
+**Everything in this section was true on 29-Aug-2026 and will go stale.** Each row carries
+the query that answers it. Run the query. Do not cite this table at the owner.
 
-**ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows,
-and if any of them is copied we no longer have two flows — we have two products:
+| Fact | On 29-Aug-2026 | How to check |
+|---|---|---|
+| Outlets in production | 8 rows: Kamala, Adhoc Highway, Highway, **Sri Balaji Oil Company**, Dilsukhnagar Bunk, Hayat Nagar, Nagole, one unnamed | `SELECT name FROM stations ORDER BY name` |
+| Which are **real** | **Everything that is not one of the four fixtures — see §9, which is the rule.** Today: Kamala, Adhoc Highway, Highway, Sri Balaji Oil Company | §8.5. There is no column for it |
+| Which are fixtures | The four named in §9, and that list never grows. **They are still in PRODUCTION** — the 01-Aug plan to move them to staging was never carried out and is now void (§2). Peeling them off is still worth doing; it needs somewhere else to go | §9 |
+| Flow v2 switch | **ON at Dilsukhnagar Bunk only.** OFF everywhere else, Sri Balaji included | `SELECT s.name FROM station_settings ss JOIN stations s ON s.id=ss.station_id WHERE ss.hub_spokes_migration_enabled` |
+| Commissioning | **Zero genesis events at any outlet**, so the gate holds every outlet until somebody scans. Intended, not a defect | `SELECT count(*) FROM nozzle_events` |
+| Production tables | 83 | `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'` |
+| Backend tests | 75 passing | `cd backend && node --test test/*.test.js` |
+| `staging` branch | last commit 12-Aug-2026; VAWE work only | `git log -1 origin/staging` |
 
-- nozzle naming (`pumpService.nozzleNameExpr`)
-- calibration and dip→litres (`lib/calibration`, `lib/tankVolume`)
-- artifact storage (`artifactService.save`)
-- prices, users, stations
+**Before drawing any conclusion from production data, decide which outlets belong in it and
+say which you excluded.** A conclusion drawn across fixtures and real outlets together is a
+wrong conclusion, and the owner cannot see the `WHERE` clause I used.
 
-### What the evidence already ruled out — do not re-propose
+---
 
-Checked against production on 26-Aug-2026, all four outlets:
+# ❓ §12 — Needs the owner's ruling
 
-- **Do NOT block overlapping shifts.** Kamala opens a shift before closing the
-  previous one **12 times in 75** (Adhoc 5/68, Highway 2/59). It is how a night
-  handover works, not a fault. An assistant proposed this guardrail; the data killed
-  it.
-- **A literal "one open account per nozzle" lock on the ASSIGNMENT would have refused
-  8 Kamala handovers** — all one event, the 02-Aug 06:58 handover, where every one of
-  the eight nozzles closed and re-opened at the identical reading to three decimals.
-  A textbook handover. Gate on the READING, never on the shift clock.
-- **The empty-cash-box guard is safe**: 0 fires in Kamala's 264 settlements and
-  Highway's 114. Adhoc's 13 total ₹159.35 — rounding.
-- **Deliveries never belonged to a shift**: 172 of 172 rows have `tank_id` set and
-  `shift_id` NULL. Moving them to the tank window is recognising what is already true.
+Two questions this file cannot answer for itself. The sections above say what is
+*practised*; this says what is *unresolved*. **Do not guess at either, and do not let
+either become a reason to stop work that does not depend on it.**
 
-### What is left of the shift
+1. **Recon cadence in Flow v2** — daily or per shift. Daily is 12 slip prints and cheap;
+   per shift is 24 a day and somebody starts skipping, which quietly puts the straddle
+   back. Nothing in the code assumes either.
+2. **Who may clear an attendant's outstanding.** Today the route asks for
+   `settlement.enter` and nothing more — the manager, who is often the man who took the
+   cash. Owner-only is slow. The owner's middle path: manager records, owner confirms.
 
-Roster and attendance — who was on duty, and the label a report groups by. It answers
-*"how did the morning shift do"* as a **view over accounts**, never as the thing that
-owns them. Demoted, not deleted.
+*Settled 29-Aug-2026 and moved into §2: the staging change-management rules are retired.
+`staging` is only for VAWE.*
 
-### Still open when coding starts
+---
 
-- **Recon cadence** — daily or per shift. Daily is 12 slip prints and cheap; per shift
-  is 24 a day and somebody starts skipping, which quietly puts the straddle back.
-- **Who may clear an outstanding.** Manager is weak control — he is often the one who
-  took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
-- **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
+# 🔧 §13 — House facts
 
-## House facts
-
-- Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
+- **Dates:** format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
   timestamp. India is DD/MM — never MM/DD.
-- **THE FIXTURE LIST IS CLOSED. EVERYTHING ELSE IS REAL** (owner-set 29-Aug-2026).
+- **i18n:** user-facing strings go through `tc('key', 'English fallback')`; add Telugu
+  (`te.json`) for manager-facing text.
+- **Attendants** = `users` with `role='attendant'` linked via `station_users`; `is_active`
+  and `end_date` drive the Start-Shift picker.
+- **Errors:** `lib/apiError` — `errText()` for what a human reads, `errCode()` for what code
+  branches on. Never read `e.error` by hand. That is how a manager was shown
+  `missing_closing_dip` in a red box while the server had sent a full sentence in the same
+  response.
+- **GitHub Actions STORAGE is the metered thing, not minutes.** Minutes are free and
+  unlimited on a public repo, and this repo is public. **Storage is 0.5 GB shared across
+  every repository on the account.** Only deleting frees it — lowering retention applies
+  only to objects created after the change, and the monthly reset resets the counter, not
+  the bytes. Read it at **Settings → Billing → Overview**, not the Usage page (which shows
+  dollars, and public-repo usage is discounted to $0). The `$0` budgets with "Stop usage:
+  Yes" are correct and should stay; their `100%` badges are `$0 ÷ $0`, a display artifact.
+  **Commit frequency is not the lever** — small, individually-revertable PRs are worth far
+  more than the megabytes batching them would save.
+  *(17-Aug-2026: `ci.yml` logs were ~18 MB/day, and the `pharma` repo held 1.04 GB of
+  Windows installers — twice the whole account allowance. `prune-actions-logs.yml` now
+  sweeps monthly and retention is 7 days.)*
 
-  **These four are fixtures, and this list NEVER GROWS:**
+---
 
-      Dilsukhnagar Bunk
-      Nagole Petrol Bunk
-      Hayat Nagar Petrol Bunk
-      the unnamed outlet
+# 📓 Appendix — the incident register
 
-  **ANY OTHER OUTLET IS REAL — including every outlet created from this day on.**
-  Owner: *"I promise, i will not create more dummy outlets as I am happy with three
-  test. So, the converse MUST BE true. Any new outlet we create from now on, will be
-  REAL OUTLETS and the data has to be protected as GOLD."*
+Every rule above came from one of these. Kept short here; the full accounts are in the PRs
+and in `docs/`.
 
-  **THIS IS STATED AS A CLOSED LIST ON PURPOSE, AND THE DIRECTION MATTERS.** The file
-  used to name the REAL outlets instead, which meant an outlet I did not recognise
-  fell outside the list and read as disposable — and by August that had already gone
-  wrong: Sri Balaji was real, and the doctrine still implied it was a fixture. Named
-  the other way round, an unrecognised outlet is REAL by default, and the failure mode
-  is treating a demo bunk too carefully rather than treating a live one too casually.
-
-  Real today: **Kamala Filling Station, Adhoc Highway Filling Station, Highway Filling
-  Station, Sri Balaji Oil Company** — and whatever is onboarded next, without anybody
-  editing this line.
-
-  **Drift in the four fixtures is not a finding.** *"no amount of drift in these
-  outlets are a cause for concern."* Do not report it, do not propose cleaning it, and
-  exclude the four before drawing any conclusion from production data — a query
-  averaging across all of them is measuring demo keystrokes.
-
-  **RULE ZERO IS NOT SOFTENED BY ANY OF THIS.** A fixture is not a licence to write.
-  All seven share ONE database, and a wrong `WHERE` reaches a real outlet from either
-  side of that line.
-- i18n: user-facing strings go through `tc('key', 'English fallback')`; add Telugu (`te.json`)
-  for manager-facing text.
-- Attendants = `users` with `role='attendant'` linked via `station_users`; `is_active` +
-  `end_date` drive the Start-Shift picker.
+| Date | What happened | Rule |
+|---|---|---|
+| 22-Jul-2026 | `stations.js` lost `module.exports = router`; the backend crash-looped for every outlet | CI route-export check |
+| 22-Jul-2026 | Four ways to create an attendant, two credit-limit columns, two meter tables | §4 |
+| 30-Jul-2026 | `invoiceNumberService` caught 42703 inside a transaction; every credit invoice broke | §3 probe |
+| 30-Jul-2026 | `credit_slip_books` shipped with no RLS policy; issuing failed, the list read empty | §3 RLS |
+| 01-Aug-2026 | Two spare meter tables held 70 negative and 150 impossible readings | §8 |
+| 04-Aug-2026 | A cherry-pick onto `staging` nearly merged production behaviour into VAWE | §2 |
+| 17-Aug-2026 | Actions storage hit 100% — logs here, installers in `pharma` | §13 |
+| 18-Aug-2026 | Three "dealbreaker" facts, all invented from warning banners | §0.2 |
+| 20-Aug-2026 | 31 artifacts inline, 0 in the bucket, behind a `storage_path` column that never filled | §6 |
+| 20-Aug-2026 | Nagole's scan matched 0 of 28 lines, and no screen said a word | §5, Flow v2 |
+| 20-Aug-2026 | A slip "volume" of 140,500,859 L passed with no amount to cross-check | Flow v2 spec |
+| 25-Aug-2026 | An ATG configured from the nameplate under-read petrol by 661 L | §7 |
+| 25-Aug-2026 | ₹1,25,275 vanished across three settlements recorded with `cash_actual = 0` | Flow v2 spec |
+| 27-Aug-2026 | A renamed serial let a test scan write Kamala's meters onto a live shift | §0.1 |
+| 28-Aug-2026 | A second settlement form written beside Shift Close's, differing only in labels | §4 |
+| 28-Aug-2026 | A nozzle label built inline — caught by CI, in the commit that quoted the rule | §5 |
+| 29-Aug-2026 | The "trust the snapshot" rule found two months stale, naming 60 tables against prod's 83 | §3, §11 |
+| 29-Aug-2026 | Staging rules found dead in practice for 17 days; owner retired them outright | §2 |
+| 29-Aug-2026 | An outlet doctrine that named the REAL outlets made Sri Balaji read as disposable | §9 |
+| 29-Aug-2026 | `/pos-meter` kept one line of a slip it had fully parsed; `outstanding` returned a total and threw its legs away | §10 |
