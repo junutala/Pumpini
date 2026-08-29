@@ -91,6 +91,8 @@ export default function ShiftStartPage() {
   // The banner's TONE. Defaults to 'error' so every existing setErr() call behaves
   // exactly as it did; only the paths that KNOW they succeeded say otherwise.
   const [tone, setTone]       = useState('error');
+  // Releasing a nozzle that never dispensed — see the chip's Release action below.
+  const [releasing, setReleasing] = useState('');
   const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [prices, setPrices]   = useState([]);   // current selling price per fuel — parallel-run reminder
 
@@ -622,9 +624,49 @@ export default function ShiftStartPage() {
   // nozReadings into each attendant's pick happens as nozzles are ticked.
   const goToAttendants = () => setStep(2);
 
+  // RELEASE A NOZZLE THAT NEVER DISPENSED, without settling the man holding it.
+  //
+  // Owner, 29-Aug-2026: "If an operator closes his nozzle or few of the assigned
+  // nozzles with ZERO increments, can we free up those nozzles. Not the operator per
+  // se. Just those nozzles." His other nozzles keep running and his money is not due.
+  //
+  // THE READING IS THE PROOF. We ask for the meter as it stands rather than offering
+  // a "didn't move" button, and the server refuses unless it equals the opening to
+  // three decimals. A manager cannot assert that a nozzle is idle; he reads it.
+  const releaseNozzle = async (a, nz) => {
+    const opening = Number(nz.opening_reading || 0);
+    const typed = window.prompt(
+      tc('sstart.releasePrompt',
+         'Release {noz} from {who}?\n\nEnter the meter as it reads NOW. It must match the opening of {open} exactly — if any fuel was sold, settle him for it instead.')
+        .replace('{noz}', nozName(nz)).replace('{who}', a.attendant_name)
+        .replace('{open}', opening.toFixed(3)),
+      opening.toFixed(3));
+    if (typed === null) return;
+    setReleasing(nz.nozzle_id); setErr('');
+    try {
+      await api.post('/reconcile/release-nozzle', {
+        shift_id: shift.id, attendant_id: a.attendant_id, nozzle_id: nz.nozzle_id, reading: typed,
+      });
+      say(tc('sstart.releasedOk','{noz} is free — assign it to anyone.').replace('{noz}', nozName(nz)), 'ok');
+      await refreshShift(shift.id);
+    } catch (e) {
+      say(errText(e, tc('sstart.releaseFailed','Could not release that nozzle.')), 'error');
+    }
+    setReleasing('');
+  };
+
   // ── Attendant assignment ──────────────────────────────────────────
   const assignedIds      = new Set(attendants.map(a => a.attendant_id));
-  const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[]).map(nz => nz.nozzle_id)));
+  // A nozzle is TAKEN only while a leg on it is still OPEN. A closed leg is history —
+  // its closing reading is in, its litres are settled — and it releases the nozzle so
+  // the next man can be given it. This used to count every leg ever assigned on the
+  // shift, so the moment an operator settled, his nozzles vanished from the
+  // assignable list for the rest of the day and no handover was possible.
+  // Owner, 29-Aug-2026: "an attendant can leave midshift for many reasons... if that
+  // attendant closes the nozzle, another should be able to take over."
+  const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[])
+    .filter(nz => nz.closing_reading == null)
+    .map(nz => nz.nozzle_id)));
   const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
 
@@ -1232,8 +1274,20 @@ export default function ShiftStartPage() {
                     {(a.nozzles||[]).length>0
                       ? <div style={{display:'flex',flexWrap:'wrap',gap:6,marginTop:6}}>
                           {a.nozzles.map(nz=>(
-                            <span key={nz.nozzle_id} style={{fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 8px'}}>
+                            <span key={nz.nozzle_id} style={{display:'inline-flex',alignItems:'center',gap:6,fontSize:11.5,background:'#eef2ff',color:'#3730a3',borderRadius:99,padding:'2px 4px 2px 8px'}}>
                               {nozName(nz)} · {nz.fuel_type} · {tc('sstart.open','open')} {Number(nz.opening_reading||0)}
+                              {/* Only an OPEN leg can be released; a closed one is
+                                  already free and shows no action. */}
+                              {nz.closing_reading == null && (
+                                <button type="button" onClick={()=>releaseNozzle(a, nz)}
+                                  disabled={releasing===nz.nozzle_id}
+                                  title={tc('sstart.releaseTitle','Free this nozzle if it never dispensed — he keeps his others')}
+                                  style={{border:'none',background:'#fff',color:'#3730a3',borderRadius:99,
+                                          padding:'1px 8px',fontSize:11,fontWeight:700,
+                                          cursor:releasing===nz.nozzle_id?'default':'pointer'}}>
+                                  {releasing===nz.nozzle_id ? '…' : tc('sstart.release','Release')}
+                                </button>
+                              )}
                             </span>
                           ))}
                         </div>

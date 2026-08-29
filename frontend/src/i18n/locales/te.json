@@ -3237,5 +3237,20 @@
   "sstart.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి",
   "send.gaugeOk": "విజయవంతం — కొనసాగండి",
   "send.gaugeCheck": "సేవ్ చేసే ముందు సంఖ్యలను సరిచూడండి",
-  "send.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి"
+  "send.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి",
+  "adminp.tabStorage": "స్టోరేజ్",
+  "adminp.stoTitle": "అనాథ చిత్రాలను తొలగించండి",
+  "adminp.stoDry": "ఏమి తొలగించబడతాయో చూపించండి",
+  "adminp.stoChecking": "చూస్తున్నాం…",
+  "adminp.stoDeleting": "తొలగిస్తున్నాం…",
+  "adminp.stoClean": "బకెట్‌లో అనాథ చిత్రాలు ఏవీ లేవు.",
+  "sstart.release": "విడుదల",
+  "sstart.releaseTitle": "ఈ నాజిల్ నుండి ఇంధనం ఇవ్వకపోతే విడుదల చేయండి — అతని మిగతా నాజిల్‌లు అలాగే ఉంటాయి",
+  "sstart.releasedOk": "{noz} ఖాళీ అయింది — ఎవరికైనా కేటాయించవచ్చు.",
+  "sstart.releaseFailed": "ఆ నాజిల్‌ను విడుదల చేయలేకపోయాం.",
+  "dues.showWorking": "ఇది ఎలా లెక్కించారు?",
+  "dues.hideWorking": "లెక్కను దాచండి",
+  "dues.working": "చూస్తున్నాం…",
+  "dues.firstReading": "మొదటి రీడింగ్",
+  "dues.noLegs": "ఇంకా మూసిన నాజిల్ రీడింగ్‌లు లేవు — అతని ఖాతాలో ఏమీ అప్పగించలేదు."
 }

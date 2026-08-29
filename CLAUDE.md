@@ -18,8 +18,8 @@ Three things about this document, learned the hard way:
   **[CI]** where a check enforces it and **[trust]** where nothing does. The **[trust]**
   ones are where the owner's exposure actually is.
 - **Facts go stale; rules do not.** Anything about *the world right now* — which outlets
-  are real, what is in production, where a switch is set — lives in **§9**, dated, with
-  the query that answers it. **Verify §9; do not quote it.**
+  are real, what is in production, where a switch is set — lives in **§11**, dated, with
+  the query that answers it. **Verify §11; do not quote it.**
 
 ---
 
@@ -210,7 +210,7 @@ SELECT column_name FROM information_schema.columns
 ```
 
 *(This block replaced a rule that said to trust the snapshot. It was correct when written
-and had gone two months stale — the same failure this file's §9 exists to prevent.)*
+and had gone two months stale — the same failure this file's §11 exists to prevent.)*
 
 ## When a change needs schema
 
@@ -460,6 +460,13 @@ What must hold in *this* file:
 - **The switch has three refusals** — owner only; not while a shift is open, in either
   direction; and not until the outlet is commissioned from real slips. **Switching OFF is
   never gated:** a way back must never depend on the thing that is going wrong.
+- **The commissioning act is called a GENESIS SCAN** (`commissionService`), and it is what
+  the switch waits for. One slip per pump records three things at once: the pump serial,
+  the printed nozzle number, and the meter as it stands. That meter becomes **link ONE** of
+  the nozzle's chain, and every later handover chains off it. **There is deliberately no
+  "commissioned" flag** — the first event IS the evidence, because a boolean can drift away
+  from reality and an event cannot. A nozzle with no chain was never commissioned, whatever
+  any column says.
 
 ## One meter store per flow, and exactly one chain
 
@@ -486,7 +493,80 @@ number back, and the settlement writes it. One writer.
 
 ---
 
-# 📅 §9 — Current state. VERIFY THIS; DO NOT QUOTE IT.
+# 🔴 §9 — THE FIXTURE LIST IS CLOSED. EVERYTHING ELSE IS REAL.
+### Owner-set 29-Aug-2026. **[trust]**
+
+**These four are fixtures, and this list NEVER GROWS:**
+
+    Dilsukhnagar Bunk
+    Nagole Petrol Bunk
+    Hayat Nagar Petrol Bunk
+    the unnamed outlet
+
+**ANY OTHER OUTLET IS REAL — including every outlet created from this day on.**
+
+> *"I promise, i will not create more dummy outlets as I am happy with three test. So,
+> the converse MUST BE true. Any new outlet we create from now on, will be REAL OUTLETS
+> and the data has to be protected as GOLD."*
+
+**THIS IS STATED AS A CLOSED LIST ON PURPOSE, AND THE DIRECTION MATTERS.** The file used
+to name the REAL outlets instead, which meant an outlet I did not recognise fell outside
+the list and read as disposable — and by August that had already gone wrong: Sri Balaji
+was real, and the doctrine still implied it was a fixture. Named this way round, an
+unrecognised outlet is **REAL by default**, and the failure mode is treating a demo bunk
+too carefully rather than treating a live one too casually.
+
+Real today: **Kamala Filling Station, Adhoc Highway Filling Station, Highway Filling
+Station, Sri Balaji Oil Company** — and whatever is onboarded next, without anybody
+editing this line.
+
+**Drift in the four fixtures is not a finding.** *"no amount of drift in these outlets are
+a cause for concern."* Do not report it, do not propose cleaning it — and exclude the four
+before drawing any conclusion from production data. A query averaging across all of them
+is measuring demo keystrokes.
+
+**RULE ZERO IS NOT SOFTENED BY ANY OF THIS.** A fixture is not a licence to write. All of
+them share ONE database, and a wrong `WHERE` reaches a real outlet from either side of
+that line.
+
+---
+
+# 🔴 §10 — WHERE MONEY IS INVOLVED, SHOW THE WORKING.
+### Owner-set 29-Aug-2026. **[trust]**
+
+> *"wherever money is involved, we should show as much info as possible so that the
+> manager also knows that we are supporting him in his work rather than extending his
+> work."*
+
+A figure a manager cannot audit is a figure he will not trust, and the proof is in this
+repo. The slip reader handed him confident numbers he could not check; he checked them
+against the paper himself, found them wrong, and stopped scanning. **A calculated
+outstanding he cannot audit is the same trap in better clothes** — and the first time it
+disagrees with his own arithmetic, he goes back to the register.
+
+So a money screen shows the derivation, not the conclusion:
+
+    15BC1412V.1   1654130.510 → 1654892.340   761.83 L × ₹104.20   ₹79,382
+    15BC1412V.2   2131447.940 → 2131447.940     0.00 L                  ₹0
+                                                       Outstanding  ₹79,382
+
+Every row is two readings off two slips HE photographed. He verifies one line against
+paper in ten seconds, and after that he stops verifying. **That is what trust is, and it
+cannot be asserted — only shown.**
+
+**THE TELL THAT THIS RULE IS BEING BROKEN:** a query that derives the parts and then SUMs
+them away. It happened twice in one evening — `/pos-meter` parsed every line of a slip and
+kept one, and `spokeService.outstanding` derived every leg and returned only the total.
+Both had the answer and threw the evidence out. **When a total is computed from parts,
+return the parts.**
+
+The detail may be fetched on demand rather than up front — the list answers *"who owes
+what"*, the working answers *"and how do you know"*, and the second question is asked of
+one man at a time.
+
+---
+
+# 📅 §11 — Current state. VERIFY THIS; DO NOT QUOTE IT.
 
 **Everything in this section was true on 29-Aug-2026 and will go stale.** Each row carries
 the query that answers it. Run the query. Do not cite this table at the owner.
@@ -494,8 +574,8 @@ the query that answers it. Run the query. Do not cite this table at the owner.
 | Fact | On 29-Aug-2026 | How to check |
 |---|---|---|
 | Outlets in production | 8 rows: Kamala, Adhoc Highway, Highway, **Sri Balaji Oil Company**, Dilsukhnagar Bunk, Hayat Nagar, Nagole, one unnamed | `SELECT name FROM stations ORDER BY name` |
-| Which are **real** | **Kamala, Adhoc Highway, Highway** — and **Sri Balaji Oil Company**, which is real, live, and the outlet Flow v2 was built for | ask the owner; there is no column for it |
-| Which are fixtures | Dilsukhnagar Bunk, Hayat Nagar, Nagole, the unnamed one. **They are still in PRODUCTION.** The 01-Aug plan to move them to staging was never carried out and is now void — staging is VAWE's (§2). Peeling them off production is still worth doing; it needs somewhere else to go | `SELECT s.name, count(sh.*) FROM stations s LEFT JOIN shifts sh ON sh.station_id=s.id GROUP BY s.name` |
+| Which are **real** | **Everything that is not one of the four fixtures — see §9, which is the rule.** Today: Kamala, Adhoc Highway, Highway, Sri Balaji Oil Company | §8.5. There is no column for it |
+| Which are fixtures | The four named in §9, and that list never grows. **They are still in PRODUCTION** — the 01-Aug plan to move them to staging was never carried out and is now void (§2). Peeling them off is still worth doing; it needs somewhere else to go | §9 |
 | Flow v2 switch | **ON at Dilsukhnagar Bunk only.** OFF everywhere else, Sri Balaji included | `SELECT s.name FROM station_settings ss JOIN stations s ON s.id=ss.station_id WHERE ss.hub_spokes_migration_enabled` |
 | Commissioning | **Zero genesis events at any outlet**, so the gate holds every outlet until somebody scans. Intended, not a defect | `SELECT count(*) FROM nozzle_events` |
 | Production tables | 83 | `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'` |
@@ -508,7 +588,7 @@ wrong conclusion, and the owner cannot see the `WHERE` clause I used.
 
 ---
 
-# ❓ §10 — Needs the owner's ruling
+# ❓ §12 — Needs the owner's ruling
 
 Two questions this file cannot answer for itself. The sections above say what is
 *practised*; this says what is *unresolved*. **Do not guess at either, and do not let
@@ -526,7 +606,7 @@ either become a reason to stop work that does not depend on it.**
 
 ---
 
-# 🔧 §11 — House facts
+# 🔧 §13 — House facts
 
 - **Dates:** format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
   timestamp. India is DD/MM — never MM/DD.
@@ -566,7 +646,7 @@ and in `docs/`.
 | 30-Jul-2026 | `credit_slip_books` shipped with no RLS policy; issuing failed, the list read empty | §3 RLS |
 | 01-Aug-2026 | Two spare meter tables held 70 negative and 150 impossible readings | §8 |
 | 04-Aug-2026 | A cherry-pick onto `staging` nearly merged production behaviour into VAWE | §2 |
-| 17-Aug-2026 | Actions storage hit 100% — logs here, installers in `pharma` | §11 |
+| 17-Aug-2026 | Actions storage hit 100% — logs here, installers in `pharma` | §13 |
 | 18-Aug-2026 | Three "dealbreaker" facts, all invented from warning banners | §0.2 |
 | 20-Aug-2026 | 31 artifacts inline, 0 in the bucket, behind a `storage_path` column that never filled | §6 |
 | 20-Aug-2026 | Nagole's scan matched 0 of 28 lines, and no screen said a word | §5, Flow v2 |
@@ -576,5 +656,7 @@ and in `docs/`.
 | 27-Aug-2026 | A renamed serial let a test scan write Kamala's meters onto a live shift | §0.1 |
 | 28-Aug-2026 | A second settlement form written beside Shift Close's, differing only in labels | §4 |
 | 28-Aug-2026 | A nozzle label built inline — caught by CI, in the commit that quoted the rule | §5 |
-| 29-Aug-2026 | The "trust the snapshot" rule found two months stale, naming 60 tables against prod's 83 | §3, §9 |
+| 29-Aug-2026 | The "trust the snapshot" rule found two months stale, naming 60 tables against prod's 83 | §3, §11 |
 | 29-Aug-2026 | Staging rules found dead in practice for 17 days; owner retired them outright | §2 |
+| 29-Aug-2026 | An outlet doctrine that named the REAL outlets made Sri Balaji read as disposable | §9 |
+| 29-Aug-2026 | `/pos-meter` kept one line of a slip it had fully parsed; `outstanding` returned a total and threw its legs away | §10 |
