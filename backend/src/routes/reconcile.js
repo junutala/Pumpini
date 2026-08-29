@@ -88,14 +88,24 @@ async function storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, 
     // when Sri Balaji was cleared on 29-Aug — the folder outlived the row that
     // explained it. Best-effort: on any failure the upload still happens, just under
     // the old shape. Never let naming cost a photograph.
-    let station_id = null;
+    // ...and the NOZZLE NAME, so the file says which nozzle without being opened.
+    // Through pumpService.nozzleName — the one writer — so the filename reads
+    // 15BC1412V.1, identical to every screen and to the slip itself. A filename is
+    // a reference to a nozzle, and the naming rule admits no second convention.
+    let station_id = null, label = null;
     try {
-      const { rows } = await pool.query('SELECT station_id FROM shifts WHERE id=$1', [shift_id]);
+      const { rows } = await pool.query(
+        `SELECT sh.station_id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial
+           FROM shifts sh
+           LEFT JOIN nozzles n ON n.id = $2
+           LEFT JOIN pumps   p ON p.id = n.pump_id AND p.end_date IS NULL
+          WHERE sh.id = $1`, [shift_id, nozzle_id]);
       station_id = rows[0]?.station_id || null;
+      if (rows[0]?.pump_serial) label = pumps.nozzleName(rows[0]) || null;
     } catch { /* fall through to the legacy path */ }
     try {
       path = await uploadDocumentBase64({
-        station_id, kind: 'meter_photo',
+        station_id, kind: 'meter_photo', label,
         prefix: 'meter-photos', scope: shift_id, base64: image_base64, contentType: media_type, filename: 'meter.jpg',
       });
     } catch (e) {

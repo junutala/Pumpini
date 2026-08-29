@@ -201,8 +201,9 @@ const FOLDER = {
 //
 // THE PATH IS FOR A HUMAN WITH A BROWSER, because that is who has to find things:
 //
-//     nozzle/sri-balaji-300826-061204.jpg
-//     <folder>/<outlet>-<DDMMYY>-<HHMMSS>.<ext>
+//     nozzle/sri-balaji-15BC1412V.1-300826-061204.jpg   (single nozzle: named)
+//     nozzle/sri-balaji-300826-061204.jpg               (composite: many nozzles)
+//     <folder>/<outlet>[-<nozzle>]-<DDMMYY>-<HHMMSS>.<ext>
 //
 // It replaces `<prefix>/<uuid>/<epoch-ms>-<rand>-doc.jpg`, which the owner called
 // "really a maze" after opening the bucket and finding three prefixes, nine UUID
@@ -233,7 +234,7 @@ const FOLDER = {
 // rather than failing: a photograph in an ugly folder beats one that does not exist.
 async function uploadDocumentBase64({
   prefix, scope, base64, contentType, filename,
-  station_id = null, kind = null, at = null,
+  station_id = null, kind = null, at = null, label = null,
 }) {
   const bytes = Buffer.from(base64, 'base64');
   const ext   = safeName(filename || (contentType === 'application/pdf' ? 'doc.pdf' : 'doc.jpg'));
@@ -250,7 +251,20 @@ async function uploadDocumentBase64({
     const hhmmss = ist.slice(11, 19).replace(/:/g, '');
     const k      = String(kind || String(prefix || '').split('/').pop() || '');
     const folder = FOLDER[k] || safeName(k) || 'other';
-    path = `${folder}/${slug}-${ddmmyy}-${hhmmss}.${ext.split('.').pop()}`;
+    // `label` is the nozzle name where one applies — 15BC1412V.1, exactly as the
+    // slip prints it and exactly as every screen shows it. Owner, 29-Aug: "what if
+    // we append the nozzle name. This is unique universally." It is, and it tells
+    // you WHICH nozzle without opening the file.
+    //
+    // It does NOT replace the seconds, and Kamala's own history is why: on 23-Jun
+    // nozzle 15BC1412V.2 was photographed at 09:42:26, 09:42:58 and 09:43:25 — three
+    // retries of ONE nozzle inside a minute. Under HHMM two of those three would
+    // have silently overwritten each other.
+    //
+    // A composite scan is one photograph of MANY nozzles and an ATG screen has no
+    // nozzle at all, so most images carry no label. Absent, the name simply omits it.
+    const tag = label ? `-${safeName(String(label))}` : '';
+    path = `${folder}/${slug}${tag}-${ddmmyy}-${hhmmss}.${ext.split('.').pop()}`;
   } else {
     path = `${prefix}/${scope || 'na'}/${Date.now()}-${rand}-${ext}`;
   }
