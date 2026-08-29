@@ -22,6 +22,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
 import { errText } from '../../lib/apiError';
+import { nozName } from '../../lib/nozzle';
 
 const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const when = ts => ts ? new Date(ts).toLocaleString('en-IN', {
@@ -38,6 +39,11 @@ export default function AttendantDuesPage() {
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId]   = useState(null);
+  // THE WORKING behind each man's figure, fetched on demand: attendant_id -> legs[].
+  // Kept per man rather than fetched for the whole list, because most rows are read
+  // and closed without ever being questioned.
+  const [legs, setLegs]       = useState({});
+  const [legsBusy, setLegsBusy] = useState('');
   const [form, setForm]       = useState({});
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
@@ -68,6 +74,20 @@ export default function AttendantDuesPage() {
       setErr(errText(e, tc('dues.settleFailed', 'Could not record that settlement.')));
     }
     setBusy(false);
+  };
+
+  // WHY THIS IS ON DEMAND AND NOT ROLLED INTO THE LIST. The list answers "who owes
+  // what"; this answers "and how do you know". A manager asks the second question of
+  // one man at a time, usually the first few times he uses the screen and rarely
+  // after — so fetching every man's legs up front would be work nobody asked for.
+  const showWorking = async (attendant_id) => {
+    if (legs[attendant_id]) { setLegs(l => ({ ...l, [attendant_id]: null })); return; }
+    setLegsBusy(attendant_id);
+    try {
+      const r = await api.get(`/spokes/outstanding/${attendant_id}/detail`, { params: { station_id: sid } });
+      setLegs(l => ({ ...l, [attendant_id]: Array.isArray(r) ? r : [] }));
+    } catch (e) { setErr(errText(e, 'Could not load the breakdown.')); }
+    setLegsBusy('');
   };
 
   if (!hubSpokesFlow) {
@@ -148,7 +168,72 @@ export default function AttendantDuesPage() {
                     <span>{money(r.value)} {tc('dues.owed', 'owed')}</span>
                     <span>{money(r.handed_over)} {tc('dues.broughtWord', 'brought')}</span>
                     {r.last_close && <span>{tc('dues.lastClose', 'last close')} {when(r.last_close)}</span>}
+                    {Number(r.ltrs || 0) > 0 && (
+                      <button type="button" onClick={() => showWorking(r.attendant_id)}
+                        disabled={legsBusy === r.attendant_id}
+                        style={{ border: 'none', background: 'none', padding: 0, fontSize: 12.5,
+                                 fontWeight: 700, color: 'var(--brand)', cursor: 'pointer' }}>
+                        {legsBusy === r.attendant_id
+                          ? tc('dues.working', 'working…')
+                          : legs[r.attendant_id]
+                            ? tc('dues.hideWorking', 'hide the working')
+                            : tc('dues.showWorking', 'how is this worked out?')}
+                      </button>
+                    )}
                   </div>
+
+                  {/* THE WORKING. Every row is two readings off two slips HE
+                      photographed, with the subtraction and the multiplication shown.
+                      Owner, 29-Aug-2026: "wherever money is involved, we should show as
+                      much info as possible so that the manager also knows that we are
+                      supporting him in his work rather than extending his work."
+
+                      A calculated figure he cannot audit is a figure he will not trust
+                      — today the slip reader handed him confident numbers, he checked
+                      them himself, found them wrong, and stopped scanning. He verifies
+                      one line here against paper in ten seconds, and then he stops
+                      verifying. That is what trust is. */}
+                  {legs[r.attendant_id] && (
+                    <div style={{ marginTop: 10, borderTop: '1px solid #f0ebe3', paddingTop: 10, overflowX: 'auto' }}>
+                      {legs[r.attendant_id].length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+                          {tc('dues.noLegs', 'No closed nozzle readings yet — nothing has been handed over on his account.')}
+                        </div>
+                      ) : (
+                        <table style={{ borderCollapse: 'collapse', fontSize: 12.5, minWidth: 520 }}>
+                          <tbody>
+                            {legs[r.attendant_id].map(l => (
+                              <tr key={l.event_id} style={{ borderBottom: '1px solid #f6f2ec' }}>
+                                <td style={{ padding: '5px 10px 5px 0', fontWeight: 700, whiteSpace: 'nowrap' }}>{nozName(l)}</td>
+                                <td style={{ padding: '5px 10px', fontFamily: 'monospace', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                                  {l.opened_at_reading == null
+                                    ? tc('dues.firstReading', 'first reading')
+                                    : `${Number(l.opened_at_reading).toFixed(3)} → ${Number(l.closed_at_reading).toFixed(3)}`}
+                                </td>
+                                <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {Number(l.ltrs).toFixed(2)} L
+                                </td>
+                                <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                                  × {money(l.price)}
+                                </td>
+                                <td style={{ padding: '5px 0 5px 10px', fontFamily: 'monospace', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  {money(l.value)}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr>
+                              <td colSpan={4} style={{ padding: '7px 10px 0 0', textAlign: 'right', fontWeight: 700 }}>
+                                {tc('dues.owed', 'owed')}
+                              </td>
+                              <td style={{ padding: '7px 0 0 10px', fontFamily: 'monospace', textAlign: 'right', fontWeight: 800 }}>
+                                {money(r.value)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
 
                   {openId === r.attendant_id ? (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0ebe3' }}>

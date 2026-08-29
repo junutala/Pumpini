@@ -99,6 +99,25 @@ router.get('/outstanding', authenticate, requireStationAccess({ required: true }
 // WHAT HE BROUGHT. The only manual entry in Spoke 3, and there is deliberately no
 // field for the outstanding: a manager cannot make a liability vanish by leaving one
 // blank, because there is none to leave blank.
+// GET /api/spokes/outstanding/:attendant_id/detail?station_id=…
+//
+// The working behind one man's figure — every leg, both readings, the price, the
+// multiplication. Owner, 29-Aug-2026: "wherever money is involved, we should show as
+// much info as possible so that the manager also knows that we are supporting him in
+// his work rather than extending his work."
+//
+// Read-only, and on the same permission as the settlement it explains: a man allowed
+// to take the money is allowed to see how the figure was reached. Anything less and
+// he is being asked to trust it.
+router.get('/outstanding/:attendant_id/detail', authenticate, requireStationAccess({ required: true }),
+  requirePerm('settlement.enter'), async (req, res, next) => {
+    try {
+      if (!(await spokes.hasSpokeTables())) return res.status(503).json(NOT_MIGRATED);
+      const station_id = req.query.station_id || req.stationId;
+      res.json(await spokes.outstandingDetail(station_id, req.params.attendant_id));
+    } catch (err) { next(err); }
+  });
+
 router.post('/settle', authenticate, requireStationAccess({ required: true }),
   requirePerm('settlement.enter'), async (req, res, next) => {
     try {
