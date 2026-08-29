@@ -79,6 +79,46 @@ when a man changes his mind is a recon he will not start twice.*
 
 ---
 
+## 2b. Accepted liabilities in Flow 1 — DO NOT "fix" these
+
+Flow 1 is being retired. These are known, deliberately unfixed, and a patch for any
+of them builds half of a spoke inside the flow it replaces. Owner, 29-Aug-2026:
+*"so, dont fix anything in Flow A. let it run with this liability."*
+
+**ONE SLIP IS PHOTOGRAPHED ONCE PER NOZZLE, NOT ONCE PER PUMP.** A slip is printed
+per PUMP and lists every nozzle on it — Kamala's `15BC1412V` prints `NOZZLE : 1` and
+`NOZZLE : 2` on one sheet — but `/pos-meter` asks for a photograph per nozzle. So the
+manager shoots the same piece of paper twice, and four times on Sri Balaji's
+`17FH3756V`. `slipParser` already returns every line; the route discards all but the
+one asked for.
+
+**The obvious fix is wrong, and it was written and thrown away on 29-Aug.** Filling
+every nozzle on the pump from one photograph breaks the moment a pump is SPLIT
+between two operators — and at the REAL outlets that is not an edge case, it is the
+daily norm:
+
+    Kamala      201807000927   2 operators, ~75 shifts across Jun/Jul/Aug
+    Highway     M2348019       2 operators on 4 nozzles, ~60 shifts
+    Sri Balaji  17CH2645V, 17FH3756V   2 operators, 29-Aug
+
+Operator A's photograph would then write operator B's closing reading, which is
+wrong twice:
+
+- **wrong actor** — A's scan closing B's leg settles B without settling him, the same
+  shape as the gap the ₹1,25,275 went through
+- **wrong moment** — the slip was printed at A's handover; B keeps selling afterwards,
+  so that figure is not B's close
+
+That is the straddle problem, and Spoke 1 already answers it: the reading is taken at
+the boundary **without disturbing anybody's account**. Solving it properly inside
+Flow 1 means Flow 1 writing nozzle events — Spoke 2, built twice, on worse
+foundations.
+
+**So: leave it. The manager takes an extra photograph. That is the price of a flow
+with a retirement date, and it is cheaper than two half-built chains.**
+
+---
+
 ## 3. What already exists — verified 27-Aug-2026, do not rebuild
 
 **This is the most important section in the file.** Spoke 1 is largely *assembly of
