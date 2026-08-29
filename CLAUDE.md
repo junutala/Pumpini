@@ -137,23 +137,43 @@ column. **[trust]**
 
 ## Which route a change takes
 
-**The owner decides how risky a change is, and he says so.** The default is: ship to
-`main`, he eyeballs it live, and **revert-the-PR** is the rollback. When he wants a
-physical test first, he will say so — and until he does, do not route work through
-staging on my own judgement.
+# 🛑 `staging` IS **ONLY** FOR VAWE. NO MORE ARGUMENTS HIDING BEHIND STAGING.
+### Owner-set 29-Aug-2026. This retires the 04-Aug change-management rules outright.
 
-**`staging` belongs to VAWE.** Owner-set 04-Aug-2026. It is not a mirror of production and
-must not be dragged into line with `main` as a side effect of shipping a Pumpini feature.
-It has no Pumpini test data, so a Pumpini screen cannot be verified there anyway.
+> *"Those rules are dead. And also update that staging is ONLY for VAWE. NO MORE
+> ARGUMENTS ON THIS HIDING BEHIND STAGING."*
+
+**Pumpini ships to `main`.** Branch, PR, merge, and it is live. The owner eyeballs it on
+the real outlets, and **revert-the-PR is the rollback.** That is the whole route.
+
+**`staging` is the VAWE branch and nothing else.** Not a pre-production mirror, not a
+safety net, not a proving ground for Pumpini work, not a place to park something risky. It
+has no Pumpini test data, so a Pumpini screen cannot be verified there in any case.
+
+**WHAT IS RETIRED, AND DOES NOT COME BACK** *(both were owner-set 04-Aug-2026, both are
+dead as of 29-Aug-2026)*:
+
+- ~~Two PRs per change, one into `main` and one into `staging`, "kept in lockstep".~~
+- ~~Medium/high-impact changes deploy to `staging` first and the owner tests them
+  physically before production.~~
+
+**🛑 DO NOT PROPOSE STAGING AS A ROUTE FOR PUMPINI WORK. EVER.** Not as a
+recommendation, not as a "safer option", not as one arm of a choice put to the owner, and
+not as a reason to stop short of shipping. **The tell that I am doing it:** I am about to
+write *"this touches money, so it should go through staging first"* or *"shall I put this
+on staging so you can test it?"* Both are the hedge this rule exists to kill. The
+alternative to shipping is not staging — it is doing the impact analysis in §1 properly,
+writing the code so it degrades rather than breaks, and saying plainly what I am unsure
+of. If a change genuinely frightens me, I say **what** frightens me and **why**, in one or
+two sentences, and then I ship it or I ask a direct question. I do not launder the worry
+into a deployment route.
+
+**If the owner ever wants something tested before it goes live, HE will say so.** Until he
+does, there is no such step, and I do not invent one.
+
 **Never resolve a cherry-pick conflict onto `staging` by taking `main`'s file wholesale** —
 that silently promotes a slice of production behaviour into the VAWE branch. See
 `STAGING.md`.
-
-> ⚠️ **This section was rewritten 29-Aug-2026 and needs the owner's ruling — see §10.**
-> The rules it replaces required two PRs per change (main + staging) "in lockstep", and
-> required every schema/money/core-flow change to be physically tested on staging first.
-> Neither has been practised: staging's last commit is 12-Aug, and Flow v2 — schema, money
-> and a core flow — went straight to `main` on the owner's explicit instruction.
 
 ## SQL is gated on the owner, step by step
 
@@ -475,7 +495,7 @@ the query that answers it. Run the query. Do not cite this table at the owner.
 |---|---|---|
 | Outlets in production | 8 rows: Kamala, Adhoc Highway, Highway, **Sri Balaji Oil Company**, Dilsukhnagar Bunk, Hayat Nagar, Nagole, one unnamed | `SELECT name FROM stations ORDER BY name` |
 | Which are **real** | **Kamala, Adhoc Highway, Highway** — and **Sri Balaji Oil Company**, which is real, live, and the outlet Flow v2 was built for | ask the owner; there is no column for it |
-| Which are fixtures | Dilsukhnagar Bunk, Hayat Nagar, Nagole, the unnamed one. **They are still in PRODUCTION** — the 01-Aug plan to move them to staging was never carried out | `SELECT s.name, count(sh.*) FROM stations s LEFT JOIN shifts sh ON sh.station_id=s.id GROUP BY s.name` |
+| Which are fixtures | Dilsukhnagar Bunk, Hayat Nagar, Nagole, the unnamed one. **They are still in PRODUCTION.** The 01-Aug plan to move them to staging was never carried out and is now void — staging is VAWE's (§2). Peeling them off production is still worth doing; it needs somewhere else to go | `SELECT s.name, count(sh.*) FROM stations s LEFT JOIN shifts sh ON sh.station_id=s.id GROUP BY s.name` |
 | Flow v2 switch | **ON at Dilsukhnagar Bunk only.** OFF everywhere else, Sri Balaji included | `SELECT s.name FROM station_settings ss JOIN stations s ON s.id=ss.station_id WHERE ss.hub_spokes_migration_enabled` |
 | Commissioning | **Zero genesis events at any outlet**, so the gate holds every outlet until somebody scans. Intended, not a defect | `SELECT count(*) FROM nozzle_events` |
 | Production tables | 83 | `SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'` |
@@ -490,20 +510,19 @@ wrong conclusion, and the owner cannot see the `WHERE` clause I used.
 
 # ❓ §10 — Needs the owner's ruling
 
-Three questions this file cannot answer for itself. Until each is settled, the sections
-above say what is *practised*, and this section says what is *unresolved*.
+Two questions this file cannot answer for itself. The sections above say what is
+*practised*; this says what is *unresolved*. **Do not guess at either, and do not let
+either become a reason to stop work that does not depend on it.**
 
-1. **Are the staging change-management rules retired?** §2 now says Pumpini ships to `main`
-   and staging belongs to VAWE. It replaces two owner-set rules from 04-Aug — two PRs per
-   change "in lockstep", and staging-first physical testing for schema/money/core-flow
-   changes. Neither has been practised for weeks, and Flow v2 went straight to production on
-   your instruction. **I have written down what actually happens. If the old rules are still
-   live, say so and I will restore them.**
-2. **Recon cadence in Flow v2** — daily or per shift. Daily is 12 slip prints and cheap; per
-   shift is 24 a day and somebody starts skipping, which quietly puts the straddle back.
-3. **Who may clear an attendant's outstanding.** Today the route asks for `settlement.enter`
-   and nothing more — the manager, who is often the man who took the cash. Owner-only is
-   slow. Your middle path was: manager records, owner confirms.
+1. **Recon cadence in Flow v2** — daily or per shift. Daily is 12 slip prints and cheap;
+   per shift is 24 a day and somebody starts skipping, which quietly puts the straddle
+   back. Nothing in the code assumes either.
+2. **Who may clear an attendant's outstanding.** Today the route asks for
+   `settlement.enter` and nothing more — the manager, who is often the man who took the
+   cash. Owner-only is slow. The owner's middle path: manager records, owner confirms.
+
+*Settled 29-Aug-2026 and moved into §2: the staging change-management rules are retired.
+`staging` is only for VAWE.*
 
 ---
 
@@ -558,3 +577,4 @@ and in `docs/`.
 | 28-Aug-2026 | A second settlement form written beside Shift Close's, differing only in labels | §4 |
 | 28-Aug-2026 | A nozzle label built inline — caught by CI, in the commit that quoted the rule | §5 |
 | 29-Aug-2026 | The "trust the snapshot" rule found two months stale, naming 60 tables against prod's 83 | §3, §9 |
+| 29-Aug-2026 | Staging rules found dead in practice for 17 days; owner retired them outright | §2 |
