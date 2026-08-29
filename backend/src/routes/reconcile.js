@@ -874,12 +874,22 @@ router.post('/pos-meter', authenticate,
     // WHICH nozzle are we reading, and what does its own slip call it. Needed BEFORE
     // the read, because that is what we go looking for on the paper.
     const { rows: nzr } = await pool.query(
-      `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial
+      `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial,
+              (n.id = $1) AS is_wanted
          FROM nozzles n
          LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL
-        WHERE n.id = $1`, [nozzle_id]);
+        WHERE n.pump_id = (SELECT pump_id FROM nozzles WHERE id = $1)
+          AND COALESCE(n.is_active, TRUE)
+        ORDER BY n.nozzle_number`, [nozzle_id]);
     if (!nzr.length) return res.status(404).json({ error: 'Nozzle not found' });
-    const want       = nzr[0];
+    // EVERY NOZZLE ON THIS PUMP, because that is what the paper covers. A slip is
+    // printed per PUMP and lists all of its nozzles — the owner's own 15BC1412V slip
+    // prints NOZZLE : 1 and NOZZLE : 2 on one sheet. Asking for a photograph per
+    // NOZZLE made the manager shoot the same piece of paper twice, and four times on
+    // Sri Balaji's 17FH3756V. The reader already returned every line; this route
+    // simply threw them away.
+    const pumpNozzles = nzr;
+    const want        = nzr.find(r => r.is_wanted) || nzr[0];
     const wantSerial = String(want.pump_serial ?? '').trim().toUpperCase();
     const wantNo     = String(want.slip_nozzle_no ?? '').trim() || pumps.defaultSlipNo(want.nozzle_number);
     const wantName   = pumps.nozzleName(want);
@@ -908,12 +918,13 @@ router.post('/pos-meter', authenticate,
     // that cross-check. It was simply never in this path. Calling it here DELETES a
     // reader rather than adding one, and the guard, the swap detection and the
     // rejection strings all arrive by construction.
-    let reading = '', legible = false, notes = '', ocrEngine = null;
+    let reading = '', legible = false, notes = '', ocrEngine = null, parsedNozzles = [];
     const parsed = await slipParser.parseSlip({ file_base64: image_base64, media_type });
     if (!parsed) {
       notes = 'Could not read that slip — type the reading instead.';
     } else {
       ocrEngine = parsed.engine ?? null;
+      parsedNozzles = parsed.nozzles || [];
       const gotSerial = String(parsed.pump_serial ?? '').trim().toUpperCase();
       const line = (parsed.nozzles || []).find(n => String(n.nozzle_no) === String(wantNo));
 
@@ -980,7 +991,27 @@ router.post('/pos-meter', authenticate,
     try {
       await storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading: reading || null, ocr_legible: legible, recorded_by: req.user.id });
     } catch { /* store failed — the reading is already computed and returned */ }
-    res.json({ reading, legible, notes, opening_reading, below_opening, engine: ocrEngine, nozzle_name: wantName });
+    // ONE PHOTOGRAPH, EVERY NOZZLE ON THE PUMP. `reading` stays exactly as it was for
+    // the nozzle that was asked for, so no existing caller changes; `lines` is added
+    // beside it so a screen can fill the whole pump from the one shot. A line is only
+    // offered when it passed slipParser's rupee/litre cross-check — an unreadable
+    // sibling is reported, never quietly filled.
+    const lines = (parsedNozzles || []).map(l => {
+      const n = pumpNozzles.find(r =>
+        String(r.slip_nozzle_no ?? '').trim() === String(l.nozzle_no) ||
+        pumps.defaultSlipNo(r.nozzle_number) === String(l.nozzle_no));
+      if (!n) return null;
+      return {
+        nozzle_id: n.id,
+        nozzle_name: pumps.nozzleName(n),
+        reading: l.legible ? String(l.cumulative_volume) : '',
+        legible: l.legible === true,
+        reject_reason: l.reject_reason || null,
+      };
+    }).filter(Boolean);
+
+    res.json({ reading, legible, notes, opening_reading, below_opening, engine: ocrEngine,
+               nozzle_name: wantName, lines });
   } catch (e) { next(e); }
 });
 
