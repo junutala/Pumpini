@@ -91,10 +91,27 @@ async function nozzleOpenings(shift_id, client = pool) {
         SELECT san.closing_reading, san.shift_id, s2.shift_number, s2.date
           FROM shift_attendant_nozzles san
           JOIN shifts s2 ON s2.id = san.shift_id
+         -- A HANDOVER INSIDE THIS SHIFT COUNTS TOO, and it counts first.
+         --
+         -- This clause used to be san.shift_id <> cur.id — the carry could only see
+         -- closes from EARLIER shifts. That was safe while a nozzle could be worked by
+         -- exactly one man per shift. It is not safe now: when a man leaves mid-shift
+         -- his line is taken over by someone already on the forecourt (owner,
+         -- 29-Aug-2026: "they cannot find a replacement. The show has to run"), and
+         -- the incoming man's opening MUST be the outgoing man's closing.
+         --
+         -- Without this he would open at whatever the shift opened at, and be charged
+         -- for every litre the first man sold. The litres do not vanish — they land on
+         -- the wrong person, which is worse.
          WHERE san.nozzle_id = n.id
-           AND san.shift_id <> cur.id
-           AND s2.start_time < cur.start_time
-         ORDER BY s2.start_time DESC
+           AND ( (san.shift_id  = cur.id AND san.closing_reading IS NOT NULL)
+              OR (san.shift_id <> cur.id AND s2.start_time < cur.start_time) )
+         -- This shift's own closed leg wins; then the latest prior shift; then, within
+         -- one shift, the LAST leg — several now share s2.start_time, which would
+         -- otherwise leave the tie-break to the planner.
+         ORDER BY (san.shift_id = cur.id) DESC,
+                  s2.start_time DESC,
+                  san.assigned_at DESC NULLS LAST
          LIMIT 1
       ) prev ON TRUE
      ORDER BY n.nozzle_number`, [shift_id]);

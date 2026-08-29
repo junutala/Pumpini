@@ -624,7 +624,16 @@ export default function ShiftStartPage() {
 
   // ── Attendant assignment ──────────────────────────────────────────
   const assignedIds      = new Set(attendants.map(a => a.attendant_id));
-  const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[]).map(nz => nz.nozzle_id)));
+  // A nozzle is TAKEN only while a leg on it is still OPEN. A closed leg is history —
+  // its closing reading is in, its litres are settled — and it releases the nozzle so
+  // the next man can be given it. This used to count every leg ever assigned on the
+  // shift, so the moment an operator settled, his nozzles vanished from the
+  // assignable list for the rest of the day and no handover was possible.
+  // Owner, 29-Aug-2026: "an attendant can leave midshift for many reasons... if that
+  // attendant closes the nozzle, another should be able to take over."
+  const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[])
+    .filter(nz => nz.closing_reading == null)
+    .map(nz => nz.nozzle_id)));
   const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
 
