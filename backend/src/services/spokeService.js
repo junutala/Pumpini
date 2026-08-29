@@ -229,6 +229,57 @@ async function outstanding(station_id) {
   return rows;
 }
 
+// THE WORKING BEHIND ONE MAN'S OUTSTANDING — every leg, both readings, the price.
+//
+// outstanding() derives each leg and then SUMs it away, so the screen could only ever
+// show a total. Owner, 29-Aug-2026: "wherever money is involved, we should show as
+// much info as possible so that the manager also knows that we are supporting him in
+// his work rather than extending his work."
+//
+// He is right, and today proved the cost of the alternative. The slip reader handed a
+// manager confident figures he could not check; he checked them himself, found them
+// wrong, and stopped using it. A calculated outstanding he cannot audit is the same
+// trap in better clothes — and the first time it disagrees with his own arithmetic he
+// goes back to the register.
+//
+// So every row here is two readings off two slips HE photographed, with the
+// subtraction and the multiplication shown. He verifies one line against paper in ten
+// seconds, and after that he stops verifying. That is what trust is.
+//
+// Same shape as outstanding() deliberately — the same legs, the same price lookup, the
+// same GREATEST() floor — so the lines can never sum to a different figure than the
+// total they sit under.
+async function outstandingDetail(station_id, attendant_id) {
+  if (!(await hasSpokeTables())) return [];
+  const pumps = require('./pumpService');
+  const nm = await pumps.nozzleNameSelect(pool, { n: 'n', p: '_np' });
+  const { rows } = await pool.query(
+    `SELECT e.id AS event_id,
+            n.id AS nozzle_id, n.fuel_type${nm.col},
+            p.reading      AS opened_at_reading,
+            e.reading      AS closed_at_reading,
+            GREATEST(e.reading - COALESCE(p.reading, e.reading), 0) AS ltrs,
+            COALESCE(pr.price, 0) AS price,
+            GREATEST(e.reading - COALESCE(p.reading, e.reading), 0) * COALESCE(pr.price, 0) AS value,
+            p.recorded_at  AS opened_at,
+            e.recorded_at  AS closed_at,
+            e.is_co_event,
+            e.source
+       FROM nozzle_events e
+       JOIN nozzles n ON n.id = e.nozzle_id
+       ${nm.join}
+       LEFT JOIN nozzle_events p ON p.id = e.prev_event_id
+       LEFT JOIN LATERAL (
+         SELECT fp.price FROM fuel_prices fp
+          WHERE fp.station_id = $1 AND fp.fuel_type = n.fuel_type
+          ORDER BY fp.effective_from DESC LIMIT 1
+       ) pr ON true
+      WHERE e.station_id = $1 AND e.closes_attendant_id = $2
+      ORDER BY e.recorded_at DESC, n.nozzle_number`,
+    [station_id, attendant_id]);
+  return rows;
+}
+
 // WHAT HE BROUGHT — the only manual entry in Spoke 3. It brings his suspense down; it
 // never sets it, and it may not complete silently at zero.
 async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
@@ -248,6 +299,7 @@ async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
 const num = v => Number(v) || 0;
 
 module.exports = {
-  hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding, settle,
+  hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding,
+  outstandingDetail, settle,
   MAX_FLOW_LTRS_PER_MIN,
 };

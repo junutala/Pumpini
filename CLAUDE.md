@@ -600,6 +600,38 @@ handover act and was corrected — the chain lives in Spoke 2, and Spoke 1 is a
 snapshot that is never asked *"what did this nozzle last read"*. The 01-Aug
 one-meter-store rule is not violated, because there is still exactly one chain.
 
+### 🔴 WHERE MONEY IS INVOLVED, SHOW THE WORKING — owner-set 29-Aug-2026
+
+> *"wherever money is involved, we should show as much info as possible so that the
+> manager also knows that we are supporting him in his work rather than extending his
+> work."*
+
+A figure a manager cannot audit is a figure he will not trust, and the proof is in
+this repo. The slip reader handed him confident numbers he could not check; he checked
+them against the paper himself, found them wrong, and stopped scanning. **A calculated
+outstanding he cannot audit is the same trap in better clothes** — and the first time
+it disagrees with his own arithmetic, he goes back to the register.
+
+So a money screen shows the derivation, not the conclusion:
+
+    15BC1412V.1   1654130.510 → 1654892.340   761.83 L × ₹104.20   ₹79,382
+    15BC1412V.2   2131447.940 → 2131447.940     0.00 L                  ₹0
+                                                       Outstanding  ₹79,382
+
+Every row is two readings off two slips HE photographed. He verifies one line against
+paper in ten seconds, and after that he stops verifying. **That is what trust is, and
+it cannot be asserted — only shown.**
+
+**THE TELL THAT THIS RULE IS BEING BROKEN:** a query that derives the parts and then
+SUMs them away. It happened twice in one evening — `/pos-meter` parsed every line of a
+slip and kept one, and `spokeService.outstanding` derived every leg and returned only
+the total. Both had the answer and threw the evidence out. When a total is computed
+from parts, return the parts.
+
+The detail may be fetched on demand rather than up front — the list answers "who owes
+what", the working answers "and how do you know", and the second question is asked of
+one man at a time.
+
 ### 🔴 SRI BALAJI ONLY, behind a per-outlet switch. TEMPORARY.
 
 `station_settings` already carries four behaviour switches (`products_enabled`,
