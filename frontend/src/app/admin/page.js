@@ -177,6 +177,9 @@ export default function AdminPage(){
 
   const [admin,setAdmin]         = useState(null);
   const [tab,setTab]             = useState('dashboard');
+  // Storage housekeeping — see the panel below.
+  const [purge,setPurge]         = useState(null);
+  const [purgeBusy,setPurgeBusy] = useState('');
   const [stats,setStats]         = useState(null);
   const [dayDate,setDayDate]     = useState('');   // Day Sale tile date picker
   const [dayBusy,setDayBusy]     = useState(false); // Day Sale fetch in flight
@@ -415,6 +418,7 @@ export default function AdminPage(){
     {id:'stationusers',label:tc('adminp.tabUsersRoles','Users & Roles'),  icon:<UserPlus size={14}/>},
     {id:'leads',    label:tc('adminp.tabLeads','Leads'),             icon:<Inbox size={14}/>},
     {id:'appts',    label:tc('adminp.tabAppointments','Appointments'), icon:<CalendarClock size={14}/>},
+    {id:'storage',  label:tc('adminp.tabStorage','Storage'),       icon:<Layers size={14}/>},
   ];
 
   const formCities = getCities(form.state||'');
@@ -888,6 +892,87 @@ export default function AdminPage(){
 
         {/* ── Leads ── */}
         {/* ── Appointments ── */}
+        {/* STORAGE — bucket housekeeping.
+            Clearing an outlet deletes ROWS; the image BYTES stay in Supabase Storage
+            and nothing points at them any more. On 29-Aug-2026 the bucket held 153
+            objects of which 58 (173 MB, 70%) were orphans, and the owner opened the
+            Supabase file browser and called it "really a maze".
+
+            It cannot be done in the Supabase UI safely — referenced and orphaned
+            objects look identical there, and deleting the wrong one blanks a photo on
+            a live screen. It cannot be done in SQL either: Supabase installs
+            storage.protect_delete(). So it is this button, which deletes ONLY objects
+            no row points at, and never a delivery invoice. */}
+        {tab==='storage'&&(
+          <div style={{background:'#fff',border:'1px solid #e5e3de',borderRadius:12,padding:'1.25rem',maxWidth:760}}>
+            <div style={{fontSize:17,fontWeight:700,marginBottom:6}}>
+              {tc('adminp.stoTitle','Purge orphaned images')}
+            </div>
+            <div style={{fontSize:13.5,color:'#4a4845',lineHeight:1.6,marginBottom:16}}>
+              {tc('adminp.stoBlurb','Clearing an outlet removes its rows, but the photographs stay in the bucket with nothing pointing at them. This deletes only those. Anything a live row still uses is left alone, and delivery invoices are never touched.')}
+            </div>
+
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16}}>
+              <button type="button" disabled={!!purgeBusy}
+                onClick={async()=>{ setPurgeBusy('dry'); setPurge(null);
+                  try{ setPurge(await adminFetch('/purge-orphan-objects?dry=1&limit=500',{method:'POST'})); }
+                  catch(e){ setPurge({error:e?.error||e?.message||'Failed'}); }
+                  setPurgeBusy(''); }}
+                style={{padding:'11px 18px',borderRadius:9,border:'1px solid #e5e3de',background:'#fff',
+                        fontSize:14,fontWeight:600,cursor:purgeBusy?'default':'pointer'}}>
+                {purgeBusy==='dry'?tc('adminp.stoChecking','Checking…'):tc('adminp.stoDry','Show me what would go')}
+              </button>
+
+              {/* The real delete only appears AFTER a dry run has said what it would
+                  take — you cannot destroy something you have not been shown. */}
+              {purge&&!purge.error&&purge.would_delete>0&&(
+                <button type="button" disabled={!!purgeBusy}
+                  onClick={async()=>{ setPurgeBusy('go');
+                    try{ setPurge(await adminFetch('/purge-orphan-objects?dry=0&limit=500',{method:'POST'})); }
+                    catch(e){ setPurge({error:e?.error||e?.message||'Failed'}); }
+                    setPurgeBusy(''); }}
+                  style={{padding:'11px 18px',borderRadius:9,border:'none',background:'#dc2626',color:'#fff',
+                          fontSize:14,fontWeight:700,cursor:purgeBusy?'default':'pointer'}}>
+                  {purgeBusy==='go'
+                    ? tc('adminp.stoDeleting','Deleting…')
+                    : tc('adminp.stoGo','Delete {n} orphaned images').replace('{n}', purge.would_delete)}
+                </button>
+              )}
+            </div>
+
+            {purge&&purge.error&&(
+              <div style={{background:'#fee2e2',color:'#991b1b',border:'1px solid #fecaca',
+                           borderRadius:8,padding:'10px 12px',fontSize:13}}>{String(purge.error)}</div>
+            )}
+
+            {purge&&!purge.error&&(
+              <div style={{background:purge.remaining===0?'#dcfce7':'#f8f7f5',
+                           border:`1px solid ${purge.remaining===0?'#bbf7d0':'#e5e3de'}`,
+                           borderRadius:10,padding:'13px 15px',fontSize:13.5,lineHeight:1.7}}>
+                {purge.dry_run
+                  ? <><b>{tc('adminp.stoWould','Nothing deleted yet.')}</b>{' '}
+                      {tc('adminp.stoWouldN','{n} images would go, freeing about {mb} MB.')
+                        .replace('{n}',purge.would_delete)
+                        .replace('{mb}',Math.round((purge.remaining_bytes||0)/1048576))}</>
+                  : <><b>{tc('adminp.stoDone','Deleted {n} images.').replace('{n}',purge.deleted)}</b>{' '}
+                      {purge.remaining>0
+                        ? tc('adminp.stoMore','{n} still to go — press again.').replace('{n}',purge.remaining)
+                        : tc('adminp.stoClean','The bucket holds nothing orphaned.')}</>}
+                <div style={{fontSize:12.5,color:'#7a7773',marginTop:8}}>
+                  {tc('adminp.stoProtected','Protected: delivery invoices, and every image a live row still uses.')}
+                </div>
+                {!!(purge.sample||[]).length&&(
+                  <div style={{fontFamily:'monospace',fontSize:11.5,color:'#7a7773',marginTop:10,
+                               whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+                    {purge.sample.slice(0,5).join('\n')}
+                    {purge.would_delete>5?`\n… and ${purge.would_delete-5} more`:''}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {tab==='appts'&&(
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.5rem'}}>

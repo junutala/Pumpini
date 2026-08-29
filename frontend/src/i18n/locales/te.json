@@ -3237,5 +3237,11 @@
   "sstart.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి",
   "send.gaugeOk": "విజయవంతం — కొనసాగండి",
   "send.gaugeCheck": "సేవ్ చేసే ముందు సంఖ్యలను సరిచూడండి",
-  "send.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి"
+  "send.gaugeFail2": "విఫలం — చేతితో నమోదు చేయండి",
+  "adminp.tabStorage": "స్టోరేజ్",
+  "adminp.stoTitle": "అనాథ చిత్రాలను తొలగించండి",
+  "adminp.stoDry": "ఏమి తొలగించబడతాయో చూపించండి",
+  "adminp.stoChecking": "చూస్తున్నాం…",
+  "adminp.stoDeleting": "తొలగిస్తున్నాం…",
+  "adminp.stoClean": "బకెట్‌లో అనాథ చిత్రాలు ఏవీ లేవు."
 }
