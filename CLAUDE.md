@@ -317,8 +317,9 @@ hands the number back, and the settlement writes it. One writer.
 2. **One more sanity sweep for multiple sources of truth.** The meter store was one;
    `docs/drift-audit.md` lists the rest. Find any other concept with two homes.
 3. **Peel the test outlets off PRODUCTION.** Only **Kamala**, **Adhoc Highway** and
-   **Highway** are real. Dilsukhnagar Bunk, VAWE-1, the unnamed outlet and their
-   data are test fixtures that now live in staging, and every analysis run against
+   **Highway** are real — **and Sri Balaji, and anything onboarded since** (House
+   facts: the FIXTURE list is the closed one). Dilsukhnagar, Nagole, Hayat Nagar and
+   the unnamed outlet are the fixtures, and every analysis run against
    prod has to filter them out by hand — which is how a wrong conclusion gets drawn.
    Precondition the owner set: **VAWE live and staging at parity with production**,
    then demos run on staging and prod holds only real outlets.
@@ -574,6 +575,14 @@ reason code becomes a reflex). A reset means the nozzle's chain needs a new star
 point, and that is a **commissioning action in Settings under the owner's eye** — never
 a number entered on a handover screen.
 
+**THAT ACT IS CALLED A GENESIS SCAN in the code** (`commissionService`), and it is
+what the Flow v2 switch waits for. One slip per pump records three things at once:
+the pump serial, the printed nozzle number, and the meter as it stands. That meter
+becomes link ONE of the nozzle's chain, and every later handover chains off it.
+**There is deliberately no "commissioned" flag** — the first event IS the evidence,
+because a boolean can drift away from reality and an event cannot. A nozzle with no
+chain was never commissioned, whatever any column says.
+
 ### 🔴 TWO TABLES FOR THE SLIP READINGS. Deliberate, priced, do not "fix" it.
 
 > *"The nozzle slips at two different hands serve different purposes... I know this
@@ -650,8 +659,39 @@ owns them. Demoted, not deleted.
 
 - Dates: format with `en-IN` + `Asia/Kolkata` (DD MMM YYYY). Never render a raw ISO
   timestamp. India is DD/MM — never MM/DD.
-- **Real outlets in production: Kamala, Adhoc Highway, Highway.** Everything else in
-  prod is a test fixture — exclude it before drawing any conclusion from prod data.
+- **THE FIXTURE LIST IS CLOSED. EVERYTHING ELSE IS REAL** (owner-set 29-Aug-2026).
+
+  **These four are fixtures, and this list NEVER GROWS:**
+
+      Dilsukhnagar Bunk
+      Nagole Petrol Bunk
+      Hayat Nagar Petrol Bunk
+      the unnamed outlet
+
+  **ANY OTHER OUTLET IS REAL — including every outlet created from this day on.**
+  Owner: *"I promise, i will not create more dummy outlets as I am happy with three
+  test. So, the converse MUST BE true. Any new outlet we create from now on, will be
+  REAL OUTLETS and the data has to be protected as GOLD."*
+
+  **THIS IS STATED AS A CLOSED LIST ON PURPOSE, AND THE DIRECTION MATTERS.** The file
+  used to name the REAL outlets instead, which meant an outlet I did not recognise
+  fell outside the list and read as disposable — and by August that had already gone
+  wrong: Sri Balaji was real, and the doctrine still implied it was a fixture. Named
+  the other way round, an unrecognised outlet is REAL by default, and the failure mode
+  is treating a demo bunk too carefully rather than treating a live one too casually.
+
+  Real today: **Kamala Filling Station, Adhoc Highway Filling Station, Highway Filling
+  Station, Sri Balaji Oil Company** — and whatever is onboarded next, without anybody
+  editing this line.
+
+  **Drift in the four fixtures is not a finding.** *"no amount of drift in these
+  outlets are a cause for concern."* Do not report it, do not propose cleaning it, and
+  exclude the four before drawing any conclusion from production data — a query
+  averaging across all of them is measuring demo keystrokes.
+
+  **RULE ZERO IS NOT SOFTENED BY ANY OF THIS.** A fixture is not a licence to write.
+  All seven share ONE database, and a wrong `WHERE` reaches a real outlet from either
+  side of that line.
 - i18n: user-facing strings go through `tc('key', 'English fallback')`; add Telugu (`te.json`)
   for manager-facing text.
 - Attendants = `users` with `role='attendant'` linked via `station_users`; `is_active` +
