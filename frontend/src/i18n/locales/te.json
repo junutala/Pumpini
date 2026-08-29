@@ -3243,5 +3243,9 @@
   "adminp.stoDry": "ఏమి తొలగించబడతాయో చూపించండి",
   "adminp.stoChecking": "చూస్తున్నాం…",
   "adminp.stoDeleting": "తొలగిస్తున్నాం…",
-  "adminp.stoClean": "బకెట్‌లో అనాథ చిత్రాలు ఏవీ లేవు."
+  "adminp.stoClean": "బకెట్‌లో అనాథ చిత్రాలు ఏవీ లేవు.",
+  "sstart.release": "విడుదల",
+  "sstart.releaseTitle": "ఈ నాజిల్ నుండి ఇంధనం ఇవ్వకపోతే విడుదల చేయండి — అతని మిగతా నాజిల్‌లు అలాగే ఉంటాయి",
+  "sstart.releasedOk": "{noz} ఖాళీ అయింది — ఎవరికైనా కేటాయించవచ్చు.",
+  "sstart.releaseFailed": "ఆ నాజిల్‌ను విడుదల చేయలేకపోయాం."
 }
