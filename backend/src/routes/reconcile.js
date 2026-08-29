@@ -262,6 +262,45 @@ router.post('/', authenticate, requireStationVia('SELECT station_id FROM shifts 
 //   cash_value   = sales_value − card − UPI − credit(already logged)
 //   expected_cash= opening_cash + cash_value
 //   variance     = counted_cash − expected_cash   (shortage<0 alerts; overage>0 silent)
+// POST /api/reconcile/release-nozzle
+//
+// Free ONE nozzle that never dispensed, without settling the operator holding it.
+// He keeps his other nozzles and his money is not yet due; only this leg closes, at
+// the reading it opened at, for zero litres.
+//
+// Owner, 29-Aug-2026: "If an operator closes his nozzle or few of the assigned
+// nozzles with ZERO increments, can we free up those nozzles. Not the operator per
+// se. Just those nozzles."
+//
+// The manager's act, so reconcile.manage — the same permission that settles. The
+// rule that keeps it safe lives in settlementService.releaseUnmovedNozzle, which owns
+// closing_reading: the reading sent must EQUAL the opening to three decimals, and a
+// nozzle that moved is refused with the figures rather than released. No settlement
+// row, no sale, no cash — zero litres is zero rupees, and that is the whole reason
+// this is allowed to exist.
+router.post('/release-nozzle', authenticate,
+  requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
+  requirePerm('reconcile.manage'),
+  async (req, res, next) => {
+    const { shift_id, attendant_id, nozzle_id, reading } = req.body;
+    if (!shift_id || !attendant_id || !nozzle_id) {
+      return res.status(400).json({ error: 'shift_id, attendant_id and nozzle_id are required' });
+    }
+    try {
+      const { rows: sh } = await pool.query(
+        "SELECT id FROM shifts WHERE id=$1 AND status='open'", [shift_id]);
+      if (!sh.length) return res.status(409).json({ error: 'That shift is not open.' });
+
+      const out = await settlement.releaseUnmovedNozzle(pool, {
+        shift_id, attendant_id, nozzle_id, reading,
+      });
+      res.json({ released: true, ...out });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+
 router.post('/manager', authenticate,
   requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'shift_id'),
   requirePerm('reconcile.manage'),

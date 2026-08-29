@@ -216,6 +216,65 @@ async function persistClosings(client, { shift_id, attendant_id, legs }) {
   }
 }
 
+// RELEASE A NOZZLE THAT DID NOT MOVE — without settling the man who held it.
+//
+// The case, owner 29-Aug-2026: an operator holds four nozzles, two of them never
+// dispensed a drop, and somebody else needs those two now. Settling him is wrong —
+// his other two are still running and his money is not due. Leaving them assigned is
+// also wrong, because the forecourt is short two nozzles for the rest of the shift.
+//
+// WHY THIS IS SAFE, AND WHY IT IS THE ONLY CASE THAT IS. Zero litres times any price
+// is zero rupees. There is nothing to settle, no cash to count, no sale to file — so
+// releasing the nozzle cannot move a figure on anybody's settlement. Extend it to a
+// nozzle that DID move and you are settling a man without settling him, which is the
+// gap the ₹1,25,275 went through.
+//
+// THE READING IS THE PROOF, NOT THE CLAIM. The caller must send the meter as it
+// stands, and it must EQUAL the opening to the paisa. A manager cannot assert "this
+// one didn't move" — he reads it, and the equality is checked here. If the meter has
+// in fact moved, this refuses and he settles the man properly. Gate on the reading,
+// never on anybody's word for it.
+//
+// ONE WRITER, TWO ENTRY POINTS. closing_reading is written in this service and
+// nowhere else; this is a second guarded doorway into it, not a second copy of it.
+// A settlement closes every leg a man holds and posts his money; this closes exactly
+// one leg and posts nothing.
+async function releaseUnmovedNozzle(client, { shift_id, attendant_id, nozzle_id, reading }) {
+  const { rows } = await client.query(
+    `SELECT opening_reading, closing_reading
+       FROM shift_attendant_nozzles
+      WHERE shift_id=$1 AND attendant_id=$2 AND nozzle_id=$3`,
+    [shift_id, attendant_id, nozzle_id]);
+  if (!rows.length) {
+    throw new SettlementError(404, 'That nozzle is not assigned to this operator on this shift.');
+  }
+  const leg = rows[0];
+  if (leg.closing_reading !== null) {
+    throw new SettlementError(409, 'That nozzle is already closed.');
+  }
+
+  const opening = Number(leg.opening_reading);
+  const now     = Number(reading);
+  if (!Number.isFinite(now)) {
+    throw new SettlementError(400, 'Enter the meter reading as it stands now.');
+  }
+  // To the paisa. A nozzle that moved by a hundredth of a litre has still moved, and
+  // a tolerance here is an invitation to release nozzles that owe money.
+  if (now.toFixed(3) !== opening.toFixed(3)) {
+    throw new SettlementError(409,
+      `That nozzle has moved — it opened at ${opening.toFixed(3)} and now reads ${now.toFixed(3)}. `
+      + 'Settle the operator for it instead of releasing it.');
+  }
+
+  await client.query(
+    `UPDATE shift_attendant_nozzles SET closing_reading=$1
+      WHERE shift_id=$2 AND attendant_id=$3 AND nozzle_id=$4
+        AND closing_reading IS NULL`,
+    [opening, shift_id, attendant_id, nozzle_id]);
+
+  return { nozzle_id, opening, closing: opening, litres: 0 };
+}
+
 // Cash taken out of the drawer at close → one top-up into the station petty-cash
 // fund per operator. Idempotent on his settlement row, so a re-settle replaces
 // rather than stacks.
@@ -235,6 +294,7 @@ async function writePettyCash(client, { station_id, attendant_id, settlementRowI
 }
 
 module.exports = {
+  releaseUnmovedNozzle,
   SettlementError,
   loadOperatorLine,
   loadOperatorNozzles,
