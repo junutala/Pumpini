@@ -86,6 +86,34 @@ async function putObject({ bucket, path, bytes, contentType, upsert = true }) {
   return path;
 }
 
+// ── DELETE objects from a bucket. The counterpart to putObject, and the ONLY way
+// bucket objects can be removed: Supabase installs a storage.protect_delete()
+// trigger, so a DELETE against storage.objects in SQL is refused outright —
+//
+//     ERROR: Direct deletion from storage tables is not allowed.
+//     HINT:  This prevents accidental data loss from orphaned objects.
+//
+// which is the right design and is why this has to run where the service key lives.
+// Takes up to 1000 paths per call (the API's limit) and returns what it removed.
+async function deleteObjects({ bucket, paths }) {
+  if (!storageConfigured()) {
+    throw new Error('Object storage not configured (SUPABASE_* env missing)');
+  }
+  const list = (Array.isArray(paths) ? paths : []).filter(Boolean);
+  if (!list.length) return [];
+  const res = await axios.delete(`${apiBase()}/storage/v1/object/${bucket}`, {
+    headers: { Authorization: `Bearer ${serviceKey()}`, 'Content-Type': 'application/json' },
+    data: { prefixes: list },
+    timeout: 60000,
+    validateStatus: () => true,
+  });
+  if (res.status < 200 || res.status >= 300) {
+    const detail = typeof res.data === 'string' ? res.data : JSON.stringify(res.data || '');
+    throw new Error(`Supabase delete failed: HTTP ${res.status} ${String(detail).slice(0, 300)}`);
+  }
+  return Array.isArray(res.data) ? res.data.map(o => o.name || o) : list;
+}
+
 // Mint a short-lived signed URL for a private-bucket object. Returns an absolute
 // URL. Throws on a non-2xx.
 async function signedUrl({ bucket, path, expiresIn }) {
@@ -130,15 +158,103 @@ async function uploadArtifact({ stationId, interactionId, bytes, contentType, fi
   return `${apiBase()}/storage/v1/object/public/${bucket}/${path}`;
 }
 
-// Upload an in-app DOCUMENT (invoice scan, meter photo) to the PRIVATE doc bucket
-// from a base64 string. Returns the storage PATH to persist in the DB (never a
-// signed URL — those expire; we mint them on read). `prefix` groups objects by
-// concept (e.g. 'delivery-invoices', 'meter-photos'); `scope` is an id (station /
-// shift) that makes objects traceable.
-async function uploadDocumentBase64({ prefix, scope, base64, contentType, filename }) {
+// THE OUTLET SLUG for a station id, for use in a storage path. Cached — an outlet
+// name changes about never, and this sits in the upload path of every photograph.
+//
+// A slug can only ever be a LABEL. The database row is the identity; if a station is
+// renamed, objects already in the bucket keep the old folder and still resolve,
+// because every row stores its own storage_path and getImage() reads whatever is
+// there. Nothing looks an object up by recomputing its path.
+const _slugCache = new Map();
+async function stationSlug(station_id) {
+  if (!station_id) return null;
+  if (_slugCache.has(station_id)) return _slugCache.get(station_id);
+  let slug = null;
+  try {
+    const { rows } = await require('../db/pool').query('SELECT name FROM stations WHERE id=$1', [station_id]);
+    const name = String(rows[0]?.name || '').trim();
+    if (name) {
+      slug = name.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')     // spaces, dots, & -> a single dash
+        .replace(/^-+|-+$/g, '')          // no leading/trailing dash
+        .slice(0, 40) || null;
+    }
+  } catch { slug = null; }               // never let naming block an upload
+  if (slug) _slugCache.set(station_id, slug);
+  return slug;
+}
+
+// THE THREE FOLDERS. Owner, 29-Aug-2026: "all we need is ATG, Nozzle and
+// Deliveries." Every writer in the app maps into one of them, so the bucket has
+// three folders instead of three prefixes and forty UUIDs.
+const FOLDER = {
+  gauge_screen:     'atg',
+  atg:              'atg',
+  nozzle_slip:      'nozzle',
+  meter_photo:      'nozzle',      // a per-nozzle slip photo — same physical thing
+  delivery_invoice: 'deliveries',
+};
+
+// Upload an in-app DOCUMENT (ATG screen, nozzle slip, delivery invoice) to the
+// PRIVATE doc bucket from a base64 string. Returns the storage PATH to persist in
+// the DB — never a signed URL, those expire; we mint them on read.
+//
+// THE PATH IS FOR A HUMAN WITH A BROWSER, because that is who has to find things:
+//
+//     nozzle/sri-balaji-300826-061204.jpg
+//     <folder>/<outlet>-<DDMMYY>-<HHMMSS>.<ext>
+//
+// It replaces `<prefix>/<uuid>/<epoch-ms>-<rand>-doc.jpg`, which the owner called
+// "really a maze" after opening the bucket and finding three prefixes, nine UUID
+// folders and filenames like 1787447447914-m5q4r7-meter.jpg. It failed three ways:
+//
+//   the scope was a UUID        — you could not tell the outlet, and where the scope
+//                                 was a SHIFT id, deleting that shift left the object
+//                                 unfindable. That happened: clearing Sri Balaji
+//                                 orphaned 26 objects whose owner could only be
+//                                 recovered by remembering the deleted shift ids.
+//   the timestamp was epoch ms  — sortable by a machine, meaningless to a person
+//   three prefixes, three rules — artifacts/<kind>/<shift>, meter-photos/<shift>,
+//                                 delivery-invoices/<station>
+//
+// Now the name alone says outlet, date and time, so a file is identifiable even
+// pulled out of its folder — and sorting by name groups by outlet, then by date.
+//
+// SECONDS, not just HHMM as asked, and this is the one deliberate deviation: two
+// photographs inside one minute is ordinary (twelve nozzles get scanned in a run),
+// and two objects with the same path means the second SILENTLY REPLACES the first.
+// Six characters to make losing a photograph impossible is worth it.
+//
+// FORWARD ONLY — nothing is migrated. Every row stores its own storage_path and
+// getImage() resolves whatever is stored, so objects already in the bucket keep
+// working untouched. Only new uploads use this.
+//
+// FALLS BACK, NEVER THROWS. Without a resolvable outlet the old shape is used
+// rather than failing: a photograph in an ugly folder beats one that does not exist.
+async function uploadDocumentBase64({
+  prefix, scope, base64, contentType, filename,
+  station_id = null, kind = null, at = null,
+}) {
   const bytes = Buffer.from(base64, 'base64');
-  const ext = safeName(filename || (contentType === 'application/pdf' ? 'doc.pdf' : 'doc.jpg'));
-  const path = `${prefix}/${scope || 'na'}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${ext}`;
+  const ext   = safeName(filename || (contentType === 'application/pdf' ? 'doc.pdf' : 'doc.jpg'));
+  const rand  = Math.random().toString(36).slice(2, 6);
+
+  const slug = await stationSlug(station_id);
+  let path;
+  if (slug) {
+    // IST. Every user of this system is in India, and a file stamped 300826 must
+    // mean the day they worked — not a UTC day that rolls over at 05:30 their time.
+    const d   = at instanceof Date ? at : new Date();
+    const ist = new Date(d.getTime() + 5.5 * 3600 * 1000).toISOString();
+    const ddmmyy = ist.slice(8, 10) + ist.slice(5, 7) + ist.slice(2, 4);
+    const hhmmss = ist.slice(11, 19).replace(/:/g, '');
+    const k      = String(kind || String(prefix || '').split('/').pop() || '');
+    const folder = FOLDER[k] || safeName(k) || 'other';
+    path = `${folder}/${slug}-${ddmmyy}-${hhmmss}.${ext.split('.').pop()}`;
+  } else {
+    path = `${prefix}/${scope || 'na'}/${Date.now()}-${rand}-${ext}`;
+  }
+
   await putObject({ bucket: docBucket(), path, bytes, contentType });
   return path;
 }
@@ -172,9 +288,11 @@ module.exports = {
   storageConfigured,
   safeName,
   putObject,
+  deleteObjects,
   signedUrl,
   uploadArtifact,
   uploadDocumentBase64,
+  stationSlug,
   signedDocUrl,
   downloadDocument,
   docBucket,

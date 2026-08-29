@@ -24,7 +24,7 @@ const { addInteraction, listInteractions, listAppointments, listAllInteractions,
         hasInteractionTable } = require('../services/leadService');
 // Shared Supabase Storage uploader (one-writer rule) — used by the base64→bucket
 // backfill below. Degrades safely: the backfill 400s if storage isn't configured.
-const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('../services/vaweStorage');
+const { storageConfigured, uploadDocumentBase64, downloadDocument, deleteObjects, docBucket } = require('../services/vaweStorage');
 // Retired multi-tier plans map to the binary access ceiling: only 'lite' caps to
 // the SO tile; everything else is uncapped 'pumpini'. Keeps the admin Plan toggle
 // as the thing that actually drives `stations.entitlement` (the real gate).
@@ -1376,6 +1376,91 @@ async function runPrune({ table, blobCol, limit, res }) {
   res.json({ table, pruned, errored: errors.length, remaining: rem[0].n,
              freed_mb: +(freed / 1024 / 1024).toFixed(2), errors });
 }
+
+// POST /api/superadmin/purge-orphan-objects?dry=1&limit=200
+//
+// Delete bucket objects that NOTHING in the database points at.
+//
+// WHY THIS EXISTS. Clearing an outlet deletes the ROWS; the bytes stay. On
+// 29-Aug-2026 clearing Sri Balaji left 26 objects (~68 MB) with no row to explain
+// them, and the bucket already held far more from earlier clears — 58 orphans,
+// 173 MB, 70% of everything in it. The owner, looking at the Supabase file browser:
+// "really a maze".
+//
+// It cannot be done in SQL. Supabase installs storage.protect_delete(), so a DELETE
+// against storage.objects is refused; the Storage API is the only route, and the
+// service key lives here on Railway.
+//
+// WHAT IS SAFE, AND WHY IT IS SAFE BY CONSTRUCTION:
+//
+//   * An object is deleted ONLY when no row in delivery_invoices, meter_photos or
+//     station_artifacts carries its path. Those three are the only tables in the
+//     schema with a storage_path column, so "unreferenced" here means unreferenced
+//     anywhere. Nothing a screen can reach is touched.
+//   * DELIVERY INVOICES ARE PROTECTED ABSOLUTELY (owner: "No worthwhile images live
+//     there, except the delivery invoices"). Guarded TWICE and deliberately so: by
+//     the referential check above, and again by an explicit path exclusion, so an
+//     invoice whose row was lost is still never deleted. Belt and braces on the one
+//     thing he asked to keep.
+//   * dry=1 (the default) CHANGES NOTHING and reports exactly what would go. The
+//     delete only happens on an explicit dry=0.
+//
+// Repeat until `remaining` is 0. Idempotent; safe to re-run.
+router.post('/purge-orphan-objects', authAdmin, async (req, res, next) => {
+  try {
+    if (!storageConfigured()) return res.status(503).json({ error: 'Object storage not configured' });
+    const dryRun = String(req.query.dry ?? '1') !== '0';
+    const limit  = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 1000);
+
+    // Everything the database still points at. These three tables are the whole set
+    // — they are the only ones in the schema carrying a storage_path.
+    const { rows: orphans } = await pool.query(
+      `SELECT o.name, (o.metadata->>'size')::bigint AS size_bytes
+         FROM storage.objects o
+        WHERE o.bucket_id = $1
+          AND o.name NOT LIKE 'delivery-invoices/%'   -- protected, second guard
+          AND o.name NOT LIKE 'deliveries/%'          -- protected, new-scheme folder
+          AND NOT EXISTS (
+                SELECT 1 FROM delivery_invoices  d WHERE d.storage_path = o.name
+                UNION ALL
+                SELECT 1 FROM meter_photos       m WHERE m.storage_path = o.name
+                UNION ALL
+                SELECT 1 FROM station_artifacts  a WHERE a.storage_path = o.name)
+        ORDER BY o.created_at
+        LIMIT $2`,
+      [docBucket(), limit]);
+
+    const { rows: [tot] } = await pool.query(
+      `SELECT count(*)::int AS remaining, COALESCE(sum((o.metadata->>'size')::bigint),0)::bigint AS bytes
+         FROM storage.objects o
+        WHERE o.bucket_id = $1
+          AND o.name NOT LIKE 'delivery-invoices/%'
+          AND o.name NOT LIKE 'deliveries/%'
+          AND NOT EXISTS (
+                SELECT 1 FROM delivery_invoices  d WHERE d.storage_path = o.name
+                UNION ALL
+                SELECT 1 FROM meter_photos       m WHERE m.storage_path = o.name
+                UNION ALL
+                SELECT 1 FROM station_artifacts  a WHERE a.storage_path = o.name)`,
+      [docBucket()]);
+
+    const paths = orphans.map(o => o.name);
+    let deleted = [];
+    if (!dryRun && paths.length) deleted = await deleteObjects({ bucket: docBucket(), paths });
+
+    res.json({
+      dry_run: dryRun,
+      bucket: docBucket(),
+      would_delete: paths.length,
+      deleted: dryRun ? 0 : deleted.length,
+      batch_bytes: orphans.reduce((n, o) => n + Number(o.size_bytes || 0), 0),
+      remaining: tot.remaining,
+      remaining_bytes: Number(tot.bytes),
+      protected: 'delivery invoices, and anything a live row points at',
+      sample: paths.slice(0, 10),
+    });
+  } catch (err) { next(err); }
+});
 
 router.post('/prune-inline/station-artifacts', authAdmin, async (req, res, next) => {
   try { await runPrune({ table: 'station_artifacts', blobCol: 'file_base64', limit: req.query.limit, res }); }

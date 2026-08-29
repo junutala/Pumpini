@@ -126,6 +126,7 @@ router.post('/expenses', authenticate, requireStationAccess({ required: true }),
     if (b.file_base64 && b.media_type && storageConfigured()) {
       try {
         document_path = await uploadDocumentBase64({
+          station_id: b.station_id, kind: 'expense_bill',
           prefix: 'expense-bills', scope: b.station_id, base64: b.file_base64,
           contentType: b.media_type, filename: b.media_type === 'application/pdf' ? 'bill.pdf' : 'bill.jpg',
         });

@@ -83,8 +83,19 @@ const Anthropic = require('@anthropic-ai/sdk');
 async function storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, ocr_reading, ocr_legible, recorded_by }) {
   let path = null;
   if (storageConfigured()) {
+    // The outlet, for the readable storage path. This function only ever receives a
+    // shift_id, and a shift id in a path is precisely what left 26 objects unfindable
+    // when Sri Balaji was cleared on 29-Aug — the folder outlived the row that
+    // explained it. Best-effort: on any failure the upload still happens, just under
+    // the old shape. Never let naming cost a photograph.
+    let station_id = null;
+    try {
+      const { rows } = await pool.query('SELECT station_id FROM shifts WHERE id=$1', [shift_id]);
+      station_id = rows[0]?.station_id || null;
+    } catch { /* fall through to the legacy path */ }
     try {
       path = await uploadDocumentBase64({
+        station_id, kind: 'meter_photo',
         prefix: 'meter-photos', scope: shift_id, base64: image_base64, contentType: media_type, filename: 'meter.jpg',
       });
     } catch (e) {

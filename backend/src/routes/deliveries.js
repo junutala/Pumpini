@@ -37,6 +37,7 @@ async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_
   if (storageConfigured()) {
     try {
       path = await uploadDocumentBase64({
+        station_id, kind: 'delivery_invoice',
         prefix: 'delivery-invoices', scope: station_id, base64, contentType: media_type,
         filename: media_type === 'application/pdf' ? 'invoice.pdf' : 'invoice.jpg',
       });
