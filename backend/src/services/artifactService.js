@@ -125,6 +125,9 @@ async function save(input, client = pool) {
   if (bytes && !objectPath && onAutocommit && storageConfigured()) {
     try {
       objectPath = await uploadDocumentBase64({
+        // station_id + kind give the readable path (<outlet>/<kind>/<date>/…).
+        // prefix/scope stay as the fallback for a station that will not resolve.
+        station_id, kind,
         prefix: `artifacts/${kind}`,
         scope: entity_id || station_id,
         base64: bytes,
