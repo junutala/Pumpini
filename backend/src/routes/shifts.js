@@ -261,15 +261,32 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       return res.status(400).json({ error: 'Invalid opening cash amount.' });
     }
 
-    // Each nozzle is manned by exactly one operator per shift — reject any nozzle
-    // already taken by a DIFFERENT operator (the child table is the source of truth).
+    // ONE OPEN LEG PER NOZZLE — not one leg per shift.
+    //
+    // This used to read "each nozzle is manned by exactly one operator per shift" and
+    // reject any nozzle another operator had EVER held on the shift. That is a shift
+    // gating a handover, and it is wrong twice over:
+    //
+    //   * an attendant leaves mid-shift for ordinary human reasons and somebody has
+    //     to take his line. Owner, 29-Aug-2026: "they are human afterall and will
+    //     have problems in their lives. So if that attendant closes the nozzle,
+    //     another should be able to take over"
+    //   * CLAUDE.md already recorded the evidence: a literal one-per-shift lock on
+    //     the ASSIGNMENT would have refused 8 Kamala handovers on 02-Aug, every one
+    //     a textbook close-and-reopen at the identical reading. "Gate on the READING,
+    //     never on the shift clock."
+    //
+    // So a nozzle is taken only while a leg on it is still OPEN. A closed leg is
+    // history: it has its closing reading, its litres are settled, and it releases
+    // the nozzle for the next man.
     for (const nz of nozzleList) {
       const { rows: dup } = await pool.query(
         `SELECT 1 FROM shift_attendant_nozzles
-         WHERE shift_id=$1 AND nozzle_id=$2 AND attendant_id<>$3`,
+         WHERE shift_id=$1 AND nozzle_id=$2 AND attendant_id<>$3
+           AND closing_reading IS NULL`,
         [req.params.id, nz.nozzle_id, attendant_id]);
       if (dup.length) {
-        return res.status(409).json({ error: 'A selected nozzle is already assigned to another operator in this shift.' });
+        return res.status(409).json({ error: 'A selected nozzle is still open with another operator. Close his line first, then hand it over.' });
       }
     }
 
@@ -353,14 +370,35 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
        bank_account||null, upi_vpa||null, opening_cash||0]
     );
 
-    // Replace this operator's nozzle set (clean re-assign on edit).
-    await pool.query('DELETE FROM shift_attendant_nozzles WHERE shift_id=$1 AND attendant_id=$2',
+    // Replace this operator's OPEN nozzle set (clean re-assign on edit).
+    // NEVER a closed leg: that one carries a closing reading, its litres are already
+    // settled, and deleting it would erase work the man has been paid out on. Before
+    // handovers existed every leg was open so the distinction did not arise.
+    await pool.query(
+      `DELETE FROM shift_attendant_nozzles
+        WHERE shift_id=$1 AND attendant_id=$2 AND closing_reading IS NULL`,
       [req.params.id, attendant_id]);
+    // DEPLOY ORDERING. Until the owner runs the DDL, the table still carries
+    // UNIQUE(shift_id, nozzle_id) — one row per nozzle per shift — so a genuine
+    // handover raises 23505 here however correct the checks above were. Catch it and
+    // say the true thing rather than 500ing at a manager standing on a forecourt.
+    // Safe as a try/catch ONLY because this runs on `pool` (autocommit); inside a
+    // BEGIN..COMMIT a failed statement aborts the transaction (CLAUDE.md).
     for (const nz of nozzleList) {
-      await pool.query(
-        `INSERT INTO shift_attendant_nozzles(shift_id, attendant_id, nozzle_id, opening_reading)
-         VALUES($1,$2,$3,$4)`,
-        [req.params.id, attendant_id, nz.nozzle_id, openingFor[nz.nozzle_id] ?? 0]);
+      try {
+        await pool.query(
+          `INSERT INTO shift_attendant_nozzles(shift_id, attendant_id, nozzle_id, opening_reading)
+           VALUES($1,$2,$3,$4)`,
+          [req.params.id, attendant_id, nz.nozzle_id, openingFor[nz.nozzle_id] ?? 0]);
+      } catch (e) {
+        if (e.code === '23505') {
+          return res.status(409).json({
+            error: 'handover_not_enabled',
+            message: 'This nozzle was worked earlier in this shift, and handing it to a second operator needs a one-off database change that has not been applied yet. Close the shift and start a new one, or ask the owner to run it.',
+          });
+        }
+        throw e;
+      }
     }
 
     // Store the operator's photograph against this assignment, then stamp his

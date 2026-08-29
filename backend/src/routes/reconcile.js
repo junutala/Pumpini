@@ -915,8 +915,16 @@ router.post('/pos-meter', authenticate,
     let opening_reading = null, below_opening = false;
     if (reading) {
       const { rows: op } = await pool.query(
+        // THE CURRENT leg, not an arbitrary one. A nozzle can now be handed over
+        // mid-shift, so a shift may hold several legs for it — the open one is the
+        // account this scan belongs to. Ordering by closing_reading IS NULL first
+        // takes the open leg where there is one, and the newest closed leg where the
+        // line has just been handed on. An unordered LIMIT 1 would compare today's
+        // meter against whichever row the planner happened to return.
         `SELECT opening_reading FROM shift_attendant_nozzles
-          WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL LIMIT 1`,
+          WHERE shift_id=$1 AND nozzle_id=$2 AND opening_reading IS NOT NULL
+          ORDER BY (closing_reading IS NULL) DESC, assigned_at DESC NULLS LAST
+          LIMIT 1`,
         [shift_id, nozzle_id]);
       if (op.length) {
         opening_reading = Number(op[0].opening_reading);
