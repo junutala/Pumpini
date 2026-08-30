@@ -298,8 +298,13 @@ export default function InvoicesPage() {
           <table className="dms-table" style={{minWidth:640}}>
             <thead>
               <tr>
-                <th style={{width:90}}>{tc('invp.slipNo', 'Slip No.')}</th>
-                <th style={{width:110}}>{tc('invp.chlnDate', 'Chln. Date')}</th>
+                {/* INDENT, not slip. The credit customer brings a filled-in INDENT and
+                    its number is the indent number (owner, 30-Aug-2026, after speaking
+                    to the outlet). "Slip" already means the pump's printed ETOT slip
+                    everywhere else in this system, so the two were colliding on one
+                    word — this is the customer's document, and it has its own name. */}
+                <th style={{width:110}}>{tc('invp.indentNo', 'Indent No.')}</th>
+                <th style={{width:120}}>{tc('invp.indentDate', 'Indent Date')}</th>
                 <th style={{width:'22%'}}>{tc('invp.vehicleNo', 'Vehicle No.')}</th>
                 <th style={{width:120}}>{tc('invp.fuel', 'Fuel')}</th>
                 <th style={{width:110,textAlign:'right'}}>{tc('invp.qtyL', 'Qty (L)')}</th>
@@ -311,12 +316,20 @@ export default function InvoicesPage() {
             <tbody>
               {lines.map((l,i) => (
                 <tr key={i}>
-                  <td style={{fontFamily:'var(--font-mono)',fontSize:12.5,fontWeight:600}}>{l.coupon_no ?? '—'}</td>
-                  <td style={{fontSize:12,whiteSpace:'nowrap'}}>
-                    {l.chln_date
-                      ? new Date(l.chln_date).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'2-digit'})
-                      : '—'}
-                  </td>
+                  {/* TYPEABLE, because most lines are typed. These used to be
+                      read-only text, filled only when the line came from a recorded
+                      coupon — so a manually entered line printed a dash in both
+                      columns and the owner's customer got an invoice that did not say
+                      which indent it billed. The indent is in the manager's hand; let
+                      him enter it. A line loaded from a record arrives pre-filled and
+                      stays correctable. */}
+                  <td><input style={{...inp,padding:'7px 9px',fontFamily:'var(--font-mono)'}}
+                        placeholder={tc('invp.indentPlaceholder', 'e.g. 1042')}
+                        value={l.coupon_no ?? ''}
+                        onChange={e=>setLine(i,'coupon_no',e.target.value.trim() || null)} /></td>
+                  <td><input type="date" style={{...inp,padding:'7px 9px'}}
+                        value={l.chln_date ?? ''}
+                        onChange={e=>setLine(i,'chln_date',e.target.value || null)} /></td>
                   <td><input style={{...inp,padding:'7px 9px'}} placeholder={tc('invp.vehiclePlaceholder', 'e.g. TN09AB1234')} value={l.vehicle} onChange={e=>setLine(i,'vehicle',e.target.value.toUpperCase())} /></td>
                   <td>
                     <select style={{...inp,padding:'7px 9px'}} value={l.fuel} onChange={e=>onFuelChange(i, e.target.value)}>
