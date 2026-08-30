@@ -2,7 +2,7 @@
 // Printed credit invoice — deliberately laid out to match the document the customer
 // already receives from Tally, column for column:
 //
-//   Sl No. | Chln. Date | Slip No. | Vehicle No. | Description of Goods | HSN/SAC
+//   Sl No. | Indent No. | Indent Date | Vehicle No. | Description of Goods | HSN/SAC
 //        | Quantity (Shipped | Billed) | Rate (Incl. of Tax) | Rate | per | Amount
 //
 // Why match it: the whole point is that switching to Pumpini shouldn't make the
@@ -119,8 +119,13 @@ export default function InvoicePrintPage() {
           <thead>
             <tr>
               <th style={{ ...th, width: 26 }}>Sl<br />No.</th>
-              <th style={{ ...th, width: 62 }}>Chln.<br />Date</th>
-              <th style={{ ...th, width: 52 }}>Slip<br />No.</th>
+              {/* INDENT, not slip/challan. The credit customer brings a filled-in
+                  INDENT and its number is the indent number (owner, 30-Aug-2026).
+                  "Slip" already means the pump's printed ETOT slip everywhere else,
+                  so the two were colliding on one word. Ordered No. then Date, the
+                  same way round as the entry screen — they used to disagree. */}
+              <th style={{ ...th, width: 56 }}>Indent<br />No.</th>
+              <th style={{ ...th, width: 62 }}>Indent<br />Date</th>
               <th style={{ ...th, width: 78 }}>Vehicle No.</th>
               <th style={th}>Description of Goods</th>
               <th style={{ ...th, width: 52 }}>HSN/<br />SAC</th>
@@ -136,8 +141,8 @@ export default function InvoicePrintPage() {
             {items.map((l, i) => (
               <tr key={i}>
                 <td style={{ ...td, textAlign: 'center' }}>{i + 1}</td>
-                <td style={{ ...td, whiteSpace: 'nowrap' }}>{d(l.chln_date) || '—'}</td>
                 <td style={{ ...td, fontWeight: 600 }}>{l.coupon_no ?? '—'}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap' }}>{d(l.chln_date) || '—'}</td>
                 <td style={td}>{l.vehicle_number || '—'}</td>
                 <td style={{ ...td, textTransform: 'capitalize' }}>
                   {String(l.fuel_type || '').replace('_', ' ')}
