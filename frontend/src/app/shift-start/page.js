@@ -600,6 +600,26 @@ export default function ShiftStartPage() {
   // Only liquid tanks are dipped — CNG is sold by mass/pressure, never dip-measured.
   const dipTanks = tanks.filter(t => (t.fuel_type||'').toLowerCase() !== 'cng');
 
+  // 🔴 DO NOT ASK FOR A PHOTOGRAPH THAT CANNOT CHANGE ANYTHING.
+  //
+  // An opening dip is carried from the last close, so from an outlet's SECOND shift
+  // onward every tank is locked and a gauge scan here can fill nothing — the screen
+  // says as much two lines down: "You only enter a reading for a tank that has no
+  // previous close." The button was still the headline action, so the manager walked
+  // to the console, photographed it, and got nothing back.
+  //
+  // Owner, 31-Aug: "why ask them to scan and then ask them to climb a tree?" The ATG
+  // sits on a locked-down desktop, often not beside the till, so this is a real walk
+  // for no return — and the surest way to lose a manager is to spend his legs and
+  // give him nothing.
+  //
+  // So the card appears only while a tank could actually take a reading. It still
+  // shows on a genuine first shift, a newly commissioned tank, or a handover where
+  // the outgoing shift has not recorded its close — which is exactly when a console
+  // photograph saves work. On Shift CLOSE it is always offered, because a close has
+  // nothing to carry from.
+  const scannableTanks = dipTanks.filter(t => !carriedDips[t.id] && !outClosings[t.id]);
+
   // Step 0 → step 1 (Nozzles). Saves the dips exactly as before, then lands on the
   // Nozzle-readings step (which now sits between the gauge and the attendants).
   const goToNozzles = async () => {
@@ -888,10 +908,12 @@ export default function ShiftStartPage() {
             </div>
           )}
 
-          {/* The photograph is the headline action now: one picture fills every tank
-              below. Outlets with no console (e.g. IOCL) simply take a physical dip
-              and type it — the boxes underneath are unchanged and still primary. */}
-          {dipTanks.length>0 && (
+          {/* The photograph is the headline action when there is something to fill:
+              one picture fills every open tank below. Outlets with no console (e.g.
+              IOCL) simply take a physical dip and type it — the boxes underneath are
+              unchanged and still primary. Hidden entirely once every tank is carried;
+              see scannableTanks above. */}
+          {scannableTanks.length>0 && (
             <div style={{marginBottom:'1rem',background:'#f0f9ff',border:'1px solid #bae6fd',borderRadius:10,padding:'12px'}}>
               <label style={{display:'inline-flex',alignItems:'center',gap:8,padding:'11px 16px',borderRadius:9,
                 border:'none',background:gaugeBusy?'#94a3b8':'#0369a1',fontSize:14,fontWeight:800,
