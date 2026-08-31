@@ -95,15 +95,28 @@ async function visionOcr(base64) {
 // per 1,000 after the first 1,000 free each month, so at four outlets it stays
 // inside the free tier.
 async function visionOcrBest(base64) {
-  const raw = await visionOcrDetailed(base64);
-  let prepped = null;
+  // 🔴 THE TWO READS RACE IN PARALLEL. Shipped sequentially on 31-Aug, which simply
+  // ADDED the second read's latency to the first — the manager waits for both, one
+  // after the other, on a phone. The owner felt it the same evening: "now it took
+  // really long time and failed". They share no state, so there was never a reason
+  // to queue them.
+  //
+  // The enlarge itself is awaited first because the second read needs its output; it
+  // is local CPU on one frame, not a network call.
+  let big = null;
   try {
     const { upscaleForOcr } = require('./imagePrep');
-    const big = await upscaleForOcr(base64);
-    if (big) prepped = await visionOcrDetailed(big);
+    big = await upscaleForOcr(base64);
   } catch (e) {
-    warn('vision-ocr upscale pass failed: ' + (e.message || e));
+    warn('vision-ocr upscale failed: ' + (e.message || e));
   }
+
+  const [raw, prepped] = await Promise.all([
+    visionOcrDetailed(base64),
+    // No enlargement worth making — the frame is already at the cap — so there is no
+    // second call to pay for. This is the common case on a modern phone photo.
+    big ? visionOcrDetailed(big) : Promise.resolve(null),
+  ]);
 
   return pickBetterRead(raw, prepped);
 }

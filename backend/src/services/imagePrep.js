@@ -32,6 +32,20 @@ function warn(msg) {
 const SCALE = 3;
 const MAX_EDGE = 4000;
 
+// 🔴 ONLY ENLARGE A FRAME SMALL ENOUGH FOR IT TO MEAN ANYTHING.
+//
+// Enlarging cannot recover detail the sensor never captured. Both wins on 31-Aug were
+// on a 1280x801 laptop frame (1461 -> 1492 chars, 1478 -> 1492); on phone photos the
+// enlargement was skipped or bought nothing, and a 2000px frame enlarged 2x cost 15 MB
+// as PNG and still 5 MB as JPEG — shipped to Vision, over mobile, for no new
+// information. That is what the owner felt as "it took really long time".
+//
+// So the pass runs on genuinely small frames — a screenshot, a cropped card, a
+// downscaled upload — and stands aside for anything the camera already resolved. When
+// a big photo needs help, the answer is a CROP of the console, not a bigger copy of
+// the whole room; see cropForOcr.
+const MAX_EDGE_WORTH_ENLARGING = 1800;
+
 // GREYSCALE AND NORMALISE, THEN ENLARGE.
 //
 // Order matters. Normalising first stretches the histogram while the pixels are
@@ -50,8 +64,10 @@ async function upscaleForOcr(base64) {
     const meta = await sharp(buf).metadata();
     if (!meta.width || !meta.height) return null;
 
-    const scale = Math.min(SCALE, MAX_EDGE / Math.max(meta.width, meta.height));
-    if (!(scale > 1)) return null;                 // already large; nothing to gain
+    const longest = Math.max(meta.width, meta.height);
+    if (longest >= MAX_EDGE_WORTH_ENLARGING) return null;   // the camera already resolved it
+    const scale = Math.min(SCALE, MAX_EDGE / longest);
+    if (!(scale > 1)) return null;
 
     const out = await sharp(buf)
       .greyscale()
@@ -63,7 +79,14 @@ async function upscaleForOcr(base64) {
         // back into the background.
         kernel: sharp.kernel.lanczos3,
       })
-      .png({ compressionLevel: 6 })
+      // 🔴 JPEG, NOT PNG. PNG is lossless and therefore enormous for a PHOTOGRAPH:
+      // a 4000px greyscale frame lands around 10 MB, which is slow to encode here and
+      // slow to POST to Vision — the manager feels every byte of it on a phone. The
+      // same frame as quality-90 greyscale JPEG is nearer 1 MB, and OCR cannot tell
+      // the difference: JPEG artefacts live at frequencies well below the strokes of
+      // a digit. (Shipped as PNG on 31-Aug and the owner felt it immediately: "now it
+      // took really long time".)
+      .jpeg({ quality: 90, chromaSubsampling: '4:4:4' })
       .toBuffer();
     return out.toString('base64');
   } catch (e) {
@@ -100,7 +123,7 @@ async function cropForOcr(base64, box, pad = 0.01) {
       .greyscale()
       .normalise()
       .resize({ width: Math.round(width * Math.max(scale, 1)), kernel: sharp.kernel.lanczos3 })
-      .png({ compressionLevel: 6 })
+      .jpeg({ quality: 90, chromaSubsampling: '4:4:4' })
       .toBuffer()).toString('base64');
   } catch (e) {
     warn('imagePrep crop failed: ' + (e.message || e));
