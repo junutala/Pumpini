@@ -32,11 +32,37 @@ test('upscaling enlarges the frame and keeps it a real image', async () => {
   assert.equal(m.height, 1200, 'aspect ratio held');
 });
 
-test('an already-huge frame is left alone rather than blown past the edge cap', async () => {
-  // 4000px is the ceiling; a frame at it has nothing to gain and must not be scaled
-  // into a request too large to ship.
-  const big = await frame(4000, 200);
-  assert.equal(await upscaleForOcr(big), null);
+test('the enlarged frame is JPEG, not PNG — the manager waits for every byte', async () => {
+  // PNG is lossless and enormous for a photograph. Shipped as PNG on 31-Aug and the
+  // owner felt it on a phone the same evening.
+  const out = await upscaleForOcr(await frame(1600, 1200));
+  const m = await sharp(Buffer.from(out, 'base64')).metadata();
+  assert.equal(m.format, 'jpeg');
+});
+
+test('a photographic frame stays small enough to ship', async () => {
+  // A flat synthetic image compresses unrealistically well either way, so this uses
+  // NOISE — the closest cheap stand-in for a photo of a glare-lit LCD.
+  const noisy = (await sharp({ create: { width: 1400, height: 1000, channels: 3,
+    noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).png().toBuffer()).toString('base64');
+  const out = await upscaleForOcr(noisy);
+  const mb = Buffer.from(out, 'base64').length / 1e6;
+  assert.ok(mb < 4, `a 3x enlargement must stay shippable, got ${mb.toFixed(1)} MB`);
+});
+
+test('the crop path is NOT gated on frame size — a crop is why you have a big photo', async () => {
+  // cropForOcr exists precisely to cut a small region out of a large frame and enlarge
+  // THAT. Gating it the way upscaleForOcr is gated would defeat its purpose.
+  const out = await cropForOcr(await frame(3000, 2000), { x0: 0.1, y0: 0.1, x1: 0.4, y1: 0.4 });
+  assert.ok(out, 'a crop of a large frame must still be produced');
+});
+
+test('a frame the camera already resolved is left alone', async () => {
+  // Enlarging cannot recover detail a sensor never captured, and a big copy costs the
+  // manager real seconds on a phone. 1800px is the line.
+  assert.equal(await upscaleForOcr(await frame(2000, 1500)), null, 'phone photo');
+  assert.equal(await upscaleForOcr(await frame(4000, 3000)), null, 'large phone photo');
+  assert.ok(await upscaleForOcr(await frame(1280, 801)), 'the laptop frame that won twice');
 });
 
 test('rubbish in gives null, never a throw', async () => {
