@@ -81,6 +81,25 @@ export const autocloseCheck = (shiftId) => api.post('/reconcile/autoclose-check'
 // `persist:true` (used at shift CLOSE) also stores each resolved closing as a draft
 // in shift_scan_meters, so the operators' self-settlement screens can read the meters
 // the manager scanned. Off by default — a shift-OPEN scan must never persist a closing.
+// THE PER-NOZZLE SCAN — one slip, one nozzle's meter read off it.
+//
+// ONE WRITER, and it exists because of the bug it fixes. Four screens called
+// /reconcile/pos-meter directly with no timeout, so all four inherited the 15s
+// default — while the BACKEND alone allows Google Vision 20s before Claude even
+// starts. The client could not win, and a manager at Nagole on 31-Aug-2026 got
+// "timeout of 15000ms exceeded" on a photograph the server was still reading.
+//
+// It got worse on 29-Aug when /pos-meter was routed through slipParser (Vision then
+// Claude, so that a slip's rupee line could never again be returned as a meter). More
+// correct, and slower. 15s was already too tight; that change pushed it over.
+//
+// 90s, matching every sibling OCR call on this file. A photograph on a forecourt
+// phone, over 5G, into a Railway instance that may be cold, is not a 15-second job.
+export const scanNozzleMeter = ({ shift_id, nozzle_id, image_base64, media_type }) =>
+  api.post('/reconcile/pos-meter',
+    { shift_id, nozzle_id, image_base64, media_type: media_type || 'image/jpeg' },
+    { timeout: 90000 });
+
 export const parseSlips  = (shiftId, { file_base64, media_type, persist }) =>
   api.post('/reconcile/parse-slips', { shift_id: shiftId, image_base64: file_base64, media_type, persist: persist === true }, { timeout: 90000 });
 // The draft closings a manager scanned off the composite slip photo, keyed to nozzles.

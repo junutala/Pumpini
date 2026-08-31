@@ -31,6 +31,7 @@ import { COMPOSITE_SLIP_SCAN } from '../../lib/features';
 import { rejectNote } from '../../lib/slip';
 
 import { errText } from '../../lib/apiError';
+import { scanNozzleMeter } from '../../lib/api';
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone:'Asia/Kolkata' });
 const fmtL = n => Number(n||0).toFixed(2);
@@ -691,7 +692,7 @@ export default function ShiftStartPage() {
     setScanning(nozzle.id); setErr('');
     try {
       const b64 = await readB64(file);
-      const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await scanNozzleMeter({ shift_id: shift.id, nozzle_id: nozzle.id, image_base64: b64, media_type: file.type });
       // The per-nozzle camera is only ever offered on a NON-carried nozzle, so the
       // reading goes straight to the shared writer — nozReadings, and the pick if it
       // is already assigned.

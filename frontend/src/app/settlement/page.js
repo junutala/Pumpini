@@ -12,6 +12,7 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { nozName } from '../../lib/nozzle';
 
+import { scanNozzleMeter } from '../../lib/api';
 const fmtR = n => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtL = n => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 3 });
 const unitFor = ft => ((ft || '').toLowerCase() === 'cng' ? 'kg' : 'L');
@@ -114,7 +115,7 @@ export default function SettlementPage() {
     setScanNz(noz[i].nozzle_id);
     try {
       const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(file); });
-      const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: noz[i].nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await scanNozzleMeter({ shift_id: shift.id, nozzle_id: noz[i].nozzle_id, image_base64: b64, media_type: file.type });
       const reading = r?.reading ?? r?.closing_reading ?? r?.value;
       if (reading != null && reading !== '') setN(i, 'closing', String(reading));
       else alert(r?.notes || tc('settle.scanFail', 'Could not read the meter — enter it manually.'));

@@ -11,6 +11,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { nozName } from '../../lib/nozzle';
 
 import { errText } from '../../lib/apiError';
+import { scanNozzleMeter } from '../../lib/api';
 const PAYMENT_MODES = [
   { id:'cash',   labelKey:'pos_page.cash',   fallback:'💵 Cash',   color:'#16a34a' },
   { id:'upi',    labelKey:'pos_page.upi',    fallback:'📱 UPI',    color:'#2563eb' },
@@ -223,7 +224,7 @@ export default function POSPage() {
         r.onerror = () => reject(new Error('Could not read image'));
         r.readAsDataURL(file);
       });
-      const r = await api.post('/reconcile/pos-meter', { shift_id: activeShift.id, nozzle_id: nz.id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await scanNozzleMeter({ shift_id: activeShift.id, nozzle_id: nz.id, image_base64: b64, media_type: file.type });
       setScanResult(p => ({ ...p, [nz.id]: r }));
     } catch (e) {
       setScanResult(p => ({ ...p, [nz.id]: { notes: errText(e, 'Scan failed') } }));
