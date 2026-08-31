@@ -75,6 +75,61 @@ async function visionOcr(base64) {
   return (await visionOcrDetailed(base64)).text;
 }
 
+// READ THE FRAME TWICE — AS TAKEN, AND ENLARGED — AND KEEP THE BETTER READ.
+//
+// The manager photographs a monitor on a machine he may not touch, so a clean file
+// is never coming; the digits arrive a few pixels tall inside a 1280-wide frame.
+// Enlarging before the read is the whole fix, and 31-Aug measured both ends of it:
+// Vision on a re-photographed frame returned 732-1,140 characters of '216000' and
+// 'Ultage', and on the original file 1,478 characters with every field correct.
+//
+// WHY BOTH, RATHER THAN JUST THE ENLARGED ONE. I cannot measure this from a session
+// with no Vision key, and the repo's rule is that a claim needs data behind it. So
+// the two reads race, the longer text wins, and BOTH counts are reported for the
+// caller to store. After a week of real scans the rows will say plainly whether the
+// upscale earns its place — and if it does not, deleting it costs nothing, because
+// the untouched read is always one of the two candidates.
+//
+// It cannot regress: the worst case is that the enlarged read is discarded and we
+// keep exactly today's answer. The cost is one extra Vision call per scan — $1.50
+// per 1,000 after the first 1,000 free each month, so at four outlets it stays
+// inside the free tier.
+async function visionOcrBest(base64) {
+  const raw = await visionOcrDetailed(base64);
+  let prepped = null;
+  try {
+    const { upscaleForOcr } = require('./imagePrep');
+    const big = await upscaleForOcr(base64);
+    if (big) prepped = await visionOcrDetailed(big);
+  } catch (e) {
+    warn('vision-ocr upscale pass failed: ' + (e.message || e));
+  }
+
+  return pickBetterRead(raw, prepped);
+}
+
+// THE RULE, on its own so a test can pin the real thing rather than a copy of it.
+//
+// Longer wins, and a TIE KEEPS THE ORIGINAL — an upscale that buys nothing should
+// not be recorded as having been used, or the rows we are gathering to judge it will
+// flatter it. Anything missing counts as zero characters, so a failed or skipped
+// upscale simply loses.
+function pickBetterRead(raw, prepped) {
+  const rawLen  = raw?.text?.length ?? 0;
+  const prepLen = prepped?.text?.length ?? 0;
+  const useprep = prepLen > rawLen;
+  const win = useprep ? prepped : raw;
+  return {
+    text: win?.text ?? null,
+    // The reason belongs to whichever read we are returning, so a stored scan still
+    // says why it fell back.
+    reason: win?.reason ?? null,
+    variant: useprep ? 'upscaled' : 'as_taken',
+    ocr_chars_as_taken: rawLen,
+    ocr_chars_upscaled: prepLen,
+  };
+}
+
 // Enough characters to be worth handing to a text model. A near-empty read means
 // Vision found nothing usable, so the caller should go to its vision fallback
 // rather than ask Claude to structure four characters of noise.
@@ -123,15 +178,26 @@ function extractJson(txt) {
 async function readImageAsJson({
   file_base64, media_type = 'image/jpeg', prompt,
   max_tokens = 1500, model = 'claude-sonnet-4-6', ocrPreamble = DEFAULT_PREAMBLE,
+  // Race an enlarged copy of the frame against the original and keep the better
+  // read. Worth it where the subject is small text photographed off a screen — the
+  // gauge console — and pointless on a document held up to the camera.
+  prep = false,
 }) {
   let reachedModel = false;
   // Why the Vision path did not produce the answer. Null on the happy path; set on
   // every route to the claude_vision fallback so a stored scan can say WHICH engine
   // read it and WHY it was not the better one.
   let fallbackReason = null;
+  // Which of the two reads won, and what each recovered. Stored on the artifact so
+  // the upscale is judged on rows rather than on anybody's expectation of it.
+  let ocrVariant = null, ocrCharsAsTaken = null, ocrCharsUpscaled = null;
 
   try {
-    const { text: ocrText, reason } = await visionOcrDetailed(file_base64);
+    const read = prep ? await visionOcrBest(file_base64) : await visionOcrDetailed(file_base64);
+    const { text: ocrText, reason } = read;
+    ocrVariant = read.variant ?? null;
+    ocrCharsAsTaken = read.ocr_chars_as_taken ?? null;
+    ocrCharsUpscaled = read.ocr_chars_upscaled ?? null;
     if (reason) fallbackReason = reason;
     if (usable(ocrText)) {
       const msg = await ai.messages.create({
@@ -145,7 +211,9 @@ async function readImageAsJson({
       // work from — we had thrown away what Vision actually saw. A caller that stores
       // its scan should store this beside it: it is the primary source, and the text
       // model's answer is a reading of it.
-      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, ocr_text: ocrText, fallback_reason: null, error: null };
+      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, ocr_text: ocrText,
+                           ocr_variant: ocrVariant, ocr_chars_as_taken: ocrCharsAsTaken, ocr_chars_upscaled: ocrCharsUpscaled,
+                           fallback_reason: null, error: null };
       // Vision read the characters, but the text model did not answer with JSON.
       fallbackReason = 'text_model_unparsed';
     } else if (!fallbackReason) {
@@ -176,4 +244,4 @@ async function readImageAsJson({
   }
 }
 
-module.exports = { visionOcr, visionOcrDetailed, usable, readImageAsJson };
+module.exports = { visionOcr, visionOcrDetailed, visionOcrBest, pickBetterRead, usable, readImageAsJson };
