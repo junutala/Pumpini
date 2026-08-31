@@ -3200,5 +3200,6 @@
     "loadFailedLog": "Could not load the log. Nothing is lost — try again.",
     "noteOne": "note",
     "noteMany": "notes"
-  }
+  },
+  "sstart.errNoOpening": "Enter or scan the opening meter for {list} before starting."
 }
