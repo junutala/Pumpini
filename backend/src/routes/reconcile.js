@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
-const { requireStationVia, requireStationAccess } = require('../middleware/stationAccess');
+const { requireStationVia, requireStationAccess, nozzlesOutsideStation } = require('../middleware/stationAccess');
 // A near-miss serial PROPOSES the nearest known machine — one tap to confirm — rather
 // than being dropped in silence. See lib/serialMatch for why the threshold is one edit.
 const { proposeSerial } = require('../lib/serialMatch');
@@ -290,6 +290,10 @@ router.post('/release-nozzle', authenticate,
       const { rows: sh } = await pool.query(
         "SELECT id FROM shifts WHERE id=$1 AND status='open'", [shift_id]);
       if (!sh.length) return res.status(409).json({ error: 'That shift is not open.' });
+
+      if ((await nozzlesOutsideStation(req.stationId, [nozzle_id])).length) {
+        return res.status(403).json({ error: 'That nozzle belongs to a different outlet.' });
+      }
 
       const out = await settlement.releaseUnmovedNozzle(pool, {
         shift_id, attendant_id, nozzle_id, reading,
@@ -870,6 +874,12 @@ router.post('/pos-meter', authenticate,
   try {
     const { rows: sh } = await pool.query('SELECT id FROM shifts WHERE id=$1', [shift_id]);
     if (!sh.length) return res.status(404).json({ error: 'Shift not found' });
+
+    // The nozzle came from the body; the station came from the shift. Prove they
+    // are the same outlet before this photograph is filed against either.
+    if ((await nozzlesOutsideStation(req.stationId, [nozzle_id])).length) {
+      return res.status(403).json({ error: 'That nozzle belongs to a different outlet.' });
+    }
 
     // WHICH nozzle are we reading, and what does its own slip call it. Needed BEFORE
     // the read, because that is what we go looking for on the paper.
