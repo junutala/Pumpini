@@ -89,7 +89,13 @@ const CAPACITY_TOL = 0.02;
 //   pairs        [[tank, row]]                     fill these
 //   dropped      [label]                           the console showed no volume
 //   unplaced     [label]                           no tank of that fuel at this outlet
-//   renumbered   [{ console, tank, fuel }]         filled; the tank number disagrees
+//   renumbered   [{ console, tank, fuel, confirmed }]
+//                  filled; the console's tank NUMBER disagrees with ours.
+//                  confirmed:true  — fuel AND capacity both agreed, so two independent
+//                                    keys placed it and the number is the odd one out.
+//                                    A NOTE, not a warning.
+//                  confirmed:false — no capacity was printed (IOCL), so fuel alone
+//                                    picked the only candidate. One key. Worth a look.
 //   assumed      [{ console, tank, fuel }]         filled; same-fuel, nothing to choose by
 //   overCapacity [{ console, tank, vol, cap }]     NOT filled — exceeds installed capacity
 //   capacityOff  [{ console, tank, readCap, ourCap }]  filled; screen capacity disagrees
@@ -153,7 +159,11 @@ export function matchGaugeRows(rows, tanks) {
     const t = cands[0];
     if (overCap(t, r)) return refuseOverCap(i, t, r);
     take(i, t, r);
-    renumbered.push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r) });
+    // TWO KEYS AGREED. The console renumbering its own tanks is a reader artifact we
+    // now expect — it returned 1/2/3 for tanks numbered 1/3/4 on three scans out of
+    // four on 31-Aug — so flagging it every time trains the manager to click through
+    // an amber banner over figures that are right. Recorded, not shouted.
+    renumbered.push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r), confirmed: true });
   });
 
   // PASS 3 — the row carries NO capacity to check against: the IOCL console, and the
@@ -174,8 +184,9 @@ export function matchGaugeRows(rows, tanks) {
     const t = cands[0];
     if (overCap(t, r)) return refuseOverCap(i, t, r);
     take(i, t, r);
+    // No capacity to confirm against, so this rests on the fuel alone.
     (cands.length === 1 ? renumbered : assumed)
-      .push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r) });
+      .push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r), confirmed: false });
   });
 
   // Capacity as a NOTE on what we filled. Only reachable now for rows that carried no

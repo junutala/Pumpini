@@ -53,8 +53,22 @@ test('16:11 — products right, tank numbers 1/2/3 wrong: ALL THREE still fill c
   ], NAGOLE);
   assert.deepEqual(byTank(m), { 1: 4629.06, 3: 7877.26, 4: 7231.46 });
   assert.equal(m.mismatched.length, 0);
-  // The two the console misnumbered are placed and SAID SO, never silently.
+  // The two the console misnumbered are placed and SAID SO, never silently — but
+  // CONFIRMED, because fuel and capacity both agreed. A note, not a warning: the
+  // screens count only unconfirmed ones, so this reads 'Success — proceed'.
   assert.equal(m.renumbered.length, 2);
+  assert.ok(m.renumbered.every(r => r.confirmed === true));
+  assert.equal(m.renumbered.filter(r => !r.confirmed).length, 0, 'nothing for the manager to check');
+});
+
+test('a fuel-only match, with no capacity to confirm it, is NOT confirmed', () => {
+  // IOCL prints no capacity, so one key placed this. It stays worth a look.
+  const m = matchGaugeRows(
+    [{ tank_label: '9', product: 'petrol', product_raw: 'Motor Spirit', net_volume_ltrs: 5537.96 }],
+    [{ id: 'k3', tank_number: 3, fuel_type: 'petrol', capacity_ltrs: 15000 }]);
+  assert.equal(m.pairs.length, 1);
+  assert.equal(m.renumbered.length, 1);
+  assert.equal(m.renumbered[0].confirmed, false);
 });
 
 test('a card-only IOCL console keeps fuel-alone matching (Kamala, 23-Aug rule)', () => {
