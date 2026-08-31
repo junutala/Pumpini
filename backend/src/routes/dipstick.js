@@ -493,6 +493,9 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
     const read = await readImageAsJson({
       file_base64, media_type, prompt: GAUGE_PROMPT, max_tokens: 3000,
       ocrPreamble: GAUGE_OCR_PREAMBLE,
+      // The gauge console is the one subject where this earns its keep: small
+      // characters photographed off a monitor the manager is not allowed to touch.
+      prep: true,
     });
     if (read.error === 'api') {
       return res.status(503).json({ error: 'Screen scanning is unavailable right now — enter the reading manually.' });
@@ -532,6 +535,14 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
     // only way a later question about a figure is settled by evidence rather than by
     // the reader's own account of itself.
     const rawOcr = read.ocr_text ?? null;
+    // Which read won and what each recovered, kept beside the raw text. This is how
+    // the upscale gets judged — on rows from real forecourt photographs rather than
+    // on anybody's expectation of it.
+    const ocrRace = {
+      variant: read.ocr_variant ?? null,
+      as_taken: read.ocr_chars_as_taken ?? null,
+      upscaled: read.ocr_chars_upscaled ?? null,
+    };
 
     // Keep the screen. A gauge screen photographed inside a shift hangs off that
     // shift; one taken for the plain dip register belongs to the outlet.
@@ -542,7 +553,7 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
       kind: 'gauge_screen',
       file_base64, media_type,
       ocr: out,
-      meta: { reading_type: reading_type || null, ocr_text: rawOcr },
+      meta: { reading_type: reading_type || null, ocr_text: rawOcr, ocr_race: ocrRace },
       uploaded_by: req.user.id,
     });
 
