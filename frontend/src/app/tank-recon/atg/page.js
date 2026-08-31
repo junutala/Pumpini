@@ -152,7 +152,7 @@ export default function AtgCapturePage() {
         file_base64: cap.base64, media_type: cap.media_type,
       });
       const rows = Array.isArray(r?.tanks) ? r.tanks : [];
-      const m = matchGaugeRows(rows, dippable, { table_state: r?.table_state });
+      const m = matchGaugeRows(rows, dippable);
 
       const next = {};
       for (const [tank, row] of (m.pairs || [])) {

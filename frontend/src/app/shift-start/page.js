@@ -204,7 +204,7 @@ export default function ShiftStartPage() {
       const openTanks  = dipTanks.filter(t => !carriedDips[t.id] && !outClosings[t.id]);
       const heldByRule = dipTanks.filter(t =>  carriedDips[t.id] || outClosings[t.id]).map(t => t.tank_number);
       const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff, mismatched } =
-        matchGaugeRows(rows, openTanks, { table_state: res.table_state });
+        matchGaugeRows(rows, openTanks);
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));

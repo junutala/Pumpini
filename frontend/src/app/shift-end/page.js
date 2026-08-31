@@ -583,7 +583,7 @@ export default function ShiftEndPage() {
       // lib/gaugeMatch so this cannot drift from shift open — read the note at the
       // top of that file for why it is this way round.
       const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff, mismatched } =
-        matchGaugeRows(rows, dipTanks, { table_state: res.table_state });
+        matchGaugeRows(rows, dipTanks);
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
