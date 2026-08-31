@@ -211,9 +211,29 @@ Concretely, and these are the traps:
   conflict looked like ordinary drift, and "bring staging up to date" felt helpful. It
   isn't; it is an unrequested merge of two divergent products.)
 
-When unsure which bucket a change is in, treat it as **medium/high** and route it
-through staging. Staging exists precisely so the owner verifies risky changes before
-they touch real outlets.
+**SO: RULES 2 AND 3 CANNOT SEND PUMPINI WORK TO `staging`, AND "I'll route it through
+staging" IS NOT AN AVAILABLE ANSWER.** This paragraph used to read *"when unsure, treat
+it as medium/high and route it through staging — staging exists precisely so the owner
+verifies risky changes"*, which flatly contradicted the bullet four lines above saying a
+Pumpini screen **cannot be verified there**. A section that argues both sides lets a
+session pick whichever half suits it. (Assistant note 27-Aug-2026: I did exactly that —
+cited rule 3 to justify parking a finished, tested fix, on a branch, while the bug it
+fixed was live at two outlets. The owner's words: *"you will not read that part of the
+claude.md which is not convenient for you."*)
+
+What actually applies to a Pumpini change:
+
+- **Ship it to `main`.** The gate is CI + Vercel green and the impact analysis in the
+  PR. **Revert-the-PR is the rollback** — the same mechanism the owner already uses for
+  dashboard work, for the same reason: prod is the only place with real data.
+- **Rule 4 still binds, and it is the real owner gate.** Anything needing DDL stops and
+  waits for him, step by step. That is where "the owner must confirm" lives — not in a
+  staging deploy that verifies nothing.
+- **A change that cannot be verified before shipping must say so in the PR**, name what
+  is unproven, and state the failure mode if it is wrong. Do not dress an untested
+  change as a tested one, and do not use "untested" as a reason to park a fix for a
+  live bug.
+- **`staging` is touched only for VAWE work.**
 
 ## 🔴 One writer per concept (anti-drift rule) — owner-set 2026-07-22
 
@@ -373,9 +393,14 @@ Things worth knowing before chasing this meter again:
 - **A nozzle is named `<pump serial>.<nozzle number>`** — `M1832105.1` — exactly as
   its own slip prints it. **A pump is named by its serial.** Nothing else is shown to
   a user, ever: not on a screen, not in an error message, not in a CSV export.
-- **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is our index — it orders
-  lists, it is the unique key, and it supplies the printed nozzle number when
-  `slip_nozzle_no` is unset. It is never a label. Same for `pumps.pump_number`.
+- **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is never a label. Same for
+  `pumps.pump_number`. Checked against prod 27-Aug-2026 — it does exactly three things:
+  it ORDERs nozzle lists, it supplies the printed number when `slip_nozzle_no` is unset
+  (`split_part(...,'.',2)`), and `rfidService` looks a nozzle up by it when a tag event
+  arrives. **It is NOT the unique key** — this line used to claim it was, and it has no
+  index at all. The only unique constraint is
+  `uq_nozzles_pump_slip_no (pump_id, slip_nozzle_no)`: the pump plus the number printed
+  on the slip, which is the identity an elementary student can verify.
 - **ONE writer: `pumpService.nozzleNameExpr` / `nozzleName`** (SQL and JS halves of the
   same three rules). Every nozzle-returning query selects it as `nozzle_name`; the
   frontend reads it through `lib/nozzle.js → nozName()` and computes nothing.
