@@ -1094,7 +1094,11 @@ export default function ShiftStartPage() {
                                 .replace('{n}', pendingOn.shift_number ?? '—')}
                         </div>
                       )}
-                      {sel && !carried && !pendingOn && (
+                      {/* ONLY while the box is EMPTY. It is a prompt to act, so it
+                          must clear the moment he acts — standing under a figure he
+                          has just scanned it reads as "the app did not keep it",
+                          which is what it was taken for on 31-Aug. */}
+                      {sel && !carried && !pendingOn && !String(cur ?? '').trim() && (
                         <div style={{fontSize:11,color:'#b45309',marginTop:4}}>
                           ⚠ {tc('sstart.noPriorClose','No previous close for this nozzle — enter its opening meter. This is only expected on a new nozzle or the first shift.')}
                         </div>
