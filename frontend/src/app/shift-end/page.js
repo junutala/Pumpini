@@ -38,6 +38,7 @@ import { COMPOSITE_SLIP_SCAN } from '../../lib/features';
 import { rejectNote } from '../../lib/slip';
 
 import { errPayload, errText, errCode } from '../../lib/apiError';
+import { scanNozzleMeter } from '../../lib/api';
 const inp = { width:'100%', padding:'8px 10px', border:'1.5px solid #e5e3de', borderRadius:8, fontSize:13.5, outline:'none', boxSizing:'border-box', background:'#fff' };
 const fmt = n => `₹${Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const fmtDate = s => s ? new Date(s).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric'}) : '';
@@ -336,7 +337,7 @@ export default function ShiftEndPage() {
     setScanning(nozzle.nozzle_id); setErr('');
     try {
       const b64 = await readB64(file);
-      const r = await api.post('/reconcile/pos-meter', { shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type || 'image/jpeg' });
+      const r = await scanNozzleMeter({ shift_id: shift.id, nozzle_id: nozzle.nozzle_id, image_base64: b64, media_type: file.type });
       if (r.reading) setCl(a.attendant_id, nozzle.nozzle_id, r.reading);
       if (!r.legible) setErr(tc('send.scanUnclear', 'Nozzle {n}: scan unclear{notes} — check the reading.').replace('{n}', nozName(nozzle)).replace('{notes}', r.notes ? ` (${r.notes})` : ''));
     } catch (e) { setErr(errText(e, tc('send.scanFailed', 'Scan failed'))); }
