@@ -277,14 +277,32 @@ And, from `CLAUDE.md`:
 
 ## 8. Still open — decide before or during the build
 
-1. **Recon cadence — daily or per shift.** Daily is 12 slip prints and cheap; per shift
+1. **Does Spoke 1's nozzle screen keep the composite scan?** `CLAUDE.md` specifies it —
+   *"Nozzle slips, ALL nozzles, composite scan"* — and the simultaneity is load-bearing:
+   *"because the composite slip scan happens at the same instant as the ATG scan, the
+   tank window and the nozzle totals share a boundary by construction."* That is what
+   beat all four other answers to the straddle problem. But on 27-Aug the owner said,
+   of the composite generally, *"the nozzle read screen will NOT have this composite
+   slip scan option."*
+
+   **UNRESOLVED, and waiting on Srinivas — the owner has said he cannot decide it
+   alone.** `Nozzles.dc.html` still shows the composite as its primary CTA. Do not
+   redraw it, and do not build either way, until this is answered — if Spoke 1 loses
+   the composite, the straddle solution needs rethinking, and that is the one design
+   decision the owner asked not to have re-opened casually.
+
+   (Separately, and already done: the composite button is hidden in the EXISTING flow
+   for everyone — `frontend/src/lib/features.js`, #362. That is a different change and
+   does not settle this question.)
+
+2. **Recon cadence — daily or per shift.** Daily is 12 slip prints and cheap; per shift
    is 24 a day and somebody starts skipping, which quietly puts the straddle back.
-2. **Who may clear an outstanding.** Manager is weak control — he is often the one who
+3. **Who may clear an outstanding.** Manager is weak control — he is often the one who
    took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
    *(Partly settled by ruling 1 in §11: the settlement entry itself brings the suspense
    down. What remains open is only who may record/confirm that entry.)*
-3. **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
-4. **The empty state** for a first-ever recon on the landing screen is specified but not
+4. **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
+5. **The empty state** for a first-ever recon on the landing screen is specified but not
    drawn.
 
 ---
