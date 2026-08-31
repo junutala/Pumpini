@@ -156,6 +156,10 @@ function cleanPumpId(v) {
 // Tune these from measurement (scripts/slip-eval.js), never from intuition.
 const MIN_IMPLIED_PRICE = 40;
 const MAX_IMPLIED_PRICE = 200;
+// 200 is the ABSOLUTE band — the only ceiling available when the caller cannot say
+// which fuel the slip belongs to (a setup scan on a pump not yet wired to a tank).
+// A caller that KNOWS the fuel passes a far tighter one: see priceService, and
+// normalizeSlipNozzles' maxImpliedPrice below.
 
 // ── AND A CEILING ON THE VOLUME ITSELF ───────────────────────────────────────
 // The band above tests a RATIO, so it catches a digit lost on ONE side. It cannot
@@ -178,7 +182,20 @@ const MAX_CUMULATIVE_VOLUME = 10000000;
 // The ONE nozzle normaliser, shared by the single-slip and composite readers so the
 // numeric clean, the rupee/litre swap guard and the legibility verdict cannot drift
 // between them. Takes the raw `nozzles` array off a parsed slip and returns cleaned rows.
-function normalizeSlipNozzles(rawNozzles) {
+// opts.maxImpliedPrice — the tightest ceiling the CALLER can justify, from the
+// outlet's own board price for this fuel. Absent, the absolute band applies.
+//
+// 🔴 THE CEILING IS THE HALF THAT CAN BE TIGHTENED. A lifetime average cannot
+// meaningfully exceed today's price, so anything above it is a misread. The FLOOR
+// cannot move the same way: A ÷ V is the average over the meter's whole life and
+// sits BELOW today's board by however much prices have risen since the pump went in
+// — measured at Kamala, ₹90.29 and ₹91.68 against ₹104.23, some 12-13% under. A 5%
+// floor would have rejected both of those genuine slips. It stays at 40 until there
+// are enough real slips to tune it from measurement.
+function normalizeSlipNozzles(rawNozzles, opts = {}) {
+  const ceiling = Number.isFinite(opts.maxImpliedPrice) && opts.maxImpliedPrice > 0
+    ? Math.min(opts.maxImpliedPrice, MAX_IMPLIED_PRICE)
+    : MAX_IMPLIED_PRICE;
   return (Array.isArray(rawNozzles) ? rawNozzles : []).map(n => {
     const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
     let vol = Number(String(n.cumulative_volume ?? '').replace(/[^\d.]/g, ''));
@@ -219,7 +236,7 @@ function normalizeSlipNozzles(rawNozzles) {
         reject = 'volume_not_physical';
       } else {
         implied = +(A / vol).toFixed(2);
-        if (implied < MIN_IMPLIED_PRICE || implied > MAX_IMPLIED_PRICE) {
+        if (implied < MIN_IMPLIED_PRICE || implied > ceiling) {
           reject = 'implied_price_out_of_band';
         }
       }
@@ -233,6 +250,8 @@ function normalizeSlipNozzles(rawNozzles) {
       // What the pair implies, so a screen can say WHY it refused rather than just
       // that it did, and so slip-eval can show the distribution over real scans.
       implied_price: implied,
+      // Which ceiling judged this line, so a screen can say WHY it refused.
+      price_ceiling: ceiling,
       reject_reason: reject || undefined,
       // legible drives the pre-fill. A line that fails the cross-check is NOT
       // legible, whatever the model said about its own confidence.
@@ -248,13 +267,13 @@ function normalizeSlipNozzles(rawNozzles) {
 // caller nothing but "no", so the one moment worth recording (the frame that beat
 // the reader) was the one moment we recorded nothing about. An out-param rather
 // than a changed return, so every existing caller is untouched.
-async function parseSlip({ file_base64, media_type = 'image/jpeg', diag = null }) {
+async function parseSlip({ file_base64, media_type = 'image/jpeg', diag = null, maxImpliedPrice = null }) {
   const read = await readSlipJson({ file_base64, media_type, prompt: SLIP_PROMPT });
   if (diag && read) Object.assign(diag, { engine: read.engine ?? null, fallback_reason: read.fallback_reason ?? null, error: read.error ?? null });
   const parsed = read?.parsed;
   if (!parsed || !Array.isArray(parsed.nozzles)) return null;
 
-  const nozzles = normalizeSlipNozzles(parsed.nozzles);
+  const nozzles = normalizeSlipNozzles(parsed.nozzles, { maxImpliedPrice });
 
   return {
     engine: read.engine,
@@ -278,7 +297,7 @@ async function parseSlip({ file_base64, media_type = 'image/jpeg', diag = null }
 // "scan all slips at shift open/close" flow. Mirrors parseSlip's AI call but uses the
 // composite prompt and returns one group per slip, each with its own serial and its
 // nozzles normalised by the SAME shared logic. Returns null on total parse failure.
-async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg', diag = null }) {
+async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg', diag = null, maxImpliedPrice = null }) {
   // A composite carries several slips, so its JSON is several times longer than a
   // single slip's — 1500 was tight enough that one more pump could truncate it,
   // and a truncated body fails JSON.parse and loses the WHOLE scan, not one slip.
@@ -293,7 +312,7 @@ async function parseCompositeSlips({ file_base64, media_type = 'image/jpeg', dia
     // Kept VERBATIM apart from case and surrounding space, exactly as parseSlip does.
     pump_serial: String(s.pump_serial ?? '').trim().toUpperCase() || null,
     model: String(s.model ?? '').trim() || null,
-    nozzles: normalizeSlipNozzles(s.nozzles),
+    nozzles: normalizeSlipNozzles(s.nozzles, { maxImpliedPrice }),
   }));
 
   return {
