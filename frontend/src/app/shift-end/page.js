@@ -614,7 +614,9 @@ export default function ShiftEndPage() {
       // The DETAIL is not lost, it is just not shouted: every figure is in a box on
       // this screen, and a tank that was skipped has an empty one.
       // No heldByRule here: the carry rule holds an OPENING, and this is the close.
-      const needsALook = skipped.length + renumbered.length
+      // See shift-start: a capacity-confirmed renumbering is a note, not a warning.
+      const unconfirmedRenum = renumbered.filter(r => !r.confirmed).length;
+      const needsALook = skipped.length + unconfirmedRenum
                        + assumed.length + overCapacity.length + capacityOff.length
                        + (res.confidence === 'low' ? 1 : 0);
       if (pairs.length === 0) {

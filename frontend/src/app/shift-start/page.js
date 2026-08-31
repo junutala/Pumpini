@@ -236,7 +236,11 @@ export default function ShiftStartPage() {
       //
       // The DETAIL is not lost, it is just not shouted: every figure is in a box on
       // this screen, and a tank that was skipped has an empty one.
-      const needsALook = skipped.length + heldByRule.length + renumbered.length
+      // A renumbering CONFIRMED by capacity is not something the manager can act on
+      // — two keys agreed and the figure is in the right box. Only an unconfirmed one
+      // (fuel alone, no capacity printed) is worth his eyes.
+      const unconfirmedRenum = renumbered.filter(r => !r.confirmed).length;
+      const needsALook = skipped.length + heldByRule.length + unconfirmedRenum
                        + assumed.length + overCapacity.length + capacityOff.length
                        + (res.confidence === 'low' ? 1 : 0);
       // 🔴 NOTHING TO FILL IS NOT A FAILURE.
