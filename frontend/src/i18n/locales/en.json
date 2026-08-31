@@ -3201,5 +3201,7 @@
     "noteOne": "note",
     "noteMany": "notes"
   },
-  "sstart.errNoOpening": "Enter or scan the opening meter for {list} before starting."
+  "sstart.errNoOpening": "Enter or scan the opening meter for {list} before starting.",
+  "sstart.nextAttendants": "Next: Attendants →",
+  "sstart.nozzlesHeMansHint3": "(tick each, then scan or type its opening meter)"
 }

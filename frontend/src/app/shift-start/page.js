@@ -800,7 +800,7 @@ export default function ShiftStartPage() {
               background:i<step?'#16a34a':i===step?'#fff7ed':'#fff',
               color:i<step?'#fff':i===step?'#9a3412':'#888',cursor:busy?'default':'pointer'}}>
             <span style={{width:18,height:18,borderRadius:'50%',background:i<step?'rgba(255,255,255,.3)':i===step?'#FF6B00':'#e5e3de',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11}}>{i<step?<Check size={12}/>:i+1}</span>
-            {tc('sstart.step'+s, s === 'Gauge' ? 'Gauge & dip' : s === 'Nozzles' ? 'Nozzle readings' : 'Attendants')}
+            {tc('sstart.step'+s, s === 'Gauge' ? 'Gauge & dip' : 'Attendants')}
           </button>
         ))}
       </div>
@@ -987,12 +987,12 @@ export default function ShiftStartPage() {
             );
           })}
           <button onClick={goToNozzles} disabled={busy} style={{width:'100%',height:46,marginTop:12,background:busy?'#cbd5e1':'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:busy?'default':'pointer'}}>
-            {busy ? tc('sstart.savingReadings','Saving…') : tc('sstart.nextNozzles','Next: Nozzle readings →')}
+            {busy ? tc('sstart.savingReadings','Saving…') : tc('sstart.nextAttendants','Next: Attendants →')}
           </button>
         </div>
       )}
 
-      {/* ── SCREEN 2 — Nozzle readings (NEW) ──────────────────────────────
+      {/* ── SCREEN 2 — Attendant assignment ─────────────────────────────
           Every active nozzle gets its opening HERE, decoupled from who mans it. A
           carried nozzle shows its last close locked; the rest are captured into
           nozReadings by a slip scan, the per-nozzle totalizer camera, or by hand. */}
@@ -1043,7 +1043,7 @@ export default function ShiftStartPage() {
               {/* Opening float is deliberately absent — see startAttendant(). */}
 
               <div>
-                <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint2','(tick each; the opening comes from the Nozzle readings step)')}</span></label>
+                <label className="label">{tc('sstart.nozzlesHeMans','Nozzles he mans')} <span style={{fontWeight:400,color:'#888'}}>{tc('sstart.nozzlesHeMansHint3','(tick each, then scan or type its opening meter)')}</span></label>
                 {availNozzles.length===0 && <div style={{fontSize:12.5,color:'#aaa'}}>{tc('sstart.allNozzlesAssigned','All nozzles are already assigned.')}</div>}
                 {availNozzles.map(n=>{
                   const pick = nozPick[n.id]; const sel = !!pick?.selected;

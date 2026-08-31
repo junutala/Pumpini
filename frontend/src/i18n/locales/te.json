@@ -3256,5 +3256,7 @@
   "invp.indentNo": "ఇండెంట్ నం.",
   "invp.indentDate": "ఇండెంట్ తేదీ",
   "invp.indentPlaceholder": "ఉదా. 1042",
-  "sstart.errNoOpening": "ప్రారంభించే ముందు {list} కోసం ఓపెనింగ్ మీటర్ నమోదు చేయండి లేదా స్కాన్ చేయండి."
+  "sstart.errNoOpening": "ప్రారంభించే ముందు {list} కోసం ఓపెనింగ్ మీటర్ నమోదు చేయండి లేదా స్కాన్ చేయండి.",
+  "sstart.nextAttendants": "తర్వాత: అటెండెంట్లు →",
+  "sstart.nozzlesHeMansHint3": "(ఒక్కొక్కటి టిక్ చేసి, ఓపెనింగ్ మీటర్ స్కాన్ చేయండి లేదా టైప్ చేయండి)"
 }
