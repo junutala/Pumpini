@@ -28,30 +28,40 @@
 // tank's installed capacity — 10,318+4,682 = 15,000 (our petrol tank), and both
 // diesel cards sum to 20,000. The fuels are unambiguous; only the numbering is.
 //
-// 🔴 BUT FUEL-ALONE IS SAFE ONLY WHERE FUEL IS THE RELIABLE READ, AND ON A CONSOLE
-// THAT PRINTS A SUMMARY TABLE IT IS NOT. (31-Aug-2026.)
+// 🔴 BUT FUEL ALONE IS NOT ENOUGH, AND THE TANK NUMBER IS NOT THE SECOND KEY.
+// CAPACITY IS. (31-Aug-2026, from three consecutive scans of one console.)
 //
-// A gauge scan on 31-Aug returned tank_label "1" as MS/petrol and tank_label "3" as
-// HSD/diesel. The console prints the exact opposite. Volumes, labels and capacities
-// all stayed correctly paired — only the two product WORDS traded places. Fuel then
-// decided, faithfully, and put 7877.26 (the petrol tank) into a diesel tank and
-// 4629.06 (the diesel tank) into a petrol one.
+// The reader is Google Vision followed by a TEXT model that never sees the image.
+// Across three scans of the SAME Sri Balaji console it got a different thing wrong
+// each time — and one thing right every time:
 //
-// The same photograph read CORRECTLY 52 minutes earlier. It is not a bad frame: the
-// reader is Google Vision followed by a text model that never sees the image, and
-// its own notes on the bad read say "Tank labels INFERRED from capacity bands and
-// OCR layout". An inferred label is a guess, and a guess is different every time.
+//   13:53  products SWAPPED   labels 1/3 correct   capacities 22000/16000 correct
+//   15:59  "Power" landed on the petrol row, and the real Power row lost its product
+//          entirely — Vision had read only TWO product words for THREE tanks, and the
+//          model dealt them out in order. Labels came back 1/2/3.
+//   16:11  products all correct — labels came back 1/2/3 for tanks numbered 1/3/4
 //
-// So: where the console prints a summary table, the tank NUMBER comes off the same
-// printed line as the product — it is exactly as good a read, and the two together
-// are a cross-check neither is alone. Require BOTH, and where they disagree fill
-// NOTHING and say so. A blank box a manager fills from the paper in his hand costs
-// ten seconds; a wrong litre in the right-looking box costs a stock reconciliation
-// nobody can unpick.
+// So neither the product nor the number survives on its own. The CAPACITY did, in
+// every scan including the bad ones, because it is a printed number rather than a
+// label the model reconstructs — and we hold the same number in Settings.
 //
-// Card-only consoles (IOCL, table_state 'absent') keep fuel-alone exactly as the
-// 23-Aug rule set it — there is no second key to check against, and tightening
-// there would blank the outlets it was written to protect.
+// FUEL AND CAPACITY TOGETHER DECIDE. Checked against all three scans: the two bad
+// reads place nothing, and the good read places all three tanks correctly even
+// though its tank numbers were wrong.
+//
+// The tank NUMBER drops to what it always should have been — a tiebreaker between two
+// tanks of the same fuel AND the same size (Highway and Hayat Nagar each run two
+// 22,000 L diesel tanks), and a note when it disagrees.
+//
+// A row carrying NO capacity keeps the 23-Aug rule exactly: fuel decides. That is the
+// IOCL console, which prints no capacity at all, and it is the outlet that rule was
+// written to protect.
+//
+// WHY NOT GATE ON table_state. A first attempt required the number and fuel to agree
+// whenever the reader said it had read the summary table. The 15:59 scan then declared
+// table_state 'absent' for a console that plainly has a table, and walked straight
+// past the gate. A guard the reader can switch off by describing itself differently is
+// not a guard. Capacity needs no such declaration.
 
 const norm = v => String(v ?? '').toLowerCase().trim();
 const pos  = v => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? n : null; };
@@ -64,6 +74,13 @@ const rowFuel  = r => (r.product_raw || r.product || '?');
 // ceiling: a tank filled to its nameplate can gauge slightly over on a warm
 // afternoon. No digit error survives 2%.
 const OVER_CAPACITY = 1.02;
+
+// How close the screen's capacity must sit to ours to count as the same tank. Both
+// are nameplate figures typed from the same OMC paperwork, so they should be equal;
+// 2% is room for an OCR wobble, not for a different tank. The sizes we actually run
+// are 9,000 / 15,000 / 16,000 / 20,000 / 22,000 — the nearest pair is 6% apart, so
+// this cannot confuse two real tanks.
+const CAPACITY_TOL = 0.02;
 
 // rows  — parsed console rows: { tank_label, product, product_raw, net_volume_ltrs, capacity_ltrs, ... }
 // tanks — this outlet's dip tanks (THE MASTER): { id, tank_number, fuel_type, capacity_ltrs }
@@ -82,8 +99,7 @@ const OVER_CAPACITY = 1.02;
 // opts.table_state — 'used' when the console printed a summary table and the reader
 // read from it. That is the only mode in which the tank number is trustworthy enough
 // to be a required key; see the 31-Aug note above.
-export function matchGaugeRows(rows, tanks, opts = {}) {
-  const strict = opts.table_state === 'used';
+export function matchGaugeRows(rows, tanks) {
   const all    = Array.isArray(rows) ? rows : [];
   const mine   = Array.isArray(tanks) ? tanks : [];
   const usable  = all.filter(r => r.net_volume_ltrs != null);
@@ -91,74 +107,83 @@ export function matchGaugeRows(rows, tanks, opts = {}) {
 
   const claimed = new Set();
   const placed  = new Set();
-  const pairs = [], unplaced = [], renumbered = [], assumed = [], overCapacity = [], capacityOff = [];
-  const mismatched = [];
+  const pairs = [], unplaced = [], renumbered = [], assumed = [], overCapacity = [],
+        capacityOff = [], mismatched = [];
 
   const freeSameFuel = r => mine.filter(t => norm(t.fuel_type) === norm(r.product) && !claimed.has(t.id));
 
-  // The one refusal: physically impossible against the MASTER capacity, never the
-  // screen's. Checked before anything is claimed, so a bad row cannot take a tank
-  // that a good row belongs in.
+  // true / false / null. Null means the row carries no capacity — an IOCL console
+  // prints none — and then there is simply nothing to check against.
+  const capAgrees = (t, r) => {
+    const rc = pos(r.capacity_ltrs), tc = pos(t.capacity_ltrs);
+    if (rc == null || tc == null) return null;
+    return Math.abs(tc - rc) <= rc * CAPACITY_TOL;
+  };
+  const numAgrees = (t, r) => String(t.tank_number) === String(rowLabel(r));
+
+  // The one refusal that outranks everything: physically impossible against the
+  // MASTER capacity, never the screen's. Checked before anything is claimed, so a bad
+  // row cannot take a tank that a good row belongs in.
   const overCap = (t, r) => {
     const vol = pos(r.net_volume_ltrs), cap = pos(t.capacity_ltrs);
     return !!(vol && cap && vol > cap * OVER_CAPACITY);
   };
   const take = (i, t, r) => { claimed.add(t.id); placed.add(i); pairs.push([t, r]); };
+  const refuseOverCap = (i, t, r) => {
+    overCapacity.push({ console: rowLabel(r), tank: t.tank_number,
+                        vol: Math.round(pos(r.net_volume_ltrs)), cap: Math.round(pos(t.capacity_ltrs)) });
+    placed.add(i);
+  };
 
-  // PASS 1 — fuel agrees AND the number agrees. Run over every row before pass 2
-  // touches anything, or a fuel-only match could claim the tank a perfectly
-  // numbered row belongs in.
+  // PASS 1 — fuel, capacity AND number all agree. Run over every row before pass 2
+  // touches anything, or a weaker match could claim the tank a perfect row belongs in.
   usable.forEach((r, i) => {
-    const t = freeSameFuel(r).find(t => String(t.tank_number) === String(rowLabel(r)));
+    const t = freeSameFuel(r).find(t => capAgrees(t, r) !== false && numAgrees(t, r));
     if (!t) return;
-    if (overCap(t, r)) {
-      overCapacity.push({ console: rowLabel(r), tank: t.tank_number,
-                          vol: Math.round(pos(r.net_volume_ltrs)), cap: Math.round(pos(t.capacity_ltrs)) });
-      placed.add(i); return;
-    }
+    if (overCap(t, r)) return refuseOverCap(i, t, r);
     take(i, t, r);
   });
 
-  // PASS 2 — fuel agrees, the number does not. Capacity separates two tanks of the
-  // same fuel where it can; where it cannot, the row is still placed and flagged
-  // as assumed. A shift within one fuel is correctable; a blank is a retype.
+  // PASS 2 — fuel and CAPACITY agree; the number does not. This is the normal case on
+  // this reader, which renumbers tanks positionally. Placed, and noted.
   usable.forEach((r, i) => {
     if (placed.has(i)) return;
-    let cands = freeSameFuel(r);
-    if (cands.length === 0) { unplaced.push(rowLabel(r)); return; }
-    // THE TABLE WAS READ, AND ITS OWN TWO KEYS DISAGREE. One of them is wrong and
-    // nothing here can say which, so this row does not get placed on the strength
-    // of the half we chose to believe.
-    if (strict) { mismatched.push({ console: rowLabel(r), fuel: rowFuel(r) }); return; }
-
-    let byCapacity = false;
-    if (cands.length > 1) {
-      const rc = pos(r.capacity_ltrs);
-      if (rc) {
-        const near = cands.filter(t => { const c = pos(t.capacity_ltrs); return c && Math.abs(c - rc) <= rc * 0.01; });
-        if (near.length === 1) { cands = near; byCapacity = true; }
-      }
-    }
-
+    const cands = freeSameFuel(r).filter(t => capAgrees(t, r) === true);
+    if (cands.length !== 1) return;
     const t = cands[0];
-    if (overCap(t, r)) {
-      overCapacity.push({ console: rowLabel(r), tank: t.tank_number,
-                          vol: Math.round(pos(r.net_volume_ltrs)), cap: Math.round(pos(t.capacity_ltrs)) });
-      placed.add(i); return;
-    }
+    if (overCap(t, r)) return refuseOverCap(i, t, r);
     take(i, t, r);
-    (cands.length === 1 || byCapacity ? renumbered : assumed)
+    renumbered.push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r) });
+  });
+
+  // PASS 3 — the row carries NO capacity to check against: the IOCL console, and the
+  // 23-Aug rule verbatim. Fuel decides; where two tanks share a fuel the row is still
+  // placed, in order, and flagged as assumed. A shift within one fuel is correctable;
+  // a blank at 6am is a retype.
+  usable.forEach((r, i) => {
+    if (placed.has(i)) return;
+    const cands = freeSameFuel(r);
+    if (cands.length === 0) { unplaced.push(rowLabel(r)); return; }
+    // A capacity WAS printed and it matches no tank of this fuel. One of the two reads
+    // is wrong and nothing here can say which, so the row is not placed on the strength
+    // of the half we happened to prefer. This is the 13:53 swap and the 15:59 "Power".
+    if (pos(r.capacity_ltrs) != null) {
+      mismatched.push({ console: rowLabel(r), fuel: rowFuel(r), cap: Math.round(pos(r.capacity_ltrs)) });
+      return;
+    }
+    const t = cands[0];
+    if (overCap(t, r)) return refuseOverCap(i, t, r);
+    take(i, t, r);
+    (cands.length === 1 ? renumbered : assumed)
       .push({ console: rowLabel(r), tank: t.tank_number, fuel: rowFuel(r) });
   });
 
-  // Capacity as pure verification on what we filled. The screen's capacity is just
-  // another OCR'd number — on 20-Aug a scan read 12,650 and 4,000 for tanks the
-  // master records at 16,000 and 9,000 — so a disagreement is a note about the
-  // photograph, never a reason to refuse a reading. An IOCL console prints no
-  // capacity at all, and then there is simply nothing to compare.
+  // Capacity as a NOTE on what we filled. Only reachable now for rows that carried no
+  // capacity to match on, or that matched within tolerance — a disagreement here is a
+  // remark about the photograph, never a reason to refuse a reading.
   pairs.forEach(([t, r]) => {
     const rc = pos(r.capacity_ltrs), tc = pos(t.capacity_ltrs);
-    if (rc && tc && Math.abs(tc - rc) > rc * 0.01) {
+    if (rc && tc && Math.abs(tc - rc) > rc * CAPACITY_TOL) {
       capacityOff.push({ console: rowLabel(r), tank: t.tank_number, readCap: Math.round(rc), ourCap: Math.round(tc) });
     }
   });

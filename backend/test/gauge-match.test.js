@@ -1,80 +1,96 @@
-// THE 31-AUG-2026 SWAP, pinned.
+// THREE CONSECUTIVE SCANS OF ONE CONSOLE, 31-Aug-2026. Rows copied verbatim from the
+// station_artifacts each scan produced. Nothing here is invented.
 //
-// A gauge scan of Sri Balaji's console returned tank_label "1" as MS/petrol and
-// tank_label "3" as HSD/diesel. The console prints the exact opposite. Volumes,
-// labels and capacities stayed correctly paired; only the two product WORDS traded
-// places. "Fuel decides" then put the petrol tank's 7877.26 into a diesel tank.
+// The reader got a different thing wrong each time and one thing right every time:
 //
-// The rows below are copied verbatim from station_artifacts 89ba600b, the artifact
-// that scan produced. Nothing here is invented.
+//   13:53  products SWAPPED           labels 1/3 right    capacities right
+//   15:59  "Power" on the petrol row  labels 1/2/3 wrong  capacities right
+//   16:11  products all right         labels 1/2/3 wrong  capacities right
+//
+// So the matcher keys on fuel + CAPACITY. These pin that the two bad reads place
+// nothing and the good read places everything — including with wrong tank numbers.
 const test = require('node:test');
 const assert = require('node:assert');
-
-// The matcher is an ES module in the frontend; this exercises the same rules against
-// the same data. Kept in the backend suite because that is the suite CI runs.
 const { matchGaugeRows } = require('./helpers/gaugeMatch.cjs');
 
-// Sri Balaji / Nagole, exactly as Settings records them.
-const TANKS = [
+const NAGOLE = [   // === Sri Balaji's configuration, mirrored
   { id: 't1', tank_number: 1, fuel_type: 'diesel',         capacity_ltrs: 22000 },
   { id: 't3', tank_number: 3, fuel_type: 'petrol',         capacity_ltrs: 16000 },
   { id: 't4', tank_number: 4, fuel_type: 'premium_petrol', capacity_ltrs: 9000  },
 ];
-
-// What the console actually prints.
-const GOOD = [
-  { tank_label: '1', product: 'diesel',         product_raw: 'HSD',   net_volume_ltrs: 4629.06, capacity_ltrs: 22000 },
-  { tank_label: '3', product: 'petrol',         product_raw: 'MS',    net_volume_ltrs: 7877.26, capacity_ltrs: 16000 },
-  { tank_label: '4', product: 'premium_petrol', product_raw: 'Power', net_volume_ltrs: 7231.46, capacity_ltrs: 9000  },
+const DILSUKHNAGAR = [
+  { id: 'd1', tank_number: 1, fuel_type: 'diesel', capacity_ltrs: 20000 },
+  { id: 'd2', tank_number: 2, fuel_type: 'diesel', capacity_ltrs: 20000 },
+  { id: 'd3', tank_number: 3, fuel_type: 'petrol', capacity_ltrs: 15000 },
 ];
+const byTank = m => Object.fromEntries(m.pairs.map(([t, r]) => [t.tank_number, r.net_volume_ltrs]));
 
-// What the reader returned on 31-Aug: the two product words swapped.
-const SWAPPED = [
-  { tank_label: '1', product: 'petrol', product_raw: 'MS',  net_volume_ltrs: 4629.06, capacity_ltrs: 22000 },
-  { tank_label: '3', product: 'diesel', product_raw: 'HSD', net_volume_ltrs: 7877.26, capacity_ltrs: 16000 },
-];
-
-test('a correct table read fills every tank', () => {
-  const m = matchGaugeRows(GOOD, TANKS, { table_state: 'used' });
-  assert.equal(m.pairs.length, 3);
-  assert.equal(m.mismatched.length, 0);
-  const byTank = Object.fromEntries(m.pairs.map(([t, r]) => [t.tank_number, r.net_volume_ltrs]));
-  assert.equal(byTank[1], 4629.06);   // diesel
-  assert.equal(byTank[3], 7877.26);   // petrol
-  assert.equal(byTank[4], 7231.46);   // premium
-});
-
-test('the swapped read fills NOTHING when the console printed a table', () => {
-  const m = matchGaugeRows(SWAPPED, TANKS, { table_state: 'used' });
+test('13:53 — the products were swapped, so nothing is placed', () => {
+  const m = matchGaugeRows([
+    { tank_label:'1', product:'petrol', product_raw:'MS',  net_volume_ltrs:4629.06, capacity_ltrs:22000 },
+    { tank_label:'3', product:'diesel', product_raw:'HSD', net_volume_ltrs:7877.26, capacity_ltrs:16000 },
+  ], DILSUKHNAGAR);
   assert.equal(m.pairs.length, 0, 'a swapped product must never place a reading');
   assert.equal(m.mismatched.length, 2);
-  assert.deepEqual(m.mismatched.map(x => x.console).sort(), ['1', '3']);
 });
 
-test('the swap is what SHIPPED before the fix — fuel alone still misplaces it', () => {
-  // Not a wish, a record: with no table declared, fuel decides and the figures land
-  // in the wrong tanks. This is why the gate is tied to table_state.
-  const m = matchGaugeRows(SWAPPED, TANKS, { table_state: 'absent' });
-  const byTank = Object.fromEntries(m.pairs.map(([t, r]) => [t.tank_number, r.net_volume_ltrs]));
-  assert.equal(byTank[1], 7877.26, 'diesel tank gets the petrol figure');
-  assert.equal(byTank[3], 4629.06, 'petrol tank gets the diesel figure');
+test('15:59 — "Power" on the petrol row: the good tank fills, the bad rows do not', () => {
+  const m = matchGaugeRows([
+    { tank_label:'1', product:'diesel',         product_raw:'HSD',   net_volume_ltrs:4629.06, capacity_ltrs:22000 },
+    { tank_label:'2', product:'premium_petrol', product_raw:'Power', net_volume_ltrs:7877.26, capacity_ltrs:16000 },
+    { tank_label:'3', product:null,             product_raw:null,    net_volume_ltrs:7231.46, capacity_ltrs:9000  },
+  ], NAGOLE);
+  assert.deepEqual(byTank(m), { 1: 4629.06 });
+  assert.equal(m.mismatched.length, 1, 'premium claiming a 16,000 L tank is refused');
+  assert.equal(m.unplaced.length, 1,   'a row with no product at all has no tank to go to');
 });
 
-test('a card-only console keeps fuel-alone matching (Kamala/IOCL, 23-Aug rule)', () => {
-  // Console numbers 1=MS, 2=HSD, 3=HSD against Settings 1=diesel, 2=diesel, 3=petrol.
-  // Requiring both keys here would fill one tank of three, which is what the 23-Aug
-  // rule was written to prevent.
-  const iocl = [
-    { tank_label: '1', product: 'petrol', product_raw: 'Motor Spirit',      net_volume_ltrs: 5537.96 },
-    { tank_label: '2', product: 'diesel', product_raw: 'High Speed Diesel', net_volume_ltrs: 5727.95 },
-    { tank_label: '3', product: 'diesel', product_raw: 'High Speed Diesel', net_volume_ltrs: 12915.61 },
-  ];
-  const kamala = [
-    { id: 'k1', tank_number: 1, fuel_type: 'diesel', capacity_ltrs: 20000 },
-    { id: 'k2', tank_number: 2, fuel_type: 'diesel', capacity_ltrs: 20000 },
-    { id: 'k3', tank_number: 3, fuel_type: 'petrol', capacity_ltrs: 15000 },
-  ];
-  const m = matchGaugeRows(iocl, kamala, { table_state: 'absent' });
+test('16:11 — products right, tank numbers 1/2/3 wrong: ALL THREE still fill correctly', () => {
+  const m = matchGaugeRows([
+    { tank_label:'1', product:'diesel',         product_raw:'HSD',   net_volume_ltrs:4629.06, capacity_ltrs:22000 },
+    { tank_label:'2', product:'petrol',         product_raw:'MS',    net_volume_ltrs:7877.26, capacity_ltrs:16000 },
+    { tank_label:'3', product:'premium_petrol', product_raw:'Power', net_volume_ltrs:7231.46, capacity_ltrs:9000  },
+  ], NAGOLE);
+  assert.deepEqual(byTank(m), { 1: 4629.06, 3: 7877.26, 4: 7231.46 });
+  assert.equal(m.mismatched.length, 0);
+  // The two the console misnumbered are placed and SAID SO, never silently.
+  assert.equal(m.renumbered.length, 2);
+});
+
+test('a card-only IOCL console keeps fuel-alone matching (Kamala, 23-Aug rule)', () => {
+  // Console numbers 1=MS, 2=HSD, 3=HSD against Settings 1/2/3 diesel/diesel/petrol,
+  // and it prints NO capacity. Requiring a second key here would fill one tank of
+  // three — exactly what the 23-Aug rule was written to prevent.
+  const m = matchGaugeRows([
+    { tank_label:'1', product:'petrol', product_raw:'Motor Spirit',      net_volume_ltrs:5537.96 },
+    { tank_label:'2', product:'diesel', product_raw:'High Speed Diesel', net_volume_ltrs:5727.95 },
+    { tank_label:'3', product:'diesel', product_raw:'High Speed Diesel', net_volume_ltrs:12915.61 },
+  ], [
+    { id:'k1', tank_number:1, fuel_type:'diesel', capacity_ltrs:20000 },
+    { id:'k2', tank_number:2, fuel_type:'diesel', capacity_ltrs:20000 },
+    { id:'k3', tank_number:3, fuel_type:'petrol', capacity_ltrs:15000 },
+  ]);
   assert.equal(m.pairs.length, 3, 'all three tanks must still fill');
   assert.equal(m.mismatched.length, 0);
+});
+
+test('two same-fuel same-size tanks: the tank NUMBER separates them', () => {
+  // Highway and Hayat Nagar each run two 22,000 L diesel tanks. Capacity cannot tell
+  // them apart, so the number does its proper job as a tiebreaker.
+  const m = matchGaugeRows([
+    { tank_label:'2', product:'diesel', net_volume_ltrs:6605.26,  capacity_ltrs:22000 },
+    { tank_label:'1', product:'diesel', net_volume_ltrs:12609.03, capacity_ltrs:22000 },
+  ], [
+    { id:'h1', tank_number:1, fuel_type:'diesel', capacity_ltrs:22000 },
+    { id:'h2', tank_number:2, fuel_type:'diesel', capacity_ltrs:22000 },
+  ]);
+  assert.deepEqual(byTank(m), { 1: 12609.03, 2: 6605.26 });
+});
+
+test('a volume beyond the installed tank is still refused outright', () => {
+  const m = matchGaugeRows(
+    [{ tank_label:'1', product:'diesel', net_volume_ltrs:99999, capacity_ltrs:22000 }],
+    [{ id:'t1', tank_number:1, fuel_type:'diesel', capacity_ltrs:22000 }]);
+  assert.equal(m.pairs.length, 0);
+  assert.equal(m.overCapacity.length, 1);
 });
