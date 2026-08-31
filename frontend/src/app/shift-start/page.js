@@ -239,7 +239,22 @@ export default function ShiftStartPage() {
       const needsALook = skipped.length + heldByRule.length + renumbered.length
                        + assumed.length + overCapacity.length + capacityOff.length
                        + (res.confidence === 'low' ? 1 : 0);
-      if (pairs.length === 0) {
+      // 🔴 NOTHING TO FILL IS NOT A FAILURE.
+      //
+      // Every tank's opening is carried from the last close, so openTanks is empty
+      // and the matcher has nothing to place — and a scan that read the console
+      // perfectly was then reported as 'Failed — enter manually'. That happened on
+      // the first Nagole shift after its openings began carrying: the read was
+      // flawless (HSD 4629.06 / MS 7877.26 / Power 7231.46, every capacity right)
+      // and the manager was told it had failed.
+      //
+      // Owner, 27-Aug: 'the wrong coloured alert is the killer... nobody reads it
+      // but thinks the data has not been recorded.' There is nothing for him to do
+      // here and nothing wrong, so it must not be red.
+      if (pairs.length === 0 && openTanks.length === 0) {
+        setGaugeTone('ok');
+        setGaugeMsg(tc('sstart.gaugeNothingToFill','Every tank is carried from the last close — nothing to fill'));
+      } else if (pairs.length === 0) {
         setGaugeTone('error'); setGaugeMsg(tc('sstart.gaugeFail2','Failed — enter manually'));
       } else if (needsALook) {
         setGaugeTone('warn');  setGaugeMsg(tc('sstart.gaugeCheck','Check the figures before saving'));
