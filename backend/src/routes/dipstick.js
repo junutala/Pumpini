@@ -431,9 +431,33 @@ function withGaugeChecks(parsed) {
       if (gross != null && net != null && water != null && Math.abs((gross - net) - water) > 1) {
         checks.push('gross − net does not match water');
       }
-      // Net + ullage should fill the tank (tolerate 1% — ullage is a coarse figure).
-      if (net != null && ull != null && cap && Math.abs((net + ull) - cap) > cap * 0.01) {
-        checks.push('net + ullage does not match capacity');
+      // Net + ullage fills the tank's SHELL — and the shell is not the nameplate.
+      //
+      // 🔴 THIS CHECK USED A ±1% BAND AND FLAGGED 23 OF 33 STORED TANK ROWS (70%),
+      // including every reading we have since confirmed correct. That is why nobody
+      // acted on checks_ok: one good test and one crying wolf, and the wolf
+      // discredited both. (Measured 31-Aug-2026 over every gauge scan on file.)
+      //
+      // The cause is in CLAUDE.md already: "THE NAMEPLATE IS NOT THE SHELL VOLUME. A
+      // tank called 16 KL holds 17,279 L." Ullage is measured against the real shell,
+      // capacity is the nameplate, so net + ullage lands ABOVE nameplate by however
+      // much the shell exceeds it — and that is physics, not a misread.
+      //
+      // The observed spread says where the line belongs:
+      //
+      //   16,000 L tanks      98.9 – 100.1 %   shell ≈ nameplate
+      //   22,000 L tanks      98.5 – 107.6 %   Sri Balaji's diesel holds 23,662 L
+      //    9,000 L tanks           104.6 %
+      //   ------------------------------------------------------------------
+      //    9,000 L tank            215.7 %   ← a misread ullage, and unmissable
+      //
+      // So: below 95% or above 115% of nameplate. That passes every legitimate
+      // reading on file and still catches the one real error by a mile. It is a
+      // ceiling for the absurd, like MAX_CUMULATIVE_VOLUME on the slip reader — not
+      // a judgement about how full a tank is.
+      if (net != null && ull != null && cap) {
+        const pct = (net + ull) / cap;
+        if (pct < 0.95 || pct > 1.15) checks.push('net + ullage is not a plausible shell volume');
       }
       return { ...t, checks, checks_ok: checks.length === 0 };
     });
@@ -527,3 +551,6 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
 });
 
 module.exports = router;
+// Exported for the test suite. A money-adjacent rule that only ever runs inside a
+// route is a rule nobody can pin, and this one silently mis-fired for weeks.
+module.exports.withGaugeChecks = withGaugeChecks;
