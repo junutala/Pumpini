@@ -152,7 +152,7 @@ export default function AtgCapturePage() {
         file_base64: cap.base64, media_type: cap.media_type,
       });
       const rows = Array.isArray(r?.tanks) ? r.tanks : [];
-      const m = matchGaugeRows(rows, dippable);
+      const m = matchGaugeRows(rows, dippable, { table_state: r?.table_state });
 
       const next = {};
       for (const [tank, row] of (m.pairs || [])) {
@@ -164,6 +164,13 @@ export default function AtgCapturePage() {
       // are the cases that produced three false findings on 18-Aug when they were left
       // to a banner nobody read.
       const said = [];
+      // The table was read and its own two keys disagree — the tank number says one
+      // thing, the product says another. Neither is worth more than the other, so the
+      // row is not placed. See lib/gaugeMatch.js, 31-Aug-2026.
+      for (const o of (m.mismatched || [])) {
+        said.push(tc('recon.noteMismatch',
+          `The screen's tank ${o.console} reads as ${o.fuel}, which does not match that tank here. Not filled — check the photo or type it.`));
+      }
       for (const o of (m.overCapacity || [])) {
         said.push(tc('recon.noteOverCap', `Tank ${o.tank} — the screen read ${L(o.vol)} against ${L(o.cap)} installed. Not filled; read it again or type it.`));
       }

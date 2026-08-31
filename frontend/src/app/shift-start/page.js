@@ -203,8 +203,8 @@ export default function ShiftStartPage() {
       // is recorded and a second photo would only re-open the same question.
       const openTanks  = dipTanks.filter(t => !carriedDips[t.id] && !outClosings[t.id]);
       const heldByRule = dipTanks.filter(t =>  carriedDips[t.id] || outClosings[t.id]).map(t => t.tank_number);
-      const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff } =
-        matchGaugeRows(rows, openTanks);
+      const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff, mismatched } =
+        matchGaugeRows(rows, openTanks, { table_state: res.table_state });
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
@@ -224,7 +224,7 @@ export default function ShiftStartPage() {
         if (res.artifact_id) setDipArtifact(p => ({ ...p, [tank.id]: res.artifact_id }));
       });
 
-      const skipped = [...unplaced, ...dropped];
+      const skipped = [...unplaced, ...dropped, ...mismatched.map(m => m.console)];
             // THREE OUTCOMES, ONE SHORT LINE EACH — the same rule as the nozzle scan.
       //
       // This was an eight-clause paragraph: matched count, unmatched list, tanks

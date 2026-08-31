@@ -140,7 +140,12 @@ async function readImageAsJson({
       });
       reachedModel = true;
       const parsed = extractJson(msg.content.find(b => b.type === 'text')?.text);
-      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, fallback_reason: null, error: null };
+      // THE RAW READ TRAVELS WITH THE RESULT. On 31-Aug a gauge scan swapped two
+      // product names and the post-mortem had only the model's OWN interpretation to
+      // work from — we had thrown away what Vision actually saw. A caller that stores
+      // its scan should store this beside it: it is the primary source, and the text
+      // model's answer is a reading of it.
+      if (parsed) return { parsed, engine: 'google_vision+claude_text', ocr_chars: ocrText.length, ocr_text: ocrText, fallback_reason: null, error: null };
       // Vision read the characters, but the text model did not answer with JSON.
       fallbackReason = 'text_model_unparsed';
     } else if (!fallbackReason) {

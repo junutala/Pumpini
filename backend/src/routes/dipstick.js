@@ -502,6 +502,12 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
 
     const out = { ...withGaugeChecks(parsed), engine: read.engine ?? null, ocr_chars: read.ocr_chars ?? null,
                   table_state: parsed.table_state ?? null };
+    // Kept on the artifact, never sent to the screen: what Google Vision actually
+    // read, before a text model made anything of it. A console screen is the hardest
+    // read we do and the one whose answers we have had to argue about — this is the
+    // only way a later question about a figure is settled by evidence rather than by
+    // the reader's own account of itself.
+    const rawOcr = read.ocr_text ?? null;
 
     // Keep the screen. A gauge screen photographed inside a shift hangs off that
     // shift; one taken for the plain dip register belongs to the outlet.
@@ -512,7 +518,7 @@ router.post('/parse-gauge', authenticate, requireStationAccess({ required: true 
       kind: 'gauge_screen',
       file_base64, media_type,
       ocr: out,
-      meta: { reading_type: reading_type || null },
+      meta: { reading_type: reading_type || null, ocr_text: rawOcr },
       uploaded_by: req.user.id,
     });
 

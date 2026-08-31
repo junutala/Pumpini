@@ -1,3 +1,5 @@
+// GENERATED from frontend/src/lib/gaugeMatch.js by scripts/ci-gauge-match-sync.js.
+// Do not edit. Run that script after changing the matcher; CI checks they agree.
 // Match the tanks read off an ATG console screen to the tanks configured for
 // this outlet. ONE writer for the rule, embedded by both shift-start and
 // shift-close — they were carrying identical copies, which is exactly how the
@@ -82,7 +84,7 @@ const OVER_CAPACITY = 1.02;
 // opts.table_state — 'used' when the console printed a summary table and the reader
 // read from it. That is the only mode in which the tank number is trustworthy enough
 // to be a required key; see the 31-Aug note above.
-export function matchGaugeRows(rows, tanks, opts = {}) {
+function matchGaugeRows(rows, tanks, opts = {}) {
   const strict = opts.table_state === 'used';
   const all    = Array.isArray(rows) ? rows : [];
   const mine   = Array.isArray(tanks) ? tanks : [];
@@ -166,4 +168,4 @@ export function matchGaugeRows(rows, tanks, opts = {}) {
   return { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff, mismatched };
 }
 
-export default matchGaugeRows;
+module.exports = { matchGaugeRows };

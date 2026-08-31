@@ -137,6 +137,11 @@ jobs:
       - name: One nozzle name check
         run: node scripts/ci-nozzle-name-check.js
 
+      # The gauge matcher is mirrored into the CJS test suite. A mirror that drifts
+      # asserts yesterday's rules while passing, which is worse than no test at all.
+      - name: Gauge-matcher mirror is in sync
+        run: node scripts/ci-gauge-match-sync.js
+
       # A translation that drifts away from its fallback SILENTLY WINS, and if it has
       # lost a {placeholder} the value is never rendered. On 31-Aug a manager was told
       # "No opening dip has been recorded for:" and then nothing — the code filled
