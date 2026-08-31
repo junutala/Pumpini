@@ -48,6 +48,7 @@ async function hasAutocloseFlag(client = pool) {
   return _hasAutocloseFlag;
 }
 const slipParser = require('../services/slipParser');
+const prices = require('../services/priceService');
 const pumps      = require('../services/pumpService');
 const attendance = require('../services/attendanceService');
 
@@ -884,7 +885,8 @@ router.post('/pos-meter', authenticate,
     // WHICH nozzle are we reading, and what does its own slip call it. Needed BEFORE
     // the read, because that is what we go looking for on the paper.
     const { rows: nzr } = await pool.query(
-      `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial
+      `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, n.fuel_type, n.station_id,
+              p.serial AS pump_serial
          FROM nozzles n
          LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL
         WHERE n.id = $1`, [nozzle_id]);
@@ -919,7 +921,18 @@ router.post('/pos-meter', authenticate,
     // reader rather than adding one, and the guard, the swap detection and the
     // rejection strings all arrive by construction.
     let reading = '', legible = false, notes = '', ocrEngine = null;
-    const parsed = await slipParser.parseSlip({ file_base64: image_base64, media_type });
+    // WE KNOW WHICH NOZZLE THIS IS, SO WE KNOW WHAT A LITRE COSTS HERE.
+    //
+    // The cross-check's ceiling was a flat ₹200 for every nozzle in the country, which
+    // leaves a wide corridor a misread can sit in: a diesel line implying ₹195/L passed
+    // it comfortably. Amount ÷ volume is the meter's LIFETIME average and cannot
+    // meaningfully exceed today's board price, so this outlet's own price bounds it —
+    // diesel at ₹103.67 gives ₹108.85 instead of 200.
+    //
+    // Null when the outlet has never priced this fuel, and then the absolute band
+    // applies exactly as before. Never guessed.
+    const maxImpliedPrice = await prices.impliedPriceCeiling(want.station_id, want.fuel_type);
+    const parsed = await slipParser.parseSlip({ file_base64: image_base64, media_type, maxImpliedPrice });
     if (!parsed) {
       notes = 'Could not read that slip — type the reading instead.';
     } else {
@@ -1343,7 +1356,12 @@ router.post('/parse-slips', authenticate,
     // applied the rupee/litre cross-check per nozzle, so each cumulative_volume is
     // litres or null.
     const readDiag = {};
-    const parsed = await slipParser.parseCompositeSlips({ file_base64: image_base64, media_type, diag: readDiag });
+    // A composite frame holds lines from several nozzles and therefore several fuels,
+    // so the tightest DEFENSIBLE ceiling is the dearest fuel this outlet sells —
+    // premium at ₹125.87 gives ₹132.16 rather than 200. Looser than the per-nozzle
+    // ceiling above, and still removes most of the corridor.
+    const maxImpliedPrice = await prices.stationPriceCeiling(req.stationId);
+    const parsed = await slipParser.parseCompositeSlips({ file_base64: image_base64, media_type, diag: readDiag, maxImpliedPrice });
     if (!parsed || !Array.isArray(parsed.slips)) {
       // A FAILED SCAN IS EVIDENCE, and it used to be thrown away. This answered 422
       // and kept nothing — so the photograph that beat the reader was gone, and the

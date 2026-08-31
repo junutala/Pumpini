@@ -60,30 +60,50 @@ accuracy one — and can wait for a quieter month.
 
 ---
 
-## 2. Crop and upscale before Vision — IN PROGRESS
+## 2. Crop and upscale before Vision — SHIPPED 31-Aug, now being measured
 
-The manager photographs a monitor on a locked-down desktop and can never hand us a
-clean file. Vision on the whole 1280×801 frame returned 732–1,140 characters of
-mush; the same engine on a clean file returned 1,478 and read every field. Slice
-each tank card server-side, enlarge it, and send the crops instead of the screen.
-Invisible to the manager — same photo, same button.
+Shipped as a 3x greyscale upscale RACED against the untouched frame, longer text
+wins, both counts stored on the artifact. Live and gathering rows.
+
+    Nagole   19:57   as_taken 1461   upscaled 1492   upscaled won
+    Hayat    20:00   as_taken 1478   upscaled 1492   upscaled won
+    Nagole   20:45   as_taken 1127   upscaled    0   skipped, file already large
+
+**Judge it on rows, not on the first three.** And note the honest weakness in the
+metric: that 1,127-character read was PERFECT, as was the 1,478 one. Character count
+catches 732-chars-of-mush; it cannot separate two good reads. If the counts stay
+close, revert #394 and nothing is lost — the untouched read is always a candidate.
+
+Still to do: FIELD-LEVEL crops. `cropForOcr` is shipped and unused, taking fractions
+of the image rather than pixels because the console is a web page whose geometry moves
+with the browser window. The entry point is Vision's own word boxes, which we fetch
+(`DOCUMENT_TEXT_DETECTION`) and currently discard.
+
+---
+
+## 3. The A/V FLOOR — open, and do not tighten it by intuition
+
+The CEILING was anchored to the outlet's board price on 31-Aug and is done. The floor
+is a genuinely different question and is still 40.
+
+A ÷ V is the meter's LIFETIME average, and it sits BELOW today's board by however much
+prices have risen since the pump went in. Measured on genuine Kamala slips: ₹90.29 and
+₹91.68 against ₹104.23 — 12-13% under. **A 5% floor would reject both.** It is a
+function of the meter's AGE, not of the price, so it cannot be anchored the way the
+ceiling was. Tune it from `scripts/slip-eval.js` once there are real slips to tune with.
 
 ---
 
-## 3. A/V price band — anchor the ceiling to the outlet's own price
+## 3b. `fuel_prices` is queried from EIGHT places
 
-`slipParser` accepts any implied price between ₹40 and ₹200 for every nozzle in the
-country. A lifetime average essentially cannot exceed today's selling price, so the
-ceiling belongs at roughly `price × 1.02` — for diesel that is 200 → ₹105.75, and it
-closes the whole 106–200 corridor a misread currently hides in.
-
-The FLOOR must stay generous and is a separate question: A ÷ V is the meter's
-lifetime average, which sits *below* today's price by however much prices have risen
-since the pump was commissioned. Measured at Kamala: ₹90.29 and ₹91.68 against a
-₹104.23 diesel price — **12–13% below**, on genuine slips. A 5% floor would reject
-them both. Tune it from `scripts/slip-eval.js` once there are slips to tune with.
+`settlementService`, `settlementLedger`, `couponService`, `spokeService` (twice),
+`routes/prices`, `routes/groups`, `routes/ai-chat` — and now `priceService`, which is
+the writer for everything NEW so the count stops growing. Folding the other seven in is
+its own change: they sit on live money paths, several take a transaction `client`, and
+one caches per shift. Worth doing; not worth doing in passing.
 
 ---
+
 
 ## 4. The setup-scan reference ratio
 
