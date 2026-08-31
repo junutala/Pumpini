@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
-const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { requireStationAccess, requireStationVia, nozzlesOutsideStation } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const { sendAlert } = require('../services/alertService');
 const artifacts  = require('../services/artifactService');
@@ -249,6 +249,12 @@ router.post('/:id/assign', authenticate, requireStationVia('SELECT station_id FR
       ? nozzles
       : (nozzle_id ? [{ nozzle_id, opening_reading }] : []))
       .filter(n => n && n.nozzle_id);
+
+    // The nozzle ids came from the body; the station came from the shift. Prove
+    // every one of them is this outlet's before a leg is opened on it.
+    if ((await nozzlesOutsideStation(req.stationId, nozzleList.map(n => n.nozzle_id))).length) {
+      return res.status(403).json({ error: 'That nozzle belongs to a different outlet.' });
+    }
     // nozzle_id is optional in the manager-driven flow (no nozzle-level detail).
     // Opening float must be stated explicitly (₹0 is fine) — a forgotten float
     // silently becomes 0 and shows up that evening as a phantom OVERAGE of the

@@ -150,6 +150,39 @@ function requireCorporateAccess(paramName = 'id') {
   };
 }
 
+// Which of these nozzle ids do NOT belong to `stationId`. Returns [] when they
+// all do (and for an empty list).
+//
+// WHY THIS EXISTS. `requireStationVia` proves the SHIFT belongs to a station the
+// caller may reach, and every write is keyed on that shift — so the guard is
+// what keeps one outlet's data out of another's. But a nozzle id arrives in the
+// request BODY, and nothing re-checked that the nozzle sits at the same station
+// as the shift. In practice the screens only ever offer the current station's
+// nozzles, so this was safe by convention rather than by construction, and a
+// convention is exactly what stops holding the week nobody is looking.
+//
+// It matters most where two outlets are deliberately made to LOOK alike: a test
+// outlet set up to mirror a real one carries the same pump serials and nozzle
+// numbers, and the only thing separating them is the id. Slip MATCHING is
+// already station-scoped (`nozzles.station_id = req.stationId`), so a scan
+// cannot cross outlets; this closes the same door on the ids we are handed.
+async function nozzlesOutsideStation(stationId, nozzleIds, db = pool) {
+  // Non-uuid text can match no nozzle, so it is the handler's 404, not a
+  // cross-outlet write — and casting it here would 500 instead.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ids = [...new Set((nozzleIds || []).map(String).filter(id => UUID.test(id)))];
+  if (!stationId || !ids.length) return [];
+  const { rows } = await db.query(
+    `SELECT id FROM nozzles WHERE id = ANY($1::uuid[]) AND station_id IS DISTINCT FROM $2`,
+    [ids, stationId]
+  );
+  // An id matching no row is left alone for the same reason: a missing nozzle is
+  // not another outlet's nozzle. IS DISTINCT FROM also rejects a nozzle with no
+  // station at all — there are none today (66 rows, 0 null, checked 31-Aug-2026)
+  // and if one ever appears, failing closed is the direction we want.
+  return rows.map(r => String(r.id));
+}
+
 module.exports = {
   canAccessStation,
   getAccessibleStationIds,
@@ -158,5 +191,6 @@ module.exports = {
   requireStationAccess,
   requireStationId,
   requireStationVia,
+  nozzlesOutsideStation,
   requireCorporateAccess,
 };
