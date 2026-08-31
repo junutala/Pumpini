@@ -137,6 +137,15 @@ jobs:
       - name: One nozzle name check
         run: node scripts/ci-nozzle-name-check.js
 
+      # A translation that drifts away from its fallback SILENTLY WINS, and if it has
+      # lost a {placeholder} the value is never rendered. On 31-Aug a manager was told
+      # "No opening dip has been recorded for:" and then nothing — the code filled
+      # {list}, en.json carried an older sentence without it, and the dialog refused to
+      # say which tank. Both strings read fine alone; only the pair is wrong, which is
+      # exactly what a check is for.
+      - name: i18n placeholder check
+        run: node scripts/ci-i18n-placeholder-check.js
+
       # The unit tests existed since July and NOTHING RAN THEM. Three files pinning
       # the opening carry-forward, margins and data health sat green-by-default in
       # the repo while CI checked only that routes export a router. A test nobody

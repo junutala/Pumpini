@@ -2562,7 +2562,7 @@
     "staggerHint2": "Each attendant goes live the moment you press Start. Stay here for the next one, or leave and come back as they arrive.",
     "doneToDashboard": "Done — go to dashboard",
     "dipMissingTitle": "Dip readings missing",
-    "dipMissingBody": "No opening dip has been recorded for:",
+    "dipMissingBody": "Tank {list} has no opening dip. Without it, today's stock variance for that tank cannot be trusted.",
     "dipMissingBack": "Enter the readings",
     "dipMissingGo": "Continue anyway",
     "errPickAttendant": "Pick the attendant",
