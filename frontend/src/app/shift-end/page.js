@@ -582,8 +582,8 @@ export default function ShiftEndPage() {
       // FUEL DECIDES WHICH TANK; THE TANK NUMBER ONLY VERIFIES. The rule lives in
       // lib/gaugeMatch so this cannot drift from shift open — read the note at the
       // top of that file for why it is this way round.
-      const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff } =
-        matchGaugeRows(rows, dipTanks);
+      const { pairs, dropped, unplaced, renumbered, assumed, overCapacity, capacityOff, mismatched } =
+        matchGaugeRows(rows, dipTanks, { table_state: res.table_state });
 
       pairs.forEach(([tank, r]) => {
         setDipVol(p => ({ ...p, [tank.id]: String(r.net_volume_ltrs) }));
@@ -600,7 +600,7 @@ export default function ShiftEndPage() {
         setDipArtifact(p => ({ ...p, [tank.id]: artId }));
       });
 
-      const skipped = [...unplaced, ...dropped];
+      const skipped = [...unplaced, ...dropped, ...mismatched.map(m => m.console)];
             // THREE OUTCOMES, ONE SHORT LINE EACH — the same rule as the nozzle scan.
       //
       // This was an eight-clause paragraph: matched count, unmatched list, tanks
