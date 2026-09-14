@@ -100,6 +100,18 @@ export default function EarningsMarginTile({ stationId, maxRows = 10 }) {
             {tc('margin_tile.on_revenue', 'on revenue')} ₹{fmt(margin.totals.revenue)} · {fmt(margin.totals.litres)} L
             {showDry && <> · {tc('margin_tile.fuel', 'Fuel')} ₹{fmt(margin.totals.fuel_margin)} + {tc('margin_tile.dry', 'Dry stock')} ₹{fmt(margin.totals.dry_margin)}</>}
           </div>
+          {/* This figure is sell − delivery cost. The oil company also bills Licence Fee
+              Recovery on a SEPARATE invoice, per KL lifted — ~₹0.44/L on MS and ₹0.37/L on
+              HSD at an 'A' site, which is 10-17% of the margin above. Pumpini does not
+              capture it yet, so say so rather than letting the owner read this as take-home.
+              See docs/opentasks.md item 5. */}
+          {hasMargin && (
+            <div title={tc('margin_tile.lfr_note',
+                           'Licence Fee Recovery is billed separately by the oil company, per KL lifted, and is not deducted here.')}
+                 style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, fontStyle: 'italic', cursor: 'help' }}>
+              {tc('margin_tile.before_lfr', 'Before LFR and other oil-company recoveries')}
+            </div>
+          )}
         </div>
 
         {margin.fuels.map(f => (

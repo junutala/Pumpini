@@ -1068,7 +1068,9 @@
     "invoices": "invoices",
     "shift_total": "Shift total",
     "dry_uncosted": "Some items have no buying price — set it in Catalogue",
-    "last_updated": "Last updated"
+    "last_updated": "Last updated",
+    "before_lfr": "Before LFR and other oil-company recoveries",
+    "lfr_note": "Licence Fee Recovery is billed separately by the oil company, per KL lifted, and is not deducted here."
   },
   "credit_reports": {
     "info": "ℹ️ Who owes what and for how long, plus the running-balance statement to send with payment reminders. Outstanding is recomputed from every credit sale, lube invoice, payment and credit note — payments are set against the oldest dues first.",
