@@ -435,8 +435,14 @@ router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }
     const totalLtrs = rows.reduce((s, r) => s + (Number(r.gross_volume_ltrs) || 0), 0);
     if (!(totalLtrs > 0)) return res.status(400).json({ error: 'Those deliveries carry no volume to apportion across.' });
 
-    // Per-fuel rates, if the caller knows the outlet's site-category card. Checked below.
-    const split = apportionLfr(rows, total, req.body.rates_per_kl || null);
+    // Which rate card explains THIS invoice? Given the volumes and the total the OMC
+    // actually billed, only one reconciles — so the site category is read off the paper
+    // instead of being asked of the manager or kept as a setting he could get wrong. An
+    // explicit rates_per_kl from the caller still wins, for an outlet on a card we do not
+    // know. Nothing matched → flat per-litre, and the response says so.
+    const card = req.body.rates_per_kl ? null : matchCard(rows, total);
+    const rates = req.body.rates_per_kl || (card && card.rates_per_kl) || null;
+    const split = apportionLfr(rows, total, rates);
 
     const { rowCount } = await pool.query(
       `UPDATE fuel_deliveries fd
@@ -445,20 +451,17 @@ router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }
         WHERE fd.id = v.id AND fd.station_id = $4`,
       [split.map(s => s.id), split.map(s => s.lfr), lfr_invoice_no || null, station_id]);
 
-    // Cross-check: what the outlet's rate card SAYS this invoice should have been. A
-    // mismatch means a stale card or a mis-billed invoice — surface it, never silently
-    // prefer one over the other.
-    let expected = null;
-    if (req.body.rates_per_kl) {
-      const e = rows.reduce((s, r) => {
-        const rate = Number(req.body.rates_per_kl[r.fuel_type]);
-        return rate > 0 ? s + rate * ((Number(r.gross_volume_ltrs) || 0) / 1000) : s;
-      }, 0);
-      expected = { total: +e.toFixed(2), matches: Math.abs(e - total) <= 1 };
-    }
-
-    res.json({ ok: true, updated: rowCount, total_ltrs: totalLtrs, lfr_total: total,
-               method: split.method, expected, split });
+    res.json({
+      ok: true, updated: rowCount, total_ltrs: totalLtrs, lfr_total: total,
+      method: split.method,
+      // What we worked out about the outlet, and how well it fits the paper. Shown to the
+      // manager rather than kept to ourselves — he is the one who can tell us we are wrong.
+      site_category: card ? card.category : null,
+      card_note:     card ? card.note : null,
+      expected:      card ? card.expected : null,
+      delta:         card ? card.delta : null,
+      split,
+    });
   } catch (err) { next(err); }
 });
 

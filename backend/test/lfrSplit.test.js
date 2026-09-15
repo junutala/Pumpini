@@ -99,3 +99,42 @@ test('a B-site card gives a different, and much smaller, split', () => {
   assert.strictEqual(byId.hsd, 1228.96);
   assert.strictEqual(sum(split), total);
 });
+
+// ── Site-category inference ───────────────────────────────────────────────────
+// The LFR invoice never says which card it was billed on, and the manager should not
+// have to know. Given the volumes and the total, only one card reconciles — so we read
+// the category off the paper instead of storing a setting somebody can get wrong.
+const { matchCard } = require('../src/config/lfrRates');
+
+test('infers the A-site card from the real BPCL invoice', () => {
+  const m = matchCard(BPCL_ROWS, 4730.64);
+  assert.ok(m, 'a card must be identified');
+  assert.strictEqual(m.category, 'A');
+  assert.strictEqual(m.gst_pct, 18);
+  assert.strictEqual(m.expected, 4730.64);
+  assert.strictEqual(m.delta, 0);
+});
+
+test('infers the B-site card from the same volumes billed at B rates', () => {
+  const m = matchCard(BPCL_ROWS, 1966.32);   // 4x184.34 + 8x153.62
+  assert.ok(m);
+  assert.strictEqual(m.category, 'B');
+  assert.strictEqual(m.gst_pct, 28);
+});
+
+test('refuses to guess when neither card explains the invoice', () => {
+  // A revised rate card, or a mis-billed invoice. We must NOT quietly pick the nearest.
+  assert.strictEqual(matchCard(BPCL_ROWS, 3500.00), null);
+});
+
+test('refuses when a fuel on the invoice is not priced by the card', () => {
+  const rows = [{ id: 'c', fuel_type: 'cng', gross_volume_ltrs: 5000 }];
+  assert.strictEqual(matchCard(rows, 2217.50), null);
+});
+
+test('the inferred card, fed to the split, reproduces the OMC line by line', () => {
+  const m = matchCard(BPCL_ROWS, 4730.64);
+  const split = apportionLfr(BPCL_ROWS, 4730.64, m.rates_per_kl);
+  assert.strictEqual(split.method, 'per_fuel_rate');
+  assert.deepStrictEqual(split.map(s => s.lfr), [2956.64, 1774.00]);
+});

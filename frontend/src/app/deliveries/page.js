@@ -61,6 +61,14 @@ export default function DeliveriesPage() {
   const [accountsOn,  setAccountsOn]  = useState(false);
   const [sessionIds,  setSessionIds]  = useState([]);   // delivery rows created this open
   const [paidPrompt,  setPaidPrompt]  = useState(false);
+  // LFR — the oil company's SECOND invoice for the same lift (Licence Fee Recovery,
+  // charged per KL). Asked once per invoice, after every product on it is recorded,
+  // because the amount can only be split once all its fuel lines exist.
+  const [lfrPrompt,   setLfrPrompt]   = useState(false);
+  const [lfrAmount,   setLfrAmount]   = useState('');
+  const [lfrInvNo,    setLfrInvNo]    = useState('');
+  const [lfrResult,   setLfrResult]   = useState(null);
+  const [lfrBusy,     setLfrBusy]     = useState(false);
 
   // ── Split discharge: one product into >1 EXISTING tank (e.g. 6KL→tank1, 4KL→tank2).
   // Tanks are fixed infrastructure (defined in Settings), so we just show a litres
@@ -110,6 +118,34 @@ export default function DeliveriesPage() {
     try { if (ids.length) await api.patch('/deliveries/mark-paid', { station_id: stationId, ids, paid }); }
     catch (e) { /* accounts flag is best-effort — never block the delivery flow */ }
     setSessionIds([]);
+    load();
+  };
+
+  // Apply the LFR invoice to the rows this invoice just created. The BACKEND does the
+  // split (per KL of each fuel, from the card that reconciles with this very invoice) and
+  // hands back the working, which we show. We never compute the split here — one writer.
+  const submitLfr = async () => {
+    const amt = parseFloat(lfrAmount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      alert(tc('deliv_page.lfr_need_amount','Enter the taxable value from the LFR invoice.'));
+      return;
+    }
+    setLfrBusy(true);
+    try {
+      const r = await api.patch('/deliveries/apply-lfr', {
+        station_id: stationId, ids: sessionIds,
+        lfr_total: amt, lfr_invoice_no: lfrInvNo || null,
+      });
+      setLfrResult(r);
+    } catch (e) {
+      alert(e.error || tc('deliv_page.lfr_failed','Could not apply the LFR invoice.'));
+    } finally { setLfrBusy(false); }
+  };
+
+  const closeLfr = () => {
+    setLfrPrompt(false); setLfrResult(null); setLfrAmount(''); setLfrInvNo('');
+    if (accountsOn) setPaidPrompt(true);   // ask paid/credit once, for the whole invoice
+    else { setSessionIds([]); }
     load();
   };
 
@@ -336,7 +372,10 @@ export default function DeliveriesPage() {
       }
 
       setShowForm(false);
-      if (accountsOn) setPaidPrompt(true);   // ask paid/credit once, for the whole invoice
+      // Ask about LFR BEFORE the paid question: it is about this invoice's cost, and the
+      // paid question is about settling it. Skippable, unlike paid — plenty of lifts
+      // arrive without an LFR invoice in the manager's hand.
+      setLfrPrompt(true);
       setSaved(tc('deliv_page.delivery_recorded','Delivery recorded!'));
       setTimeout(()=>setSaved(''), 3000);
       load();
@@ -449,6 +488,90 @@ export default function DeliveriesPage() {
         </div>
       </div>
 
+      {/* LFR prompt — the oil company's SECOND invoice for this lift. Shown at EVERY
+          outlet, set up or not: three outlets have been paying LFR all along and nobody
+          ever asked them for the invoice, so the step itself is the prompt. Skippable,
+          because plenty of lifts arrive without one in the manager's hand. */}
+      {lfrPrompt && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:600,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,maxWidth:520,width:'100%',padding:'1.5rem',boxShadow:'0 12px 44px rgba(0,0,0,.35)',maxHeight:'90vh',overflowY:'auto'}}>
+            {!lfrResult ? (
+              <>
+                <div style={{fontWeight:800,fontSize:19,marginBottom:6}}>
+                  {tc('deliv_page.lfr_q','Did the oil company also send an LFR invoice?')}
+                </div>
+                <div style={{fontSize:13,color:'var(--text-2)',marginBottom:16,lineHeight:1.5}}>
+                  {tc('deliv_page.lfr_help','Licence Fee Recovery is a SECOND invoice for the same lift — a GST invoice, charged per KL. It is a real part of what this fuel cost you, so adding it here makes your margin the money you actually keep.')}
+                </div>
+                <div style={{marginBottom:12}}>
+                  <label className="label">{tc('deliv_page.lfr_amount','Taxable value (₹) — before GST')}</label>
+                  <input className="input" inputMode="decimal" placeholder="4730.64"
+                    value={lfrAmount} onChange={e=>setLfrAmount(e.target.value)}/>
+                  <div style={{fontSize:11.5,color:'var(--text-3)',marginTop:4}}>
+                    {tc('deliv_page.lfr_amount_help','The taxable amount, not the invoice total — the GST on it is not part of the fuel cost.')}
+                  </div>
+                </div>
+                <div style={{marginBottom:18}}>
+                  <label className="label">{tc('deliv_page.lfr_inv_no','LFR invoice number (optional)')}</label>
+                  <input className="input" placeholder="FIIN112710061073"
+                    value={lfrInvNo} onChange={e=>setLfrInvNo(e.target.value)}/>
+                </div>
+                <div style={{display:'grid',gap:10}}>
+                  <button onClick={submitLfr} disabled={lfrBusy}
+                    style={{padding:'15px',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:15,cursor:lfrBusy?'wait':'pointer',opacity:lfrBusy?.6:1}}>
+                    {lfrBusy ? tc('deliv_page.lfr_applying','Applying…') : `✓ ${tc('deliv_page.lfr_apply','Add LFR to this delivery\'s cost')}`}
+                  </button>
+                  <button onClick={closeLfr} disabled={lfrBusy}
+                    style={{padding:'13px',borderRadius:12,border:'1.5px solid var(--border)',background:'#fff',color:'var(--text-2)',fontWeight:600,fontSize:14,cursor:'pointer'}}>
+                    {tc('deliv_page.lfr_skip','No LFR invoice for this lift')}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* THE WORKING. A total computed from parts must show the parts — he has
+                    to be able to check one line against the paper in ten seconds. */}
+                <div style={{fontWeight:800,fontSize:19,marginBottom:10}}>
+                  {tc('deliv_page.lfr_done','LFR added to the cost')}
+                </div>
+                <div style={{border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',marginBottom:12}}>
+                  {lfrResult.split?.map((r,i)=>(
+                    <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,padding:'9px 12px',borderBottom:'1px solid var(--border)',fontSize:13}}>
+                      <span style={{textTransform:'capitalize'}}>{String(r.fuel_type||'').replace('_',' ')}</span>
+                      <span style={{color:'var(--text-3)',fontSize:12}}>
+                        {fmtL(r.ltrs)} L × ₹{(r.lfr/(r.ltrs||1)).toFixed(4)}/L
+                      </span>
+                      <b>₹{r.lfr.toLocaleString('en-IN',{minimumFractionDigits:2})}</b>
+                    </div>
+                  ))}
+                  <div style={{display:'flex',justifyContent:'space-between',padding:'10px 12px',fontWeight:800,fontSize:14,background:'var(--surface-2)'}}>
+                    <span>{tc('deliv_page.lfr_total','LFR total')}</span>
+                    <span>₹{Number(lfrResult.lfr_total).toLocaleString('en-IN',{minimumFractionDigits:2})}</span>
+                  </div>
+                </div>
+                {lfrResult.site_category && (
+                  <div style={{fontSize:12,color:'var(--text-3)',marginBottom:6,lineHeight:1.5}}>
+                    {tc('deliv_page.lfr_matched','Matches a {c}-site rate card ({n}) — the invoice reconciles to ₹{e}.')
+                      .replace('{c}', lfrResult.site_category)
+                      .replace('{n}', lfrResult.card_note || '')
+                      .replace('{e}', Number(lfrResult.expected).toLocaleString('en-IN',{minimumFractionDigits:2}))}
+                  </div>
+                )}
+                {lfrResult.method === 'flat_per_litre' && (
+                  <div style={{fontSize:12,color:'var(--warning)',marginBottom:6,lineHeight:1.5}}>
+                    ⚠ {tc('deliv_page.lfr_flat','No known rate card matches this invoice, so it has been spread evenly across the litres. The total is exact; the split between fuels is approximate.')}
+                  </div>
+                )}
+                <button onClick={closeLfr}
+                  style={{width:'100%',padding:'14px',borderRadius:12,border:'none',background:'#16a34a',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginTop:8}}>
+                  {tc('deliv_page.lfr_ok','Done')}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Accounts paid-prompt — one question per invoice, no way to dismiss without
           answering, so the payment status can't be missed (crucial for accounting). */}
       {paidPrompt && (
@@ -520,18 +643,47 @@ export default function DeliveriesPage() {
                 )}
                 {items.length>0 && (
                   <div style={{marginTop:10}}>
-                    <div style={{fontSize:11,color:'var(--text-3)',marginBottom:4}}>
-                      {tc('deliv_page.detected','Detected products — pick one to record:')}
-                      {scanMeta?.confidence && <span> · {tc('deliv_page.confidence','confidence')}: <b>{scanMeta.confidence}</b></span>}
+                    {/* THE STEPPER. This used to be a quiet row of chips and one button
+                        whose label changed — and the owner himself read it as "press the
+                        orange button twice", which means a manager at 6am had no chance.
+                        The steps are now numbered, sized and stated, and the LFR invoice
+                        is shown as the last one so nobody is surprised by it.
+                        Driven by what the INVOICE contains, never a fixed petrol/diesel
+                        pair: Sri Balaji sells premium, Kamala has CNG, and a single-fuel
+                        drop must not show a dead step. */}
+                    <div style={{fontSize:12,fontWeight:700,color:'var(--text-2)',marginBottom:6}}>
+                      {tc('deliv_page.steps_title','This invoice has {n} products — record each one, then the LFR invoice')
+                        .replace('{n}', String(items.length))}
+                      {scanMeta?.confidence && <span style={{fontWeight:400,color:'var(--text-3)'}}> · {tc('deliv_page.confidence','confidence')}: <b>{scanMeta.confidence}</b></span>}
                     </div>
-                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                      {items.map((it,i)=>(
-                        <button type="button" key={i} onClick={()=>selectItem(i)}
-                          className={`badge ${i===activeItem?'badge-info':'badge-gray'}`}
-                          style={{cursor:'pointer',opacity:recorded.includes(i)?0.45:1,padding:'4px 8px'}}>
-                          {recorded.includes(i)?'✓ ':''}{it.fuel_type} · {fmtL(it.gross_volume_ltrs)}L
-                        </button>
-                      ))}
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'stretch'}}>
+                      {items.map((it,i)=>{
+                        const done = recorded.includes(i), here = i===activeItem;
+                        return (
+                          <button type="button" key={i} onClick={()=>selectItem(i)}
+                            style={{display:'flex',alignItems:'center',gap:7,padding:'8px 12px',borderRadius:10,cursor:'pointer',
+                                    border: here ? '2px solid #FF6B00' : '1.5px solid var(--border)',
+                                    background: done ? '#f0fdf4' : here ? '#fff7ed' : 'var(--surface-2)',
+                                    color: done ? '#15803d' : 'var(--text-1)', fontWeight: here?700:600, fontSize:13}}>
+                            <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',fontSize:11,fontWeight:800,
+                                          background: done ? '#16a34a' : here ? '#FF6B00' : 'var(--border)', color: (done||here) ? '#fff' : 'var(--text-3)'}}>
+                              {done ? '✓' : i+1}
+                            </span>
+                            <span style={{textTransform:'capitalize'}}>{String(it.fuel_type||'').replace('_',' ')}</span>
+                            <span style={{color:'var(--text-3)',fontWeight:400}}>{fmtL(it.gross_volume_ltrs)} L</span>
+                          </button>
+                        );
+                      })}
+                      {/* The LFR step. Always shown, never clickable from here — it opens
+                          itself once every product above is recorded. */}
+                      <div style={{display:'flex',alignItems:'center',gap:7,padding:'8px 12px',borderRadius:10,
+                                   border:'1.5px dashed var(--border)',background:'var(--surface-2)',
+                                   color:'var(--text-3)',fontWeight:600,fontSize:13}}>
+                        <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',fontSize:11,fontWeight:800,background:'var(--border)',color:'var(--text-3)'}}>
+                          {items.length+1}
+                        </span>
+                        {tc('deliv_page.step_lfr','LFR invoice')}
+                      </div>
                     </div>
                     <div style={{fontSize:11,color:'var(--warning)',marginTop:8}}>
                       ⚠ {tc('deliv_page.verify_warn','Auto-filled from the scan — verify every field against the paper before you confirm.')}

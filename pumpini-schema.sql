@@ -1739,3 +1739,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.attendant_settlements TO ap
 -- to the fuel invoice. NULL means "not captured", which is not the same as zero.
 ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_amount numeric;
 ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_invoice_no text;
+
+-- ── LFR site category (see migrations/019_lfr_site_category.sql) ──────────────────
+-- Gates the LFR step on Deliveries (only 'A'/'B' outlets see it) and validates an
+-- uploaded LFR invoice against the card that site should be billed on. It NEVER creates
+-- an LFR charge. NULL = unknown = cannot validate, which is NOT the same as 'none'.
+ALTER TABLE public.station_settings ADD COLUMN IF NOT EXISTS lfr_site_category text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='station_settings_lfr_site_category_chk') THEN
+    ALTER TABLE public.station_settings
+      ADD CONSTRAINT station_settings_lfr_site_category_chk
+      CHECK (lfr_site_category IS NULL OR lfr_site_category IN ('A','B','none'));
+  END IF;
+END $$;

@@ -691,7 +691,24 @@
     "paid_q": "Was this delivery paid to the oil company?",
     "paid_yes": "Prepaid — already paid",
     "paid_no": "On credit — pay later",
-    "paid_help": "For your accounts. Prepaid = the money is already with the oil company (deposit / auto-debit). On credit = you will pay later."
+    "paid_help": "For your accounts. Prepaid = the money is already with the oil company (deposit / auto-debit). On credit = you will pay later.",
+    "lfr_q": "Did the oil company also send an LFR invoice?",
+    "lfr_help": "Licence Fee Recovery is a SECOND invoice for the same lift — a GST invoice, charged per KL. It is a real part of what this fuel cost you, so adding it here makes your margin the money you actually keep.",
+    "lfr_amount": "Taxable value (₹) — before GST",
+    "lfr_amount_help": "The taxable amount, not the invoice total — the GST on it is not part of the fuel cost.",
+    "lfr_inv_no": "LFR invoice number (optional)",
+    "lfr_apply": "Add LFR to this delivery's cost",
+    "lfr_applying": "Applying…",
+    "lfr_skip": "No LFR invoice for this lift",
+    "lfr_done": "LFR added to the cost",
+    "lfr_total": "LFR total",
+    "lfr_matched": "Matches a {c}-site rate card ({n}) — the invoice reconciles to ₹{e}.",
+    "lfr_flat": "No known rate card matches this invoice, so it has been spread evenly across the litres. The total is exact; the split between fuels is approximate.",
+    "lfr_ok": "Done",
+    "lfr_need_amount": "Enter the taxable value from the LFR invoice.",
+    "lfr_failed": "Could not apply the LFR invoice.",
+    "steps_title": "This invoice has {n} products — record each one, then the LFR invoice",
+    "step_lfr": "LFR invoice"
   },
   "live_page": {
     "title": "Live Events",
@@ -2524,7 +2541,13 @@
     "accountsOwnerOnly": "Only the outlet owner can switch this on or off.",
     "selfSettle": "Operators settle their own line",
     "selfSettleDesc": "When ON, an operator closes his own line from the Settlement screen. When OFF, only the manager settles him at Shift Close, and an operator who opens Settlement is told so. Manager-led close works either way — this only decides whether the operator may do it himself.",
-    "thNozzleNumInternal": "Internal #"
+    "thNozzleNumInternal": "Internal #",
+    "lfrCategory": "LFR site category",
+    "lfrUnset": "Not set — we'll read the rate off the invoice",
+    "lfrA": "'A' site — oil company owns the land and the equipment",
+    "lfrB": "'B' site — you own the land and building, they own the equipment",
+    "lfrNone": "No LFR — you own the land and the equipment",
+    "lfrHelp": "Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own."
   },
   "sstart": {
     "dashboard": "Dashboard",

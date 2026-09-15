@@ -471,6 +471,10 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
       invoice_prefix: info.invoice_prefix||'INV',
       invoice_fy:     info.invoice_fy||'',
       invoice_seq:    info.invoice_seq||'',
+      // '' = not set = the LFR step stays hidden. Deliberately NOT defaulted to 'none':
+      // that would assert this outlet pays no LFR, which is a claim about his business
+      // we have no standing to make for him.
+      lfr_site_category: info.lfr_site_category||'',
     });
   },[info?.name]);
 
@@ -547,6 +551,25 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
           <label className="label">{tc('setp.pan', 'PAN')}</label>
           <input className="input" placeholder="ABCDE1234F" value={form.pan||''}
             onChange={e=>f('pan',e.target.value.toUpperCase())} maxLength={10}/>
+        </div>
+        {/* LFR site category — VALIDATION ONLY. It gates nothing: every outlet sees the
+            LFR step on Deliveries whether this is set or not, because the button is what
+            prompts an upload from outlets nobody has ever asked before. Setting this just
+            lets Pumpini check an uploaded invoice against the rate this site should be
+            billed on. It never adds a charge — LFR reaches the cost only when the oil
+            company's own invoice is uploaded, and only for the amount IT states. */}
+        <div style={{marginBottom:'0.75rem'}}>
+          <label className="label">{tc('setp.lfrCategory', 'LFR site category')}</label>
+          <select className="input" value={form.lfr_site_category||''}
+            onChange={e=>f('lfr_site_category', e.target.value)}>
+            <option value="">{tc('setp.lfrUnset', "Not set — we'll read the rate off the invoice")}</option>
+            <option value="A">{tc('setp.lfrA', "'A' site — oil company owns the land and the equipment")}</option>
+            <option value="B">{tc('setp.lfrB', "'B' site — you own the land and building, they own the equipment")}</option>
+            <option value="none">{tc('setp.lfrNone', 'No LFR — you own the land and the equipment')}</option>
+          </select>
+          <div style={{fontSize:11.5,color:'var(--text-3)',marginTop:4,lineHeight:1.5}}>
+            {tc('setp.lfrHelp', 'Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own.')}
+          </div>
         </div>
         <div style={{marginBottom:'0.75rem'}}>
           <label className="label">{tc('setp.ownerWhatsapp', 'Owner WhatsApp (10 digits)')}</label>
