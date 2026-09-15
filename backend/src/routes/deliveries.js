@@ -440,7 +440,12 @@ router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }
     // instead of being asked of the manager or kept as a setting he could get wrong. An
     // explicit rates_per_kl from the caller still wins, for an outlet on a card we do not
     // know. Nothing matched → flat per-litre, and the response says so.
-    const card = req.body.rates_per_kl ? null : matchCard(rows, total);
+    // The outlet's OMC decides only whether a matched card is VERIFIED for it. Our cards
+    // are checked against BPCL alone; four of the five real outlets are HPCL or IOC, so a
+    // match there is reported as inferred, never as known.
+    const { rows: omcRow } = await pool.query('SELECT oil_company FROM stations WHERE id=$1', [station_id]);
+    const oilCompany = omcRow[0]?.oil_company || null;
+    const card = req.body.rates_per_kl ? null : matchCard(rows, total, oilCompany);
     const rates = req.body.rates_per_kl || (card && card.rates_per_kl) || null;
     const split = apportionLfr(rows, total, rates);
 
@@ -460,6 +465,11 @@ router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }
       card_note:     card ? card.note : null,
       expected:      card ? card.expected : null,
       delta:         card ? card.delta : null,
+      oil_company:   oilCompany,
+      // FALSE when the card reconciles but has never been checked against THIS outlet's
+      // oil company. The split still uses it — the arithmetic is the evidence — but the
+      // screen must say inferred, not known.
+      card_verified: card ? card.verified : null,
       split,
     });
   } catch (err) { next(err); }

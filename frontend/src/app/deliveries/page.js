@@ -557,6 +557,16 @@ export default function DeliveriesPage() {
                       .replace('{e}', Number(lfrResult.expected).toLocaleString('en-IN',{minimumFractionDigits:2}))}
                   </div>
                 )}
+                {/* The rate card is checked against BPCL only. On an HPCL or IOC outlet a
+                    match is still arithmetic that works — but we have never seen that
+                    company's card, so it is INFERRED, and saying otherwise would be the
+                    made-up confidence this repo has been bitten by before. */}
+                {lfrResult.site_category && lfrResult.card_verified === false && (
+                  <div style={{fontSize:12,color:'var(--warning)',marginBottom:6,lineHeight:1.5}}>
+                    ⚠ {tc('deliv_page.lfr_unverified','These rates are confirmed for BPCL only — this outlet is {o}. The figures reconcile with your invoice, so the split is sound, but treat the rate card itself as inferred until more {o} invoices confirm it.')
+                        .replace(/\{o\}/g, lfrResult.oil_company || tc('deliv_page.lfr_other_omc','another oil company'))}
+                  </div>
+                )}
                 {lfrResult.method === 'flat_per_litre' && (
                   <div style={{fontSize:12,color:'var(--warning)',marginBottom:6,lineHeight:1.5}}>
                     ⚠ {tc('deliv_page.lfr_flat','No known rate card matches this invoice, so it has been spread evenly across the litres. The total is exact; the split between fuels is approximate.')}

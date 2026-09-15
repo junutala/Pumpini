@@ -708,7 +708,9 @@
     "lfr_need_amount": "Enter the taxable value from the LFR invoice.",
     "lfr_failed": "Could not apply the LFR invoice.",
     "steps_title": "This invoice has {n} products — record each one, then the LFR invoice",
-    "step_lfr": "LFR invoice"
+    "step_lfr": "LFR invoice",
+    "lfr_unverified": "These rates are confirmed for BPCL only — this outlet is {o}. The figures reconcile with your invoice, so the split is sound, but treat the rate card itself as inferred until more {o} invoices confirm it.",
+    "lfr_other_omc": "another oil company"
   },
   "live_page": {
     "title": "Live Events",

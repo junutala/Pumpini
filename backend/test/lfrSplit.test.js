@@ -138,3 +138,30 @@ test('the inferred card, fed to the split, reproduces the OMC line by line', () 
   assert.strictEqual(split.method, 'per_fuel_rate');
   assert.deepStrictEqual(split.map(s => s.lfr), [2956.64, 1774.00]);
 });
+
+// ── The card is verified for BPCL only ────────────────────────────────────────
+// Of the five real outlets only SBR Energies is BPCL: Sri Balaji, Highway and Adhoc are
+// HPCL, Kamala is IOC. Owner, 15-Sep: "this rate is for BPCL, but we do not know if the
+// same rate applies to IOCL. So until we get hold of the invoice, we will never know."
+// A match on an unverified OMC is still made — the arithmetic is the evidence — but it
+// must come back flagged, so the screen can say inferred rather than known.
+test('a BPCL match is verified', () => {
+  assert.strictEqual(matchCard(BPCL_ROWS, 4730.64, 'BPCL').verified, true);
+});
+
+test('the same match on HPCL or IOC is NOT verified', () => {
+  for (const omc of ['HPCL', 'IOC', 'IOCL', 'Indian Oil', null]) {
+    const m = matchCard(BPCL_ROWS, 4730.64, omc);
+    assert.ok(m, `${omc} must still match — the arithmetic is the evidence`);
+    assert.strictEqual(m.verified, false, `${omc} must not be reported as verified`);
+  }
+});
+
+test('oil-company spellings normalise, so IOC and IOCL are one company', () => {
+  const { normalizeOmc } = require('../src/config/lfrRates');
+  assert.strictEqual(normalizeOmc('IOC'), 'IOC');
+  assert.strictEqual(normalizeOmc('IOCL'), 'IOC');
+  assert.strictEqual(normalizeOmc('indian oil'), 'IOC');
+  assert.strictEqual(normalizeOmc('Bharat Petroleum'), 'BPCL');
+  assert.strictEqual(normalizeOmc('Hindustan Petroleum'), 'HPCL');
+});
