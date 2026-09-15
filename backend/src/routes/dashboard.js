@@ -6,6 +6,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia, requireCorporateAccess } = require('../middleware/stationAccess');
 const { computeShiftReco } = require('./tankReco');   // live per-tank reconciliation for the wet-stock tile
 const margins = require('../services/marginService'); // the ONE writer for margin economics
+const { hasColumn } = require('../db/hasColumn');
 
 // GET /api/dashboard/owner?station_id=&date=
 router.get('/owner', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
@@ -104,10 +105,15 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
     let ai_briefing = [];
     try {
       const monthStart = date.slice(0, 8) + '01';
+      // Column-tolerant: ships before the owner runs 018.
+      const lfrPerLtr = (await hasColumn('fuel_deliveries', 'lfr_amount'))
+        ? 'COALESCE(lfr_amount, 0) / NULLIF(gross_volume_ltrs, 0)' : '0';
       const [prices, buyRates, trail, recv, lastSet, wet] = await Promise.all([
         pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, price FROM fuel_prices
                     WHERE station_id=$1 ORDER BY fuel_type, effective_from DESC`, [station_id]),
-        pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, rate_per_ltr FROM fuel_deliveries
+        pool.query(`SELECT DISTINCT ON (fuel_type) fuel_type, rate_per_ltr,
+                           ${lfrPerLtr} AS lfr_per_ltr
+                    FROM fuel_deliveries
                     WHERE station_id=$1 AND rate_per_ltr IS NOT NULL
                     ORDER BY fuel_type, received_at DESC NULLS LAST`, [station_id]),
         pool.query(`SELECT n.fuel_type, COALESCE(SUM(de.quantity_ltrs),0)/7.0 AS avg_daily
@@ -133,7 +139,16 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       ]);
 
       const sell = {}; prices.rows.forEach(r => { sell[r.fuel_type] = parseFloat(r.price); });
-      const own  = {}; buyRates.rows.forEach(r => { own[r.fuel_type] = parseFloat(r.rate_per_ltr); });
+      // Buy rate = the delivery's own per-litre rate PLUS the LFR that delivery was
+      // billed, spread over its litres. LFR is a real per-litre cost of getting that
+      // fuel onto the forecourt (per KL lifted, on the OMC's separate invoice), so a
+      // margin computed without it is money the owner never banks.
+      const own = {}, lfrIn = {};
+      buyRates.rows.forEach(r => {
+        const lfr = parseFloat(r.lfr_per_ltr || 0) || 0;
+        own[r.fuel_type]   = parseFloat(r.rate_per_ltr) + lfr;
+        lfrIn[r.fuel_type] = lfr > 0;
+      });
       const ltrsByFuel = {}, amtByFuel = {};
       sales.rows.forEach(r => {
         const l = parseFloat(r.total_ltrs || 0);
@@ -171,7 +186,11 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
       // `basis` is now per product (delivery_rate / borrowed_rate / commission), so
       // the tile can say WHY a figure is what it is instead of asserting one blanket
       // source that was never true for CNG.
+      // Strict: only claim the figure is net of LFR when EVERY fuel that carries a cost
+      // basis actually has LFR in it. Otherwise the "before LFR" caption stays.
+      const costedFuels = Object.keys(ltrsByFuel).filter(ft => own[ft] != null);
       margin = { amount: m.amount, pct: m.pct, basis: 'per_product', by_fuel: m.by_fuel,
+                 lfr_in_cost: costedFuels.length > 0 && costedFuels.every(ft => lfrIn[ft] === true),
                  prices: margins.priceRows(Object.keys(rates), rates) };
 
       const avgDaily = {}; trail.rows.forEach(r => { avgDaily[r.fuel_type] = parseFloat(r.avg_daily); });
@@ -625,6 +644,19 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
     }
     const { station_id, date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) } = req.query;
 
+    // Landed cost = fuel invoice + freight + LFR. Each arrives on its OWN document, so
+    // none of them is inside total_value: freight from the transporter, LFR on the OMC's
+    // separate GST invoice (SAC 997212, charged per KL lifted). The extras are added
+    // OUTSIDE the COALESCE — they used to sit inside the fallback arm, which silently
+    // dropped them whenever total_value was present (i.e. almost always). That never
+    // moved a number because freight is 0 on all 187 deliveries in production, but LFR
+    // will NOT be zero, so the placement matters now.
+    // Column-tolerant: this ships before the owner runs 018.
+    const lfrCol = (await hasColumn('fuel_deliveries', 'lfr_amount'))
+      ? 'COALESCE(fd.lfr_amount, 0)' : '0';
+    const LANDED_COST = `COALESCE(fd.total_value, fd.rate_per_ltr * fd.gross_volume_ltrs)
+                         + COALESCE(fd.freight, 0) + ${lfrCol}`;
+
     // Dry-stock line cost: weighted average of costed stock receipts for the
     // product, falling back to the catalogue buying price (0 = not set).
     const DRY_COST_LATERAL = `
@@ -658,12 +690,12 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
 
       // Volume-weighted landed cost over recent deliveries
       pool.query(`
-        SELECT fuel_type, SUM(cost) / NULLIF(SUM(vol), 0) AS wac, SUM(vol) AS vol
+        SELECT fuel_type, SUM(cost) / NULLIF(SUM(vol), 0) AS wac, SUM(vol) AS vol,
+               SUM(lfr) AS lfr
         FROM (
           SELECT COALESCE(t.fuel_type, fd.fuel_type) AS fuel_type,
                  COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs) AS vol,
-                 COALESCE(fd.total_value,
-                          fd.rate_per_ltr * fd.gross_volume_ltrs + COALESCE(fd.freight, 0)) AS cost
+                 ${LANDED_COST} AS cost, ${lfrCol} AS lfr
           FROM fuel_deliveries fd
           LEFT JOIN tanks t ON t.id = fd.tank_id
           WHERE fd.station_id = $1
@@ -674,12 +706,11 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
 
       // Fallback: most recent delivery that carried a cost, regardless of age
       pool.query(`
-        SELECT DISTINCT ON (fuel_type) fuel_type, cost / vol AS unit_cost
+        SELECT DISTINCT ON (fuel_type) fuel_type, cost / vol AS unit_cost, lfr
         FROM (
           SELECT COALESCE(t.fuel_type, fd.fuel_type) AS fuel_type, fd.received_at,
                  COALESCE(fd.net_volume_ltrs, fd.gross_volume_ltrs) AS vol,
-                 COALESCE(fd.total_value,
-                          fd.rate_per_ltr * fd.gross_volume_ltrs + COALESCE(fd.freight, 0)) AS cost
+                 ${LANDED_COST} AS cost, ${lfrCol} AS lfr
           FROM fuel_deliveries fd
           LEFT JOIN tanks t ON t.id = fd.tank_id
           WHERE fd.station_id = $1
@@ -706,8 +737,11 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
     ]);
 
     const wacMap = {};
-    latestCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.unit_cost), source: 'latest' }; });
-    recentCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.wac), source: 'recent' }; });
+    // `lfr` is the LFR actually carried by the deliveries behind this basis. It decides
+    // whether the dashboard may call the margin net of LFR — if it is 0, the caption has
+    // to keep saying the figure is BEFORE LFR, or we would be captioning a lie.
+    latestCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.unit_cost), source: 'latest', lfr: parseFloat(r.lfr || 0) }; });
+    recentCost.rows.forEach(r => { wacMap[r.fuel_type] = { wac: parseFloat(r.wac), source: 'recent', lfr: parseFloat(r.lfr || 0) }; });
 
     const fuels = sales.rows.map(r => {
       const litres  = parseFloat(r.litres || 0);
@@ -726,6 +760,7 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
         cost,
         margin,
         margin_per_ltr: c && litres > 0 ? +((revenue - cost) / litres).toFixed(2) : null,
+        lfr_in_cost:    c ? c.lfr > 0 : null,
       };
     });
 
@@ -757,6 +792,11 @@ router.get('/margin', authenticate, authorize('owner'), requireStationAccess({ r
         litres:      fuels.reduce((s, f) => s + f.litres, 0),
       },
       missing_cost: fuels.filter(f => f.wac == null).map(f => f.fuel_type),
+      // TRUE only when EVERY costed fuel's basis already carries LFR. Mixed or absent →
+      // false, and the tile keeps its "before LFR" caption. Deliberately strict: telling
+      // the owner a figure is net of LFR when one fuel's is not would overstate nothing
+      // but would make him trust a number he should still be questioning.
+      lfr_in_cost: costed.length > 0 && costed.every(f => f.lfr_in_cost === true),
     });
   } catch (err) { next(err); }
 });

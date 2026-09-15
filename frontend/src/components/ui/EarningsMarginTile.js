@@ -100,6 +100,20 @@ export default function EarningsMarginTile({ stationId, maxRows = 10 }) {
             {tc('margin_tile.on_revenue', 'on revenue')} ₹{fmt(margin.totals.revenue)} · {fmt(margin.totals.litres)} L
             {showDry && <> · {tc('margin_tile.fuel', 'Fuel')} ₹{fmt(margin.totals.fuel_margin)} + {tc('margin_tile.dry', 'Dry stock')} ₹{fmt(margin.totals.dry_margin)}</>}
           </div>
+          {/* Sell − landed cost. Licence Fee Recovery arrives on the OMC's SEPARATE
+              invoice, per KL lifted (~₹0.44/L MS, ₹0.37/L HSD at an 'A' site — 10-17% of
+              the margin above). When the deliveries behind this basis carry their LFR the
+              figure IS net of it, and this caption MUST disappear: a note saying "before
+              LFR" on a number that already includes it is worse than no note at all.
+              `lfr_in_cost` comes from the margin endpoint, which sets it only when EVERY
+              costed fuel's basis carries LFR. See docs/opentasks.md item 5. */}
+          {hasMargin && !margin.lfr_in_cost && (
+            <div title={tc('margin_tile.lfr_note',
+                           'Licence Fee Recovery is billed separately by the oil company, per KL lifted, and is not deducted here.')}
+                 style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4, fontStyle: 'italic', cursor: 'help' }}>
+              {tc('margin_tile.before_lfr', 'Before LFR and other oil-company recoveries')}
+            </div>
+          )}
         </div>
 
         {margin.fuels.map(f => (

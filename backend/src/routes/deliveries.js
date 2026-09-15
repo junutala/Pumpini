@@ -350,6 +350,131 @@ router.patch('/mark-paid', authenticate, requireStationAccess({ required: true }
   } catch (err) { next(err); }
 });
 
+// Split an LFR invoice across the delivery rows it covers.
+//
+// 🔴 NOT BY VOLUME ALONE. The OMC charges a DIFFERENT rate per fuel — on an 'A' site
+// ₹443.50/KL for MS and ₹369.58/KL for HSD — so a flat per-litre split gets the invoice
+// TOTAL right and every per-fuel figure wrong. On the real BPCL invoice (4 KL MS + 8 KL
+// HSD, ₹4,730.64) a flat split charges every litre ₹0.3942, when the truth is ₹0.4435
+// on petrol and ₹0.3696 on diesel. That is ~1.3% of petrol margin handed to diesel, in
+// the same direction every single time. A unit test caught this; by-volume was the first
+// thing written here and it was wrong.
+//
+// The LFR invoice itself does NOT break its total down by fuel — it bills one line,
+// "LFR for CC (MS/HSD)" — so the per-fuel rates have to come from the caller
+// (`ratesPerKl`, the outlet's site-category card, owner-settable and correctable).
+// They are never hardcoded in here, and they are always CHECKED: the caller compares
+// Σ(rate × KL) against the invoice total, so a stale card or a mis-billed invoice shows
+// up instead of hiding.
+//
+// With no rates known we fall back to a flat per-litre split and SAY SO (`method`), so
+// the caller can tell the owner the attribution is approximate rather than implying a
+// precision we do not have.
+//
+// Rounds to 2dp, and the LAST row absorbs the remainder so the parts sum to the invoice
+// EXACTLY. A split that does not add up is one a manager stops trusting the moment he
+// totals the column himself — and he will, because we are about to show him the working.
+//
+// Exported for the tests: the rule is pinned by testing THIS function, not a copy of it.
+function apportionLfr(rows, total, ratesPerKl = null) {
+  const kl = r => (Number(r.gross_volume_ltrs) || 0) / 1000;
+  const rateOf = r => (ratesPerKl && Number(ratesPerKl[r.fuel_type]) > 0)
+    ? Number(ratesPerKl[r.fuel_type]) : null;
+
+  // Weight by rate × KL when we know every row's rate; otherwise by volume alone.
+  const haveAllRates = rows.length > 0 && rows.every(r => rateOf(r) != null);
+  const method = haveAllRates ? 'per_fuel_rate' : 'flat_per_litre';
+  const weightOf = r => haveAllRates ? rateOf(r) * kl(r) : (Number(r.gross_volume_ltrs) || 0);
+
+  const totalWeight = rows.reduce((s, r) => s + weightOf(r), 0);
+  let running = 0;
+  const split = rows.map((r, i) => {
+    const share = i === rows.length - 1
+      ? +(total - running).toFixed(2)
+      : totalWeight > 0 ? +((total * weightOf(r)) / totalWeight).toFixed(2) : 0;
+    running = +(running + share).toFixed(2);
+    return { id: r.id, fuel_type: r.fuel_type, ltrs: Number(r.gross_volume_ltrs) || 0, lfr: share };
+  });
+  split.method = method;
+  return split;
+}
+
+// PATCH /api/deliveries/apply-lfr { station_id, ids:[], lfr_total, lfr_invoice_no }
+//
+// The OMC bills a lift on TWO invoices: the fuel (VAT, outside GST) and a separate GST
+// service invoice for Licence Fee Recovery (SAC 997212), charged PER KL LIFTED. So LFR
+// is a genuine per-litre cost of that fuel, and it is apportioned across the rows this
+// invoice created BY VOLUME — which is exactly how it was charged, not an allocation we
+// invented.
+//
+// It is a PATCH and not part of the save because a multi-product invoice is recorded one
+// product at a time (each chip is its own POST), so the LFR can only be split once every
+// fuel line of that invoice exists. Mirrors /mark-paid, which post-sets payment status
+// the same way, rather than opening a second delivery-writing path.
+//
+// Returns the per-row working. A total computed from parts must return the parts
+// (CLAUDE.md, 29-Aug) — the manager has to be able to check it against the paper.
+router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }), requirePerm('deliveries.view'), async (req, res, next) => {
+  try {
+    const { station_id, ids, lfr_total, lfr_invoice_no } = req.body;
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids are required' });
+    const total = Number(lfr_total);
+    if (!Number.isFinite(total) || total < 0) return res.status(400).json({ error: 'lfr_total must be a non-negative number' });
+    if (!(await hasColumn('fuel_deliveries', 'lfr_amount'))) {
+      return res.json({ ok: true, updated: 0, note: 'lfr_amount column not migrated yet' });
+    }
+
+    // Station-scoped read first: never apportion across another outlet's rows.
+    const { rows } = await pool.query(
+      `SELECT id, fuel_type, gross_volume_ltrs
+         FROM fuel_deliveries
+        WHERE id = ANY($1::uuid[]) AND station_id = $2
+        ORDER BY gross_volume_ltrs DESC, id`, [ids, station_id]);
+    if (!rows.length) return res.status(404).json({ error: 'No deliveries of this outlet matched those ids.' });
+
+    const totalLtrs = rows.reduce((s, r) => s + (Number(r.gross_volume_ltrs) || 0), 0);
+    if (!(totalLtrs > 0)) return res.status(400).json({ error: 'Those deliveries carry no volume to apportion across.' });
+
+    // Which rate card explains THIS invoice? Given the volumes and the total the OMC
+    // actually billed, only one reconciles — so the site category is read off the paper
+    // instead of being asked of the manager or kept as a setting he could get wrong. An
+    // explicit rates_per_kl from the caller still wins, for an outlet on a card we do not
+    // know. Nothing matched → flat per-litre, and the response says so.
+    // The outlet's OMC decides only whether a matched card is VERIFIED for it. Our cards
+    // are checked against BPCL alone; four of the five real outlets are HPCL or IOC, so a
+    // match there is reported as inferred, never as known.
+    const { rows: omcRow } = await pool.query('SELECT oil_company FROM stations WHERE id=$1', [station_id]);
+    const oilCompany = omcRow[0]?.oil_company || null;
+    const card = req.body.rates_per_kl ? null : matchCard(rows, total, oilCompany);
+    const rates = req.body.rates_per_kl || (card && card.rates_per_kl) || null;
+    const split = apportionLfr(rows, total, rates);
+
+    const { rowCount } = await pool.query(
+      `UPDATE fuel_deliveries fd
+          SET lfr_amount = v.amt, lfr_invoice_no = $3
+         FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::numeric[]) AS amt) v
+        WHERE fd.id = v.id AND fd.station_id = $4`,
+      [split.map(s => s.id), split.map(s => s.lfr), lfr_invoice_no || null, station_id]);
+
+    res.json({
+      ok: true, updated: rowCount, total_ltrs: totalLtrs, lfr_total: total,
+      method: split.method,
+      // What we worked out about the outlet, and how well it fits the paper. Shown to the
+      // manager rather than kept to ourselves — he is the one who can tell us we are wrong.
+      site_category: card ? card.category : null,
+      card_note:     card ? card.note : null,
+      expected:      card ? card.expected : null,
+      delta:         card ? card.delta : null,
+      oil_company:   oilCompany,
+      // FALSE when the card reconciles but has never been checked against THIS outlet's
+      // oil company. The split still uses it — the arithmetic is the evidence — but the
+      // screen must say inferred, not known.
+      card_verified: card ? card.verified : null,
+      split,
+    });
+  } catch (err) { next(err); }
+});
+
 // PATCH /api/deliveries/:id/verify
 router.patch('/:id/verify', authenticate, requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'), requirePerm('deliveries.view'), async (req, res, next) => {
   try {
@@ -543,3 +668,7 @@ router.post('/parse-invoice', authenticate, requireStationAccess({ required: tru
 });
 
 module.exports = router;
+
+// Exported for the unit tests, the same way dipstick.js exposes withGaugeChecks: the
+// test pins the REAL apportionment, not a second copy of the rule that can drift.
+module.exports.apportionLfr = apportionLfr;

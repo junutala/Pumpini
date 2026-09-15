@@ -124,3 +124,115 @@ the photograph is kept and the numbers discarded. Storing it is step one.
 Two conditions: the manager must confirm the genesis figures against the slip in his
 hand (a wrong reference rejects every honest slip afterwards), and a meter reset or
 pump replacement must void the reference and force a fresh genesis scan.
+
+---
+
+## 5. LFR — the per-litre charge that never reaches the margin
+
+**Raised 14-Sep-2026 by a prospective BPCL dealer (SBR Energies), who asked why
+Pumpini captures only one of the two invoices his OMC sends him.**
+
+### What LFR is, with the arithmetic
+
+Licence Fee Recovery is the OMC recovering its investment in the outlet's assets.
+It arrives as a **second, separate invoice on the same day as the fuel invoice**,
+and it is a different tax regime entirely: fuel is outside GST and bills under
+VAT/CST, LFR is a GST service invoice under **SAC 997212** (leasing of
+non-residential property), item code `4395 - LFR Recovery`.
+
+It is charged **per KL lifted**, at a rate set by the outlet's site category:
+
+| | Who owns what | MS | HSD | GST |
+|---|---|---|---|---|
+| **'A' site** | OMC owns or leases the land AND the equipment | ₹443.50/KL | ₹369.58/KL | 18% |
+| **'B' site** | Dealer owns land + building; **OMC still owns the equipment** | ₹184.34/KL | ₹153.62/KL | 28% |
+
+A dealer who owns his own site still pays LFR — less, because he is renting only
+the equipment. **LFR follows the equipment, not the land.**
+
+**Verified against a real invoice** (BPCL `FIIN112710061073`, 07-Sep-2026, against
+fuel invoice `1303629797` of the same date):
+
+    MS   4 KL × 443.50  =  1,774.00
+    HSD  8 KL × 369.58  =  2,956.64
+                            ────────
+         taxable        =  4,730.64     invoice: 4,730.64   ✔ exact
+         + 18% GST      =  5,582.16     invoice: 5,582.16   ✔ exact
+
+The A/B gap also implies the split the OMC used: **58.4% of an A-site rate is
+land, 41.6% equipment — identical on both fuels, to the decimal.** That is a
+designed apportionment, not a coincidence.
+
+### Why it matters: the margin we show is overstated
+
+LFR is ₹0.4435/L on petrol and ₹0.3696/L on diesel at an A site. Against the real
+margins in production on 14-Sep:
+
+| | LFR/L | margin/L | LFR as share of margin |
+|---|---|---|---|
+| Kamala petrol | 0.4435 | 4.12 | **10.8%** |
+| Highway petrol | 0.4435 | 3.59 | **12.4%** |
+| Sri Balaji diesel | 0.3696 | 3.61 | **10.2%** |
+| Highway diesel | 0.3696 | 2.16 | **17.1%** |
+
+Owner, 14-Sep: *"the owner will be counting a profit that does not show up in his
+bank account."* He is right, and the error is **systematic and always in the same
+direction** — the worst kind.
+
+### 🔴 DO NOT HARDCODE THE RATE CARD
+
+The rates above came from secondary sources and were corroborated against **one
+invoice on one date from one OMC**. OMCs revise LFR. A constant in our code that
+falls out of date shows a wrong margin silently, forever — worse than showing
+gross and saying so.
+
+**Derive the rate from the outlet's own LFR invoice**: `taxable ÷ KL lifted` gives
+the ₹/KL actually charged. It is his data, it self-corrects on revision, it is
+auditable against the paper, and it needs no rate table at all. Use the published
+card only as a *validation check* — flag an invoice whose implied rate is far off
+the card, do not substitute for it.
+
+### Do NOT fold it into `rate_per_ltr`
+
+`rate_per_ltr` is defined at `deliveries.js:451` as the all-inclusive landed cost
+from the fuel invoice, and it must stay reconcilable to that document. LFR is
+separately invoiced. Show it as **its own line**, per the show-the-working rule:
+
+    selling price      115.09
+  − landed cost        111.50
+  − LFR                  0.4435
+                      ─────────
+    true margin          3.15      (not 3.59)
+
+A margin that silently drops with no visible cause is a margin the owner stops
+trusting.
+
+### Blockers, in order
+
+1. **No outlet's site category is stored.** Not A, not B, nowhere in the schema.
+   Without it nothing can be computed, and guessing is a back-solved dip. One
+   nullable column on `station_settings`, alongside `oil_company`.
+2. **Not every outlet pays LFR at all.** A dealer owning land *and* equipment
+   pays none. Deducting universally would understate his margin. The column must
+   allow "none".
+3. **Only BPCL is verified.** HPCL and IOCL rates and site-category naming are
+   unchecked.
+4. **🔴 The capture path already exists and has never been used.**
+   `POST /api/accounts/scan-bill` → `expenseService.createExpense` already takes a
+   vendor, `gst_amount`, `invoice_number` and the document, and posts a balanced
+   entry. `expenses` has **zero rows across all four real outlets**;
+   `accounts_enabled` is true at exactly one (Sri Balaji) and even there nothing
+   has been entered. **Do not build a second "tagged invoice" route beside it** —
+   that is the cardinal rule's exact failure mode.
+
+**So the first step is capture, not display.** Put a real LFR invoice through the
+existing bill scanner and see what it extracts. A margin deduction computed from
+data nobody has captured is a number we invented.
+
+### Open question for the owner's CA, not for us
+
+GST on LFR is likely **cost, not credit**. Petrol and diesel are non-taxable
+supplies, so under **s.17(2) CGST** input credit is restricted to the share
+attributable to taxable supplies — a pump that is overwhelmingly fuel can claim
+almost none of it. That decides whether `gst_amount` posts to `input_gst` or is
+added to the expense. Not our call.

@@ -265,6 +265,36 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
       }
     }
 
+    // LFR site category — 'A' / 'B' / 'none'. Written through the SAME settings endpoint
+    // (the cardinal rule) and guarded separately for the same reason invoice_fy is.
+    //
+    // 🔴 IT GATES NOTHING AND IT NEVER CREATES A CHARGE. Every outlet sees the LFR step
+    // whether this is set or not — the button is there to PROMPT an upload from three
+    // outlets nobody ever asked for an LFR invoice before. This column only says which
+    // rate card to check an uploaded invoice against; unset simply means we validate
+    // against whatever the invoice itself implies instead of a stored expectation.
+    //
+    // '' from a <select> means "clear it back to unknown", which is why '' maps to NULL
+    // rather than being COALESCEd away — unknown has to be reachable again, or a wrong
+    // pick would be permanent.
+    const { lfr_site_category } = req.body;
+    if (lfr_site_category !== undefined) {
+      const v = (lfr_site_category === '' || lfr_site_category === null) ? null
+              : String(lfr_site_category).trim();
+      if (v !== null && !['A', 'B', 'none'].includes(v)) {
+        return res.status(400).json({ error: "lfr_site_category must be 'A', 'B' or 'none'." });
+      }
+      try {
+        const { rows: upd } = await pool.query(
+          `UPDATE station_settings SET lfr_site_category = $2, updated_at = NOW()
+            WHERE station_id = $1 RETURNING *`, [req.params.id, v]);
+        if (upd.length) rows[0] = upd[0];
+      } catch (e) {
+        if (e.code !== '42703') throw e;
+        try { require('../utils/logger').warn('lfr_site_category not migrated yet — skipped'); } catch { /* noop */ }
+      }
+    }
+
     // The outlet's settlement policy, written through the SAME settings endpoint
     // rather than a route of its own — the cardinal rule. Guarded separately for the
     // same reason invoice_fy is: this code deploys before the owner runs the DDL, and
@@ -541,6 +571,12 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
     const hubSpokesCol = (await hasHubSpokesFlag())
       ? ', COALESCE(ss.hub_spokes_migration_enabled, FALSE) AS hub_spokes_migration_enabled'
       : ', FALSE AS hub_spokes_migration_enabled';
+    // NULL when the column is absent: an outlet that predates it reads as "category
+    // unknown", which hides the LFR step entirely — the safe default, and what makes
+    // shipping this before the DDL harmless. Unknown is NOT 'none': 'none' asserts the
+    // outlet pays no LFR, which is a claim we have no right to make on its behalf.
+    const lfrCatCol = (await hasColumn('station_settings', 'lfr_site_category'))
+      ? ', ss.lfr_site_category' : ', NULL::text AS lfr_site_category';
     const { rows } = await pool.query(
       `SELECT s.*, ss.gstn, ss.pan, ss.owner_whatsapp, ss.invoice_prefix, ss.invoice_seq,
               ss.latitude, ss.longitude, ss.geo_fence_radius, ss.geo_fence_enabled,
@@ -554,6 +590,7 @@ router.get('/:id/settings', authenticate, requireStationId('id'), async (req, re
               ${accountsCol}
               ${attendantLedCol}
               ${hubSpokesCol}
+              ${lfrCatCol}
        FROM stations s
        LEFT JOIN station_settings ss ON ss.station_id=s.id
        WHERE s.id=$1`, [req.params.id]
