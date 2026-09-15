@@ -4,7 +4,7 @@ const { readImageAsJson } = require('../services/visionOcr');
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess } = require('../middleware/stationAccess');
-const { dipToVolume } = require('../lib/calibration');
+const { dipToVolume, shellVolume } = require('../lib/calibration');
 const artifacts = require('../services/artifactService');
 const openings = require('../services/openingService');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -116,15 +116,28 @@ router.post('/', authenticate, requireStationAccess({ required: true }), async (
     // a tank filled to its nameplate can gauge a little over on a warm afternoon,
     // and refusing a manager at 6am over 0.4% would be the wrong trade. It is small
     // enough that no digit error survives it.
+    //
+    // 🔴 THE CEILING IS THE SHELL, NOT THE NAMEPLATE (owner-set 15-Sep-2026). Every
+    // standard tank holds more than its name — BPCL's own catalogue runs +4% to +9%, and
+    // their "45 KL" is 48,574.77 L. Checking against the nameplate REFUSED READINGS THAT
+    // WERE TRUE: a full 45 KL gauges near 48,500 and this returned "a tank cannot hold
+    // more than its capacity", telling the manager to re-read a gauge that was right.
+    // The shell comes from the calibration chart's geometry, which is already joined
+    // above. With no chart we fall back to the nameplate — the old behaviour, and still
+    // far better than no ceiling at all.
     const CAPACITY_TOLERANCE = 1.02;
-    if (chart && chart.capacity_ltrs != null && volume_ltrs != null) {
-      const cap = Number(chart.capacity_ltrs);
+    const shell = shellVolume(chart && chart.diameter_cm, chart && chart.length_cm);
+    const ceiling = shell != null ? shell
+                  : (chart && chart.capacity_ltrs != null ? Number(chart.capacity_ltrs) : null);
+    if (ceiling != null && volume_ltrs != null) {
+      const cap = ceiling;
       const vol = Number(volume_ltrs);
       if (Number.isFinite(cap) && cap > 0 && Number.isFinite(vol) && vol > cap * CAPACITY_TOLERANCE) {
         return res.status(400).json({
-          error: `That reading is ${Math.round(vol).toLocaleString('en-IN')} L for a tank installed at `
-               + `${Math.round(cap).toLocaleString('en-IN')} L. A tank cannot hold more than its capacity — `
-               + `re-read the gauge, or correct the capacity in Settings if the tank was changed.`,
+          error: `That reading is ${Math.round(vol).toLocaleString('en-IN')} L for a tank that holds `
+               + `${Math.round(cap).toLocaleString('en-IN')} L${shell != null ? ' (from its calibration chart)' : ''}. `
+               + `A tank cannot hold more than its capacity — re-read the gauge, or correct the tank in Settings `
+               + `if it was changed.`,
           volume_ltrs: vol, capacity_ltrs: cap, tank_number: chart.tank_number,
         });
       }
