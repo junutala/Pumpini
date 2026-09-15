@@ -8,6 +8,7 @@ const router = require('express').Router();
 // ONE COPY OF THE WET-STOCK SUM, shared with the Flow v2 recon. Different windows
 // (a shift, a date range, or two ATG readings), same arithmetic — see lib/varianceMath.
 const { reconcileTank } = require('../lib/varianceMath');
+const { shellVolume } = require('../lib/calibration');
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
@@ -395,6 +396,7 @@ async function computeLiveTankStatus(station_id) {
 
   const { rows } = await pool.query(`
     SELECT t.id AS tank_id, t.tank_number, t.fuel_type, t.capacity_ltrs,
+      cc.diameter_cm, cc.length_cm,
       lr.volume_ltrs AS current_vol, lr.recorded_at AS current_at,
       pr.volume_ltrs AS prev_vol,    pr.recorded_at AS prev_at,
       COALESCE((SELECT SUM(de.quantity_ltrs) FROM dispense_events de
@@ -406,6 +408,7 @@ async function computeLiveTankStatus(station_id) {
          WHERE fd.tank_id=t.id AND pr.recorded_at IS NOT NULL
            AND fd.received_at > pr.recorded_at AND fd.received_at <= lr.recorded_at),0) AS deliveries
     FROM tanks t
+    LEFT JOIN tank_calibration_charts cc ON cc.id = t.calibration_chart_id
     LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings
       WHERE tank_id=t.id ORDER BY recorded_at DESC LIMIT 1) lr ON TRUE
     LEFT JOIN LATERAL (SELECT volume_ltrs, recorded_at FROM dipstick_readings
@@ -416,7 +419,11 @@ async function computeLiveTankStatus(station_id) {
     const hasCurrent = r.current_vol != null;
     const hasPrev    = r.prev_vol != null;
     const currentVol = hasCurrent ? parseFloat(r.current_vol) : null;
-    const capacity   = r.capacity_ltrs ? parseFloat(r.capacity_ltrs) : null;
+    // Fill% against the SHELL, not the nameplate — a tank called 45 KL holds 48,575 L,
+    // so measuring against its name showed a genuinely full tank at 108%. Falls back to
+    // the nameplate when no calibration chart is set. (owner-set 15-Sep-2026)
+    const capacity   = shellVolume(r.diameter_cm, r.length_cm)
+                    ?? (r.capacity_ltrs ? parseFloat(r.capacity_ltrs) : null);
     const fillPct    = (hasCurrent && capacity) ? +(currentVol / capacity * 100).toFixed(1) : null;
     let variance = null, tolerance = null, beyond = false, status = 'no_data';
     if (hasCurrent && hasPrev) {

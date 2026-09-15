@@ -100,3 +100,30 @@ test('a full dip gives the shell volume, not the nameplate', () => {
   assert.strictEqual(dipToVolume(200,   496.8, 200),   15607.43);  // "15 KL"  →   +607.43 L
   assert.strictEqual(dipToVolume(184,   399,   184),   10609.59);  // "10 KL"  →   +609.59 L
 });
+
+// 🔴 shellVolume is the PHYSICAL ceiling; tanks.capacity_ltrs is the NAMEPLATE.
+// They are different numbers doing different jobs, and conflating them cost real
+// litres. capacity_ltrs stays the nameplate because it is the tank's NAME and it is
+// what a console prints — gaugeMatch compares it at 2% to decide which of our tanks a
+// scanned row belongs to. Every CALCULATION uses the shell. (owner-set 15-Sep-2026)
+const { shellVolume } = require('../src/lib/calibration');
+
+test('shellVolume gives the tank, not the name', () => {
+  assert.strictEqual(shellVolume(273.8, 825),   48574.77);  // BPCL "45 KL"
+  assert.strictEqual(shellVolume(200,   496.8), 15607.43);  // BPCL "15 KL (NEW)"
+  assert.strictEqual(shellVolume(200,   550),   17278.76);  // HP, Sri Balaji petrol
+});
+
+test('shellVolume returns null without a chart, so callers must fall back', () => {
+  assert.strictEqual(shellVolume(null, null), null);
+  assert.strictEqual(shellVolume(0, 500), null);
+  assert.strictEqual(shellVolume(200, undefined), null);
+});
+
+// The nameplate ceiling REFUSED READINGS THAT WERE TRUE. A full 45 KL gauges near
+// 48,500; the old check rejected anything over 45,000 x 1.02 = 45,900.
+test('a true full-tank reading clears the shell ceiling but not the nameplate one', () => {
+  const full = shellVolume(273.8, 825);          // 48,574.77 — a real, correct reading
+  assert.ok(full > 45000 * 1.02, 'this is exactly the reading the old check refused');
+  assert.ok(full <= full * 1.02,  'and it passes against the shell');
+});

@@ -41,10 +41,19 @@ router.get('/owner', authenticate, requireStationAccess({ required: true }), asy
 
       // Tank stock
       pool.query(
+        // Fill% against the SHELL volume, not the nameplate. A tank called 45 KL holds
+        // 48,575 L, so measuring against its name showed a genuinely full tank at 108%.
+        // At a full dip the segment formula collapses to PI*r^2*L, so this is exact and
+        // matches lib/calibration shellVolume(). COALESCE keeps the nameplate for a tank
+        // with no calibration chart. capacity_ltrs itself STAYS the nameplate — it is the
+        // tank's name and what a console prints for gaugeMatch. (owner-set 15-Sep-2026)
         `SELECT t.tank_number, t.fuel_type, t.current_stock, t.capacity_ltrs,
-                ROUND(t.current_stock/NULLIF(t.capacity_ltrs,0)*100,1) AS fill_pct,
+                COALESCE((PI()*POWER(cc.diameter_cm/2,2)*cc.length_cm/1000)::numeric, t.capacity_ltrs) AS shell_ltrs,
+                ROUND(t.current_stock/NULLIF(COALESCE((PI()*POWER(cc.diameter_cm/2,2)*cc.length_cm/1000)::numeric, t.capacity_ltrs),0)*100,1) AS fill_pct,
                 (SELECT MAX(dr.recorded_at) FROM dipstick_readings dr WHERE dr.tank_id=t.id) AS last_dip_at
-         FROM tanks t WHERE t.station_id=$1 ORDER BY t.tank_number`, [station_id]),
+         FROM tanks t
+         LEFT JOIN tank_calibration_charts cc ON cc.id = t.calibration_chart_id
+         WHERE t.station_id=$1 ORDER BY t.tank_number`, [station_id]),
 
       // Unacknowledged alerts
       pool.query(
