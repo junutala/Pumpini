@@ -1,0 +1,161 @@
+{
+  "source": "BPCL 'TANK CALIBRATION ALL CHARTS' workbook, Calicut Territory \u2014 sheet 'SO Helper Main', lookup M12:O28",
+  "supplied_by": "SBR Energies dealer via the owner, 15-Sep-2026",
+  "oil_company": "BPCL",
+  "note": "BPCL's dip->litres formula is the plain circular segment, identical to lib/calibration.js dipToVolume(). Validated over all 367 points of the workbook's calculation sheet for 10KL(1.84D): mean deviation 0.00256 L, max 0.005 L (our own 2dp rounding). So a BPCL tank needs only these two numbers - no dip table to ingest.",
+  "tankages": [
+    {
+      "tankage": "10 KL",
+      "length_m": 3.368,
+      "diameter_m": 2.0,
+      "diameter_cm": 200.0,
+      "length_cm": 336.8,
+      "shell_ltrs": 10581.0,
+      "nameplate_ltrs": 10000,
+      "over_nameplate_pct": 5.8
+    },
+    {
+      "tankage": "15KL(1.84D)",
+      "length_m": 5.98,
+      "diameter_m": 1.84,
+      "diameter_cm": 184.0,
+      "length_cm": 598.0,
+      "shell_ltrs": 15901.0,
+      "nameplate_ltrs": 15000,
+      "over_nameplate_pct": 6.0
+    },
+    {
+      "tankage": "15 KL(NEW)",
+      "length_m": 4.968,
+      "diameter_m": 2.0,
+      "diameter_cm": 200.0,
+      "length_cm": 496.8,
+      "shell_ltrs": 15607.0,
+      "nameplate_ltrs": 15000,
+      "over_nameplate_pct": 4.0
+    },
+    {
+      "tankage": "20 OLD",
+      "length_m": 6.0,
+      "diameter_m": 2.1,
+      "diameter_cm": 210.0,
+      "length_cm": 600.0,
+      "shell_ltrs": 20782.0,
+      "nameplate_ltrs": null,
+      "over_nameplate_pct": null
+    },
+    {
+      "tankage": "20 NEW",
+      "length_m": 6.718,
+      "diameter_m": 2.0,
+      "diameter_cm": 200.0,
+      "length_cm": 671.8,
+      "shell_ltrs": 21105.0,
+      "nameplate_ltrs": null,
+      "over_nameplate_pct": null
+    },
+    {
+      "tankage": "8398L",
+      "length_m": 2.997,
+      "diameter_m": 1.943,
+      "diameter_cm": 194.3,
+      "length_cm": 299.7,
+      "shell_ltrs": 8886.0,
+      "nameplate_ltrs": 8398.0,
+      "over_nameplate_pct": 5.8
+    },
+    {
+      "tankage": "9093L",
+      "length_m": 3.6576,
+      "diameter_m": 1.8288,
+      "diameter_cm": 182.9,
+      "length_cm": 365.8,
+      "shell_ltrs": 9608.0,
+      "nameplate_ltrs": 9093.0,
+      "over_nameplate_pct": 5.7
+    },
+    {
+      "tankage": "9KL(1.82D)",
+      "length_m": 3.6576,
+      "diameter_m": 1.8288,
+      "diameter_cm": 182.9,
+      "length_cm": 365.8,
+      "shell_ltrs": 9608.0,
+      "nameplate_ltrs": 9000,
+      "over_nameplate_pct": 6.8
+    },
+    {
+      "tankage": "9KL(2.88D)",
+      "length_m": 3.6576,
+      "diameter_m": 2.88,
+      "diameter_cm": 288.0,
+      "length_cm": 365.8,
+      "shell_ltrs": 23827.0,
+      "nameplate_ltrs": 9000,
+      "over_nameplate_pct": 164.7,
+      "suspect": "geometry does not fit the nameplate \u2014 almost certainly a typo in BPCL's sheet; do NOT seed as a calibration chart without a drawing to confirm it"
+    },
+    {
+      "tankage": "10KL(1.84D)",
+      "length_m": 3.99,
+      "diameter_m": 1.84,
+      "diameter_cm": 184.0,
+      "length_cm": 399.0,
+      "shell_ltrs": 10610.0,
+      "nameplate_ltrs": 10000,
+      "over_nameplate_pct": 6.1
+    },
+    {
+      "tankage": "10KL(1.90D)",
+      "length_m": 3.689,
+      "diameter_m": 1.905,
+      "diameter_cm": 190.5,
+      "length_cm": 368.9,
+      "shell_ltrs": 10514.0,
+      "nameplate_ltrs": 10000,
+      "over_nameplate_pct": 5.1
+    },
+    {
+      "tankage": "10KL(1.93D)",
+      "length_m": 4.1021,
+      "diameter_m": 1.9304,
+      "diameter_cm": 193.0,
+      "length_cm": 410.2,
+      "shell_ltrs": 12006.0,
+      "nameplate_ltrs": 10000,
+      "over_nameplate_pct": 20.1,
+      "suspect": "geometry does not fit the nameplate \u2014 almost certainly a typo in BPCL's sheet; do NOT seed as a calibration chart without a drawing to confirm it"
+    },
+    {
+      "tankage": "40KL",
+      "length_m": 7.62,
+      "diameter_m": 2.819,
+      "diameter_cm": 281.9,
+      "length_cm": 762.0,
+      "shell_ltrs": 47559.0,
+      "nameplate_ltrs": 40000,
+      "over_nameplate_pct": 18.9,
+      "suspect": "geometry does not fit the nameplate \u2014 almost certainly a typo in BPCL's sheet; do NOT seed as a calibration chart without a drawing to confirm it"
+    },
+    {
+      "tankage": "45 KL",
+      "length_m": 8.25,
+      "diameter_m": 2.738,
+      "diameter_cm": 273.8,
+      "length_cm": 825.0,
+      "shell_ltrs": 48575.0,
+      "nameplate_ltrs": 45000,
+      "over_nameplate_pct": 7.9
+    },
+    {
+      "tankage": "70KL",
+      "length_m": 13.0,
+      "diameter_m": 2.738,
+      "diameter_cm": 273.8,
+      "length_cm": 1300.0,
+      "shell_ltrs": 76542.0,
+      "nameplate_ltrs": 70000,
+      "over_nameplate_pct": 9.3
+    }
+  ]
+}

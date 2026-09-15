@@ -84,11 +84,98 @@ the challan.
 
 ---
 
+## `bpcl-tank-calibration-charts.xlsx` — BPCL's own dip-chart CALCULATOR
+
+Supplied by the SBR Energies dealer, 15-Sep-2026. BPCL Calicut Territory.
+
+**This one is not a chart — it is the generator.** Pick a tankage from the dropdown on
+`SO Helper Main`, a VLOOKUP into `M12:O28` pulls that tank's length and diameter, and a
+circular-segment formula turns a dip into litres. Plain `.xlsx`, **no macros** (verified:
+no `vbaProject.bin`, content type is `spreadsheetml.sheet.main+xml`, no external links).
+
+### Their formula is ours
+
+    BPCL   V = L · R² · (α − sin α · cos α) · 1000,   cos α = 1 − H/R
+    ours   A = r² · acos((r−h)/r) − (r−h) · √(2rh − h²)
+
+The same expression rearranged, since `(r−h) = r cos α` and `√(2rh−h²) = r sin α`.
+
+### Verified 15-Sep-2026 — all 367 points, empty to full
+
+`dipToVolume()` against the workbook's own calculation sheet for 10KL(1.84D)
+(L 3.99 m, D 1.84 m):
+
+| | |
+|---|---|
+| points compared | **367** (dip 1 → 184 cm) |
+| mean deviation | **0.00256 L** |
+| max deviation | **0.00500 L** at dip 91.5 cm (BPCL 5268.085, ours 5268.090) |
+
+That maximum **is** our 2-decimal rounding. Pinned by
+`backend/test/calibration-bpcl.test.js`, which also holds two readings the owner took
+live from the workbook — 45 KL and 70 KL at a 64.8 cm dip, matched exactly.
+
+**So a BPCL tank needs TWO NUMBERS from us, not a document.** `diameter_cm` and
+`length_cm` are already the columns `tank_calibration_charts` stores.
+
+### 🔴 The printed chart has a stale cell — use the CALCULATION sheet
+
+`Tank Chart for Print` shows **11 L at a 1 cm dip**. It is a stale cached value: its own
+increment cell reads `12` where the calculation sheet says `0`, and the live formula
+behind it computes **7.2046** — our figure. **An official document is not automatically a
+correct one.** Read `Calculation Sheet`, column K.
+
+---
+
+## `bpcl-standard-tankages.json` — BPCL's standard tank catalogue, extracted
+
+The `M12:O28` lookup as machine-readable JSON, with shell volumes computed and the
+nameplate gap stated. Fifteen geometries.
+
+### 🔴 EVERY BPCL STANDARD TANK HOLDS MORE THAN ITS NAME
+
+| Tankage | L × D (m) | Shell | Nameplate | Over |
+|---|---|---|---|---|
+| 10 KL | 3.368 × 2.000 | 10,581 L | 10,000 | **+5.8%** |
+| 15 KL (NEW) | 4.968 × 2.000 | 15,607 L | 15,000 | **+4.0%** |
+| 15KL (1.84D) | 5.980 × 1.840 | 15,901 L | 15,000 | **+6.0%** |
+| 45 KL | 8.250 × 2.738 | 48,575 L | 45,000 | **+7.9%** |
+| 70 KL | 13.000 × 2.738 | 76,542 L | 70,000 | **+9.3%** |
+
+Same trap as the HP charts above, on a bigger scale: Sri Balaji's mis-configured petrol
+tank cost **661 L**; a "45 KL" configured from its nameplate is out by **3,575 L**.
+
+**Three rows are flagged `suspect`** — `9KL(2.88D)`, `10KL(1.93D)` and `40KL` — whose
+geometry cannot produce their nameplate (+165%, +20%, +19% against a +4-9% norm).
+Almost certainly typos in BPCL's own sheet. **Do not seed those as calibration charts
+without a drawing to confirm them.**
+
+---
+
+## `bpcl-tank-drawings.pdf` — BPCL fabrication drawings, 5 pages
+
+Approved drawings for the 10 KL, 15 KL, 20 KL and 45 KL/70 KL underground horizontal
+tanks (`RE.DRG.004`). They confirm the workbook independently:
+
+- **45 KL / 70 KL** — `2750 mm OUTER DIA`, **`2738 mm INTERNAL DIA`**, sectional
+  elevation `8250` (45 KL) and `13000` (70 KL). Exactly the workbook's
+  `8.25 × 2.738` and `13.0 × 2.738`.
+- **10 / 15 / 20 KL** — end-plate cutting details marked **`R1000`**, i.e. 2.0 m
+  diameter. This is what settles which 15 KL a site has: **`15 KL (NEW)` (D 2.0 m)**,
+  not `15KL(1.84D)`.
+
+Pages 2–5 are raster images with no text layer — render them
+(`pdfplumber ... .to_image(resolution=150)`) rather than trying to extract text.
+
+---
+
 ## Reading these files in a session
 
 No parser is installed by default. Both need one pip install:
 
 ```bash
-pip install pypdf   # then: pypdf.PdfReader(...).pages[i].extract_text()
-pip install xlrd    # .xls is the old OLE2 format — openpyxl will NOT open it
+pip install pypdf      # then: pypdf.PdfReader(...).pages[i].extract_text()
+pip install xlrd       # .xls is the old OLE2 format — openpyxl will NOT open it
+pip install openpyxl   # the BPCL .xlsx — and it never executes VBA, so it is safe
+pip install pdfplumber # the BPCL drawings; .to_image() for the raster pages
 ```
