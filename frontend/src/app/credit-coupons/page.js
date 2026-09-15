@@ -11,6 +11,7 @@
 // works standalone — the photo is only an accelerator.
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import DateField from '../../components/shared/DateField';
 import { X, ScanLine, AlertTriangle, CheckCircle, Ticket } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import { parseCoupon, validateCoupon, captureCoupon, getCoupons } from '../../lib/api';
@@ -23,6 +24,17 @@ const fmt  = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits
 const fmtL = n => Number(n || 0).toFixed(2);
 const toIST = d => d ? new Date(d).toLocaleDateString('en-IN',
   { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+// TODAY, and a floor a year back — a coupon is a slip the customer just handed over,
+// so it is neither in the future nor from a previous year. IST, because the outlet's
+// day is what matters, not the browser's.
+const todayISO = () =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const minCouponDate = (() => {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 1);
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+})();
 
 export default function CreditCouponsPage() {
   const { t } = useTranslation();
@@ -205,7 +217,13 @@ export default function CreditCouponsPage() {
             </div>
             <div>
               <label className="label">{tc('coupon.date', 'Coupon date')} *</label>
-              <input className="input" type="date" required value={form.coupon_date || ''}
+              {/* The date is echoed in words underneath, and bounded. A coupon was
+                  entered as 08/30/2024 on an en-US phone — two years out — and the
+                  only symptom was "no petrol price on record on or before
+                  2024-08-30". A native date input cannot be forced into DD/MM, so the
+                  echo and the bounds are the defence. */}
+              <DateField required value={form.coupon_date || ''}
+                min={minCouponDate} max={todayISO()}
                 onChange={e => f('coupon_date', e.target.value)} onBlur={doCheck} />
             </div>
             <div>
