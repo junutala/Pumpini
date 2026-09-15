@@ -18,18 +18,26 @@
 // the cash_in_hand ledger balance is "book cash from sales", not physically-counted cash.
 const engine = require('./accountingEngine');
 const margin = require('./marginService');   // the ONE source for CNG commission
+const { hasColumn } = require('../db/hasColumn');
 const { round2 } = engine;
 
 const todayIST = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
 // Moving weighted-average landed cost per fuel_type as of a date, from deliveries only:
-//   WAC = Σ(total_value + freight) / Σ(gross_volume_ltrs)
-// total_value is taxes-included, freight-excluded (deliveries.js), so we add freight for
-// the true landed cost. Falls back to rate_per_ltr×gross when total_value wasn't OCR'd.
+//   WAC = Σ(total_value + freight + LFR) / Σ(gross_volume_ltrs)
+// total_value is taxes-included but freight- AND LFR-excluded (deliveries.js), because
+// each arrives on its own document: freight from the transporter, LFR on the OMC's
+// SEPARATE GST invoice (SAC 997212, per KL lifted). All three make the landed cost.
+// Falls back to rate_per_ltr×gross when total_value wasn't OCR'd.
 async function weightedAvgCostMap(db, stationId, asOf) {
+  // Column-tolerant: this deploys before the owner runs 018. Probe, never try/catch —
+  // this runs inside the settlement transaction and a 42703 would abort the whole thing.
+  const lfr = (await hasColumn('fuel_deliveries', 'lfr_amount', db))
+    ? 'COALESCE(lfr_amount, 0)' : '0';
   const { rows } = await db.query(
     `SELECT fuel_type,
-            SUM(COALESCE(total_value, rate_per_ltr * gross_volume_ltrs, 0) + COALESCE(freight, 0)) AS cost,
+            SUM(COALESCE(total_value, rate_per_ltr * gross_volume_ltrs, 0)
+                + COALESCE(freight, 0) + ${lfr}) AS cost,
             SUM(gross_volume_ltrs) AS ltrs
        FROM fuel_deliveries
       WHERE station_id = $1 AND COALESCE(dc_date, received_at::date) <= $2

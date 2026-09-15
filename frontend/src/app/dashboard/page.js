@@ -247,12 +247,16 @@ export default function DashboardPage({ stationId: stationIdProp, embedded = fal
           <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{tc('bunk.lastMonth', 'last month')} {fmtR(mtd.last_month.amount)} {deltaChip(mtd.current.amount, mtd.last_month.amount)}</div>
           {isOwnerView && margin?.amount != null && <>
             <div style={{ fontSize: 12.5, color: '#3b6d11', marginTop: 8, fontWeight: 700 }}>{tc('bunk.marginDay', 'Margin (day)')}: {fmtR(margin.amount)}{margin.pct != null ? ` · ${margin.pct}%` : ''}</div>
-            {/* Sell − delivery cost only. Licence Fee Recovery arrives on a separate
-                oil-company invoice per KL lifted and is not deducted. docs/opentasks.md item 5. */}
-            <div title={tc('margin_tile.lfr_note', 'Licence Fee Recovery is billed separately by the oil company, per KL lifted, and is not deducted here.')}
-                 style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, fontStyle: 'italic', cursor: 'help' }}>
-              {tc('margin_tile.before_lfr', 'Before LFR and other oil-company recoveries')}
-            </div>
+            {/* Shown ONLY while LFR is absent from the cost basis. Once the delivery
+                behind this figure carries its LFR, the margin IS net of it and this note
+                must go — captioning "before LFR" on a number that includes it would be a
+                worse lie than saying nothing. docs/opentasks.md item 5. */}
+            {!margin.lfr_in_cost && (
+              <div title={tc('margin_tile.lfr_note', 'Licence Fee Recovery is billed separately by the oil company, per KL lifted, and is not deducted here.')}
+                   style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2, fontStyle: 'italic', cursor: 'help' }}>
+                {tc('margin_tile.before_lfr', 'Before LFR and other oil-company recoveries')}
+              </div>
+            )}
           </>}
         </div>
       </div>

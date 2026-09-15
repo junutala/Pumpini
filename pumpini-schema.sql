@@ -1731,3 +1731,11 @@ BEGIN
   END IF;
 END $$;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.attendant_settlements TO app_authenticated;
+
+-- ── Licence Fee Recovery on a fuel delivery (see migrations/018_fuel_lfr.sql) ──────
+-- The OMC bills a lift on two invoices: fuel (VAT, outside GST) and LFR (GST service
+-- invoice, SAC 997212), the latter charged per KL lifted. LFR sits BESIDE freight in
+-- the landed cost and is never folded into rate_per_ltr, which must stay reconcilable
+-- to the fuel invoice. NULL means "not captured", which is not the same as zero.
+ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_amount numeric;
+ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_invoice_no text;
