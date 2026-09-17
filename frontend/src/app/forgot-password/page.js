@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
           {tc('fpwd.title','Reset Password')}
         </h2>
         <p style={{fontSize:13,color:'#888',textAlign:'center',marginBottom:'1.5rem',lineHeight:1.5}}>
-          {tc('fpwd.subtitle','Enter your registered mobile number. We\'ll send a temporary password via WhatsApp / SMS.')}
+          {tc('fpwd.subtitle','Enter your registered mobile number. We\'ll send a temporary password on WhatsApp.')}
         </p>
 
         {!sent ? (
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:48,marginBottom:'1rem'}}>📱</div>
             <div style={{background:'#dcfce7',border:'1px solid #86efac',borderRadius:12,padding:'1rem 1.25rem',color:'#15803d',fontSize:14,lineHeight:1.6,marginBottom:'1.5rem'}}>
-              {tc('fpwd.sentOk','A temporary password has been sent to your WhatsApp / SMS. Please login with it and change your password immediately.')}
+              {tc('fpwd.sentOk','A temporary password has been sent to your WhatsApp. Please login with it and change your password immediately.')}
             </div>
             <button onClick={()=>router.push('/login')}
               style={{width:'100%',height:50,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontSize:16,fontWeight:700,cursor:'pointer'}}>

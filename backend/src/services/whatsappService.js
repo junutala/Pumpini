@@ -26,10 +26,23 @@ function normalizePhone(raw) {
 const inr = (n) =>
   '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// ── Is a real provider wired up? ─────────────────────────────────────
+// THE ONE PLACE that answers this. A caller whose whole purpose is to deliver
+// something to a human (password reset) must be able to ASK before it does
+// anything irreversible, instead of discovering afterwards that the "send"
+// was a log line. Anything merely advisory (alerts) can keep firing into demo
+// mode without caring.
+function isConfigured() {
+  return Boolean(process.env.WHATSAPP_API_KEY && process.env.WHATSAPP_ENDPOINT);
+}
+
 // ── Outbound: send a WhatsApp message ────────────────────────────────
+// ⚠️ With no credentials this RETURNS `{ demo: true }` — it does NOT send and
+// it does NOT throw. A caller that treats a resolved promise as "delivered"
+// is wrong. Check isConfigured() first if delivery actually matters.
 async function sendWhatsApp(phone, message) {
   const to = normalizePhone(phone);
-  if (!process.env.WHATSAPP_API_KEY || !process.env.WHATSAPP_ENDPOINT) {
+  if (!isConfigured()) {
     logger.info(`WhatsApp (demo) -> ${to}: ${message}`);
     return { demo: true, to, message };
   }
@@ -189,6 +202,7 @@ async function handleInbound(fromPhone, text) {
 
 module.exports = {
   normalizePhone,
+  isConfigured,
   sendWhatsApp,
   verifyWebhook,
   parseInbound,

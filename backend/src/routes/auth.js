@@ -5,7 +5,7 @@ const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const pool    = require('../db/pool');
 const { authenticate, bumpTokenVersion } = require('../middleware/auth');
-const { sendWhatsApp } = require('../services/whatsappService');
+const { sendWhatsApp, isConfigured: isMessagingConfigured } = require('../services/whatsappService');
 // Shared Indian-mobile normalizer/validator (one implementation for every caller).
 const { normalizePhone, validatePhone } = require('../utils/phone');
 
@@ -140,14 +140,41 @@ router.patch('/language', authenticate, async (req, res, next) => {
 
 
 // POST /api/auth/forgot-password — generate temp password, send via WhatsApp
+//
+// 🔴 SEND FIRST, THEN WRITE. The old order did the opposite: it overwrote
+// password_hash, bumped the token version, and only then tried to send —
+// swallowing any failure and returning `{ok:true}` regardless. With no
+// provider configured (prod has never had WHATSAPP_API_KEY / WHATSAPP_ENDPOINT)
+// sendWhatsApp() resolves to `{demo:true}` after writing a log line, so every
+// press of "Forgot Password" silently changed a live user's password to a value
+// only a Railway log ever held, killed their sessions, and told them to go and
+// check WhatsApp. That is not a reset failing; that is a reset LOCKING THE
+// ACCOUNT. It locked the SBR Energies owner out on 16-Sep-2026.
+//
+// The order below cannot do that: nothing about the user changes until a real
+// provider has actually accepted the message. If delivery fails, the old
+// password still works — which is the only safe direction for this endpoint.
 router.post('/forgot-password', rateLimitAuth, async (req, res, next) => {
   try {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ error: 'Mobile number is required' });
+
+    // Probe BEFORE the lookup, so the answer cannot depend on whether the
+    // number exists — an unconfigured deployment says the same thing to
+    // everybody and reveals nothing.
+    if (!isMessagingConfigured()) {
+      require('../utils/logger').error(
+        'forgot-password: no WhatsApp provider configured (WHATSAPP_API_KEY / WHATSAPP_ENDPOINT) — refusing to reset'
+      );
+      return res.status(503).json({
+        error: 'Password reset by message is not available right now. Please ask your station owner to reset it for you.',
+      });
+    }
+
     const normalized = normalizePhone(phone);
     const { rows } = await pool.query(
-      'SELECT * FROM users WHERE (phone=$1 OR phone=$2) AND is_active=TRUE LIMIT 1',
-      [normalized, phone]
+      'SELECT * FROM users WHERE (phone=$1 OR phone=$2 OR phone=$3) AND is_active=TRUE LIMIT 1',
+      [normalized, phone, phone.replace(/\D/g, '').slice(-10)]
     );
     // Always return 200 — don't reveal whether number exists
     if (!rows.length) return res.json({ ok: true });
@@ -155,20 +182,30 @@ router.post('/forgot-password', rateLimitAuth, async (req, res, next) => {
 
     // Generate 8-char alphanumeric temp password
     const tempPw = crypto.randomBytes(4).toString('hex').toUpperCase(); // e.g. A3F8C2D1
-    const hash   = await bcrypt.hash(tempPw, 12);
 
+    // The message goes out FIRST. Nothing has changed yet, so a failure here
+    // costs the user nothing but a retry.
+    const msg = `*Pumpini DMS*\nYour temporary password is: *${tempPw}*\n\nPlease login and change your password immediately.`;
+    try {
+      const result = await sendWhatsApp(user.phone, msg);
+      // Belt and braces: isConfigured() said yes, so a demo result here would
+      // mean the env changed under us mid-request. Never write on one.
+      if (result && result.demo) throw new Error('provider went unconfigured mid-request');
+    } catch (e) {
+      require('../utils/logger').error('forgot-password: WhatsApp send failed, password NOT changed:', e.message);
+      return res.status(502).json({
+        error: 'We could not send the temporary password. Your existing password still works. Please try again shortly.',
+      });
+    }
+
+    // Delivered. Only now does the account change.
+    const hash = await bcrypt.hash(tempPw, 12);
     await pool.query(
       'UPDATE users SET password_hash=$1, must_change_password=TRUE WHERE id=$2',
       [hash, user.id]
     );
     // Invalidate any existing sessions when a reset is issued
     await bumpTokenVersion(user.id);
-
-    const msg = `*Pumpini DMS*\nYour temporary password is: *${tempPw}*\n\nPlease login and change your password immediately.\n\nFor security, this password is valid for one login only.`;
-    await sendWhatsApp(user.phone, msg).catch(e => {
-      // Log but don't fail — user can still see it in dev demo mode
-      require('../utils/logger').warn('WhatsApp send failed:', e.message);
-    });
 
     res.json({ ok: true });
   } catch (err) { next(err); }
