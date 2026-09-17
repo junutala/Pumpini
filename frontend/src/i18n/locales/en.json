@@ -1712,11 +1712,11 @@
   },
   "fpwd": {
     "title": "Reset Password",
-    "subtitle": "Enter your registered mobile number. We'll send a temporary password via WhatsApp / SMS.",
+    "subtitle": "Enter your registered mobile number. We'll send a temporary password on WhatsApp.",
     "sending": "Sending...",
     "sendTempPassword": "Send Temporary Password",
     "backToLogin": "← Back to Login",
-    "sentOk": "A temporary password has been sent to your WhatsApp / SMS. Please login with it and change your password immediately.",
+    "sentOk": "A temporary password has been sent to your WhatsApp. Please login with it and change your password immediately.",
     "genericError": "Something went wrong. Please try again."
   },
   "gdash": {
