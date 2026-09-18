@@ -737,7 +737,9 @@
     "lfr_view": "view the LFR invoice",
     "lfr_add_title": "Add the LFR invoice for this lift",
     "lfr_no_rows": "No delivery rows to apply this LFR invoice to.",
-    "lfr_img_unlinked": "The image was saved but is not attached to this delivery yet — the database still needs its update. Tell us and we will finish it."
+    "lfr_img_unlinked": "The image was saved but is not attached to this delivery yet — the database still needs its update. Tell us and we will finish it.",
+    "pick_tank_hint": "This outlet has {n} {f} tanks, so we cannot tell which one took this load — choose it above. (Tick \"Split across tanks\" if it went into more than one.)",
+    "pick_tank_validity": "Choose which tank took this load."
   },
   "live_page": {
     "title": "Live Events",
