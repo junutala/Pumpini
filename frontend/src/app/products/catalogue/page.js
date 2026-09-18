@@ -33,6 +33,9 @@ export default function ProductCataloguePage() {
   const [form,setForm]         = useState({});
   const [saving,setSaving]     = useState(false);
   const [search,setSearch]     = useState('');
+  // "Other (type manually)" is a MODE of the HSN picker, held apart from the code itself
+  // so the typing box cannot unmount itself. See the comment at the field.
+  const [hsnOther,setHsnOther] = useState(false);
 
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
@@ -50,8 +53,17 @@ export default function ProductCataloguePage() {
 
   useEffect(() => { if (stationId) load(); }, [stationId]);
 
-  const openAdd  = () => { setForm({ gst_rate:18, unit:'piece', min_stock_level:5, station_id:stationId }); setModal('form'); };
-  const openEdit = (p) => { setForm({...p}); setModal('form'); };
+  const openAdd  = () => {
+    setForm({ gst_rate:18, unit:'piece', min_stock_level:5, station_id:stationId });
+    setHsnOther(false); setModal('form');
+  };
+  // A product already saved with a typed HSN reopens in the typing box, not as a blank
+  // picker — otherwise editing it would silently drop the code he entered.
+  const openEdit = (p) => {
+    setForm({...p});
+    setHsnOther(!!p.hsn_code && !HSN_COMMON.some(h => h.code === p.hsn_code));
+    setModal('form');
+  };
 
   const save = async () => {
     if (!form.name || !form.selling_price) return alert(tc('lubecat.nameAndPriceRequired', 'Name and selling price are required'));
@@ -212,13 +224,26 @@ export default function ProductCataloguePage() {
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelHsnCode', 'HSN Code')}</label>
-                <select style={inp} value={form.hsn_code||''} onChange={e=>f('hsn_code',e.target.value)}>
+                {/* 🔴 "Other" IS A MODE, NOT AN HSN CODE. This gate used to read
+                    form.hsn_code==='custom' while the box below wrote what he typed into
+                    that same form.hsn_code — so the first character replaced the sentinel,
+                    the gate went false and the box unmounted mid-keystroke. Identical to
+                    the City → Other bug fixed in settings/page.js the same day; found by
+                    sweeping for the shape rather than the word. A control may not be
+                    unmounted by its own onChange. */}
+                <select style={inp} value={hsnOther ? 'custom' : (form.hsn_code||'')}
+                  onChange={e=>{
+                    if (e.target.value === 'custom') { setHsnOther(true); f('hsn_code',''); }
+                    else { setHsnOther(false); f('hsn_code', e.target.value); }
+                  }}>
                   <option value="">{tc('lubecat.selectHsn', 'Select HSN...')}</option>
                   {HSN_COMMON.map(h=><option key={h.code} value={h.code}>{h.code} — {h.desc}</option>)}
                   <option value="custom">{tc('lubecat.hsnOther', 'Other (type manually)')}</option>
                 </select>
-                {form.hsn_code==='custom' && (
-                  <input style={{...inp,marginTop:6}} placeholder={tc('lubecat.phEnterHsn', 'Enter HSN code')} onChange={e=>f('hsn_code',e.target.value)}/>
+                {hsnOther && (
+                  <input style={{...inp,marginTop:6}} autoFocus
+                    placeholder={tc('lubecat.phEnterHsn', 'Enter HSN code')}
+                    value={form.hsn_code||''} onChange={e=>f('hsn_code',e.target.value)}/>
                 )}
               </div>
               <div>

@@ -1741,9 +1741,12 @@ ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_amount numeric;
 ALTER TABLE public.fuel_deliveries ADD COLUMN IF NOT EXISTS lfr_invoice_no text;
 
 -- ── LFR site category (see migrations/019_lfr_site_category.sql) ──────────────────
--- Gates the LFR step on Deliveries (only 'A'/'B' outlets see it) and validates an
--- uploaded LFR invoice against the card that site should be billed on. It NEVER creates
--- an LFR charge. NULL = unknown = cannot validate, which is NOT the same as 'none'.
+-- Validates an uploaded LFR invoice against the card that site should be billed on. It
+-- NEVER creates an LFR charge, and it GATES NOTHING: the LFR step shows on every
+-- outlet's Deliveries screen, set or not (owner-set 15-Sep-2026 — the button is the
+-- nudge). NULL = unknown = cannot validate, which is NOT the same as 'none'.
+-- (Corrected 18-Sep-2026: this comment used to claim the column gated the step, which
+-- read 019 backwards and sent a session hunting a gate that does not exist.)
 ALTER TABLE public.station_settings ADD COLUMN IF NOT EXISTS lfr_site_category text;
 DO $$
 BEGIN
@@ -1753,3 +1756,39 @@ BEGIN
       CHECK (lfr_site_category IS NULL OR lfr_site_category IN ('A','B','none'));
   END IF;
 END $$;
+
+-- ── Keep BOTH invoices behind a landed cost (owner-set 18-Sep-2026) ───────────────
+-- "AND retain images of both invoices." A lift is billed on two papers — the fuel
+-- invoice and the LFR invoice — and until now only the first was ever stored. These two
+-- additive columns let the LFR scan live in the SAME table, under the SAME station-scoped
+-- RLS policy and the SAME writer (routes/deliveries.js insertDeliveryInvoice), rather
+-- than growing a second document store beside it.
+--
+-- 🔴 BOTH ARE PROBED IN CODE (db/hasColumn.js), so the backend ships safely BEFORE this
+-- DDL is run: the LFR figure still saves, the image simply stays unlinked, and nothing
+-- 500s. LFR remains entirely optional — a delivery with no LFR invoice is untouched.
+--
+-- `kind` backfills every existing row to 'fuel' (PG 11+ fills the default in place), so
+-- the 78 stored fuel invoices keep reading correctly with nothing to migrate by hand.
+ALTER TABLE public.delivery_invoices ADD COLUMN IF NOT EXISTS kind text DEFAULT 'fuel';
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='delivery_invoices_kind_chk') THEN
+    ALTER TABLE public.delivery_invoices
+      ADD CONSTRAINT delivery_invoices_kind_chk
+      CHECK (kind IS NULL OR kind IN ('fuel','lfr'));
+  END IF;
+END $$;
+COMMENT ON COLUMN public.delivery_invoices.kind IS
+  'Which paper this scan is: ''fuel'' (the oil-company fuel invoice / DC challan) or '
+  '''lfr'' (the separate GST Licence Fee Recovery invoice for the same lift). Defaults '
+  'to ''fuel'' so every pre-existing row reads correctly.';
+
+-- The delivery's pointer to its LFR scan. Sits beside `invoice_id` (the fuel invoice)
+-- so GET /api/deliveries/:id/invoice?kind=lfr can serve it from one route.
+ALTER TABLE public.fuel_deliveries
+  ADD COLUMN IF NOT EXISTS lfr_invoice_id uuid REFERENCES public.delivery_invoices(id);
+COMMENT ON COLUMN public.fuel_deliveries.lfr_invoice_id IS
+  'The delivery_invoices row holding the scanned LFR invoice this row''s lfr_amount was '
+  'read from. NULL = no LFR document on file (which is normal: LFR is optional, and a '
+  'manually typed lfr_amount with no scan is a perfectly good record).';

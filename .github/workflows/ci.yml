@@ -137,6 +137,37 @@ jobs:
       - name: One nozzle name check
         run: node scripts/ci-nozzle-name-check.js
 
+      # 🔴 THE SAME no-undef GATE THE FRONTEND HAS HAD SINCE 2026-08-23, NOW ON THE
+      # BACKEND — because the backend never had it, and that cost a live feature.
+      # On 18-Sep-2026 `PATCH /api/deliveries/apply-lfr` answered every single call with
+      # "hasColumn is not defined": the helper was called in the handler and never
+      # imported. A SECOND one, `matchCard`, sat undiscovered on the next line of the
+      # same route, hidden behind the first. Every other gate above passed it green —
+      # `node --check` sees valid syntax, and the route-export check only require()s the
+      # module, so a ReferenceError INSIDE a handler does not throw until a real request
+      # arrives. Result: 0 of 189 deliveries ever carried an LFR figure, and the screen
+      # said "LFR added to the cost" each time.
+      #
+      # eslint is pinned to 8 because --no-eslintrc/--env are v8 flags (v9 is flat
+      # config), matching the frontend job. Only no-undef, no inherited config, so this
+      # can never fail for unrelated style reasons and get muted.
+      - name: Undefined-identifier check (no-undef only)
+        run: |
+          npx --yes eslint@8 --no-eslintrc --no-inline-config \
+            --env node,es2022 \
+            --parser-options 'ecmaVersion:2022,sourceType:script' \
+            --rule '{"no-undef":"error"}' \
+            'src/**/*.js'
+
+      # A control must not be unmounted by its own onChange. Catches the City → "Other
+      # (type below)" class of bug, where the box writes the very state that renders it,
+      # so the first keystroke closes the field. Reported by the owner on Settings on
+      # 18-Sep-2026; sweeping for the shape found it a second time on the Lubes
+      # catalogue HSN field, unreported. Invisible to eslint and to `next build` — every
+      # line is valid and only the pair is wrong.
+      - name: No self-unmounting controls
+        run: node scripts/ci-self-unmount-check.js
+
       # The gauge matcher is mirrored into the CJS test suite. A mirror that drifts
       # asserts yesterday's rules while passing, which is worse than no test at all.
       - name: Gauge-matcher mirror is in sync

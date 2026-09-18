@@ -15,6 +15,19 @@ const toIST = ts => ts ? new Date(ts).toLocaleString('en-IN',{
   year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true
 }) : '—';
 
+// An invoice carries a DATE, not a timestamp, so it must not go through toIST — that
+// renders a midnight the paper never claimed. DD MMM YYYY (house rule: en-IN, never a
+// raw ISO string, and never MM/DD). Built in UTC and read back in UTC so the calendar
+// date cannot shift; anything unparseable is shown exactly as printed rather than guessed.
+const toISTDate = d => {
+  if (!d) return null;
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(d);
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString('en-IN', {
+    timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric',
+  });
+};
+
 const nowISTStr = () => new Date().toLocaleString('sv-SE',{timeZone:'Asia/Kolkata'}).slice(0,16);
 
 const OIL_COMPANIES = ['HPCL','BPCL','IOC','Essar','Shell','Reliance','Nayara'];
@@ -69,6 +82,16 @@ export default function DeliveriesPage() {
   const [lfrInvNo,    setLfrInvNo]    = useState('');
   const [lfrResult,   setLfrResult]   = useState(null);
   const [lfrBusy,     setLfrBusy]     = useState(false);
+  // Which delivery rows this LFR invoice is being applied to. Set from the save flow
+  // (the rows just created) OR from the register (every row of that lift), so an
+  // invoice that arrives days after the tanker still has a way in — which is the whole
+  // reason Ramana could never reach this box.
+  const [lfrIds,      setLfrIds]      = useState([]);
+  const [lfrPostSave, setLfrPostSave] = useState(false);  // asked right after a save?
+  const [lfrFile,     setLfrFile]     = useState(null);   // ORIGINAL bytes, kept on save
+  const [lfrScan,     setLfrScan]     = useState(null);   // OCR read, awaiting confirmation
+  const [lfrScanning, setLfrScanning] = useState(false);
+  const [lfrScanErr,  setLfrScanErr]  = useState('');
 
   // ── Split discharge: one product into >1 EXISTING tank (e.g. 6KL→tank1, 4KL→tank2).
   // Tanks are fixed infrastructure (defined in Settings), so we just show a litres
@@ -78,9 +101,9 @@ export default function DeliveriesPage() {
   const splitAllocated = () => Object.values(splitQty).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   const resetSplit = () => { setSplitMode(false); setSplitQty({}); };
 
-  const openInvoice = async (deliveryId) => {
+  const openInvoice = async (deliveryId, kind) => {
     try {
-      const r = await api.get(`/deliveries/${deliveryId}/invoice`);
+      const r = await api.get(`/deliveries/${deliveryId}/invoice${kind === 'lfr' ? '?kind=lfr' : ''}`);
       // Migrated invoices come back as a ready-to-render signed URL; legacy rows
       // still return base64 which we turn into a local blob URL.
       if (r.url) { setViewDoc({ media_type: r.media_type, url: r.url, remote: true }); return; }
@@ -130,21 +153,75 @@ export default function DeliveriesPage() {
       alert(tc('deliv_page.lfr_need_amount','Enter the taxable value from the LFR invoice.'));
       return;
     }
+    const ids = lfrIds.length ? lfrIds : sessionIds;
+    if (!ids.length) {
+      alert(tc('deliv_page.lfr_no_rows','No delivery rows to apply this LFR invoice to.'));
+      return;
+    }
     setLfrBusy(true);
     try {
+      // The ORIGINAL file goes up (the PDF if he picked a PDF), not the PNG we
+      // rasterised for OCR — the stored document has to be the paper he was sent.
       const r = await api.patch('/deliveries/apply-lfr', {
-        station_id: stationId, ids: sessionIds,
+        station_id: stationId, ids,
         lfr_total: amt, lfr_invoice_no: lfrInvNo || null,
-      });
+        ...(lfrFile ? { file_base64: lfrFile.base64, media_type: lfrFile.media_type } : {}),
+      }, { timeout: 90000 });
       setLfrResult(r);
     } catch (e) {
       alert(e.error || tc('deliv_page.lfr_failed','Could not apply the LFR invoice.'));
     } finally { setLfrBusy(false); }
   };
 
+  // Read the LFR invoice. Same endpoint as the fuel invoice under doc_type:'lfr' — it
+  // fills the boxes and then STOPS, because he confirms the figures against the paper
+  // before anything is written. A failed read is not a dead end: the boxes stay, and
+  // typing is a perfectly good answer (CLAUDE.md, 31-Aug).
+  const handleLfrFile = async (file) => {
+    if (!file) return;
+    const ok = ['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
+    if (!ok.includes(file.type)) { setLfrScanErr(tc('deliv_page.bad_file','Upload a photo (JPG/PNG) or a PDF.')); return; }
+    setLfrScanErr(''); setLfrScanning(true); setLfrScan(null);
+    try {
+      const { base64, media_type } = await fileToBase64(file);
+      setLfrFile({ base64, media_type });          // keep the original to store on apply
+      let scanB64 = base64, scanType = media_type;
+      if (media_type === 'application/pdf') {
+        try { const png = await pdfToPng(base64); scanB64 = png.base64; scanType = png.media_type; }
+        catch { /* conversion failed — send the PDF as-is */ }
+      }
+      const res = await api.post('/deliveries/parse-invoice',
+        { station_id: stationId, file_base64: scanB64, media_type: scanType, doc_type: 'lfr' },
+        { timeout: 90000 });
+      setLfrScan(res);
+      // Pre-fill, never overwrite something he has already typed by hand.
+      if (res.taxable_value != null && !lfrAmount) setLfrAmount(String(res.taxable_value));
+      if (res.invoice_number && !lfrInvNo)         setLfrInvNo(String(res.invoice_number));
+    } catch (e) {
+      // The image is still held, so he can type the amount and the paper is kept anyway.
+      setLfrScanErr(e.error || tc('deliv_page.lfr_scan_failed','Could not read this invoice — type the taxable value below. The image is still saved.'));
+    } finally { setLfrScanning(false); }
+  };
+
+  // Open the LFR box for an existing lift: every row sharing that invoice, so the split
+  // covers the whole lift exactly as it would right after the save.
+  const openLfrFor = (d) => {
+    const ids = d.invoice_id
+      ? deliveries.filter(x => x.invoice_id === d.invoice_id).map(x => x.id)
+      : [d.id];
+    setLfrIds(ids); setLfrPostSave(false);
+    setLfrAmount(d.lfr_amount != null ? String(d.lfr_amount) : '');
+    setLfrInvNo(d.lfr_invoice_no || '');
+    setLfrFile(null); setLfrScan(null); setLfrScanErr(''); setLfrResult(null);
+    setLfrPrompt(true);
+  };
+
   const closeLfr = () => {
     setLfrPrompt(false); setLfrResult(null); setLfrAmount(''); setLfrInvNo('');
-    if (accountsOn) setPaidPrompt(true);   // ask paid/credit once, for the whole invoice
+    setLfrFile(null); setLfrScan(null); setLfrScanErr(''); setLfrIds([]);
+    // The paid/credit question belongs to the save flow. Adding an LFR invoice to an
+    // old lift from the register must not re-open it.
+    if (lfrPostSave && accountsOn) setPaidPrompt(true);
     else { setSessionIds([]); }
     load();
   };
@@ -375,6 +452,8 @@ export default function DeliveriesPage() {
       // Ask about LFR BEFORE the paid question: it is about this invoice's cost, and the
       // paid question is about settling it. Skippable, unlike paid — plenty of lifts
       // arrive without an LFR invoice in the manager's hand.
+      setLfrIds([]); setLfrPostSave(true);
+      setLfrFile(null); setLfrScan(null); setLfrScanErr('');
       setLfrPrompt(true);
       setSaved(tc('deliv_page.delivery_recorded','Delivery recorded!'));
       setTimeout(()=>setSaved(''), 3000);
@@ -462,6 +541,24 @@ export default function DeliveriesPage() {
                         <Paperclip size={13} style={{color:'var(--brand)'}}/>
                       </button>
                     )}
+                    {/* LFR, on the row it belongs to. The prompt after a save is easy to
+                        miss and the invoice often turns up days later — with no way back
+                        in, the figure was simply never captured. Same box, same endpoint,
+                        reached from the lift it is about. */}
+                    {d.lfr_amount != null ? (
+                      <button type="button"
+                        title={`${tc('deliv_page.lfr_on_row','LFR')} ₹${Number(d.lfr_amount).toLocaleString('en-IN',{minimumFractionDigits:2})}${d.lfr_invoice_no?` · ${d.lfr_invoice_no}`:''}${d.lfr_invoice_id?` — ${tc('deliv_page.lfr_view','view the LFR invoice')}`:''}`}
+                        onClick={()=>d.lfr_invoice_id ? openInvoice(d.id,'lfr') : openLfrFor(d)}
+                        style={{marginLeft:6,background:'none',border:'none',cursor:'pointer',padding:0,verticalAlign:'middle',fontSize:10.5,fontWeight:800,color:'#15803d'}}>
+                        LFR ✓
+                      </button>
+                    ) : (
+                      <button type="button" title={tc('deliv_page.lfr_add_title','Add the LFR invoice for this lift')}
+                        onClick={()=>openLfrFor(d)}
+                        style={{marginLeft:6,background:'none',border:'none',cursor:'pointer',padding:0,verticalAlign:'middle',fontSize:10.5,fontWeight:700,color:'var(--text-3)'}}>
+                        + LFR
+                      </button>
+                    )}
                   </td>
                   <td style={{fontSize:12,whiteSpace:'nowrap'}}>{toIST(d.received_at)}</td>
                   <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{d.tanker_number||'—'}</td>
@@ -503,6 +600,80 @@ export default function DeliveriesPage() {
                 <div style={{fontSize:13,color:'var(--text-2)',marginBottom:16,lineHeight:1.5}}>
                   {tc('deliv_page.lfr_help','Licence Fee Recovery is a SECOND invoice for the same lift — a GST invoice, charged per KL. It is a real part of what this fuel cost you, so adding it here makes your margin the money you actually keep.')}
                 </div>
+                {/* 1. THE PAPER. Optional on purpose: the manual boxes below have always
+                       worked and still do, so a manager without the invoice in his hand
+                       is never stopped. Whatever he uploads is KEPT either way. */}
+                <div style={{border:'1.5px dashed var(--border)',borderRadius:12,padding:'12px',marginBottom:14,background:'var(--surface-2)'}}>
+                  <div style={{fontSize:12.5,fontWeight:700,color:'var(--text-2)',marginBottom:8}}>
+                    {tc('deliv_page.lfr_upload_title','Have the LFR invoice? Scan it and check what we read.')}
+                  </div>
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    <label style={{flex:'1 1 140px',textAlign:'center',padding:'11px',borderRadius:10,border:'1.5px solid var(--border)',background:'#fff',fontWeight:600,fontSize:13,cursor:lfrScanning?'wait':'pointer'}}>
+                      📷 {tc('deliv_page.lfr_camera','Take a photo')}
+                      <input type="file" accept="image/*" capture="environment" hidden disabled={lfrScanning}
+                        onChange={e=>handleLfrFile(e.target.files?.[0])}/>
+                    </label>
+                    <label style={{flex:'1 1 140px',textAlign:'center',padding:'11px',borderRadius:10,border:'1.5px solid var(--border)',background:'#fff',fontWeight:600,fontSize:13,cursor:lfrScanning?'wait':'pointer'}}>
+                      📄 {tc('deliv_page.lfr_pick','Choose file / PDF')}
+                      <input type="file" accept="image/*,application/pdf" hidden disabled={lfrScanning}
+                        onChange={e=>handleLfrFile(e.target.files?.[0])}/>
+                    </label>
+                  </div>
+                  {lfrScanning && <div style={{fontSize:12,color:'var(--brand)',marginTop:8}}>⏳ {tc('deliv_page.lfr_reading','Reading the LFR invoice…')}</div>}
+                  {lfrScanErr  && <div style={{fontSize:12,color:'var(--danger)',marginTop:8,lineHeight:1.5}}>{lfrScanErr}</div>}
+                  {lfrFile && !lfrScanning && (
+                    <div style={{fontSize:11.5,color:'var(--text-3)',marginTop:8}}>
+                      📎 {tc('deliv_page.lfr_will_keep','This image will be saved with the delivery.')}
+                    </div>
+                  )}
+
+                  {/* 2. WHAT WE READ — shown for CONFIRMATION, never applied on its own.
+                         Every figure is the one printed on his paper, so he can check the
+                         box against the document before he presses the green button. */}
+                  {lfrScan && (
+                    <div style={{marginTop:10,border:'1px solid var(--border)',borderRadius:10,background:'#fff',overflow:'hidden'}}>
+                      <div style={{padding:'7px 11px',fontSize:11.5,fontWeight:800,letterSpacing:'.04em',textTransform:'uppercase',color:'var(--text-3)',borderBottom:'1px solid var(--border)'}}>
+                        {tc('deliv_page.lfr_read_title','What we read — check it against the paper')}
+                      </div>
+                      {[
+                        ['deliv_page.lfr_f_inv',    'Invoice number', lfrScan.invoice_number],
+                        ['deliv_page.lfr_f_date',   'Invoice date',   toISTDate(lfrScan.invoice_date)],
+                        ['deliv_page.lfr_f_ref',    'Against fuel invoice', lfrScan.fuel_invoice_number],
+                        ['deliv_page.lfr_f_sac',    'SAC',            lfrScan.sac_code],
+                        ['deliv_page.lfr_f_desc',   'Description',    lfrScan.description],
+                        ['deliv_page.lfr_f_taxable','Taxable value',  lfrScan.taxable_value!=null ? `₹${Number(lfrScan.taxable_value).toLocaleString('en-IN',{minimumFractionDigits:2})}` : null],
+                        ['deliv_page.lfr_f_gst',    'GST',            lfrScan.gst_amount!=null ? `₹${Number(lfrScan.gst_amount).toLocaleString('en-IN',{minimumFractionDigits:2})}${lfrScan.gst_pct?` (${lfrScan.gst_pct}%)`:''}` : (lfrScan.gst_pct?`${lfrScan.gst_pct}%`:null)],
+                        ['deliv_page.lfr_f_total',  'Invoice total',  lfrScan.total_value!=null ? `₹${Number(lfrScan.total_value).toLocaleString('en-IN',{minimumFractionDigits:2})}` : null],
+                      ].filter(([,,v]) => v!=null && v!=='').map(([k,en,v],i)=>(
+                        <div key={i} style={{display:'flex',justifyContent:'space-between',gap:10,padding:'7px 11px',borderBottom:'1px solid var(--border)',fontSize:12.5}}>
+                          <span style={{color:'var(--text-3)'}}>{tc(k,en)}</span>
+                          <span style={{fontWeight:600,textAlign:'right',wordBreak:'break-word'}}>{String(v)}</span>
+                        </div>
+                      ))}
+                      <div style={{padding:'7px 11px',fontSize:11.5,color:'var(--text-3)'}}>
+                        {lfrScan.confidence && <>{tc('deliv_page.confidence','confidence')}: <b>{lfrScan.confidence}</b></>}
+                        {lfrScan.notes && <div style={{marginTop:3}}>{lfrScan.notes}</div>}
+                      </div>
+                      {/* We do NOT silently back-calculate a figure off the paper. When the
+                          taxable value was derived from the total and the GST rate, it says
+                          so, because he is about to confirm it as a cost. */}
+                      {lfrScan.taxable_derived && (
+                        <div style={{padding:'8px 11px',fontSize:11.5,color:'var(--warning)',borderTop:'1px solid var(--border)',lineHeight:1.5}}>
+                          ⚠ {tc('deliv_page.lfr_derived','The taxable value was not printed clearly — we worked it back from the total and the GST rate. Check it against the paper.')}
+                        </div>
+                      )}
+                      {lfrScan.reconciled === false && (
+                        <div style={{padding:'8px 11px',fontSize:11.5,color:'var(--danger)',borderTop:'1px solid var(--border)',fontWeight:600,lineHeight:1.5}}>
+                          ⚠ {tc('deliv_page.lfr_no_recon','Taxable + GST does not equal the invoice total — one of those figures was misread. Verify before confirming.')}
+                        </div>
+                      )}
+                      <div style={{padding:'8px 11px',fontSize:11.5,color:'var(--text-2)',borderTop:'1px solid var(--border)',background:'var(--surface-2)',lineHeight:1.5}}>
+                        {tc('deliv_page.lfr_confirm_hint','Nothing is saved yet. Correct anything below, then confirm.')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{marginBottom:12}}>
                   <label className="label">{tc('deliv_page.lfr_amount','Taxable value (₹) — before GST')}</label>
                   <input className="input" inputMode="decimal" placeholder="4730.64"
@@ -532,8 +703,19 @@ export default function DeliveriesPage() {
                 {/* THE WORKING. A total computed from parts must show the parts — he has
                     to be able to check one line against the paper in ten seconds. */}
                 <div style={{fontWeight:800,fontSize:19,marginBottom:10}}>
-                  {tc('deliv_page.lfr_done','LFR added to the cost')}
+                  {lfrResult.applied === false
+                    ? tc('deliv_page.lfr_not_saved','LFR was NOT saved')
+                    : tc('deliv_page.lfr_done','LFR added to the cost')}
                 </div>
+                {/* Never claim a write that did not happen. The old code answered ok:true
+                    with nothing stored, which is how this feature sat broken while every
+                    screen said it had worked. */}
+                {lfrResult.applied === false && (
+                  <div style={{fontSize:12.5,color:'var(--danger)',fontWeight:600,marginBottom:12,lineHeight:1.5}}>
+                    ⚠ {tc('deliv_page.lfr_not_saved_help','Nothing was written to these deliveries. Please tell us — do not re-type it and assume it took.')}
+                    {lfrResult.note && <div style={{fontWeight:400,color:'var(--text-3)',marginTop:3}}>{lfrResult.note}</div>}
+                  </div>
+                )}
                 <div style={{border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',marginBottom:12}}>
                   {lfrResult.split?.map((r,i)=>(
                     <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',gap:8,padding:'9px 12px',borderBottom:'1px solid var(--border)',fontSize:13}}>
@@ -565,6 +747,18 @@ export default function DeliveriesPage() {
                   <div style={{fontSize:12,color:'var(--warning)',marginBottom:6,lineHeight:1.5}}>
                     ⚠ {tc('deliv_page.lfr_unverified','These rates are confirmed for BPCL only — this outlet is {o}. The figures reconcile with your invoice, so the split is sound, but treat the rate card itself as inferred until more {o} invoices confirm it.')
                         .replace(/\{o\}/g, lfrResult.oil_company || tc('deliv_page.lfr_other_omc','another oil company'))}
+                  </div>
+                )}
+                {/* The document. He asked for the images of BOTH invoices to be kept, so
+                    the screen says plainly whether this one is on file. */}
+                {lfrResult.applied !== false && lfrFile && (
+                  <div style={{fontSize:11.5,marginTop:2,marginBottom:8,lineHeight:1.5,
+                               color: lfrResult.invoice_linked ? 'var(--text-3)' : 'var(--warning)'}}>
+                    {lfrResult.invoice_linked
+                      ? `📎 ${tc('deliv_page.lfr_img_saved','The LFR invoice image is saved with this delivery.')}`
+                      : lfrResult.invoice_stored
+                        ? `⚠ ${tc('deliv_page.lfr_img_unlinked','The image was saved but is not attached to this delivery yet — the database still needs its update. Tell us and we will finish it.')}`
+                        : `⚠ ${tc('deliv_page.lfr_img_failed','The figure was saved, but the invoice image did not upload. Re-attach it later from the register.')}`}
                   </div>
                 )}
                 {lfrResult.method === 'flat_per_litre' && (

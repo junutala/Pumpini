@@ -456,6 +456,13 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
   const [loading,setLoading] = useState(false);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
   const cities = getCities(form.state||info?.state||'');
+  // 🔴 "Other" IS A MODE, NOT A CITY. It used to be held in `form.city` itself, while the
+  // type-it-in box below both rendered on `form.city==='__other__'` AND wrote what he
+  // typed into that same `form.city`. So the first character replaced the sentinel, the
+  // condition went false, and the box unmounted mid-keystroke — losing the character and
+  // leaving the select blank. A control may not be unmounted by its own onChange.
+  // The mode now lives on its own state and `form.city` holds only the city.
+  const [cityOther, setCityOther] = useState(false);
 
   useEffect(()=>{
     if(info) setForm({
@@ -476,6 +483,10 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
       // we have no standing to make for him.
       lfr_site_category: info.lfr_site_category||'',
     });
+    if (info) {
+      const known = getCities(info.state || '');
+      setCityOther(!!info.city && !known.includes(info.city));
+    }
   },[info?.name]);
 
   const save = () => {
@@ -514,14 +525,19 @@ function StationTab({ stationId, info, onSaved, askConfirm }) {
           </div>
           <div>
             <label className="label">{tc('setp.city', 'City *')}</label>
-            <select className="input" value={form.city||''} onChange={e=>f('city',e.target.value)} disabled={!form.state}>
+            <select className="input" value={cityOther ? '__other__' : (form.city||'')} disabled={!form.state}
+              onChange={e=>{
+                if (e.target.value === '__other__') { setCityOther(true); f('city',''); }
+                else { setCityOther(false); f('city', e.target.value); }
+              }}>
               <option value="">{tc('setp.selectCity', 'Select city...')}</option>
               {cities.map(c=><option key={c} value={c}>{c}</option>)}
               <option value="__other__">{tc('setp.otherCity', 'Other (type below)')}</option>
             </select>
-            {form.city==='__other__' && (
-              <input className="input" style={{marginTop:6}} placeholder={tc('setp.enterCityName', 'Enter city name')}
-                onChange={e=>f('city',e.target.value)}/>
+            {cityOther && (
+              <input className="input" style={{marginTop:6}} autoFocus
+                placeholder={tc('setp.enterCityName', 'Enter city name')}
+                value={form.city||''} onChange={e=>f('city',e.target.value)}/>
             )}
           </div>
         </div>
