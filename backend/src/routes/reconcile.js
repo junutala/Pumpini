@@ -1321,7 +1321,10 @@ router.post('/parse-slip', authenticate,
       unmatched: nozzles.filter(n => !n.nozzle_id).length,
       artifact_id: slipArtifact ? slipArtifact.id : null,
       legible: parsed.legible === true && nozzles.length > 0 && nozzles.every(n => n.legible),
-      notes: notes || String(parsed.notes ?? ''),
+      // `notes` (no such variable here — it belongs to /pos-meter, whose response shape
+      // this was copied from) threw ReferenceError and 500'd the slip read. What the
+      // caller wants is what the model said about the photograph.
+      notes: String(parsed.notes ?? ''),
     });
   } catch (err) { next(err); }
 });

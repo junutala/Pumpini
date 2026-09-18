@@ -7,6 +7,10 @@ const { v4: uuidv4 } = require('uuid');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const dispenseSvc = require('../services/dispenseService');
+// GET /api/dispense selects the one nozzle name through pumpService and referenced
+// `pumps` without ever importing it, so the endpoint threw ReferenceError on every
+// call. Named `pumps` to match how every service in this repo imports it.
+const pumps = require('../services/pumpService');
 
 const upload = multer({
   storage: multer.diskStorage({

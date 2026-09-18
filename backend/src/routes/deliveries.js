@@ -1,5 +1,7 @@
 // src/routes/deliveries.js
 const router = require('express').Router();
+const { hasColumn } = require('../db/hasColumn');
+const { matchCard } = require('../config/lfrRates');
 const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
@@ -32,13 +34,14 @@ async function hasDeliveryPaidCol() {
 // it must not break while `storage_path` is missing or `file_base64` is still
 // NOT NULL. We try progressively more legacy INSERT shapes and only fall through on
 // a missing-column (42703) / not-null (23502) error — never losing the invoice.
-async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_by }) {
+async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_by, kind = 'fuel' }) {
   let path = null;
   if (storageConfigured()) {
     try {
       path = await uploadDocumentBase64({
-        station_id, kind: 'delivery_invoice',
-        prefix: 'delivery-invoices', scope: station_id, base64, contentType: media_type,
+        station_id, kind: kind === 'lfr' ? 'lfr_invoice' : 'delivery_invoice',
+        prefix: kind === 'lfr' ? 'lfr-invoices' : 'delivery-invoices',
+        scope: station_id, base64, contentType: media_type,
         filename: media_type === 'application/pdf' ? 'invoice.pdf' : 'invoice.jpg',
       });
     } catch (e) {
@@ -50,6 +53,12 @@ async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_
   //  1. path only            (migrated: storage_path added + file_base64 NULLable)
   //  2. path + base64         (storage_path added but file_base64 still NOT NULL)
   //  3. base64 only           (pre-migration legacy shape)
+  // `kind` tells a fuel invoice from an LFR invoice. Additive column, owner-migrated,
+  // so it is PROBED and simply left out until the DDL lands — at which point old rows
+  // read as 'fuel' by DEFAULT and nothing has to be backfilled. Never try-and-caught:
+  // this helper is also called from the delivery-save path.
+  const kindCol = (await hasColumn('delivery_invoices', 'kind')) ? ['kind'] : [];
+  const kindVal = kindCol.length ? [kind] : [];
   const attempts = [];
   if (path) {
     attempts.push({ cols: ['storage_path'], vals: [path], base64: false });
@@ -58,8 +67,8 @@ async function insertDeliveryInvoice({ station_id, base64, media_type, uploaded_
   attempts.push({ cols: [], vals: [], base64: true });
   let lastErr;
   for (const a of attempts) {
-    const cols = ['station_id', ...a.cols, ...(a.base64 ? ['file_base64'] : []), 'media_type', 'uploaded_by'];
-    const vals = [station_id, ...a.vals, ...(a.base64 ? [base64] : []), media_type, uploaded_by];
+    const cols = ['station_id', ...a.cols, ...(a.base64 ? ['file_base64'] : []), 'media_type', 'uploaded_by', ...kindCol];
+    const vals = [station_id, ...a.vals, ...(a.base64 ? [base64] : []), media_type, uploaded_by, ...kindVal];
     const ph   = vals.map((_, i) => `$${i + 1}`).join(',');
     try {
       const { rows } = await pool.query(`INSERT INTO delivery_invoices(${cols.join(',')}) VALUES(${ph}) RETURNING id`, vals);
@@ -416,12 +425,18 @@ function apportionLfr(rows, total, ratesPerKl = null) {
 // (CLAUDE.md, 29-Aug) — the manager has to be able to check it against the paper.
 router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }), requirePerm('deliveries.view'), async (req, res, next) => {
   try {
-    const { station_id, ids, lfr_total, lfr_invoice_no } = req.body;
+    const { station_id, ids, lfr_total, lfr_invoice_no, file_base64, media_type } = req.body;
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'ids are required' });
     const total = Number(lfr_total);
     if (!Number.isFinite(total) || total < 0) return res.status(400).json({ error: 'lfr_total must be a non-negative number' });
     if (!(await hasColumn('fuel_deliveries', 'lfr_amount'))) {
-      return res.json({ ok: true, updated: 0, note: 'lfr_amount column not migrated yet' });
+      // Nothing was written. Say so — `applied:false` is what the screen reads, because
+      // an ok:true that silently stored nothing is the failure mode this whole feature
+      // just spent a week proving (0 of 189 rows carried an LFR figure).
+      return res.json({ ok: true, applied: false, updated: 0, note: 'lfr_amount column not migrated yet' });
+    }
+    if (file_base64 && !INVOICE_OK_TYPES.includes(media_type)) {
+      return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
     }
 
     // Station-scoped read first: never apportion across another outlet's rows.
@@ -449,16 +464,56 @@ router.patch('/apply-lfr', authenticate, requireStationAccess({ required: true }
     const rates = req.body.rates_per_kl || (card && card.rates_per_kl) || null;
     const split = apportionLfr(rows, total, rates);
 
+    // Keep the paper. The LFR invoice is stored exactly like the fuel invoice — same
+    // writer, same private bucket, same fallback to inline — so BOTH documents behind a
+    // landed cost can be pulled up later (owner-set 18-Sep-2026).
+    //
+    // 🔴 THE IMAGE NEVER COSTS US THE FIGURE. A failed upload is logged and the money
+    // write proceeds: the manager typed a number off the paper in front of him, and
+    // losing it because a bucket was slow would be the worse trade. `invoice_stored`
+    // tells the screen which of the two happened rather than leaving him guessing.
+    // Probed BEFORE the upload so the response can tell the two apart: bytes STORED and
+    // bytes LINKED to this delivery are different facts, and between the Railway deploy
+    // and the owner running the DDL only the first is possible. We still store the paper
+    // — losing the invoice he just photographed would be the worse outcome — but we do
+    // not tell him it is attached to the delivery when nothing points at it yet.
+    const haveLfrDocCol = await hasColumn('fuel_deliveries', 'lfr_invoice_id');
+    let lfrInvoiceId = null;
+    if (file_base64 && media_type) {
+      try {
+        lfrInvoiceId = await insertDeliveryInvoice({
+          station_id, base64: file_base64, media_type,
+          uploaded_by: req.user.id, kind: 'lfr',
+        });
+      } catch (e) {
+        lfrInvoiceId = null;
+        try { require('../utils/logger').warn('apply-lfr: LFR invoice image not stored: ' + (e.message || e)); } catch { /* noop */ }
+      }
+    }
+
+    // `lfr_invoice_id` is additive and owner-migrated, so the UPDATE falls back to the
+    // amount-only shape until the DDL lands. A missing column must never cost the figure
+    // (CLAUDE.md, deploy ordering) — and is never try-and-caught for a 42703.
+    const setDocCol = (haveLfrDocCol && lfrInvoiceId) ? ', lfr_invoice_id = $5' : '';
+    const params = [split.map(s => s.id), split.map(s => s.lfr), lfr_invoice_no || null, station_id];
+    if (setDocCol) params.push(lfrInvoiceId);
     const { rowCount } = await pool.query(
       `UPDATE fuel_deliveries fd
-          SET lfr_amount = v.amt, lfr_invoice_no = $3
+          SET lfr_amount = v.amt, lfr_invoice_no = $3${setDocCol}
          FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::numeric[]) AS amt) v
         WHERE fd.id = v.id AND fd.station_id = $4`,
-      [split.map(s => s.id), split.map(s => s.lfr), lfr_invoice_no || null, station_id]);
+      params);
 
     res.json({
-      ok: true, updated: rowCount, total_ltrs: totalLtrs, lfr_total: total,
+      ok: true, applied: rowCount > 0, updated: rowCount,
+      total_ltrs: totalLtrs, lfr_total: total,
       method: split.method,
+      // Did the document itself land, and is it attached? Two separate facts, reported
+      // separately, so the manager is never told an image is on file when the upload
+      // dropped — nor that it is attached when only the bytes were saved.
+      invoice_stored: !!lfrInvoiceId,
+      invoice_linked: !!(lfrInvoiceId && haveLfrDocCol),
+      lfr_invoice_id: lfrInvoiceId,
       // What we worked out about the outlet, and how well it fits the paper. Shown to the
       // manager rather than kept to ourselves — he is the one who can tell us we are wrong.
       site_category: card ? card.category : null,
@@ -487,31 +542,44 @@ router.patch('/:id/verify', authenticate, requireStationVia('SELECT station_id F
   } catch (err) { next(err); }
 });
 
-// GET /api/deliveries/:id/invoice — the stored scan attached to a delivery.
+// GET /api/deliveries/:id/invoice[?kind=lfr] — a stored scan attached to a delivery.
 // Migrated rows live in the private doc bucket → we return { media_type, url }
 // (a short-lived signed URL). Un-migrated rows still hold base64 → we return
 // { media_type, file_base64 }. Column-tolerant: works before/after the DDL adds
 // `storage_path`. Station-scoped.
+//
+// TWO documents can sit behind one delivery: the fuel invoice (`invoice_id`, the
+// default) and the LFR invoice (`lfr_invoice_id`, `?kind=lfr`). One route, one
+// permission, one resolver — the kind only picks which foreign key to follow, because a
+// second route for the second piece of paper is exactly the drift we keep undoing.
 router.get('/:id/invoice', authenticate,
   requireStationVia('SELECT station_id FROM fuel_deliveries WHERE id=$1', 'id'),
   async (req, res, next) => {
   try {
+    const wantLfr = req.query.kind === 'lfr';
+    // Asking for the LFR document before the DDL has added its pointer is a plain
+    // "nothing attached", not a 500: the column is probed, never named blind.
+    if (wantLfr && !(await hasColumn('fuel_deliveries', 'lfr_invoice_id'))) {
+      return res.status(404).json({ error: 'No LFR invoice attached to this delivery.' });
+    }
+    const fk = wantLfr ? 'fd.lfr_invoice_id' : 'fd.invoice_id';
     let row;
     try {
       const { rows } = await pool.query(
         `SELECT di.media_type, di.file_base64, di.storage_path
-         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
+         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = ${fk}
          WHERE fd.id = $1`, [req.params.id]);
       row = rows[0];
     } catch (e) {
       if (e.code !== '42703') throw e;   // storage_path not migrated yet → legacy select
       const { rows } = await pool.query(
         `SELECT di.media_type, di.file_base64
-         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = fd.invoice_id
+         FROM fuel_deliveries fd JOIN delivery_invoices di ON di.id = ${fk}
          WHERE fd.id = $1`, [req.params.id]);
       row = rows[0];
     }
-    if (!row) return res.status(404).json({ error: 'No invoice attached to this delivery.' });
+    if (!row) return res.status(404).json({
+      error: wantLfr ? 'No LFR invoice attached to this delivery.' : 'No invoice attached to this delivery.' });
     if (row.storage_path) {
       try {
         const url = await signedDocUrl(row.storage_path);
@@ -584,6 +652,93 @@ const { visionOcr: googleVisionOcr } = require('../services/visionOcr');
 
 // Structure OCR text into our JSON shape via a TEXT-only Claude call. Returns the
 // parsed object, or null on any miss so the caller falls back to Claude vision.
+// The LFR invoice is a DIFFERENT document from the fuel invoice: one GST service line,
+// SAC 997212, charged per KL lifted. It carries no tanker, no tank and no density, so it
+// gets its own prompt rather than being forced through the fuel-invoice shape.
+//
+// 🔴 WE ASK FOR WHAT IS PRINTED, AND NOTHING ELSE. The per-fuel breakdown (MS at one
+// rate, HSD at another) is NOT on the paper — the OMC bills a single "LFR for CC
+// (MS/HSD)" line (config/lfrRates.js). So the model is told to report the line as it
+// reads and to leave a figure NULL when it cannot see it. A null the manager fills in
+// beats a plausible number we inferred for him.
+const LFR_INVOICE_PROMPT = `You extract structured data from an Indian oil-company LICENCE FEE RECOVERY (LFR) invoice — a GST service invoice (typically SAC 997212, item code 4395 "LFR Recovery") that the oil company raises BESIDE the fuel invoice for the same lift. Input may be a clean PDF or a phone photo.
+
+Return ONLY a JSON object, no prose, with these keys:
+{
+  "invoice_number":  string or null,   // the LFR invoice number, e.g. "FIIN112710061073"
+  "invoice_date":    string or null,   // ISO yyyy-mm-dd if you can read it, else null
+  "fuel_invoice_number": string or null, // the fuel/tax invoice it references, if printed
+  "taxable_value":   number or null,   // the TAXABLE value, BEFORE GST
+  "gst_pct":         number or null,   // 18 or 28, if printed
+  "gst_amount":      number or null,
+  "total_value":     number or null,   // invoice grand total, INCLUDING GST
+  "sac_code":        string or null,
+  "description":     string or null,   // the line description exactly as printed
+  "confidence":      "high" | "medium" | "low",
+  "notes":           string or null    // anything unreadable or that looks off
+}
+
+RULES:
+- taxable_value is the figure BEFORE GST. If the paper shows only a grand total and a GST
+  rate, still report total_value and gst_pct and leave taxable_value null — do NOT
+  back-calculate it.
+- Never invent a figure you cannot see. null is a correct answer.
+- Do NOT split the amount by product even if the description mentions MS and HSD; report
+  the single printed line.
+- Indian number formats: 4,730.64 is four thousand seven hundred thirty point six four.
+- Dates on these invoices are DD/MM/YYYY or DD-MMM-YYYY. Never read them as MM/DD.`;
+
+// Same OCR→text structuring as the fuel invoice, against the LFR prompt. Returns the
+// parsed object or null on any miss, so the caller can fall back to Claude vision.
+async function structureLfrText(ocrText) {
+  let msg;
+  try {
+    msg = await ai.messages.create({
+      model: 'claude-sonnet-4-6', max_tokens: 1500,
+      messages: [{ role: 'user', content: [{ type: 'text',
+        text: `${LFR_INVOICE_PROMPT}\n\nBelow is OCR-extracted text from the invoice (layout may be imperfect — rely on the labels):\n\n${ocrText}` }] }],
+    });
+  } catch (e) {
+    try { require('../utils/logger').error('parse-invoice (lfr ocr->text) Claude error: ' + (e.message || e)); } catch { /* noop */ }
+    return null;
+  }
+  const txt = (msg.content.find(b => b.type === 'text')?.text || '').trim();
+  const m = txt.match(/\{[\s\S]*\}/);
+  try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
+}
+
+// An LFR read is USABLE when it gives us a money figure to confirm. Everything else on
+// the document is nice-to-have; without a value there is nothing for the manager to
+// check, so we say so and let him type it.
+function lfrUsable(p) {
+  return !!p && (Number(p.taxable_value) > 0 || Number(p.total_value) > 0);
+}
+
+// Derive the taxable value from the total ONLY when the paper stated the rate, and mark
+// it as derived so the screen can say so. The prompt deliberately refuses to do this;
+// doing it here keeps the arithmetic visible and labelled rather than hidden in a model.
+function withLfrDerivation(p) {
+  try {
+    const taxable = Number(p.taxable_value);
+    const total   = Number(p.total_value);
+    const pct     = Number(p.gst_pct);
+    if (!(taxable > 0) && total > 0 && pct > 0) {
+      p.taxable_value = +(total / (1 + pct / 100)).toFixed(2);
+      p.taxable_derived = true;
+    } else {
+      p.taxable_derived = false;
+    }
+    // Cross-check when all three are printed: taxable + GST should be the total.
+    if (Number(p.taxable_value) > 0 && total > 0) {
+      const gst = Number(p.gst_amount) > 0
+        ? Number(p.gst_amount)
+        : (pct > 0 ? Number(p.taxable_value) * pct / 100 : 0);
+      p.reconciled = Math.abs((Number(p.taxable_value) + gst) - total) <= 1;
+    }
+  } catch { /* annotation only — never block a scan */ }
+  return p;
+}
+
 async function structureInvoiceText(ocrText) {
   let msg;
   try {
@@ -623,14 +778,26 @@ router.post('/parse-invoice', authenticate, requireStationAccess({ required: tru
     if (!file_base64 || !media_type) return res.status(400).json({ error: 'file_base64 and media_type are required' });
     if (!INVOICE_OK_TYPES.includes(media_type)) return res.status(400).json({ error: 'Upload a photo (JPG/PNG) or a PDF.' });
 
+    // Which document is this? The LFR invoice is read by the SAME endpoint under the
+    // same guards — a second route for a second piece of paper is the drift this repo
+    // spent months undoing (CLAUDE.md, cardinal rule). Anything but 'lfr' is the fuel
+    // invoice, so every existing caller keeps its exact behaviour.
+    const docType   = req.body.doc_type === 'lfr' ? 'lfr' : 'fuel';
+    const prompt    = docType === 'lfr' ? LFR_INVOICE_PROMPT : INVOICE_PROMPT;
+    const structure = docType === 'lfr' ? structureLfrText     : structureInvoiceText;
+    const usable    = docType === 'lfr'
+      ? lfrUsable
+      : (pp => pp && Array.isArray(pp.items) && pp.items.length > 0);
+    const shape     = docType === 'lfr' ? withLfrDerivation : withReconciliation;
+
     // Preferred path: Google Vision OCR → Claude text structuring (robust on
     // smudged HPCL phone photos). Any miss falls through to Claude vision below.
     try {
       const ocrText = await googleVisionOcr(file_base64);
       if (ocrText && ocrText.replace(/\s/g, '').length > 60) {
-        const parsedOcr = await structureInvoiceText(ocrText);
-        if (parsedOcr && Array.isArray(parsedOcr.items) && parsedOcr.items.length) {
-          return res.json(withReconciliation(parsedOcr));
+        const parsedOcr = await structure(ocrText);
+        if (usable(parsedOcr)) {
+          return res.json(shape(parsedOcr));
         }
       }
     } catch (e) {
@@ -646,7 +813,7 @@ router.post('/parse-invoice', authenticate, requireStationAccess({ required: tru
       msg = await ai.messages.create({
         // 4000 so a multi-product invoice's JSON isn't truncated mid-object.
         model: 'claude-sonnet-4-6', max_tokens: 4000,
-        messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: INVOICE_PROMPT }] }],
+        messages: [{ role: 'user', content: [fileBlock, { type: 'text', text: prompt }] }],
       });
     } catch (e) {
       try { require('../utils/logger').error('parse-invoice API error: ' + (e.message || e)); } catch { /* noop */ }
@@ -662,6 +829,14 @@ router.post('/parse-invoice', authenticate, requireStationAccess({ required: tru
       try { require('../utils/logger').warn(`parse-invoice unparsed (stop=${msg.stop_reason}): ${txt.slice(0, 400)}`); } catch { /* noop */ }
       return res.status(422).json({ error: 'Could not read the invoice — enter the details manually.' });
     }
+    if (docType === 'lfr') {
+      // No money figure read → say so plainly and let him type it. Four words, then out
+      // of his way (CLAUDE.md, 31-Aug): a bad photograph is not ours to engineer around.
+      if (!lfrUsable(parsed)) {
+        return res.status(422).json({ error: 'Could not read the LFR invoice — enter the amount manually.' });
+      }
+      return res.json(withLfrDerivation(parsed));
+    }
     if (!Array.isArray(parsed.items)) parsed.items = [];
     res.json(withReconciliation(parsed));
   } catch (err) { next(err); }
@@ -672,3 +847,10 @@ module.exports = router;
 // Exported for the unit tests, the same way dipstick.js exposes withGaugeChecks: the
 // test pins the REAL apportionment, not a second copy of the rule that can drift.
 module.exports.apportionLfr = apportionLfr;
+
+// Same reason, for the LFR invoice READ: `lfrUsable` decides whether a scan is worth
+// showing him at all, and `withLfrDerivation` is the only place a taxable value is ever
+// worked back from a total. Both decide what a manager is asked to confirm as a cost, so
+// they are pinned by testing THESE functions.
+module.exports.lfrUsable = lfrUsable;
+module.exports.withLfrDerivation = withLfrDerivation;

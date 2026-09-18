@@ -20,6 +20,10 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
     // ON CONFLICT(invoice_number) upsert could silently OVERWRITE another
     // station's invoice on a number collision — now a cross-station collision
     // is a 409, and a same-station resend is an idempotent update.
+    // Declared OUT here, not inside the try: the catch below reads it to name the
+    // number in a 409, and a `let` inside the try is not in scope there — so the one
+    // error this code exists to report clearly threw ReferenceError instead.
+    let invoice_number = null;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -27,7 +31,7 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
       // The number is allocated HERE, inside the transaction, not by the browser.
       // A client-supplied number is accepted only for an opening-balance backfill,
       // where the owner is deliberately reproducing a pre-Pumpini invoice.
-      let invoice_number = (is_opening_balance && req.body.invoice_number)
+      invoice_number = (is_opening_balance && req.body.invoice_number)
         ? req.body.invoice_number : null;
       if (!invoice_number) {
         ({ invoice_number } = await invoiceNo.allocate({ station_id }, client));
