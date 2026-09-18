@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, X, CheckCircle, Truck, Package, Camera, Upload, ScanLine, Paperclip } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
@@ -98,6 +98,22 @@ export default function DeliveriesPage() {
   // box against each tank that already exists for the fuel — nothing to add here.
   const [splitMode, setSplitMode] = useState(false);
   const [splitQty,  setSplitQty]  = useState({});   // { tank_id: litres-string }
+  // 🔴 WHEN SEVERAL TANKS HOLD THE SAME FUEL, THE SCAN CANNOT PICK ONE — AND SAID SO
+  // TO NOBODY. `selectItem` left tank_id empty (correctly: guessing a tank is a wrong
+  // stock figure), but the select is `required`, so Save fired the browser's own generic
+  // "Please select an item in the list" bubble on a field far down a long form and sent
+  // NO request. To the manager the button simply did nothing.
+  //
+  // Found 18-Sep-2026 at SBR ENERGIES: four invoice scans, zero POST /api/deliveries,
+  // and two diesel tanks. It hits 3 of the 5 real outlets — Kamala and Highway have two
+  // diesel tanks as well; their managers had learned to pick the tank, which is why it
+  // never surfaced. `tankChoice` carries the fuel that needs the answer.
+  const [tankChoice, setTankChoice] = useState('');
+  // Set when the orange button was pressed and THIS field is what stopped it. Kept apart
+  // from tankChoice so the field does not glare red on a fresh form he has not reached
+  // yet — it turns red when we actually know he has to act.
+  const [tankInvalid, setTankInvalid] = useState(false);
+  const tankSelRef = useRef(null);
   const splitAllocated = () => Object.values(splitQty).reduce((s, v) => s + (parseFloat(v) || 0), 0);
   const resetSplit = () => { setSplitMode(false); setSplitQty({}); };
 
@@ -124,6 +140,8 @@ export default function DeliveriesPage() {
     setItems([]); setRecorded([]); setActiveItem(0); setScanMeta(null); setScanErr('');
     setScanFile(null); setInvoiceId(null); resetSplit();
     setSessionIds([]); setPaidPrompt(false);
+    // A previous invoice's unanswered tank question must not carry into this one.
+    setTankChoice(''); setTankInvalid(false);
     setShowForm(true);
   };
 
@@ -258,6 +276,16 @@ export default function DeliveriesPage() {
     const vol = it.gross_volume_ltrs != null ? Number(it.gross_volume_ltrs) : null;
     const tot = it.total_value != null ? Number(it.total_value) : null;
     const rate = (tot && vol) ? +(tot / vol).toFixed(2) : (it.rate_per_ltr != null ? Number(it.rate_per_ltr) : null);
+    // Several tanks of this fuel → we do NOT choose. But he is told, loudly, and the
+    // field is brought to him instead of waiting silently at the bottom of the form.
+    const needsTankChoice = match.length > 1;
+    setTankChoice(needsTankChoice ? (it.fuel_type || '') : '');
+    if (needsTankChoice) {
+      setTimeout(() => {
+        try { tankSelRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        catch { /* older browser — the amber line below still tells him */ }
+      }, 120);
+    }
     setForm(p => ({
       ...p,
       fuel_type:         it.fuel_type || p.fuel_type,
@@ -461,6 +489,26 @@ export default function DeliveriesPage() {
     } catch(err) { alert(err.error||tc('deliv_page.failed_record','Failed to record delivery')); }
     finally { setLoading(false); }
   };
+
+  // Is the tank question still outstanding? ONE source for the red label and the amber
+  // line, so the two can never contradict each other.
+  const tankMissing     = !splitMode && !form.tank_id;
+  const tankNeedsAnswer = tankMissing && (!!tankChoice || tankInvalid);
+
+  // The orange button cannot reach our handler while the field is invalid — the browser
+  // blocks submit first and shows its own "Please select an item in the list" on a field
+  // that may be off-screen. So we do two things the browser will honour: give it OUR
+  // sentence to show (setCustomValidity), and scroll the field into view when it is the
+  // one refusing (onInvalid, below).
+  useEffect(() => {
+    const el = tankSelRef.current;
+    if (!el || typeof el.setCustomValidity !== 'function') return;
+    try {
+      el.setCustomValidity(tankMissing
+        ? tc('deliv_page.pick_tank_validity', 'Choose which tank took this load.')
+        : '');
+    } catch { /* not supported — the red label and amber line still say it */ }
+  }, [tankMissing, form.fuel_type]);
 
   // Summary stats
   const todayDeliveries = deliveries.filter(d =>
@@ -962,7 +1010,12 @@ export default function DeliveriesPage() {
                 </div>
                 <div>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                    <label className="label">{tc('deliv_page.deliver_tank','Deliver to Tank')} *</label>
+                    {/* RED while it still needs him (owner-set 18-Sep-2026): the label is
+                        the first thing he reads, so the field that is holding up the save
+                        has to be the field that looks wrong. */}
+                    <label className="label" style={tankNeedsAnswer ? {color:'var(--danger)',fontWeight:700} : undefined}>
+                      {tc('deliv_page.deliver_tank','Deliver to Tank')} *
+                    </label>
                     {tanks.filter(t=>t.fuel_type===form.fuel_type).length>=2 && (
                       <label style={{fontSize:11,fontWeight:600,color:'var(--brand,#e07b0c)',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:4}}>
                         <input type="checkbox" checked={splitMode} onChange={e=>setSplitMode(e.target.checked)} style={{cursor:'pointer'}}/>
@@ -970,12 +1023,33 @@ export default function DeliveriesPage() {
                       </label>
                     )}
                   </div>
-                  <select className="input" value={splitMode?'':(form.tank_id||'')} onChange={e=>f('tank_id',e.target.value)} required={!splitMode} disabled={splitMode}>
+                  <select ref={tankSelRef} className="input"
+                    style={tankNeedsAnswer ? {borderColor:'var(--danger)'} : undefined}
+                    value={splitMode?'':(form.tank_id||'')}
+                    onChange={e=>{ f('tank_id', e.target.value); setTankInvalid(false); }}
+                    required={!splitMode} disabled={splitMode}
+                    onInvalid={e=>{
+                      // Fires when the orange button is pressed and THIS field is what
+                      // stopped it. Turn it red and bring it to him, rather than leaving
+                      // him to hunt down a browser bubble on a long form.
+                      setTankInvalid(true);
+                      try { e.target.scrollIntoView({ block:'center', behavior:'smooth' }); }
+                      catch { /* older browser — the browser's own focus still applies */ }
+                    }}>
                     <option value="">{splitMode?tc('deliv_page.split_below','Set tanks below'):tc('deliv_page.select_tank','Select tank...')}</option>
                     {tanks.filter(t=>t.fuel_type===form.fuel_type).map(t=>(
                       <option key={t.id} value={t.id}>{tc('deliv_page.tank','Tank')} {t.tank_number} — {t.fuel_type} ({fmtL(t.current_stock)}L {tc('deliv_page.current','current')})</option>
                     ))}
                   </select>
+                  {/* The one question the scan cannot answer. Stated before he presses
+                      Save, not by a browser bubble after he does. */}
+                  {tankNeedsAnswer && (
+                    <div style={{fontSize:11.5,color:'var(--warning)',marginTop:5,fontWeight:600,lineHeight:1.5}}>
+                      ⚠ {tc('deliv_page.pick_tank_hint','This outlet has {n} {f} tanks, so we cannot tell which one took this load — choose it above. (Tick "Split across tanks" if it went into more than one.)')
+                          .replace('{n}', String(tanks.filter(t=>t.fuel_type===form.fuel_type).length))
+                          .replace('{f}', String(tankChoice).replace('_',' '))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="label">{tc('deliv_page.during_shift','During Shift')}</label>
