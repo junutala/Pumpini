@@ -96,7 +96,8 @@ async function storeMeterPhoto({ shift_id, nozzle_id, image_base64, media_type, 
     let station_id = null, label = null;
     try {
       const { rows } = await pool.query(
-        `SELECT sh.station_id, n.nozzle_number, n.slip_nozzle_no, p.serial AS pump_serial
+        `SELECT sh.station_id, n.nozzle_number, n.slip_nozzle_no,
+                p.serial AS pump_serial, p.pump_number
            FROM shifts sh
            LEFT JOIN nozzles n ON n.id = $2
            LEFT JOIN pumps   p ON p.id = n.pump_id AND p.end_date IS NULL
@@ -886,7 +887,7 @@ router.post('/pos-meter', authenticate,
     // the read, because that is what we go looking for on the paper.
     const { rows: nzr } = await pool.query(
       `SELECT n.id, n.nozzle_number, n.slip_nozzle_no, n.fuel_type, n.station_id,
-              p.serial AS pump_serial
+              p.serial AS pump_serial, p.pump_number
          FROM nozzles n
          LEFT JOIN pumps p ON p.id = n.pump_id AND p.end_date IS NULL
         WHERE n.id = $1`, [nozzle_id]);

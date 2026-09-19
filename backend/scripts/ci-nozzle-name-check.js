@@ -2,7 +2,7 @@
 // ONE NOZZLE NAME — enforced, not remembered.
 //
 // The rule (CLAUDE.md, owner-set 2026-08-20): a nozzle is shown as
-// `<pump serial>.<nozzle number>` and NOTHING else ever reaches a user — not a
+// `<pump no>.<nozzle> · <pump serial>.<nozzle>` and NOTHING else ever reaches a user — not a
 // screen, not an error message, not a CSV. `nozzles.nozzle_number` ("1.1") is our
 // INTERNAL index. One writer produces the name: pumpService.nozzleNameExpr /
 // nozzleName in SQL and JS, read on the frontend through lib/nozzle.js nozName().
@@ -81,7 +81,7 @@ for (const abs of walk(path.join(ROOT, 'backend/src'))) {
 if (problems.length) {
   console.error('\n✗ ONE NOZZLE NAME — violations found:\n');
   problems.forEach(p => console.error('  ' + p + '\n'));
-  console.error('  The name is `<pump serial>.<nozzle number>`, produced by ONE writer.');
+  console.error('  The name is `<pump no>.<nozzle> · <pump serial>.<nozzle>`, produced by ONE writer.');
   console.error('  See CLAUDE.md "ONE nozzle name, one pump name".\n');
   process.exit(1);
 }
