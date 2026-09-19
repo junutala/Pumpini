@@ -5,8 +5,11 @@ Owner-set: *"I think we are at a stage that this build can be frozen as Phase 1.
 This file records **what Phase 1 is, what was verified at the freeze, and what is
 knowingly left open.** It is a statement of fact about a point in time, not a plan.
 
-- **Frozen at:** `819a74e` on `main`
-- **Backup branch:** `phase-1-freeze` — a copy of `main` at that commit
+- **Code frozen at:** `819a74e` — the last commit that changed anything executable
+- **Branch tip:** `25b7eed` — `819a74e` plus this documentation pass, which touched
+  only `.md` files, so the two are byte-identical in every file that runs
+- **Backup branch:** `phase-1-freeze`, pointing at `25b7eed` (fast-forwarded, nothing
+  discarded)
 - **Live on:** Vercel (frontend) + Railway (backend) + Supabase Postgres
 
 ---
