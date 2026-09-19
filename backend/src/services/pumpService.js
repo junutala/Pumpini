@@ -108,13 +108,29 @@ function cleanSerial(v) {
 //  THE NAME OF A NOZZLE — one writer, used by every screen, report and export.
 // ═══════════════════════════════════════════════════════════════════════════════
 //
-// A nozzle has ONE name: the identity its own slip prints, `<pump serial>.<nozzle
-// number>` — M1832105.1. An attendant, a manager and an auditor can hold the paper
-// against the screen and agree without knowing anything about Pumpini.
+// A nozzle has ONE name, and since 19-Sep-2026 it carries BOTH identities:
 //
-// `nozzles.nozzle_number` ("1.1", "2.3") is OUR index. It is verifiable by nobody
-// outside this codebase, so it is internal only and is never shown to a user. It
-// stays as the join key and the ordering key; it stops being a label.
+//     1.1 · M2601076.1
+//     ^pump no          ^the identity its own slip prints
+//
+// WHY BOTH (owner-set 19-Sep-2026). The serial alone is unarguable — an attendant,
+// a manager and an auditor can hold the paper against the screen and agree without
+// knowing anything about Pumpini — but it is not what anyone SAYS. SBR's three
+// serials are M2601076 / M2602051 / M2601180: same prefix, four differing digits,
+// unreadable at a glance on a phone. The forecourt says "pump 3". So the label
+// speaks both languages: the left half is what a man calls it, the right half is
+// what support and the paper slip can verify.
+//
+// 🔴 AND THE LEFT HALF IS FALSIFIABLE, WHICH IS THE POINT. A pump number is ours by
+// construction — we numbered the pumps as they were entered, and nobody outside
+// this codebase confirmed it. Printing it BESIDE the serial is what lets an outlet
+// catch it: a man who calls that machine pump 1 sees `3.1 · 201807000908.1` and
+// tells us. A pump number shown alone could never be challenged, which is exactly
+// what the 20-Aug rule was written against.
+//
+// `nozzles.nozzle_number` ("1.1", "2.3") is still OUR index — the join key and the
+// ordering key. It is not the label; it only supplies the two halves' fallbacks
+// when a pump row is missing its number.
 //
 // The printed nozzle number is `slip_nozzle_no` where the outlet recorded it, else
 // the suffix of our own number ("1.3" -> "3") — the SAME fallback defaultSlipNo()
@@ -123,6 +139,9 @@ function cleanSerial(v) {
 //
 // NO SERIAL ON FILE -> the stored nozzle_number, unchanged. A pump not yet recorded
 // is a gap to fill in Settings; it is not a licence to invent a name for it.
+//
+// NO PUMP NUMBER -> the slip identity alone, `M2601076.1`, exactly as before. We
+// never show half a label.
 //
 // Kamala's CNG unit prints no slip at all (owner, 20-Aug-2026), so its serial is
 // recorded as the literal "CNG" and its nozzles read CNG.1 / CNG.2. That is an
@@ -149,12 +168,23 @@ async function hasPumpNaming(client = pool) {
 // The SQL half of the name. `n` is the nozzles alias already in the caller's query;
 // `p` is the pumps alias the matching join introduces.
 function nozzleNameExpr(n = 'n', p = '_np') {
-  return `CASE WHEN ${p}.serial IS NULL OR btrim(${p}.serial) = ''
-               THEN ${n}.nozzle_number::text
-               ELSE btrim(${p}.serial) || '.' || COALESCE(
+  // The printed nozzle line, exactly as before: the slip mapping if set, else the
+  // suffix of our own number, else the whole of it.
+  const printed = `COALESCE(
                       NULLIF(btrim(${n}.slip_nozzle_no), ''),
                       NULLIF(split_part(${n}.nozzle_number::text, '.', 2), ''),
-                      ${n}.nozzle_number::text)
+                      ${n}.nozzle_number::text)`;
+  // The pump's own number. Falls back to the prefix of our stored number, which is
+  // where that number came from in the first place.
+  const pumpNo  = `COALESCE(
+                      NULLIF(btrim(${p}.pump_number::text), ''),
+                      NULLIF(split_part(${n}.nozzle_number::text, '.', 1), ''))`;
+  return `CASE WHEN ${p}.serial IS NULL OR btrim(${p}.serial) = ''
+               THEN ${n}.nozzle_number::text
+               WHEN ${pumpNo} IS NULL
+               THEN btrim(${p}.serial) || '.' || ${printed}
+               ELSE ${pumpNo} || '.' || ${printed}
+                    || ' · ' || btrim(${p}.serial) || '.' || ${printed}
           END`;
 }
 
@@ -178,7 +208,7 @@ async function nozzleNameSelect(client = pool, { n = 'n', p = '_np', as = 'nozzl
   return {
     col: `, ${nozzleNameExpr(n, p)} AS ${as}`,
     join: ` ${nozzleNameJoin(n, p)} `,
-    groupBy: `, ${p}.serial, ${n}.slip_nozzle_no`,
+    groupBy: `, ${p}.serial, ${p}.pump_number, ${n}.slip_nozzle_no`,
   };
 }
 
@@ -191,7 +221,12 @@ function nozzleName(row = {}) {
   const printed = String(row.slip_nozzle_no ?? '').trim()
     || (stored.includes('.') ? stored.split('.').pop() : '')
     || stored;
-  return `${serial}.${printed}`;
+  const pumpNo = String(row.pump_number ?? '').trim()
+    || (stored.includes('.') ? stored.split('.')[0] : '');
+  // No pump number to show (an unregistered pump) -> the slip's identity alone,
+  // which is what the convention has always meant by "as its own slip prints it".
+  if (!pumpNo) return `${serial}.${printed}`;
+  return `${pumpNo}.${printed} · ${serial}.${printed}`;
 }
 
 

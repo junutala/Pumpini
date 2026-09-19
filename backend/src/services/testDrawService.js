@@ -57,7 +57,7 @@ async function loadNozzle(client, { nozzle_id, station_id }) {
   const nz = rows[0];
   if (!nz.tank_id) {
     throw new TestDrawError(400,
-      `Nozzle ${pumps.nozzleName(nz)} is not linked to a tank. Set its tank in Settings first — ` +
+      `Nozzle ${nz.nozzle_name} is not linked to a tank. Set its tank in Settings first — ` +
       'without it there is no record of which tank the fuel came out of.');
   }
   return nz;

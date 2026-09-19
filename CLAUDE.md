@@ -436,9 +436,24 @@ Things worth knowing before chasing this meter again:
 > EVERYWHERE, I repeat, EVERYWHERE where there is a reference to nozzle to be the
 > nozzle naming convention... NO OTHER NAMING CONVENTION invented by you anywhere."*
 
-- **A nozzle is named `<pump serial>.<nozzle number>`** — `M1832105.1` — exactly as
-  its own slip prints it. **A pump is named by its serial.** Nothing else is shown to
-  a user, ever: not on a screen, not in an error message, not in a CSV export.
+- **A nozzle is named `<pump no>.<nozzle> · <pump serial>.<nozzle>`** — `1.1 ·
+  M2601076.1`. **Amended 19-Sep-2026** (was serial only). Nothing else is shown to a
+  user, ever: not on a screen, not in an error message, not in a CSV export.
+  - **WHY BOTH.** The serial is unarguable but is not what anyone SAYS. SBR's three
+    serials are `M2601076` / `M2602051` / `M2601180` — one prefix, four differing
+    digits, unreadable at a glance on a phone; the forecourt says "pump 3". Owner,
+    19-Sep: *"the forecourt can refer to the pump no and if they need support, they
+    can read out the pump serial no."*
+  - **🔴 THE PUMP NUMBER IS OURS BY CONSTRUCTION, AND THAT IS WHY IT IS SHOWN NEXT TO
+    THE SERIAL AND NEVER ALONE.** We numbered the pumps as they were entered; nobody
+    outside this codebase confirmed them. Printed beside the serial the number becomes
+    FALSIFIABLE — a man who calls that machine pump 1 sees `3.1 · 201807000908.1` and
+    tells us. Owner, 19-Sep: *"the three real outlets can see this anomaly and then
+    highlight to us and we fix them too."* Shown alone it could never be challenged,
+    which is exactly what the 20-Aug rule was written against.
+  - SBR's numbering was verified against the slips by Ramana and the owner on
+    19-Sep-2026. The other three real outlets are unverified — the label is how they
+    get checked.
 - **`nozzles.nozzle_number` ("1.1", "2.3") is INTERNAL.** It is our index — it orders
   lists, it is the unique key, and it supplies the printed nozzle number when
   `slip_nozzle_no` is unset. It is never a label. Same for `pumps.pump_number`.

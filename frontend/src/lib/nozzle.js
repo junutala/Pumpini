@@ -5,10 +5,11 @@
 // cockpit, Live, Reports, Test draws, Data health and Settings.
 //
 // The name itself is computed ONCE, in the backend (`pumpService.nozzleNameExpr`),
-// and arrives as `nozzle_name`: `<pump serial>.<nozzle number>` — M1832105.1, the
-// identity the nozzle's own slip prints. Nothing here invents a name; this is the
-// read side of that single writer, and the ONLY reason it exists is the fallback
-// below.
+// and arrives as `nozzle_name`: `<pump no>.<nozzle> · <pump serial>.<nozzle>` —
+// `1.1 · M2601076.1`. The left half is what the forecourt calls it, the right half
+// is the identity the nozzle's own slip prints. Nothing here invents a name; this
+// is the read side of that single writer, and the ONLY reason it exists is the
+// fallback below.
 //
 // FALLBACK, and why it must stay: Vercel and Railway deploy independently, so a
 // frontend build can be live for a few minutes against a backend that does not yet
