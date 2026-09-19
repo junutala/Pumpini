@@ -186,38 +186,32 @@ FRONTEND_URL=https://pumpini.vercel.app
 
 ---
 
-## Part 5 — Landing Page Deployment
+## Part 5 — Landing Page
 
-The landing page (`frontend/public/index.html`) is served automatically by Next.js from the `public/` folder.
+**Nothing to configure — the landing page is already the homepage.**
 
-**Access it at:** `https://pumpini.vercel.app/index.html`
+It is an App Router page, `frontend/src/app/landing/page.js`, rendered directly at
+`/` by `frontend/src/app/page.js`. An anonymous visitor is served it **without a
+redirect**, so `pumpini.in` itself returns crawlable marketing content (this is the
+canonical homepage for SEO — see the canonical/robots/sitemap config).
 
-To make it the **homepage** instead of the dashboard, update `frontend/src/app/page.js`:
+A logged-in visitor is routed from the same file to the right home for their role:
 
-```js
-// Option A: Show landing for logged-out, redirect to dashboard if logged in
-'use client';
-import { useAuth } from '../lib/auth';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+| Role | Lands on |
+|---|---|
+| `attendant` | `/settlement` — operators never see the dashboard |
+| `owner` | `/group-dashboard` — the group rollup is owner-only (margins/analysis) |
+| everyone else (manager, CCO, rsa…) | `/dashboard` — the outlet cockpit |
 
-export default function RootPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  useEffect(() => {
-    if (!loading && user) router.replace('/dashboard');
-  }, [user, loading]);
+The role is read from the token **for routing only**; every API call is still
+authorised server-side.
 
-  if (loading) return null;
-  if (user) return null;  // redirecting
-  
-  // Redirect to static landing page
-  if (typeof window !== 'undefined') {
-    window.location.href = '/index.html';
-  }
-  return null;
-}
-```
+> *Corrected 19-Sep-2026 at the Phase 1 freeze.* This section used to describe a
+> static `frontend/public/index.html` served from the `public/` folder, told you to
+> visit `/index.html`, and gave a code recipe for "making it the homepage instead of
+> the dashboard". That file does not exist, `/index.html` 404s, and the recipe would
+> have replaced the working role router with a `window.location` bounce — undoing
+> the no-redirect behaviour the SEO setup depends on.
 
 ---
 

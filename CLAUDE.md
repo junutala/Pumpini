@@ -323,10 +323,22 @@ Before writing a line of a new screen, endpoint or field, answer in the PR:
    how `opening_reading` came to live in three tables.
 
 **The tell that you are about to break this rule:** you are copying a block of code
-and changing a permission, a role, or a label. `pos-meter` and `ocr-meter` are two
-complete copies of one OCR call differing only in `requirePerm`. `/reconcile/manager`
-and `/reconcile/self-settle` are two copies of the settlement maths differing only in
-who may call them. Both were written that way, and both had to be untangled later.
+and changing a permission, a role, or a label. Both of this repo's worked examples
+were written exactly that way:
+
+- **`pos-meter` / `ocr-meter` — UNTANGLED.** Two complete copies of one OCR call
+  differing only in `requirePerm`. `/reconcile/ocr-meter` was **removed 04-Aug-2026**
+  and absorbed into `/pos-meter`, which returns everything it did; both capture
+  screens now call the one endpoint.
+- **`/reconcile/manager` / `/reconcile/self-settle` — STILL TWO COPIES.** Two copies
+  of the settlement maths differing only in who may call them; `/self-settle`'s own
+  header still reads *"Mirrors POST /manager"*. **This one is not fixed** — it is the
+  work named in the "BOTH settlement paths are permanent" rule below, and it is money
+  code, which is why it has not been done casually.
+
+*(Status of both verified against the routes 19-Sep-2026 at the Phase 1 freeze. This
+paragraph previously said both "had to be untangled later", which read as though the
+settlement pair was done. It is not.)*
 
 **Deliver every enhancement as a net reduction, or at worst as neutral.** A PR that
 adds a route must say which route it closes.
@@ -520,8 +532,19 @@ SELECT count(*) FILTER (WHERE storage_path IS NOT NULL) AS in_bucket,
 **SEARCH BEFORE YOU BUILD — this bit me the same afternoon.** I wrote a standalone
 `scripts/artifacts-to-bucket.js` to move the rows, then found `superadmin.js` had
 carried `runBackfill()` for months and that it is precisely how the other two tables
-got there. `station_artifacts` had simply never been given a route. The script was
-deleted and a three-line route added instead. The mechanism you need usually exists.
+got there. `station_artifacts` had simply never been given a route. A three-line
+route was added instead. The mechanism you need usually exists.
+
+> **🔴 AND THE SCRIPT WAS NEVER ACTUALLY DELETED** — corrected 19-Sep-2026 at the
+> Phase 1 freeze, where this line was checked against the tree and found false. It
+> said *"the script was deleted and a three-line route added instead"*; the route
+> exists (`POST /api/superadmin/backfill/station-artifacts`) but
+> `backend/scripts/artifacts-to-bucket.js` is still there, 97 lines of it, doing the
+> same job by a second path. **That is the exact drift this paragraph is warning
+> about, left sitting in the repo by the paragraph that warns about it.** Deleting it
+> is a code change and needs the owner's word, so it is logged in `PHASE-1.md` as an
+> open item rather than quietly done. Until then: the ROUTE is the writer; do not run
+> the script.
 
 **The two owner-gated steps, in order, never merged into one:**
 
@@ -728,6 +751,23 @@ fifth, and it is a **migration flag, not a feature** — name it so.
   migration; a route nobody closes is the drift this repo spent months untangling.
   Set the date when the switch goes on, and delete the old path when the last outlet
   moves.
+
+**🔴 WHERE THE SWITCH ACTUALLY STANDS (queried 19-Sep-2026, Phase 1 freeze).** The
+flag is `station_settings.hub_spokes_migration_enabled`, and it is **NOT on at Sri
+Balaji**. It is on at exactly one outlet, and that outlet is a FIXTURE:
+
+      hub_spokes_migration_enabled = true    Dilsukhnagar Bunk   (fixture)
+                                   = false   Sri Balaji Oil Company, SBR ENERGIES,
+                                             Kamala, Adhoc Highway, Highway, MBR,
+                                             Nagole, Hayat Nagar, the unnamed outlet
+
+So the section heading above describes the PLAN, not the state: Flow v2 is built and
+reachable, but no real outlet is on it and **no real outlet has ever run it**. Read
+every "Sri Balaji only" line here as *"Sri Balaji first, when the owner turns it on"*.
+Nothing about the spokes has been proven against a real outlet's day, and the owner
+has not field-tested the composite nozzle scan — so treat the whole flow as unproven,
+not as shipped. That is also why the 19-Sep slip-proposal defect sat unnoticed: the
+only screen it broke is one no real outlet can open.
 
 **ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows,
 and if any of them is copied we no longer have two flows — we have two products:

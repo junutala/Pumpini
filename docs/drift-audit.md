@@ -1,5 +1,12 @@
 # Drift audit — duplicate/overlapping surfaces (2026-07-22)
 
+> **Re-verified against the code and production on 19-Sep-2026, at the Phase 1
+> freeze.** Every claim below was checked rather than assumed, and four rows were
+> found stale — they still reported work that had already been done, which is its own
+> kind of drift: a checklist nobody trusts is a checklist nobody works. Rows carrying
+> a **verified 19-Sep-2026** note were confirmed this pass. **One item remains
+> genuinely open and it is the money one: A4's settlement half.** See `PHASE-1.md`.
+
 Rapid dev grew multiple forms/endpoints for the same insert. This is the inventory +
 fix checklist. Guiding rule: **one backend writer per concept, one reusable form,
 thin guarded entry points, search-before-build** (see `CLAUDE.md`).
@@ -13,7 +20,7 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
 | A1 | `POST /auth/register` public + arbitrary `role` (anyone could mint an owner) | **FIXED (slice 1)** — removed; create-user goes through guarded `POST /users` + `POST /users/attendant`, single writer `userService.createUser` |
 | A2 | Saving the geofence tab wipes GSTN/PAN/TAN/address + resets variance→50, prefix→'INV' (`POST /stations/:id/settings` is a full upsert; geofence tab sends only 4 fields) | **TODO (slice 2)** — make the upsert partial (COALESCE / don't null unsent columns) |
 | A3 | `/admin` "Plan" toggle does NOT drive the access ceiling — it writes `station_subscriptions.plan`; the gate reads `stations.entitlement`, which has **no writer/UI** | **TODO (slice 3)** — add an `/admin` lite↔pumpini switch writing `stations.entitlement` (needed for VAWE Lite too) |
-| A4 | Settlement written by 4 endpoints (3 `mode`s); meter readings split across **two tables** (`shift_attendant_nozzles` vs `shift_nozzle_readings`) | **TODO (slice 5 — needs data-model design, not just a form merge)** |
+| A4 | Settlement written by 4 endpoints (3 `mode`s); meter readings split across **two tables** (`shift_attendant_nozzles` vs `shift_nozzle_readings`) | **HALF DONE — verified 19-Sep-2026.** The METER half is finished: `shift_nozzle_readings` and `shift_attendants.opening_reading/.closing_reading` no longer exist in production, leaving `shift_attendant_nozzles` as the one store (CLAUDE.md, 01-Aug). The SETTLEMENT half is **not**: `/reconcile/manager` and `/reconcile/self-settle` are still two copies of the maths. |
 | A5 | Credit-customer: tenant writes `corporate_station_links.credit_limit`, `/admin` writes `corporate_accounts.credit_limit`; `/admin` skips the GSTN dedup | **TODO (slice 4)** — one writer, one credit-limit column, consistent dedup |
 | A6 | Tenant Edit-User "Role" dropdown was a silent no-op (`PATCH /users/:id` ignores `role`) | **FIXED (slice 1)** — Edit shows role read-only |
 | A7 | Fresh attendant 403'd at `/reconcile/pos-meter` (`settlement.enter`) — `roleDefaults.attendant` was `[]` | **FIXED (slice 1)** — attendant default = `['settlement.enter']` |
@@ -23,7 +30,7 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
 | Concept | Surfaces today | Target |
 |---------|----------------|--------|
 | Create user/attendant | `/auth/register` (removed), `/users/attendant`, `/admin/attendants`, `/admin/station-users` | **In progress** — tenant side + hole done (slice 1); fold the two superadmin creators into `userService.createUser` next |
-| Create station | tenant `POST /stations` (orphan, no UI) + `/admin/stations` | TODO — remove the orphan |
+| Create station | tenant `POST /stations` (orphan, no UI) + `/admin/stations` | **FIXED** — the orphan is gone (verified 19-Sep-2026); `/admin/stations` is the only creator |
 | Edit station core | `/admin PATCH /stations/:id` + tenant `PATCH /stations/:id/settings` (both write name/gst/oil_co) | TODO — one writer |
 | Deactivate attendant | `PATCH /users/:id`, `PATCH /admin/attendants/:id`, `DELETE /admin/station-users/:id` | TODO — converge |
 | Password reset | `PATCH /users/:id`, `PATCH /admin/owners/:id`, `PATCH /admin/station-users/:id`, `/auth/forgot-password` | TODO — converge |
@@ -46,12 +53,22 @@ Fix in small, reversible, **one-concept-per-PR** slices. Money/access risk first
   with its own impact analysis: `/pos` is a money screen and does not get refactored as a
   side effect of shipping a leads tool. Flagged here rather than left to be rediscovered.
 
-## Dead / broken code to remove
+## Dead / broken code to remove — ALL CLEAR (re-verified 19-Sep-2026)
 
-- `/dispense` page manager-settle path (endpoint forces maker=self → manager 403). TODO.
-- tenant `POST /stations` (no UI). TODO.
-- `/reconcile/operator-cash|shift-meters|shift-opening-meters` (no UI — dead `mgr_cash` flow). TODO.
-- `handleAdd('__last__')` stale fn in `/users`. **REMOVED (slice 1).**
+Every item on this list is gone from the tree. The four TODOs below were already
+removed by the slices logged at the bottom of this file; the list simply was never
+updated, so it kept reporting work that no longer existed.
+
+- ~~`/dispense` page manager-settle path (endpoint forces maker=self → manager 403).~~
+  **GONE** — no `settle`/`maker` path remains in `routes/dispense.js` or
+  `app/dispense/page.js`.
+- ~~tenant `POST /stations` (no UI).~~ **GONE** — no root `router.post` in
+  `routes/stations.js`.
+- ~~`/reconcile/operator-cash|shift-meters|shift-opening-meters` (dead `mgr_cash`).~~
+  **GONE** — `routes/reconcile.js` carries tombstone comments at the three sites
+  saying REMOVED, and no handler.
+- `handleAdd('__last__')` stale fn in `/users`. **REMOVED (slice 1)** — confirmed, no
+  occurrence anywhere in `frontend/src`.
 
 ## Final status (2026-07-22)
 
