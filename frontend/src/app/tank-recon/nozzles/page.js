@@ -165,7 +165,14 @@ export default function ReconNozzlesPage() {
   const applyProposal = (p) => {
     const next = {};
     for (const ln of p.lines) {
-      const hit = nozzles.find(n => String(nozName(n)) === `${p.suggest}.${ln.slip_no}`);
+      // THE BACKEND RESOLVED THIS, against the same serial+printed-number map it
+      // matches every other line with. This used to rebuild `<serial>.<no>` here and
+      // compare it against the DISPLAYED name — which quietly made a label the join
+      // key, and broke the moment the label grew its pump-number half on 19-Sep. An
+      // id is matched; a name is only read.
+      const hit = ln.suggested_nozzle_id
+        ? nozzles.find(n => n.id === ln.suggested_nozzle_id)
+        : null;
       if (hit) {
         next[hit.id] = {
           value: String(ln.cumulative_volume),

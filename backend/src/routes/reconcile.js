@@ -1436,11 +1436,31 @@ router.post('/parse-slips', authenticate,
     // case and the manager types that figure.
     const slips = parsed.slips.map(s => {
       const serial = String(s.pump_serial ?? '').trim().toUpperCase();
+      // The near miss is decided BEFORE the lines, because each line then resolves
+      // against it here — in the one place bySerialNo exists. The screen used to do
+      // this itself by rebuilding `<serial>.<no>` and comparing it against the
+      // DISPLAYED name, which made a label the join key: the moment the label grew
+      // its pump-number half (19-Sep) the comparison stopped matching and the tap
+      // silently filled nothing. A name is for reading; a key is for matching.
+      const serialIsKnown = !!(serial && serialsKnown.has(serial));
+      const suggestion = (serial && !serialIsKnown)
+        ? proposeSerial(serial, Array.from(serialsKnown))
+        : null;
+      const suggested = suggestion ? String(suggestion.serial).trim().toUpperCase() : null;
       const lines = (s.nozzles || []).map(n => {
         const no = String(n.nozzle_no ?? '').replace(/[^\d]/g, '');
         const hit = serial && no ? bySerialNo[`${serial}|${no}`] : null;
+        // What this line WOULD be if he confirms the suggested serial. Same map, same
+        // key shape, so a confirmed proposal lands on exactly the nozzle the matcher
+        // would have chosen had the engine read the serial correctly.
+        const proposed = (!hit && suggested && no)
+          ? (bySerialNo[`${suggested}|${no}`] || null)
+          : null;
         return {
           nozzle_id: hit ? hit.id : null,
+          // Null unless a proposal is actually on offer, so nothing can be applied
+          // without the manager's tap.
+          suggested_nozzle_id: proposed ? proposed.id : null,
           nozzle_number: hit ? hit.nozzle_number : null,
           fuel_type: hit ? hit.fuel_type : null,
           slip_no: no || null,
@@ -1472,14 +1492,12 @@ router.post('/parse-slips', authenticate,
         model: s.model ?? null,
         slip_type: ['A', 'B', 'C'].includes(s.slip_type) ? s.slip_type : (s.slip_type ?? null),
         // Is this machine registered at all? Any of its nozzles present in our map.
-        serial_known: !!(serial && serialsKnown.has(serial)),
+        serial_known: serialIsKnown,
         // A NEAR MISS NAMES ITS CANDIDATE. Null when the serial is already known, when
         // nothing is close, or when two machines are equally close — an ambiguous
         // proposal is a coin toss wearing a suggestion's clothes, and the line goes to
         // the loud card instead. The screen offers it; nothing here accepts it.
-        serial_suggestion: (serial && !serialsKnown.has(serial))
-          ? proposeSerial(serial, Array.from(serialsKnown))
-          : null,
+        serial_suggestion: suggestion,
         lines,
       };
     });
