@@ -11,7 +11,7 @@ import {
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical,
-  Landmark, Scale, Sliders } from 'lucide-react';
+  Landmark, Scale, Sliders, ArrowLeftRight } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -95,6 +95,7 @@ const NAV_GROUPS = [
     items: [
       { key:'lube_catalogue', href:'/products/catalogue', icon:Package,      perm:'lubes.manage' },
       { key:'lube_stock',     href:'/products/stock',     icon:Layers,       perm:'lubes.manage' },
+      { key:'lube_transfer',  href:'/products/transfer',  icon:ArrowLeftRight, perm:'lubes.manage' },
       { key:'lube_pos',       href:'/products/pos',       icon:ShoppingCart, perm:'lubes.manage' },
       { key:'lube_invoices',  href:'/products/history',   icon:Receipt,      perm:'lubes.manage' },
     ]
@@ -156,7 +157,7 @@ const NAV_LABELS = {
   density:'Density Register',
   credit_reports:'Credit Reports',
   creditdash:'Credit Dashboard',
-  lube_catalogue:'Catalogue', lube_stock:'Stock',
+  lube_catalogue:'Catalogue', lube_stock:'Stock', lube_transfer:'Stock Transfer',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',

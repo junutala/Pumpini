@@ -5,6 +5,8 @@ const router = require('express').Router();
 const pool   = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
+const { requirePerm } = require('../middleware/permissions');
+const stock = require('../services/stockService');
 
 // ── Helper: next invoice number ───────────────────────────
 async function nextInvoiceNumber(stationId) {
@@ -194,6 +196,45 @@ router.post('/stock', authenticate, requireStationAccess({ required: true }), as
       client.release();
     }
   } catch(err) { next(err); }
+});
+
+// ── STOCK TRANSFERS ───────────────────────────────────────
+//
+// Moving stock between locations (store → forecourt, and either → the gift store).
+// The writer is services/stockService — the campaign's gift issue is the same kind
+// of movement and will call it too, so the arithmetic and the source guard live in
+// ONE place rather than being re-implemented per caller (CLAUDE.md, one writer per
+// concept).
+//
+// Guarded on `lubes.manage`, matching routes/productReturns.js. The older product
+// routes above are gated in the sidebar only; closing that gap is its own slice.
+
+// GET /api/products/stock-by-location?station_id=
+// What is where, for the transfer screen's picker — so the manager sees the source
+// balance BEFORE he types a figure rather than after it is refused.
+router.get('/stock-by-location', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    res.json(await stock.stockByLocation({ station_id: req.query.station_id }));
+  } catch (err) { next(err); }
+});
+
+// GET /api/products/transfers?station_id=&limit=
+router.get('/transfers', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    res.json(await stock.listTransfers({ station_id: req.query.station_id, limit: req.query.limit }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/products/transfers — move stock between two locations.
+router.post('/transfers', authenticate, requireStationAccess({ required: true }), requirePerm('lubes.manage'), async (req, res, next) => {
+  try {
+    const { station_id, product_id, from_location, to_location, quantity, notes } = req.body;
+    const row = await stock.transfer({
+      station_id, product_id, from_location, to_location, quantity, notes,
+      user_id: req.user.id,
+    });
+    res.status(201).json(row);
+  } catch (err) { next(err); }
 });
 
 // ── SALES / INVOICES ──────────────────────────────────────
