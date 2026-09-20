@@ -141,10 +141,14 @@ export default function ProductStockPage() {
                 {Number(p.current_stock).toFixed(1)}
                 <span style={{fontSize:12,fontWeight:400,color:'#888',marginLeft:4}}>{p.unit}s</span>
               </div>
-              {(p.bay_stock != null || p.shop_stock != null) && (
-                <div style={{fontSize:11,color:'#888',marginTop:3,display:'flex',gap:10}}>
+              {(p.bay_stock != null || p.shop_stock != null || p.gift_stock != null) && (
+                <div style={{fontSize:11,color:'#888',marginTop:3,display:'flex',gap:10,flexWrap:'wrap'}}>
                   <span>🛢 {tc('lubestk.bay', 'Bay')}: <strong style={{color:'#444'}}>{Number(p.bay_stock||0).toFixed(1)}</strong></span>
                   <span>🏪 {tc('lubestk.shop', 'Shop')}: <strong style={{color:'#444'}}>{Number(p.shop_stock||0).toFixed(1)}</strong></span>
+                  {/* Shown always, not only when non-zero: a manager setting a campaign
+                      up needs to see that the gift store is EMPTY, which is exactly the
+                      number a "hide when zero" rule would hide from him. */}
+                  <span>🎁 {tc('lubestk.gift', 'Gift')}: <strong style={{color:'#444'}}>{Number(p.gift_stock||0).toFixed(1)}</strong></span>
                 </div>
               )}
               {p.current_stock <= p.min_stock_level && (
@@ -177,7 +181,7 @@ export default function ProductStockPage() {
                 <tr key={r.id} style={{borderBottom:'1px solid #f0f0f0'}}>
                   <td style={{padding:'11px 14px',fontSize:13}}>{new Date(r.received_at).toLocaleDateString('en-IN')}</td>
                   <td style={{padding:'11px 14px',fontWeight:600}}>{r.product_name}</td>
-                  <td style={{padding:'11px 14px',fontSize:12.5}}>{r.location==='bay'?'🛢 '+tc('lubestk.bay', 'Bay'):'🏪 '+tc('lubestk.shop', 'Shop')}</td>
+                  <td style={{padding:'11px 14px',fontSize:12.5}}>{r.location==='bay'?'🛢 '+tc('lubestk.bay', 'Bay'):r.location==='gift'?'🎁 '+tc('lubestk.gift', 'Gift'):'🏪 '+tc('lubestk.shop', 'Shop')}</td>
                   <td style={{padding:'11px 14px',fontWeight:600,color:'#16a34a'}}>+{Number(r.quantity).toFixed(1)} {r.unit}s</td>
                   <td style={{padding:'11px 14px',fontSize:13}}>{r.buying_price ? `₹${Number(r.buying_price).toFixed(2)}` : '—'}</td>
                   <td style={{padding:'11px 14px',fontSize:13}}>{r.selling_price ? `₹${Number(r.selling_price).toFixed(2)}` : '—'}</td>
@@ -289,7 +293,7 @@ export default function ProductStockPage() {
             <div style={{marginBottom:'0.85rem'}}>
               <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubestk.stockLocation', 'Stock location')}</label>
               <div style={{display:'flex',gap:8}}>
-                {[['shop','🏪 '+tc('lubestk.shop', 'Shop')],['bay','🛢 '+tc('lubestk.bayForecourt', 'Bay / Forecourt')]].map(([id,label])=>(
+                {[['shop','🏪 '+tc('lubestk.shop', 'Shop')],['bay','🛢 '+tc('lubestk.bayForecourt', 'Bay / Forecourt')],['gift','🎁 '+tc('lubestk.giftStore', 'Gift store')]].map(([id,label])=>(
                   <button key={id} type="button" onClick={()=>f('location',id)}
                     style={{flex:1,padding:'9px',borderRadius:8,cursor:'pointer',fontWeight:600,fontSize:13,
                       border:'1.5px solid '+((form.location||'shop')===id?'#FF6B00':'#e5e3de'),
