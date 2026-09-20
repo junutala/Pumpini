@@ -17,6 +17,7 @@ const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const svc = require('../services/campaignService');
+const run = require('../services/giftIssueService');
 
 const VIA_CAMPAIGN = 'SELECT station_id FROM gift_campaigns WHERE id=$1';
 const VIA_TIER     = 'SELECT station_id FROM gift_campaign_tiers WHERE id=$1';
@@ -108,6 +109,77 @@ router.post('/:id/start', authenticate, requireStationVia(VIA_CAMPAIGN, 'id'), r
 router.post('/:id/stop', authenticate, requireStationVia(VIA_CAMPAIGN, 'id'), requirePerm('gift.manage'), async (req, res, next) => {
   try {
     res.json(await svc.stopCampaign({ id: req.params.id, station_id: req.stationId }));
+  } catch (err) { next(err); }
+});
+
+// ── RUNNING A CAMPAIGN AT THE PUMP ───────────────────────────────────────────
+//
+// All on gift.issue, which an outlet may hold at the manager or roll down to the
+// attendant. Every rule lives in the service or in a database constraint; these
+// are entry points and nothing more.
+
+const VIA_ISSUE = 'SELECT station_id FROM gift_issues WHERE id=$1';
+
+// GET /api/campaigns/live/running?station_id=
+// What is running here today, and whether this outlet must scan the slip.
+router.get('/live/running', authenticate, requireStationAccess({ required: true }), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    const station_id = req.query.station_id;
+    const c = await run.runningCampaign({ station_id });
+    res.json({
+      campaign: c,
+      within_hours: c ? run.withinHours(c) : false,
+      slip_ocr_required: await run.slipOcrRequired(station_id),
+      session_minutes: run.SESSION_MINUTES,
+      max_plate_tries: run.MAX_PLATE_TRIES,
+    });
+  } catch (err) { next(err); }
+});
+
+// POST /api/campaigns/issues — open a session (a draft row with a server-held
+// deadline; a limit counted in the browser is counted by the attendant's clock).
+router.post('/issues', authenticate, requireStationAccess({ required: true }), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.status(201).json(await run.openSession({ station_id: req.body.station_id, user_id: req.user.id }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/campaigns/issues/plate-read — read a plate. Writes NOTHING, so a
+// failed read cannot half-fill the row; the screen retakes and asks again.
+router.post('/issues/plate-read', authenticate, requireStationAccess({ required: true }), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.json(await run.readPlate({ file_base64: req.body.file_base64, media_type: req.body.media_type }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/campaigns/issues/:id/fill
+router.post('/issues/:id/fill', authenticate, requireStationVia(VIA_ISSUE, 'id'), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.json(await run.setFill({ id: req.params.id, station_id: req.stationId, user_id: req.user.id, ...req.body }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/campaigns/issues/:id/plate
+router.post('/issues/:id/plate', authenticate, requireStationVia(VIA_ISSUE, 'id'), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.json(await run.setPlate({ id: req.params.id, station_id: req.stationId, user_id: req.user.id, ...req.body }));
+  } catch (err) { next(err); }
+});
+
+// GET /api/campaigns/issues/:id/preview — the tier this fill earns, and whether
+// this vehicle has had it. The second half is ADVISORY: the unique index decides,
+// at the write, which is the only moment that cannot be raced.
+router.get('/issues/:id/preview', authenticate, requireStationVia(VIA_ISSUE, 'id'), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.json(await run.preview({ id: req.params.id, station_id: req.stationId }));
+  } catch (err) { next(err); }
+});
+
+// POST /api/campaigns/issues/:id/settle — issued, or not issued with a reason.
+// Both keep the evidence: a refusal nobody can check is worth nothing.
+router.post('/issues/:id/settle', authenticate, requireStationVia(VIA_ISSUE, 'id'), requirePerm('gift.issue'), async (req, res, next) => {
+  try {
+    res.json(await run.settle({ id: req.params.id, station_id: req.stationId, user_id: req.user.id, ...req.body }));
   } catch (err) { next(err); }
 });
 
