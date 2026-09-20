@@ -81,6 +81,14 @@ router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shift
         n.nozzle_number, n.fuel_type${nm.col}
         , COALESCE(SUM(de.amount),0) AS total_sales,
         COALESCE(SUM(de.quantity_ltrs),0) AS total_ltrs
+        -- IS HIS LINE ALREADY SETTLED? Shift Start needs this to answer one question
+        -- (owner, 20-Sep-2026): may this operator be handed ANOTHER nozzle? Once he is
+        -- settled his figure is final, so a leg opened afterwards sells litres that no
+        -- settlement contains — money out of the shift with nothing to catch it. The
+        -- screen refuses that, and it can only refuse what it can see.
+        , EXISTS (SELECT 1 FROM shift_reconciliation r2
+                   WHERE r2.shift_id = sa.shift_id
+                     AND r2.attendant_id = sa.attendant_id) AS is_settled
       FROM shift_attendants sa
       JOIN users u ON u.id = sa.attendant_id
       LEFT JOIN rfid_tags r ON r.id = sa.rfid_tag_id

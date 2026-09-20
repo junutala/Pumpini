@@ -700,7 +700,47 @@ export default function ShiftStartPage() {
   const assignedNozzles  = new Set(attendants.flatMap(a => (a.nozzles||[])
     .filter(nz => nz.closing_reading == null)
     .map(nz => nz.nozzle_id)));
-  const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id));
+
+  // AN OPERATOR ALREADY ON THIS SHIFT MAY TAKE MORE NOZZLES — owner, 20-Sep-2026:
+  // "the existing attendants should be able to take on the additional nozzles IF THE
+  // NOZZLE IS FREE AND CLOSED." Before this he could not: the picker below listed only
+  // operators NOT yet on the shift, so the freed nozzles had nobody selectable to
+  // receive them. SBR's manager worked around it by closing the shift and reopening —
+  // which costs a settlement for every operator and a closing dip on every tank, twice
+  // in twenty minutes on 20-Sep, and those dips become the next shift's opening.
+  //
+  // "Free and closed" is unchanged and still enforced twice: assignedNozzles hides any
+  // nozzle with an OPEN leg, and /assign refuses one held by another operator (409).
+  const meOnShift  = attendants.find(a => a.attendant_id === opAttendant) || null;
+  const myOpenLegs = (meOnShift?.nozzles || []).filter(nz => nz.closing_reading == null);
+  const myOpenIds  = new Set(myOpenLegs.map(nz => nz.nozzle_id));
+
+  // 🔴 HIS OWN OPEN NOZZLES MUST STAY VISIBLE AND TICKED. /assign REPLACES an
+  // operator's open set — it deletes every open leg and re-inserts what this form
+  // sends — so a third nozzle submitted alone would silently delete the two he is
+  // working. They are shown, pre-ticked, at the openings ALREADY STORED.
+  const availNozzles     = nozzles.filter(n => !assignedNozzles.has(n.id) || myOpenIds.has(n.id));
+
+  // Settled means his figure is final; a leg opened now sells litres no settlement
+  // contains. He is listed, and refused, with the reason said out loud.
+  const settledIds = new Set(attendants.filter(a => a.is_settled).map(a => a.attendant_id));
+
+  // Picking an operator seeds his existing open legs. Their openings come from the
+  // STORED reading, never re-derived, so re-sending them cannot move a live opening.
+  const pickOperator = (id) => {
+    setOpAttendant(id);
+    const legs = (attendants.find(a => a.attendant_id === id)?.nozzles || [])
+      .filter(nz => nz.closing_reading == null);
+    const seeded = {};
+    for (const nz of legs) {
+      seeded[nz.nozzle_id] = {
+        selected: true,
+        opening: nz.opening_reading ?? '',
+        held: true,            // already his — the row says so rather than looking new
+      };
+    }
+    setNozPick(seeded);
+  };
   const pickNoz = (id, patch) => setNozPick(p => ({ ...p, [id]: { selected:true, opening: openings[id] ?? '', ...(p[id]||{}), ...patch } }));
 
   // NO LOCAL NAMING HERE. A nozzle's name is `<pump serial>.<nozzle number>`, computed
@@ -1076,10 +1116,36 @@ export default function ShiftStartPage() {
               </div>
 
               <div><label className="label">{tc('sstart.attendant','Attendant')}</label>
-                <select style={inp} value={opAttendant} onChange={e=>setOpAttendant(e.target.value)}>
+                <select style={inp} value={opAttendant} onChange={e=>pickOperator(e.target.value)}>
                   <option value="">{tc('sstart.selectPlaceholder','Select…')}</option>
-                  {users.filter(u=>!assignedIds.has(u.id)).map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-                </select></div>
+                  {users.map(u => {
+                    const on      = assignedIds.has(u.id);
+                    const settled = settledIds.has(u.id);
+                    const held    = on ? (attendants.find(a=>a.attendant_id===u.id)?.nozzles||[])
+                                          .filter(nz=>nz.closing_reading==null).length : 0;
+                    // Settled operators stay VISIBLE but unselectable, with the reason
+                    // in the label — a name that silently vanishes is the bug this
+                    // change is fixing, and re-creating it one row down would be absurd.
+                    return (
+                      <option key={u.id} value={u.id} disabled={settled}>
+                        {u.name}
+                        {settled ? ` — ${tc('sstart.alreadySettled','settled, cannot take more')}`
+                         : on     ? ` — ${tc('sstart.onShiftWith','on shift, {n} nozzle(s)').replace('{n}', held)}`
+                         : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                {/* SHOW THE WORKING. He is about to re-submit nozzles the man already
+                    holds, so say that is what is happening rather than letting the
+                    ticks look like a mistake. */}
+                {myOpenLegs.length > 0 && (
+                  <div style={{marginTop:6,fontSize:12.5,lineHeight:1.45,padding:'7px 10px',
+                               borderRadius:8,background:'#eff6ff',color:'#1e40af'}}>
+                    {tc('sstart.holdsAlready','He is already on {list} — ticked below and kept at their current openings. Tick the extra nozzles he is taking; untick one only to hand it over.')
+                      .replace('{list}', myOpenLegs.map(nozName).join(', '))}
+                  </div>
+                )}</div>
 
               {/* Opening float is deliberately absent — see startAttendant(). */}
 
