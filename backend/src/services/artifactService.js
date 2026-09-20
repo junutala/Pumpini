@@ -34,10 +34,14 @@ const { storageConfigured, uploadDocumentBase64, downloadDocument } = require('.
 // 'station' is the parent for a capture that belongs to the outlet rather than to
 // any one record — a gauge screen photographed for the dip register outside a
 // shift, for instance. Those carry entity_id NULL and are found by station+kind.
-const ENTITY_TYPES = ['dispense_event', 'shift', 'shift_attendant', 'dipstick_reading', 'station', 'user', 'pump', 'credit_slip_book'];
+const ENTITY_TYPES = ['dispense_event', 'shift', 'shift_attendant', 'dipstick_reading', 'station', 'user', 'pump', 'credit_slip_book', 'gift_issue'];
 
 // Must stay in step with the CHECK constraint in pumpini-schema.sql.
-const KINDS = ['coupon', 'gauge_screen', 'attendant_photo', 'nozzle_meter', 'nozzle_slip'];
+const KINDS = ['coupon', 'gauge_screen', 'attendant_photo', 'nozzle_meter', 'nozzle_slip',
+  // A gift issue keeps three: the sales slip behind it, the number plate (read,
+  // never typed), and the driver with the gift — the only one of the three that
+  // proves it was actually handed over rather than kept.
+  'gift_slip', 'gift_plate', 'gift_handover'];
 
 // Base64 of a phone photo downscaled by the client runs well under 1 MB. This is
 // a backstop against an un-resized 12-megapixel original, not a policy: past it

@@ -162,6 +162,52 @@ async function transfer({ station_id, product_id, from_location, to_location, qu
   }
 }
 
+// A gift going out. THE one writer for stock leaving the gift store, and it is
+// deliberately here beside transfer() rather than in the gift service: "stock
+// moved" is one concept however it moved, and a second place that decrements a
+// location bucket is a second idea of what the arithmetic is.
+//
+// UNLIKE A TRANSFER, THIS REDUCES current_stock TOO. A transfer changes where
+// stock sits; a gift leaves the outlet, so the total held really does fall. That
+// asymmetry is the whole difference between the two functions.
+//
+// Composed into the caller's transaction (client is required): the decrement and
+// the gift_issues row are one act, or neither happened. A gift recorded against
+// stock that was never taken out is exactly the drift this guards.
+//
+// There is no movement row: gift_issues IS the record of a gift movement, the way
+// product_invoice_items is for a sale and product_stock_receipts for a purchase.
+async function consumeFromGift({ station_id, product_id, quantity }, client) {
+  if (!client) throw new Error('consumeFromGift must run inside a transaction');
+  const qty = assertQuantity(quantity);
+  if (!(await hasGiftColumn(client))) throw badRequest('The gift store is not set up on this database yet.');
+
+  const { rows } = await client.query(
+    `SELECT name, unit, COALESCE(gift_stock,0) AS available
+       FROM products WHERE id=$1 AND station_id=$2 FOR UPDATE`,
+    [product_id, station_id]
+  );
+  if (!rows.length) { const e = new Error('Gift not found for this station.'); e.status = 404; throw e; }
+
+  const available = Number(rows[0].available);
+  if (qty > available) {
+    throw badRequest(
+      `Only ${available} ${rows[0].unit || 'units'} of ${rows[0].name} left in the gift store.`,
+      { code: 'out_of_stock', available, requested: qty }
+    );
+  }
+
+  await client.query(
+    `UPDATE products SET
+       gift_stock    = COALESCE(gift_stock,0)    - $1,
+       current_stock = COALESCE(current_stock,0) - $1,
+       updated_at    = NOW()
+     WHERE id=$2`,
+    [qty, product_id]
+  );
+  return { name: rows[0].name, unit: rows[0].unit, remaining: available - qty };
+}
+
 // Recent movements for an outlet. Joined to the product so the screen never has to
 // ask twice, and bounded because this is a ledger that only grows.
 async function listTransfers({ station_id, limit = 100 }) {
@@ -200,6 +246,7 @@ async function stockByLocation({ station_id }) {
 module.exports = {
   LOCATIONS,
   transfer,
+  consumeFromGift,
   listTransfers,
   stockByLocation,
   hasGiftColumn,
