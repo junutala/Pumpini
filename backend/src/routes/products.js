@@ -151,9 +151,16 @@ router.get('/stock', authenticate, requireStationAccess({ required: true }), asy
 router.post('/stock', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
   try {
     const { station_id, product_id, quantity, buying_price, selling_price, notes } = req.body;
-    // Location the stock is received into: 'bay' (forecourt) or 'shop'. Default shop.
-    const location = req.body.location === 'bay' ? 'bay' : 'shop';
-    const locCol   = location === 'bay' ? 'bay_stock' : 'shop_stock';
+    // Location the stock is received into. THREE now, not two — the gift store is
+    // where promotional stock is parked so the counter cannot sell it out from
+    // under a running campaign. Controlled map, because the value picks a COLUMN
+    // NAME that is interpolated below; nothing from the body may reach that SQL.
+    const LOC_COL  = { shop: 'shop_stock', bay: 'bay_stock', gift: 'gift_stock' };
+    const location = LOC_COL[req.body.location] ? req.body.location : 'shop';
+    if (location === 'gift' && !(await stock.hasGiftColumn())) {
+      return res.status(400).json({ error: 'The gift store is not set up on this database yet.' });
+    }
+    const locCol = LOC_COL[location];
 
     // Re-scope product to the validated station: a product_id from another
     // outlet must not be receivable here even though station_id passed the guard.

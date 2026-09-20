@@ -11,7 +11,7 @@ import {
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical,
-  Landmark, Scale, Sliders, ArrowLeftRight } from 'lucide-react';
+  Landmark, Scale, Sliders, ArrowLeftRight, Gift } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -101,6 +101,17 @@ const NAV_GROUPS = [
     ]
   },
   {
+    label: 'Promotions',
+    items: [
+      { key:'campaigns',     href:'/campaigns',          icon:Gift,           perm:'gift.manage' },
+      // The same screens as under Lubes, reached from here too: one route, one
+      // writer, two doors. The cardinal rule bans a second WRITER and a second
+      // FORM, not a second link.
+      { key:'lube_stock',    href:'/products/stock',     icon:Layers,         perm:'gift.manage' },
+      { key:'lube_transfer', href:'/products/transfer',  icon:ArrowLeftRight, perm:'gift.manage' },
+    ]
+  },
+  {
     label: 'Masters',
     items: [
       { key:'corporate',  href:'/corporate',       icon:Building2,      perm:'corporate.view' },
@@ -158,6 +169,7 @@ const NAV_LABELS = {
   credit_reports:'Credit Reports',
   creditdash:'Credit Dashboard',
   lube_catalogue:'Catalogue', lube_stock:'Stock', lube_transfer:'Stock Transfer',
+  campaigns:'Gift Campaigns',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',
