@@ -2359,7 +2359,9 @@
     "gaugeOverCapacity": "⚠ Not filled — {list}. A tank cannot hold more than its capacity; read that tank by hand.",
     "gaugeLowConfidence": "⚠ The screen was hard to read — check every figure against the console before saving.",
     "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.",
-    "gaugeAssumed": "⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving."
+    "gaugeAssumed": "⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving.",
+    "closedOk": "Shift {n} closed — {c} operator(s) settled.",
+    "anotherOpen": "Another shift at this outlet is still open."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",

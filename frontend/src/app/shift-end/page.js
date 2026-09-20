@@ -188,6 +188,19 @@ export default function ShiftEndPage() {
   const [tone, setTone]   = useState('error');
   const say = (text, t = 'error') => { setErr(text); setTone(t); };
   const [done, setDone]   = useState(false);
+  // 🔴 THE CLOSE IS LOCKED FROM THE FIRST PRESS, not from the PATCH.
+  //
+  // `busy` cannot hold this: flushDips -> saveDip sets busy='dip<id>' and clears it
+  // to '' on every saved tank, so finishAndClose's busy='close' is gone the moment
+  // the first dip lands and the button becomes pressable again WHILE the close is
+  // still running. requestCloseShift never set it at all — the button read "Close
+  // Shift", enabled, through every dip POST.
+  //
+  // A second press is not cosmetic. It is what happened on 27-Aug: the screen fired
+  // PATCH .../close at a shift it had already closed and then accepted a SETTLEMENT
+  // against it — two closing meters and a reconciliation row written into a closed
+  // shift. See the note in closeShift.
+  const [closing, setClosing] = useState(false);
 
   // ── Attendant-led auto-close (per-outlet flag) ──────────────────────────
   // `st` holds the station settings; the flag lives on it. When ON the operators
@@ -517,12 +530,14 @@ export default function ShiftEndPage() {
   // the shift can auto-close. It refuses with a reason (missing_dip / awaiting_confirm)
   // which the banner surfaces; on closed it moves to the closed summary.
   const finishAndClose = async () => {
-    setDipWarn(null); setBusy('close'); setErr('');
+    if (closing) return;
+    setDipWarn(null); setBusy('close'); setErr(''); setClosing(true);
     try {
       if (!(await flushDips())) { setBusy(''); return; }
       const res = await autocloseCheck(shift.id);
       if (res?.closed) applyAutoClose(res); else { setAutoState(res); await loadReco(); }
     } catch (e) { setErr(errText(e, tc('send.closeFailed','Close failed'))); }
+    finally { setClosing(false); }
     setBusy('');
   };
 
@@ -726,12 +741,18 @@ export default function ShiftEndPage() {
     return true;
   };
   const saveAndClose = async () => {
-    setDipWarn(null);
-    if (await flushDips()) await closeShift();
+    if (closing) return;
+    setDipWarn(null); setClosing(true);
+    try { if (await flushDips()) await closeShift(); }
+    finally { setClosing(false); }
   };
 
   const closeShift = async () => {
     setBusy('close'); setDipWarn(null);
+    // Read off the shift BEFORE it is nulled below, or the confirmation cannot say
+    // which shift it is confirming.
+    const closedNumber    = shift?.shift_number;
+    const closedOperators = attendants.length;
     try {
       await api.patch(`/shifts/${shift.id}/close`, { confirm:true });
       setActiveShift(null);
@@ -748,6 +769,26 @@ export default function ShiftEndPage() {
       setShift(null);
       const rest = await loadOpenShifts();
       if (!rest.length) setDone(true);
+      // 🔴 SAY SO. The done screen only renders when NOTHING else is open, so at an
+      // outlet that overlaps its shifts — normal here, and common: Kamala opens
+      // before closing 12 times in 75 — the screen silently swapped to the other
+      // shift and reset to step 1 with no word that anything had been closed. The
+      // manager is left guessing whether it worked, and a manager who guesses
+      // presses the button again.
+      //
+      // AFTER loadOpenShifts, deliberately: the auto-pick runs inside it and clears
+      // the banner, so a message set before this line would be wiped by its own
+      // success. Through say(), the one writer for this banner, in 'ok' green —
+      // never the alarm red a success was once painted in.
+      say(
+        tc('send.closedOk', 'Shift {n} closed — {c} operator(s) settled.')
+          .replace('{n}', closedNumber ?? '')
+          .replace('{c}', closedOperators)
+        + (rest.length
+            ? ' ' + tc('send.anotherOpen', 'Another shift at this outlet is still open.')
+            : ''),
+        'ok'
+      );
     }
     catch(e){
       // errPayload, not e.response.data: lib/api.js has already unwrapped the
@@ -1113,16 +1154,27 @@ export default function ShiftEndPage() {
       )}
 
       {/* SCREEN 2 — Closing gauge & dip, then close the shift */}
-      {step===1 && shift && (
+      {/* SHIFT CLOSED — deliberately OUTSIDE the `step===1 && shift` gate.
+          It used to sit inside it, which made it unreachable on every path:
+          closeShift sets shift=null, so the close destroyed the very thing its
+          own confirmation needed in order to render. `done` went true and the
+          page drew an empty body — the blank screen a manager sat staring at,
+          unable to tell whether the shift had closed. It was gated on step===1
+          as well, so closing an empty shift from step 0 was blank too. This
+          screen depends on neither the step nor a live shift. */}
+      {done && (
         <div className="card" style={{maxWidth:620}}>
-          {done ? (
             <div style={{textAlign:'center'}}>
               <CheckCircle size={48} color="#16a34a" style={{margin:'0.5rem auto'}}/>
               <div style={{fontWeight:800,fontSize:18,marginBottom:6}}>{tc('send.shiftClosed','Shift closed')}</div>
               <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>{tc('send.shiftClosedDesc','Operators settled; cash is now in “awaiting deposit”.')}</div>
               <button onClick={()=>router.push('/dashboard')} style={{width:'100%',height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>{tc('send.backToDashboard','Back to Dashboard')}</button>
             </div>
-          ) : (<>
+        </div>
+      )}
+
+      {step===1 && shift && !done && (
+        <div className="card" style={{maxWidth:620}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('send.closingDipReadings','Closing dip readings')}</div>
             <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('send.closingDipDesc','Each tank’s closing dip (4 marks/cm). This is today’s closing stock — and tomorrow’s opening.')}</div>
 
@@ -1246,11 +1298,10 @@ export default function ShiftEndPage() {
                     : autoBannerText()}
               </div>
             )}
-            <button onClick={attendantLed ? finishAndClose : requestCloseShift} disabled={busy==='close' || !allClosed}
+            <button onClick={attendantLed ? finishAndClose : requestCloseShift} disabled={closing || busy==='close' || !allClosed}
               style={{width:'100%',height:48,marginTop:'1rem',background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>
-              {busy==='close'?tc('send.closingEllipsis','Closing…'):(attendantLed?tc('send.finishAndClose','Finish & close shift'):tc('send.closeShift','Close Shift'))}
+              {(closing||busy==='close')?tc('send.closingEllipsis','Closing…'):(attendantLed?tc('send.finishAndClose','Finish & close shift'):tc('send.closeShift','Close Shift'))}
             </button>
-          </>)}
         </div>
       )}
 
