@@ -11,7 +11,7 @@ import {
   Globe, FileText, Layers, Truck, CreditCard, Receipt,
   Menu, Package, CheckSquare, RotateCcw, Wallet, ShieldAlert, Droplet, Banknote, Calculator,
   Thermometer, Hourglass, PlayCircle, StopCircle, UserPlus, ChevronDown, BookMarked, Ticket, FlaskConical,
-  Landmark, Scale, Sliders, ArrowLeftRight, Gift, Camera } from 'lucide-react';
+  Landmark, Scale, Sliders, ArrowLeftRight, Gift, Camera, BarChart3 } from 'lucide-react';
 
 // Build id of the running bundle — shown in the footer so a device's version is
 // verifiable at a glance (handy right before a demo).
@@ -108,6 +108,10 @@ const NAV_GROUPS = [
       // roll issuing down to the manager or the attendant. A user holding only
       // gift.issue sees this row and never learns the others exist.
       { key:'campaign_run',  href:'/campaigns/run',      icon:Camera,         perm:'gift.issue' },
+      // gift.view, a THIRD responsibility. The report carries daily sales volumes
+      // and a per-attendant breakdown, and a man who can read how closely he is
+      // counted can tune himself to just below interesting.
+      { key:'campaign_report', href:'/campaigns/report', icon:BarChart3,      perm:'gift.view' },
       // The same screens as under Lubes, reached from here too: one route, one
       // writer, two doors. The cardinal rule bans a second WRITER and a second
       // FORM, not a second link.
@@ -173,7 +177,7 @@ const NAV_LABELS = {
   credit_reports:'Credit Reports',
   creditdash:'Credit Dashboard',
   lube_catalogue:'Catalogue', lube_stock:'Stock', lube_transfer:'Stock Transfer',
-  campaigns:'Gift Campaigns', campaign_run:'Issue a Gift',
+  campaigns:'Gift Campaigns', campaign_run:'Issue a Gift', campaign_report:'Gift Report',
   lube_pos:'Lube POS',        lube_invoices:'GST Invoices',
   reconcile:'Reconciliation',
   users:'Users',             responsibilities:'Responsibilities',

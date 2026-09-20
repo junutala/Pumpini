@@ -18,6 +18,7 @@ const { requireStationAccess, requireStationVia } = require('../middleware/stati
 const { requirePerm } = require('../middleware/permissions');
 const svc = require('../services/campaignService');
 const run = require('../services/giftIssueService');
+const rep = require('../services/giftReportService');
 
 const VIA_CAMPAIGN = 'SELECT station_id FROM gift_campaigns WHERE id=$1';
 const VIA_TIER     = 'SELECT station_id FROM gift_campaign_tiers WHERE id=$1';
@@ -180,6 +181,28 @@ router.get('/issues/:id/preview', authenticate, requireStationVia(VIA_ISSUE, 'id
 router.post('/issues/:id/settle', authenticate, requireStationVia(VIA_ISSUE, 'id'), requirePerm('gift.issue'), async (req, res, next) => {
   try {
     res.json(await run.settle({ id: req.params.id, station_id: req.stationId, user_id: req.user.id, ...req.body }));
+  } catch (err) { next(err); }
+});
+
+// ── THE REPORT — gift.view ───────────────────────────────────────────────────
+//
+// A third responsibility, and deliberately not folded into gift.issue: the
+// report carries daily sales volumes and the per-attendant breakdown, and a man
+// who can read how closely he is being counted can tune himself to just below
+// interesting. He should know it exists; he should not see the numbers.
+
+// GET /api/campaigns/:id/report
+router.get('/:id/report', authenticate, requireStationVia(VIA_CAMPAIGN, 'id'), requirePerm('gift.view'), async (req, res, next) => {
+  try {
+    res.json(await rep.report({ campaign_id: req.params.id, station_id: req.stationId }));
+  } catch (err) { next(err); }
+});
+
+// GET /api/campaigns/:id/issues — the working behind every number in the report.
+// A total nobody can open is a total nobody checks.
+router.get('/:id/issues', authenticate, requireStationVia(VIA_CAMPAIGN, 'id'), requirePerm('gift.view'), async (req, res, next) => {
+  try {
+    res.json(await rep.issues({ campaign_id: req.params.id, station_id: req.stationId, limit: req.query.limit }));
   } catch (err) { next(err); }
 });
 
