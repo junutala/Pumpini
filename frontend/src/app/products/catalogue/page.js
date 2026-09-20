@@ -66,7 +66,10 @@ export default function ProductCataloguePage() {
   };
 
   const save = async () => {
-    if (!form.name || !form.selling_price) return alert(tc('lubecat.nameAndPriceRequired', 'Name and selling price are required'));
+    // A PRICE OF ZERO IS A PRICE. `!form.selling_price` refused it as if the box
+    // were empty, which made a gift-only catalogue item impossible to create.
+    const noPrice = form.selling_price === '' || form.selling_price === null || form.selling_price === undefined;
+    if (!form.name || noPrice) return alert(tc('lubecat.nameAndPriceRequired', 'Name and selling price are required'));
     setSaving(true);
     try {
       if (form.id) {
@@ -255,23 +258,23 @@ export default function ProductCataloguePage() {
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelSellingPrice', 'Selling Price (₹) *')}</label>
                 <input style={inp} type="number" step="0.01" placeholder="0.00"
-                  value={form.selling_price||''} onChange={e=>f('selling_price',e.target.value)}/>
+                  value={form.selling_price ?? ''} onChange={e=>f('selling_price',e.target.value)}/>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelBuyingPrice', 'Buying Price (₹)')}</label>
                 <input style={inp} type="number" step="0.01" placeholder="0.00"
-                  value={form.buying_price||''} onChange={e=>f('buying_price',e.target.value)}/>
+                  value={form.buying_price ?? ''} onChange={e=>f('buying_price',e.target.value)}/>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelGstRate', 'GST Rate')}</label>
-                <select style={inp} value={form.gst_rate||18} onChange={e=>f('gst_rate',parseFloat(e.target.value))}>
+                <select style={inp} value={Number(form.gst_rate ?? 18)} onChange={e=>f('gst_rate',parseFloat(e.target.value))}>
                   {GST_RATES.map(r=><option key={r} value={r}>{r}%</option>)}
                 </select>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelMinStockLevel', 'Min Stock Level')}</label>
                 <input style={inp} type="number" placeholder="5"
-                  value={form.min_stock_level||''} onChange={e=>f('min_stock_level',e.target.value)}/>
+                  value={form.min_stock_level ?? ''} onChange={e=>f('min_stock_level',e.target.value)}/>
               </div>
             </div>
 
