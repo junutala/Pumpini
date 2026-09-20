@@ -2361,7 +2361,7 @@
     "gaugeMismatch": "⚠ Not filled — {list}. Read those tanks off the console yourself, and check the tank number and fuel in Settings.",
     "gaugeAssumed": "⚠ {list} — two tanks of the same fuel, so this is an assumption. Check before saving.",
     "closedOk": "Shift {n} closed — {c} operator(s) settled.",
-    "anotherOpen": "Another shift at this outlet is still open and is now showing."
+    "anotherOpen": "Another shift at this outlet is still open."
   },
   "setp": {
     "geoNotSupported": "Geolocation not supported by this browser",

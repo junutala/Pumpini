@@ -785,7 +785,7 @@ export default function ShiftEndPage() {
           .replace('{n}', closedNumber ?? '')
           .replace('{c}', closedOperators)
         + (rest.length
-            ? ' ' + tc('send.anotherOpen', 'Another shift at this outlet is still open and is now showing.')
+            ? ' ' + tc('send.anotherOpen', 'Another shift at this outlet is still open.')
             : ''),
         'ok'
       );
@@ -1154,16 +1154,27 @@ export default function ShiftEndPage() {
       )}
 
       {/* SCREEN 2 — Closing gauge & dip, then close the shift */}
-      {step===1 && shift && (
+      {/* SHIFT CLOSED — deliberately OUTSIDE the `step===1 && shift` gate.
+          It used to sit inside it, which made it unreachable on every path:
+          closeShift sets shift=null, so the close destroyed the very thing its
+          own confirmation needed in order to render. `done` went true and the
+          page drew an empty body — the blank screen a manager sat staring at,
+          unable to tell whether the shift had closed. It was gated on step===1
+          as well, so closing an empty shift from step 0 was blank too. This
+          screen depends on neither the step nor a live shift. */}
+      {done && (
         <div className="card" style={{maxWidth:620}}>
-          {done ? (
             <div style={{textAlign:'center'}}>
               <CheckCircle size={48} color="#16a34a" style={{margin:'0.5rem auto'}}/>
               <div style={{fontWeight:800,fontSize:18,marginBottom:6}}>{tc('send.shiftClosed','Shift closed')}</div>
               <div style={{fontSize:13,color:'var(--text-2)',marginBottom:'1.25rem'}}>{tc('send.shiftClosedDesc','Operators settled; cash is now in “awaiting deposit”.')}</div>
               <button onClick={()=>router.push('/dashboard')} style={{width:'100%',height:44,background:'#FF6B00',color:'#fff',border:'none',borderRadius:10,fontWeight:700,cursor:'pointer'}}>{tc('send.backToDashboard','Back to Dashboard')}</button>
             </div>
-          ) : (<>
+        </div>
+      )}
+
+      {step===1 && shift && !done && (
+        <div className="card" style={{maxWidth:620}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:'0.25rem',display:'flex',alignItems:'center',gap:6}}><Droplets size={16} color="#0ea5e9"/>{tc('send.closingDipReadings','Closing dip readings')}</div>
             <div style={{fontSize:12.5,color:'var(--text-3)',marginBottom:'1rem'}}>{tc('send.closingDipDesc','Each tank’s closing dip (4 marks/cm). This is today’s closing stock — and tomorrow’s opening.')}</div>
 
@@ -1291,7 +1302,6 @@ export default function ShiftEndPage() {
               style={{width:'100%',height:48,marginTop:'1rem',background:allClosed?'#dc2626':'#cbd5e1',color:'#fff',border:'none',borderRadius:10,fontWeight:800,fontSize:15,cursor:allClosed?'pointer':'not-allowed'}}>
               {(closing||busy==='close')?tc('send.closingEllipsis','Closing…'):(attendantLed?tc('send.finishAndClose','Finish & close shift'):tc('send.closeShift','Close Shift'))}
             </button>
-          </>)}
         </div>
       )}
 
