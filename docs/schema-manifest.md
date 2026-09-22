@@ -79,16 +79,32 @@ a finding is a fact and not a guess:
 | `ON CONFLICT (...) DO UPDATE SET a = …` | every column, against the INSERT's table |
 | `UPDATE t SET a = …, b = …` | every column |
 
-**Not covered — reads.** `SELECT`, `WHERE`, `ORDER BY` reach through aliases and joins
-(`ORDER BY cd.name`, `WHERE s.date = $1`), and resolving an alias to its table needs a
-real SQL parser. **Half of the corporate bug lived there** — the broken `ORDER BY` is
-why the list failed as well as the insert.
+**Reads are covered too**, by a second gate — `ci-sql-read-check.js`, added the same
+day once the write gate was green. Half of the corporate bug lived on the read side:
+the list's `ORDER BY driver_name` threw no alert, it just 500'd, which is how a screen
+goes quietly broken for months.
 
-That gap is deliberate, not forgotten. A checker that guesses produces false alarms, and
-a gate people learn to ignore is worse than no gate. Extending it to reads with a proper
-parser is worth doing and is its own change.
+| | |
+|---|---|
+| `alias.column` anywhere in a query | alias resolved from `FROM`/`JOIN` |
+| bare `ORDER BY col` | only when the query has ONE table, no `JOIN`, no CTE, no subquery |
 
-**So a green tick means the writes are sound. It does not mean every query is.**
+**What it refuses to judge, on purpose:**
+
+- **An alias ever bound to something that is not a known table is poisoned** and every
+  reference through it is skipped. SQL scopes an alias per CTE; the checker reads a
+  template literal as one flat string. In `spokeService.outstanding()`,
+  `LEFT JOIN nozzle_events p` binds `p` in the `legs` CTE and `FROM priced p` rebinds it
+  two CTEs later — the first draft blamed `nozzle_events` for `p.value`, `p.ltrs` and
+  `p.last_close`, four confident false findings.
+- **Unqualified columns in multi-table queries.** A bare `name` could belong to any
+  table in the `FROM` list.
+- **Select-list aliases.** `count(*) AS n … ORDER BY n` is legal and common —
+  `giftReportService`'s reason tally does exactly that.
+
+A checker that guesses produces false alarms, and **a gate people learn to ignore is
+worse than no gate**. So a clean run means every reference these could *prove* is real
+— not that every query is sound.
 
 ---
 

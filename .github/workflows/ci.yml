@@ -185,6 +185,17 @@ jobs:
       - name: SQL columns exist in production
         run: node scripts/ci-sql-schema-check.js
 
+      # The same outage had a SECOND half: the list's `ORDER BY driver_name`, which
+      # threw no alert and simply 500'd — the way a screen goes quietly broken for
+      # months. Reads are most of the code and therefore most of the exposure, and a
+      # manager meets a broken SELECT by seeing nothing, which is the failure mode
+      # nobody reports. Resolves table aliases from FROM/JOIN and checks qualified
+      # references, plus bare ORDER BY in single-table queries. Anything it cannot
+      # prove — an alias rebound inside a CTE, an unqualified column in a join — it
+      # skips rather than guesses: a gate people learn to ignore is worse than none.
+      - name: SQL reads name real columns
+        run: node scripts/ci-sql-read-check.js
+
       # A translation that drifts away from its fallback SILENTLY WINS, and if it has
       # lost a {placeholder} the value is never rendered. On 31-Aug a manager was told
       # "No opening dip has been recorded for:" and then nothing — the code filled
