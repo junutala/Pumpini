@@ -17,6 +17,20 @@ const fmtL   = n => Number(n||0).toFixed(2);
 const toIST  = ts => ts ? new Date(ts).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
 const toDate = ts => ts ? new Date(ts).toLocaleDateString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short'}) : '—';
 
+// The day a shift is FILED UNDER, as a person reads it. `shifts.date` is a plain
+// YYYY-MM-DD, so it is sliced rather than parsed — constructing a Date from it and
+// formatting in another zone is how a date drifts by one day.
+const dateKey = (d) => String(d || '').slice(0, 10);
+const fmtShiftDate = (d) => {
+  const k = dateKey(d);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return k;
+  const [y, m, day] = k.split('-').map(Number);
+  // en-IN, DD MMM YYYY (CLAUDE.md house facts). Built from the parts at UTC noon so
+  // no timezone can push it either side of midnight.
+  return new Date(Date.UTC(y, m - 1, day, 12)).toLocaleDateString('en-IN',
+    { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 export default function ShiftsPage() {
   const router = useRouter();
   const { t } = useTranslation();
@@ -40,10 +54,33 @@ export default function ShiftsPage() {
 
   const { on } = useSocket(stationId, selected?.id);
 
+  // TODAY'S SHIFTS, PLUS EVERY OPEN ONE WHATEVER ITS DATE.
+  //
+  // This screen used to ask only for `date: today`, and a shift whose stored date is
+  // not today then did not exist as far as the manager was concerned. That is not
+  // hypothetical: SBR's live shift on 22-Sep-2026 carried date 20-Sep — two operators,
+  // eight open legs, running — and the manager reported he "could not see the shift
+  // had been closed". He could not see the shift at all.
+  //
+  // `shifts.date` is written straight from the Shift Start screen's date field, so it
+  // is a LABEL the manager chose, not a fact the server derived. A label is a fine
+  // thing to group a report by and a terrible thing to hide live state behind.
+  //
+  // So an OPEN shift is fetched unconditionally. Nothing else changes: the day's
+  // closed shifts still come back by date, and the two lists are merged by id, newest
+  // first, so a shift that is both today's and open appears exactly once.
   const loadShifts = async() => {
     if(!stationId) return;
-    const s = await api.get('/shifts',{params:{station_id:stationId,date:today}});
-    setShifts(Array.isArray(s)?s:[]);
+    const [byDate, open] = await Promise.all([
+      api.get('/shifts',{params:{station_id:stationId,date:today}}).catch(()=>[]),
+      api.get('/shifts',{params:{station_id:stationId,status:'open'}}).catch(()=>[]),
+    ]);
+    const merged = new Map();
+    for (const s of [...(Array.isArray(byDate)?byDate:[]), ...(Array.isArray(open)?open:[])]) {
+      if (s && s.id) merged.set(s.id, s);
+    }
+    setShifts([...merged.values()].sort((a,b) =>
+      String(b.date).localeCompare(String(a.date)) || (b.shift_number - a.shift_number)));
   };
 
   const loadShiftDetail = async(shift) => {
@@ -150,6 +187,17 @@ export default function ShiftsPage() {
                   <div style={{fontSize:12,color:'var(--text-3)'}}>
                     {tc('shifts_page.manager','Manager')}: {shift.manager_name}
                   </div>
+                  {/* SAY WHEN IT IS FILED UNDER, but only when that is not today.
+                      An open shift now appears whatever its date, so without this a
+                      shift filed under 20-Sep would sit in today's list looking like
+                      today's — which is the confusion this change exists to end, one
+                      step further down. Silent on today's shifts: a date on every row
+                      is noise, and noise is how the odd one stops being noticed. */}
+                  {dateKey(shift.date) !== today && (
+                    <div style={{fontSize:11.5,marginTop:2,color:'#b45309',fontWeight:600}}>
+                      {tc('shifts_page.filedUnder','Filed under {d}').replace('{d}', fmtShiftDate(shift.date))}
+                    </div>
+                  )}
                 </div>
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
                   <span className={`badge ${shift.status==='open'?'badge-success':'badge-gray'}`}>
