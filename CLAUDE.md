@@ -881,6 +881,77 @@ owns them. Demoted, not deleted.
   took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
 - **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
 
+# 🛑 **PINE LABS CARES ABOUT THE DROPS. WE CARE ABOUT THE RUPEES.**
+### owner-set 22-Sep-2026 — the positioning decision. Read it before "fixing" a variance.
+
+> *"let's not worry about the oil drift... let's worry about money drift."*
+> *"Pinelabs will care about your drops... we care about your rupees."*
+
+**WE ARE NOT A TANK SYSTEM AND WE ARE NOT GOING TO BECOME ONE.** Every outlet already
+has an ATG from Pine Labs or its oil company. They have a probe in the tank reading
+continuously; we have a phone photograph of their screen, OCR'd. **We will never win
+that and we must stop trying.**
+
+### The one asymmetry that decides it: on money we can see BOTH ENDS.
+
+| | what we can see |
+|---|---|
+| **Oil drift** | one instrument, and it is SOMEBODY ELSE'S, read through a photo |
+| **Money drift** | what the attendant DECLARED, and what the bank actually SETTLED |
+
+A reconciliation needs two independent sources. Money has them. The tank never did.
+
+### The evidence, all queried 22-Sep-2026
+
+- **The money path never depended on the tank.** `settlementService` contains ZERO
+  references to dips. Sale = meter movement × price. The two halves were already
+  independent; we had only welded them together at the shift boundary.
+- **Our tank reconciliation is blind to 72% of the fuel.** 204 of 206 deliveries carry
+  `shift_id` NULL, the reco joins deliveries by shift, so 767 of 821 rows see zero
+  deliveries. It accounted for 400,000 L of 1,449,600 L ever received. That is why
+  Kamala reads a net gain of **+138,848 L** — physically impossible — and why average
+  variance runs 20–53% at four of five outlets. **Those numbers cannot accuse anybody
+  of anything**, which is the other reason to stop carrying them.
+- **The shift gate cost us a customer.** Sri Balaji's shifts, settlements and dips all
+  stop dead on 4-Sep; his coupon scans continue to 12-Sep, 40 of them AFTER. He did not
+  abandon Pumpini. **He abandoned the shift** — and the shift exists mainly to bound the
+  tank window.
+- **₹11.6 CRORE OF DIGITAL MONEY HAS NO SECOND SOURCE.** ₹8.48 cr card + ₹3.16 cr UPI
+  across all settlements, and `psp_sources` has **zero rows** — no provider configured
+  at any outlet, ever. The attendant says "card ₹47,000" and that is the end of it. That
+  is 68% of every rupee these outlets have taken, and nobody — not Pine Labs, not the
+  OMC — is telling the owner whether it arrived.
+
+### What this means when you sit down to work
+
+1. **Do NOT rebuild, repair or extend the tank reconciliation because a variance looks
+   wrong.** It looks wrong because of the delivery join, it is known, and it is not
+   ours to chase. A 27% variance is not a finding; it is the symptom of a feature we
+   have decided not to compete in.
+2. **Do NOT gate the money path on a tank reading.** The shift close demanding a dip is
+   what blocked SBR's manager at 06:00 and what drove Srinivas off. Whether that gate
+   survives is an outlet-owner setting, not our judgement to impose.
+3. **BUILD THE ARRIVAL LEGS.** Cash → bank exists. Credit → invoice → receipt works at
+   Kamala and is absent at Sri Balaji (₹16.1 L out on credit, zero invoices). Card/UPI →
+   bank does not exist at all and is the biggest hole in the product.
+4. **Not our bother whether the trade is legitimate.** Owner, 22-Sep: *"Legitimate or
+   illegitimate... not our bother."* We report where the money went. We do not police
+   the business, and we do not become the owner's guardian against his own managers.
+
+### The ONE thing we keep on the oil side, because only we can do it
+
+**Auditing THEIR instrument.** On 22-Sep we proved SBR's tank 1 ATG under-reads by a
+constant **0.732%** — by running the console's own dip through the OMC calibration
+charts in `docs/reference/` and finding it behaves as `2738 × 8190` where the BPCL
+drawing says `2738 × 8250`. Sixty millimetres of configured length, and it was the whole
+of a 105.90 L "loss".
+
+That is not being the tank system. That is telling an owner when his gauge is lying to
+him, and it is possible only because the charts and the console reading meet in one
+place. **Keep it. It is one screen, not a subsystem.**
+
+---
+
 ## 📓 `learnings.md` — what production taught us, recorded faithfully
 ### owner-set 22-Sep-2026
 
