@@ -16,6 +16,63 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-22 · Srinivas did not abandon Pumpini. He abandoned the shift.
+
+**We believed** Sri Balaji went quiet on us, cause unknown — and earlier the same day
+the assistant claimed it was because he could not see his shift on the Shifts screen.
+That claim was withdrawn: `/shift-end` always listed open shifts regardless of date.
+
+**Actually** the usage splits clean down the middle of one concept:
+
+```
+shifts opened      29 Aug  ->  04 Sep     10
+settlements        29 Aug  ->  04 Sep     31
+dips               29 Aug  ->  04 Sep     51
+coupon scans       01 Sep  ->  12 Sep     80   <- 40 of them AFTER 4 Sep
+```
+
+Everything that needs a shift stopped dead on 4 September. The one thing that does not —
+credit-coupon capture — he kept using for **another eight days**. That is not a man who
+lost interest in a product. That is a man routing around one part of it until there was
+not enough left to bother with.
+
+**We found out** by checking the owner's hypothesis instead of agreeing with it, after
+his question *"so how is Kamala managing it?"* had already killed a better-sounding one.
+
+**It cost** a real outlet. And it was predicted: CLAUDE.md recorded on 26-Aug, before
+any of this, *"Srinivas is making a lot of noise around the shift and he does not
+understand shifts. He says he has 4 shift patterns and we have only 3 shift
+definitions."* He told us. We wrote it down. We designed Flow v2 for exactly this and
+**never switched it on for a single real outlet.** The learning is not "shifts are hard"
+— it is that a customer's own words sat in the rules file for four weeks as a design
+note while the thing they described kept happening.
+
+---
+
+## 2026-09-22 · The tank reconciliation is blind to 72% of the fuel
+
+**We believed** wet-stock reconciliation was a working feature that managers were
+declining to feed properly.
+
+**Actually** 204 of 206 deliveries carry `shift_id` NULL, and the reco joins deliveries
+by shift. So 767 of its 821 rows see **zero** deliveries, and it has accounted for
+400,000 L of the 1,449,600 L ever received. Kamala's all-time variance reads **+138,848
+litres** — a physically impossible gain — and four of five outlets average 20–53%.
+
+Meanwhile 1,542 stick dips had been taken by hand across those outlets to feed it.
+
+**We found out** while pricing the owner's proposal to drop the shift's dip gate. The
+question was "what does the gate buy us" and the answer turned out to be: nothing, for
+the last several months, at almost every outlet.
+
+**It cost** every one of those 1,542 dips, and — worse — it cost the argument. Numbers
+that wrong cannot detect a leak, cannot clear a manager, and cannot accuse anybody. The
+owner's read: *"there is something going on in this UGT... not sure if its owner blessed
+or manager blessed."* Nobody can tell, and that is the point. **A measurement nobody can
+act on is not a control; it is a cost with a control's reputation.**
+
+---
+
 ## 2026-09-22 · A column name has never been checked against the database
 
 **We believed** the build would catch a wrong column name. There are six CI gates, 159
