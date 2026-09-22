@@ -245,6 +245,56 @@ applied, and break.** When a change needs schema:
 
 ---
 
+# 🛑 **A DEPENDENCY IS NOT DONE BECAUSE HE SAID SHIP IT. VERIFY, THEN PUSH BACK.**
+### owner-set 22-Sep-2026
+
+> *"even if I push for production run, you have to verify if ALL the dependencies are
+> completed and push back until and unless the dependencies are completed... I am a
+> human after all."*
+
+**His "go" is permission to ship. It is NOT evidence that the SQL ran.** Those are two
+different facts and I have been treating them as one. He runs migrations by hand, in
+Supabase, between other things, often on a phone, sometimes on a flight. A step that
+exists only in a chat message is a step that gets lost — not through carelessness, but
+because that is what happens to steps that live in chat messages.
+
+**So before I call anything shipped, I CHECK. Every time, including when he is
+impatient, and especially then.** The check is cheap and it is always available:
+
+| Dependency | How I verify it, in one query |
+|---|---|
+| Column exists | `backend/db/schema.prod.json`, or `information_schema.columns` |
+| Table exists | `information_schema.tables` |
+| **RLS policy on a new table** | `SELECT * FROM pg_policies WHERE tablename='…'` — RLS-on-with-no-policy returns ZERO ROWS on SELECT and throws on INSERT |
+| Constraint / index | `pg_constraint`, `pg_indexes` |
+| Backend deployed | Railway deployment status on the exact merge commit |
+| Frontend deployed | `/build-version` returns the commit short SHA |
+| Feature flag | the `station_settings` column, per outlet |
+
+**Then I say plainly which step is outstanding and I do not call it done.** Not "shipped,
+just run the SQL when you can" — that sentence is how a half-deployed change becomes a
+customer's morning. The change is DONE when the dependency is verified, and until then
+it is WAITING, and I say so in those words.
+
+**THE REAL EXAMPLE, found 22-Sep-2026.** `settlement_ledger`, `settlement_ledger_fuel`,
+`outlet_reco`, `outlet_reco_fuel` — the materialised reconciliation ledger. The code
+writes to all four. **None of them exists in production.** The DDL has sat in
+`ops/staging/settlement-ledger.sql` since it was written and was never run, so the
+feature has never worked at any outlet. Both call sites wrap it in `try/catch` and only
+log, so it fails silently at every single settlement and nobody has ever seen an error.
+A feature was declared shipped, the DDL was never run, and **nothing in the loop noticed
+for months.** That is exactly the failure this rule exists to stop.
+
+**🔴 AND DO NOT LET HIM TAKE THE BLAME FOR MINE.** When the `corporate_drivers`
+outage landed he said *"this could be due to my failure to execute the SQL in
+supabase"*. It was not. `name` has been that column since the table was created — it is
+in the 28-Jun snapshot and in `db/migrate.js` — so **no migration ever existed for him
+to miss.** The code invented a column that has never existed in any environment. A
+wrong diagnosis produces a wrong rule, so when he blames himself I check whether he is
+right before agreeing, and I tell him when he is not.
+
+---
+
 ## Ship workflow
 
 - Branch off `origin/main` → push → open PR → **merge to `main` yourself** (owner does not
@@ -830,6 +880,26 @@ owns them. Demoted, not deleted.
 - **Who may clear an outstanding.** Manager is weak control — he is often the one who
   took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
 - **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
+
+## 📓 `learnings.md` — what production taught us, recorded faithfully
+### owner-set 22-Sep-2026
+
+> *"we should have another md file called learnings.md, where post production learnings
+> are recorded faithfully."*
+
+**THIS file holds the rules. `learnings.md` holds the surprises.** A learning is
+something that was true in production and that we did not expect — what we believed,
+what was actually true, how we found out, and what it cost. Not plans, not design.
+
+- **A learning goes in the day it lands.** "Later" is how the schema snapshot went 30
+  tables stale.
+- **Faithfully means the entries where I was wrong go in too**, in my own words, with
+  the owner's correction quoted where he made it. An entry that flatters us is worth
+  nothing, and a file of only the customer's mistakes is a file nobody believes.
+- A learning that produces a standing rule gets the rule written HERE and links back;
+  the two are not copies of each other.
+
+---
 
 ## House facts
 
