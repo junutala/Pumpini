@@ -173,6 +173,18 @@ jobs:
       - name: Gauge-matcher mirror is in sync
         run: node scripts/ci-gauge-match-sync.js
 
+      # Every column a SQL write names must exist in production. On 22-Sep-2026 a
+      # manager could not add a vehicle because routes/corporate.js wrote
+      # `driver_name` to a table whose column is `name` — wrong since the screen was
+      # written, at every outlet. eslint reads JS scope and a column name in a
+      # template literal is just text; `next build` never sees it; the tests never
+      # open a database. So the only thing catching a typed column was a manager
+      # pressing the button in production. Checks INSERT, ON CONFLICT DO UPDATE and
+      # UPDATE against backend/db/schema.prod.json; reads (SELECT/WHERE/ORDER BY) go
+      # through aliases and are deliberately out of scope — see the script's header.
+      - name: SQL columns exist in production
+        run: node scripts/ci-sql-schema-check.js
+
       # A translation that drifts away from its fallback SILENTLY WINS, and if it has
       # lost a {placeholder} the value is never rendered. On 31-Aug a manager was told
       # "No opening dip has been recorded for:" and then nothing — the code filled
