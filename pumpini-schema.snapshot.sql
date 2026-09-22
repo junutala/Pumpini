@@ -1,10 +1,40 @@
 -- ─────────────────────────────────────────────────────────────────────────────
---  pumpini-schema.snapshot.sql — AUTHORITATIVE current PRODUCTION schema
+--  🔴 STALE AS OF 22-Sep-2026 — captured 2026-06-28, and production has moved on.
+--
+--  DO NOT use this file to answer "does this column exist in production". It is
+--  MISSING 30 RELATIONS that exist in prod today:
+--
+--    pumps, station_artifacts, fuel_test_draws, shift_attendance, shift_scan_meters,
+--    nozzle_cycles, nozzle_events, tank_cycles, tank_recons, tank_recon_tanks,
+--    tank_recon_nozzles, tank_book_stock, credit_slip_books, attendant_settlements,
+--    expenses, fixed_assets, psp_sources, posting_rules, product_stock_transfers,
+--    lead_contacts, lead_interactions, gift_campaigns, gift_campaign_tiers,
+--    gift_issues, corporate_station_balance, accounting_accounts,
+--    accounting_journal, accounting_journal_lines, accounting_opening_balances,
+--    accounting_vendors
+--
+--  👉 For COLUMNS, use `backend/db/schema.prod.json` — generated from the live
+--     information_schema and enforced by CI (backend/scripts/ci-sql-schema-check.js).
+--     See docs/schema-manifest.md.
+--
+--  This file is STILL USEFUL for what the manifest does not carry: constraints,
+--  indexes, RLS policies, functions, triggers and grants — for the 60 tables it has.
+--  Refreshing it needs a real pg_dump against prod, which needs the database
+--  credentials, so it is an owner action:
+--    pg_dump --schema-only --no-owner --schema=public "$PROD_URL" > pumpini-schema.snapshot.sql
+--
+--  WHY THIS WARNING IS HERE. CLAUDE.md used to name this file as the thing to trust
+--  for whether a column exists, and called getting that wrong the #1 prod-break risk.
+--  On 22-Sep-2026 a manager could not add a vehicle because the code wrote
+--  `corporate_drivers.driver_name` and the column is `name` — and a session checking
+--  this file about a table added after June would have been told, confidently, the
+--  wrong thing.
+-- ─────────────────────────────────────────────────────────────────────────────
+--  pumpini-schema.snapshot.sql — PRODUCTION schema as it stood on 2026-06-28
 --
 --  A faithful `pg_dump --schema-only --no-owner --schema=public` snapshot of the
---  LIVE production database, captured 2026-06-28. Source of truth for what the
---  schema ACTUALLY is in prod: all 60 tables, RLS policies, functions, triggers,
---  and grants.
+--  LIVE production database, captured 2026-06-28: the 60 tables that existed then,
+--  with their RLS policies, functions, triggers, and grants.
 --
 --  WHY THIS EXISTS — the hand-maintained `pumpini-schema.sql` had drifted badly
 --  (only 23 of 60 tables; missing plans, permission_modules, role_templates,

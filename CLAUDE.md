@@ -187,11 +187,34 @@ If you can't answer these, do not merge.
 - **Database → Supabase Postgres**: schema changes (`ALTER`/`CREATE`) are **run MANUALLY by
   the owner**. They do NOT happen automatically on deploy. `pumpini-schema.sql` is the
   canonical place to append idempotent DDL; `backend/src/db/migrate.js` is a separate runner.
-- **To check whether a column/table/constraint exists in prod, trust
-  `pumpini-schema.snapshot.sql`** (a full `pg_dump` of prod), NOT `pumpini-schema.sql` —
-  the latter is a partial hand-maintained file (~23 of 60 tables) that has drifted. This
-  is the #1 prod-break risk: code shipping a `SELECT` of a column the repo schema doesn't
-  show but prod-checking the snapshot would have caught.
+- **🔴 To check whether a COLUMN exists in prod, trust
+  `backend/db/schema.prod.json`** — generated from the production
+  `information_schema`, every relation, every column, and **enforced by CI**
+  (`ci-sql-schema-check.js` fails the build on a write naming a column that is not
+  there). Regenerate it in the same sitting as any DDL — `docs/schema-manifest.md`.
+- **`pumpini-schema.snapshot.sql` IS STALE — do not trust it for this.** This file
+  used to say the snapshot was the thing to trust, and called getting it wrong the #1
+  prod-break risk. On **22-Sep-2026 it was 30 tables out of date**: no `pumps`, no
+  `station_artifacts`, no `fuel_test_draws`, no `shift_attendance`, none of the
+  accounting module, none of the gift module, no `nozzle_events`, no `tank_recon*`.
+  **The instruction was sending every session to a file that did not contain a third
+  of the schema**, which is worse than having no instruction. It is still useful for
+  constraints, indexes and RLS policies, which the manifest does not carry — but for
+  "does this column exist", the manifest is the answer.
+- `pumpini-schema.sql` remains a partial hand-maintained file (~23 of 60 tables) and
+  is not an authority on anything.
+
+**WHAT PUT THIS HERE (22-Sep-2026).** A manager at SBR could not add a vehicle:
+*column "driver_name" of relation "corporate_drivers" does not exist*. The table has
+always had `name`; `routes/corporate.js` had invented `driver_name` and used it in
+BOTH the INSERT and the list's `ORDER BY`, so the screen was broken in both directions
+and had been since it was written, at every outlet. **Nothing could have caught it** —
+eslint reads JS scope and a column name in a template literal is just text, `next
+build` compiles the frontend, the tests never open a database. The only thing between
+a typed column name and a manager's screen was somebody pressing the button in
+production. The owner's question was *"how many more headaches do we have to face?"*,
+and the answer had to be a machine that can be re-run, not one sweep by hand: all
+1,220 written column references were checked, and that was the only one.
 
 **Therefore: code that depends on a new column/table WILL deploy before the migration is
 applied, and break.** When a change needs schema:
