@@ -453,11 +453,28 @@ router.get('/:id/statement', authenticate, requireCorporateAccess(), async (req,
   } catch (err) { next(err); }
 });
 
+// 🔴 THE COLUMN IS `name`, NOT `driver_name`. Both queries below named a column that
+// has never existed in production — `corporate_drivers` carries
+// (id, corporate_id, name, phone, vehicle_number, fasttag_id, biometric_ref,
+// per_fill_limit, is_active, enrolled_at) — so adding a vehicle raised
+//   column "driver_name" of relation "corporate_drivers" does not exist
+// and listing them 500'd on ORDER BY the same ghost. Reported from SBR on
+// 22-Sep-2026 with the alert box on screen; the screen was broken in BOTH
+// directions, which is why nobody had a partial workaround.
+//
+// THE API KEEPS SAYING `driver_name`, deliberately. The screen sends that key and
+// renders `d.driver_name`, so the SQL is aliased rather than the contract changed:
+// the fix then ships as ONE backend deploy instead of a frontend/backend pair that
+// must land in lockstep, and Railway is the half that is already broken.
+// (CLAUDE.md deploy ordering — the two halves deploy independently, so a change
+// needing both is a change that is broken in between.)
+
 // GET /api/corporate/:id/drivers
 router.get('/:id/drivers', authenticate, requireCorporateAccess(), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT * FROM corporate_drivers WHERE corporate_id=$1 ORDER BY driver_name`,
+      `SELECT *, name AS driver_name FROM corporate_drivers
+        WHERE corporate_id=$1 ORDER BY name`,
       [req.params.id]
     );
     res.json(rows);
@@ -468,10 +485,16 @@ router.get('/:id/drivers', authenticate, requireCorporateAccess(), async (req, r
 router.post('/:id/drivers', authenticate, authorize('owner','manager','cco'), requireCorporateAccess(), async (req, res, next) => {
   try {
     const { vehicle_number, driver_name, phone } = req.body;
+    // `name` is NOT NULL on this table, so an empty driver name would fail on the
+    // constraint rather than on the column. The form makes only the vehicle number
+    // mandatory, and a vehicle with no named driver is a real thing an outlet has —
+    // so it falls back to the vehicle number rather than refusing the row.
+    const who = String(driver_name || '').trim() || String(vehicle_number || '').trim();
+    if (!who) return res.status(400).json({ error: 'Enter the vehicle number.' });
     const { rows } = await pool.query(
-      `INSERT INTO corporate_drivers(corporate_id,vehicle_number,driver_name,phone)
-       VALUES($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, vehicle_number, driver_name||null, phone||null]
+      `INSERT INTO corporate_drivers(corporate_id,vehicle_number,name,phone)
+       VALUES($1,$2,$3,$4) RETURNING *, name AS driver_name`,
+      [req.params.id, vehicle_number, who, phone||null]
     );
     res.status(201).json(rows[0]);
   } catch (err) { next(err); }
