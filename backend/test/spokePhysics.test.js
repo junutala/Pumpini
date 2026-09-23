@@ -53,3 +53,30 @@ test('two prints in the same second do not divide by zero into a false alarm', (
     physicsVerdict({ prevReading: 1000, prevAt: T0, reading: 5000, at: T0 }).code,
     'faster_than_the_pump');
 });
+
+// ── mayRecord: what a reason can and cannot excuse ─────────────────────────────
+// 23-Sep-2026, MBR: 1.1 reassigned at 1255 after 1925 — a typo — and the reason box
+// accepted "Hdjsjsjsbsn". The man leaving was charged Rs 0 and the man taking over
+// opened 670 L low. A decrease must be refused WHATEVER is typed.
+const { mayRecord } = require('../src/services/spokeService');
+
+test('a reading that went DOWN is refused even with a reason typed', () => {
+  const v = physicsVerdict({ prevReading: 1925, prevAt: T0, reading: 1255, at: at(24) });
+  assert.strictEqual(v.code, 'reading_decreased');
+  assert.strictEqual(mayRecord(v, 'Hdjsjsjsbsn'), 'refuse');
+  assert.strictEqual(mayRecord(v, 'meter was reset'), 'refuse',
+    'a reset is a new starting reading in Settings, never a reason on a handover');
+  assert.strictEqual(mayRecord(v, ''), 'refuse');
+});
+
+test('faster than the pump may be recorded once he explains, and not before', () => {
+  const v = physicsVerdict({ prevReading: 1857.64, prevAt: T0, reading: 1925, at: at(100 / 60) });
+  assert.strictEqual(v.code, 'faster_than_the_pump');
+  assert.strictEqual(mayRecord(v, ''), 'reason');
+  assert.strictEqual(mayRecord(v, '   '), 'reason', 'whitespace is not an explanation');
+  assert.strictEqual(mayRecord(v, 'clock on the phone was wrong'), 'ok');
+});
+
+test('ordinary trade needs nothing', () => {
+  assert.strictEqual(mayRecord(null, ''), 'ok');
+});

@@ -11,24 +11,20 @@
 // in front of the manager wanting to go home. The list now STARTS from who is holding a
 // nozzle, and the men who owe follow.
 //
-// 🔴 AND WHY THE READING IS NOT TAKEN HERE. Closing a man's nozzle is a handover — the
-// same one reading that closes him and opens the next man — and that form lives on
-// Nozzle Events. A second copy of it here, differing only in where it was reached from,
-// is precisely the "forms above forms" the cardinal rule forbids. So this screen names
-// the nozzles he holds and sends the manager to the one form that records them.
+// 🔴 SETTLING HIM RELEASES HIS NOZZLES. Owner, 23-Sep-2026: "If the attendant settles
+// his account, ALL his assigned nozzles will be released and goes back to the pool."
+// So a man still holding nozzles is closed HERE: one closing reading per nozzle, the
+// total due, what he brought, and one act. Nozzle Events only hands a nozzle from one
+// man to another — there is no "nobody takes over" there any more, so each act has one
+// path. The reading box is components/shared/HandoverReading, the same one Nozzle
+// Events embeds, so the two screens cannot drift apart on how a reading is taken.
 //
-// THE OUTSTANDING IS CALCULATED, NEVER TYPED. It is derived from the man's own nozzle
-// events, and there is deliberately NO FIELD for it anywhere on this screen. That is
-// the structural fix for the 25-Aug loss of Rs 1,25,275 across three settlements
-// recorded with cash_actual = 0: a manager cannot make a liability vanish by leaving a
-// field blank, because there is no field to leave blank.
-//
-// THE ONLY MANUAL ENTRY IS WHAT HE BROUGHT — cash, UPI, card, credit slips, petty. That
-// entry brings his suspense DOWN; nothing silently zeroes it, and a settlement of
-// nothing is refused rather than recorded.
-//
-// THE MONEY CLOCK NEVER BLOCKS THE FORECOURT. A man with an outstanding works his next
-// shift; he simply cannot reach zero until he settles.
+// 🔴 THE TOTAL DUE INCLUDES WHAT HIS REASSIGNMENTS ALREADY PUT ON HIM. Owner: "do not
+// forget to add the suspense created by the nozzle reassign during the attendant
+// settlement." `r.outstanding` is his running account from the server — every nozzle
+// taken off him by a reassign, less everything he has brought — and each nozzle closed
+// now is added to it, line by line, before he is asked what he brought.
+
 import { useState, useEffect, useCallback } from 'react';
 import { Wallet, Info, Check } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
@@ -37,7 +33,8 @@ import SettlementBreakup, { emptyBreakup, breakupTotal } from '../../components/
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
-import { errText } from '../../lib/apiError';
+import { errText, errCode } from '../../lib/apiError';
+import HandoverReading from '../../components/shared/HandoverReading';
 import { nozName } from '../../lib/nozzle';
 
 const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -64,6 +61,11 @@ export default function AttendantDuesPage() {
   const [legs, setLegs]       = useState({});
   const [legsBusy, setLegsBusy] = useState('');
   const [form, setForm]       = useState({});
+  // CLOSING HIS NOZZLES, per nozzle: the reading (typed or off a slip), the preview the
+  // server derived for it, and the physics refusal if one came back.
+  const [closeForm, setCloseForm] = useState({});   // nozzle_id -> { reading, source, serial, no, reason }
+  const [closePv, setClosePv]     = useState({});   // nozzle_id -> handover preview
+  const [refused, setRefused]     = useState({});   // nozzle_id -> sentence
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
   const [ok, setOk]           = useState('');
@@ -83,15 +85,54 @@ export default function AttendantDuesPage() {
 
   const brought = breakupTotal(form);
 
-  const settle = async (attendant_id) => {
+  const resetClose = () => { setCloseForm({}); setClosePv({}); setRefused({}); };
+
+  // CLOSE AND SETTLE, ONE ACT. Each nozzle he holds gets its closing reading — the
+  // event that closes him and opens nobody, so the nozzle goes back to the pool — and
+  // then what he brought is recorded against the running account.
+  //
+  // ORDER MATTERS AND FAILURE IS SAFE. Closings first: they are what put the litres on
+  // his account. If one is refused (a reading that went down, or rose faster than a
+  // pump can pour) the rest stop and the reason box opens on that nozzle; closings
+  // already recorded stand, because each is a true reading. If the settlement itself
+  // fails, his nozzles are free and he stays on the list owing exactly what he owes —
+  // nothing is lost and nothing is invented.
+  const settle = async (r) => {
     setBusy(true); setErr(''); setOk('');
     try {
-      await api.post('/spokes/settle', { station_id: sid, attendant_id, ...form });
+      for (const h of (r.holds || [])) {
+        const f = closeForm[h.nozzle_id] || {};
+        try {
+          await api.post('/spokes/event', {
+            station_id: sid, nozzle_id: h.nozzle_id,
+            reading: Number(f.reading),
+            opens_attendant_id: null,
+            source: f.source === 'photo' ? 'photo' : 'typed',
+            drift_reason: f.reason || undefined,
+            read_pump_serial: f.serial || undefined, read_nozzle_no: f.no || undefined,
+          });
+        } catch (e) {
+          const code = errCode(e);
+          if (code === 'reading_decreased' || code === 'faster_than_the_pump') {
+            setRefused(x => ({ ...x, [h.nozzle_id]: { text: errText(e, 'That figure cannot be right.'), code } }));
+          } else {
+            setErr(errText(e, tc('dues.closeFailed', 'Could not record that closing reading.')));
+          }
+          await load(); setBusy(false); return;
+        }
+      }
+      // A SETTLEMENT OF NOTHING IS NOT A SETTLEMENT — unless there is nothing to
+      // settle. A man who took a nozzle and sold nothing must still be able to go home;
+      // his nozzles are closed above and no settlement row is written for zero.
+      if (brought > 0) {
+        await api.post('/spokes/settle', { station_id: sid, attendant_id: r.attendant_id, ...form });
+      }
       setOk(tc('dues.recorded', 'Recorded.'));
-      setOpenId(null); setForm(emptyBreakup());
+      setOpenId(null); setForm(emptyBreakup()); resetClose();
       await load();
     } catch (e) {
       setErr(errText(e, tc('dues.settleFailed', 'Could not record that settlement.')));
+      await load();
     }
     setBusy(false);
   };
@@ -249,13 +290,6 @@ export default function AttendantDuesPage() {
                           </div>
                         ))}
                       </div>
-                      <div style={{ marginTop: 7, color: 'var(--text-3)', lineHeight: 1.5 }}>
-                        {tc('dues.closeFirst', 'Take the closing reading on each before settling him — the same reading closes him and opens whoever takes over.')}
-                        {' '}
-                        <a href="/nozzle-events" style={{ color: 'var(--brand)', fontWeight: 700 }}>
-                          {tc('dues.goHandover', 'Go to Nozzle Events →')}
-                        </a>
-                      </div>
                     </div>
                   )}
 
@@ -334,55 +368,116 @@ export default function AttendantDuesPage() {
                     </div>
                   )}
 
-                  {openId === r.attendant_id ? (
-                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0ebe3' }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
-                        {tc('dues.whatHeBrought', 'What he handed over')}
+                  {openId === r.attendant_id ? (() => {
+                    const holds = r.holds || [];
+                    const allRead = holds.every(h => {
+                      const v = (closeForm[h.nozzle_id] || {}).reading;
+                      return v !== undefined && v !== '' && Number.isFinite(Number(v));
+                    });
+                    // TOTAL DUE = his running account + each nozzle closed now. Every
+                    // part is a server figure (outstanding() and handover-preview); this
+                    // only adds them up, and shows each one it adds.
+                    const earlier = Number(r.outstanding) || 0;
+                    const pvs = holds.map(h => closePv[h.nozzle_id]);
+                    const pvKnown = pvs.every(pv => pv && pv.found);
+                    // A reading below the last one cannot close him (23-Sep-2026, MBR).
+                    const anyBelow = pvs.some(pv => pv?.physics?.code === 'reading_decreased');
+                    const dueNow = pvs.reduce((sum, pv) => sum + (Number(pv?.value) || 0), 0);
+                    const due = earlier + dueNow;
+                    // He may go home having brought nothing only when nothing is due.
+                    const canGo = holds.length === 0
+                      ? brought > 0
+                      : allRead && !anyBelow && (brought > 0 || (pvKnown && Math.abs(due) < CLEARED_BELOW));
+                    return (
+                    <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0ebe3', display: 'grid', gap: 12 }}>
+                      {holds.length > 0 && (
+                        <div style={{ display: 'grid', gap: 12 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>
+                            {tc('dues.closingReadings', 'Closing reading on each nozzle')}
+                          </div>
+                          {holds.map(h => (
+                            <div key={h.nozzle_id}>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>
+                                {nozName(h)}
+                              </div>
+                              <HandoverReading stationId={sid} nozzle={{ id: h.nozzle_id, nozzle_name: h.nozzle_name }}
+                                value={closeForm[h.nozzle_id] || {}}
+                                onChange={patch => setCloseForm(x => ({ ...x, [h.nozzle_id]: { ...(x[h.nozzle_id] || {}), ...patch } }))}
+                                onPreview={pv => setClosePv(x => ({ ...x, [h.nozzle_id]: pv }))}
+                                refused={refused[h.nozzle_id]} disabled={busy} showBalance={false} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* WHAT HE OWES, WORKING SHOWN — including what his reassignments
+                          already put on him. */}
+                      <div style={{ padding: '9px 11px', borderRadius: 8, background: 'var(--surface-2)',
+                                    fontSize: 12.5, display: 'grid', gap: 3 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                          <span style={{ color: 'var(--text-3)' }}>{tc('dues.earlier', 'From earlier handovers')}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>{money(earlier)}</span>
+                        </div>
+                        {holds.map(h => {
+                          const pv = closePv[h.nozzle_id];
+                          return (
+                            <div key={h.nozzle_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                              <span style={{ color: 'var(--text-3)' }}>{nozName(h)}</span>
+                              <span style={{ fontFamily: 'var(--font-mono)' }}>{pv && pv.found ? money(pv.value) : '—'}</span>
+                            </div>
+                          );
+                        })}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontWeight: 700,
+                                      borderTop: '1px solid #e5e3de', paddingTop: 5, marginTop: 2 }}>
+                          <span>{tc('dues.totalDue', 'Total due')}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>
+                            {holds.length === 0 || pvKnown ? money(due) : '—'}
+                          </span>
+                        </div>
                       </div>
-                      {/* THE SAME FORM AS SHIFT CLOSE — components/shared/SettlementBreakup.
-                          The manager already knows these five boxes in that order; a
-                          second version of them, differing only in a label, is the drift
-                          the cardinal rule forbids. And there is still NO FIELD for the
-                          outstanding: it is calculated, so there is nothing to blank. */}
-                      <SettlementBreakup value={form}
-                        onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))} />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
+                          {tc('dues.whatHeBrought', 'What he handed over')}
+                        </div>
+                        {/* THE SAME FORM AS SHIFT CLOSE — components/shared/SettlementBreakup.
+                            Still NO FIELD for the outstanding: it is calculated. */}
+                        <SettlementBreakup value={form}
+                          onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))} />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, color: 'var(--text-3)' }}>
                           {tc('dues.total', 'Total brought')} <strong style={{ fontFamily: 'monospace' }}>{money(brought)}</strong>
                         </span>
-                        {/* A SETTLEMENT OF NOTHING IS NOT A SETTLEMENT. It may not
-                            complete silently at zero — that is exactly how three
-                            settlements on 25-Aug carried Rs 1,25,275 away. */}
-                        <button onClick={() => settle(r.attendant_id)} disabled={busy || !(brought > 0)}
-                          style={{ marginLeft: 'auto', background: (busy || !(brought > 0)) ? '#e5e3de' : 'var(--brand)',
-                                   color: (busy || !(brought > 0)) ? '#8b9099' : '#fff', border: 'none',
+                        <button onClick={() => settle(r)} disabled={busy || !canGo}
+                          style={{ marginLeft: 'auto', background: (busy || !canGo) ? '#e5e3de' : 'var(--brand)',
+                                   color: (busy || !canGo) ? '#8b9099' : '#fff', border: 'none',
                                    borderRadius: 8, padding: '9px 15px', fontSize: 13.5, fontWeight: 700,
-                                   cursor: (busy || !(brought > 0)) ? 'not-allowed' : 'pointer' }}>
-                          {busy ? tc('dues.recording', 'Recording…') : tc('dues.record', 'Record what he brought')}
+                                   cursor: (busy || !canGo) ? 'not-allowed' : 'pointer' }}>
+                          {busy ? tc('dues.recording', 'Recording…')
+                            : holds.length ? tc('dues.closeAndSettle', 'Close & settle')
+                            : tc('dues.record', 'Record what he brought')}
                         </button>
-                        <button onClick={() => { setOpenId(null); setForm(emptyBreakup()); }}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-3)',
-                                   fontSize: 13, cursor: 'pointer' }}>
-                          {tc('dues.cancel', 'Cancel')}
+                        <button onClick={() => { setOpenId(null); setForm(emptyBreakup()); resetClose(); }}
+                          style={{ background: 'none', border: '1px solid #e5e3de', borderRadius: 8,
+                                   color: 'var(--text-2)', padding: '9px 15px', fontSize: 13, cursor: 'pointer' }}>
+                          {tc('spoke.close', 'Close')}
                         </button>
                       </div>
-                      {!(brought > 0) && (
-                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
-                          {tc('dues.zeroWhy', 'Enter what he actually handed over. A settlement of nothing is not a settlement.')}
-                        </div>
-                      )}
                     </div>
-                  ) : clear ? (
+                    );
+                  })() : (clear && !(r.holds || []).length) ? (
                     <div style={{ marginTop: 10, fontSize: 12.5, color: '#166534',
                                   display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <Check size={14} /> {tc('dues.settled', 'Settled')}
                       {r.last_settled ? ` · ${when(r.last_settled)}` : ''}
                     </div>
                   ) : (
-                    <button onClick={() => { setOpenId(r.attendant_id); setForm(emptyBreakup()); setOk(''); }}
+                    <button onClick={() => { setOpenId(r.attendant_id); setForm(emptyBreakup()); resetClose(); setOk(''); }}
                       style={{ marginTop: 12, background: 'none', border: '1px solid #e5e3de',
                                borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}>
-                      {tc('dues.settleCta', 'Settle him')}
+                      {(r.holds || []).length ? tc('dues.closeAndSettle', 'Close & settle') : tc('dues.settleCta', 'Settle him')}
                     </button>
                   )}
                 </div>

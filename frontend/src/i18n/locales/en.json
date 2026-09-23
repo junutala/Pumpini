@@ -3505,16 +3505,21 @@
     "carriesNote": "This stays against him until he settles it. It does not hold up the pump, and it is not a field anybody can blank.",
     "addToOutstanding": "Add to outstanding & hand over",
     "assignNozzle": "Assign the nozzle",
-    "since": "since"
+    "since": "since",
+    "pickAttendant": "Select an attendant",
+    "belowLast": "Below the last reading ({prev}). A meter only counts up — check the figure."
   },
   "dues": {
     "title": "Attendant Close",
     "stillHolding": "Still holding {n} nozzle(s)",
-    "closeFirst": "Take the closing reading on each before settling him — the same reading closes him and opens whoever takes over.",
-    "goHandover": "Go to Nozzle Events →",
     "off": "Attendant Close belongs to the nozzle-led flow, which is switched off here. This outlet runs shift-led — its operators are closed from Shift Close. You can change the flow in Settings.",
     "notMigrated": "Attendant Close is not switched on for this database yet. Nothing is lost — it will appear once the tables are added.",
     "emptyTitle2": "Nobody to close",
-    "emptyBody3": "Men holding a nozzle, or with a close not yet settled, appear here."
+    "emptyBody3": "Men holding a nozzle, or with a close not yet settled, appear here.",
+    "closingReadings": "Closing reading on each nozzle",
+    "earlier": "From earlier handovers",
+    "totalDue": "Total due",
+    "closeAndSettle": "Close & settle",
+    "closeFailed": "Could not record that closing reading."
   }
 }

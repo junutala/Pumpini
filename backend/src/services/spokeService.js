@@ -51,6 +51,30 @@ function physicsVerdict({ prevReading, prevAt, reading, at }) {
   return null;   // everything else is trade. Record the drift, stay silent.
 }
 
+// MAY THIS READING BE RECORDED? Pure, so it can be tested without a database.
+//
+//   'ok'       — no physics objection
+//   'reason'   — FASTER THAN THE PUMP: refused until he explains in his own words.
+//                A clock a minute out, or a test draw, can make a real reading look
+//                fast; the reason box exists for that.
+//   'refuse'   — THE READING WENT DOWN. Refused whatever he types. A totaliser only
+//                counts up, so a decrease is a misread, a reset or a replacement —
+//                and a reset is a new starting point for the chain, which is a
+//                commissioning act in Settings under the owner's eye, never a number
+//                on a handover screen (CLAUDE.md, Flow v2).
+//
+// 🔴 WHY 'refuse' HAS NO WAY ROUND IT. On 23-Sep-2026 at MBR, 1.1 was reassigned at
+// 1255 when the last reading was 1925 — a typo. The reason box accepted "Hdjsjsjsbsn",
+// the GREATEST(…,0) floor turned the leg into 0 L, the man leaving was charged ₹0 and
+// dropped off Attendant Close, and the man taking over was opened 670 L too low — so
+// his next close would have carried the outgoing man's litres and the gap. A reason
+// box on a decrease is a click-through, and a click-through on money is a loss.
+function mayRecord(verdict, drift_reason) {
+  if (!verdict) return 'ok';
+  if (verdict.code === 'reading_decreased') return 'refuse';
+  return String(drift_reason || '').trim() ? 'ok' : 'reason';
+}
+
 async function lastEvent(nozzle_id, client = pool) {
   const { rows } = await client.query(
     `SELECT * FROM nozzle_events WHERE nozzle_id=$1 ORDER BY recorded_at DESC, created_at DESC LIMIT 1`,
@@ -87,9 +111,10 @@ async function recordEvent({ station_id, nozzle_id, reading,
     // a dropdown: a canned reason code becomes a reflex. A meter RESET is not a reason
     // typed on a handover screen either — it is a commissioning action in Settings,
     // under the owner's eye, because the chain needs a new starting point.
-    if (verdict && !String(drift_reason || '').trim()) {
+    const may = mayRecord(verdict, drift_reason);
+    if (may !== 'ok') {
       await client.query('ROLLBACK');
-      return { refused: verdict };
+      return { refused: { ...verdict, final: may === 'refuse' } };
     }
 
     // Read off the chain inside the same lock, so two handovers on one nozzle cannot
@@ -488,7 +513,7 @@ async function quietMoment(station_id, client = pool) {
 const num = v => Number(v) || 0;
 
 module.exports = {
-  hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding,
+  hasSpokeTables, physicsVerdict, mayRecord, recordEvent, chain, nozzleState, outstanding,
   outstandingDetail, settle, quietMoment, handoverPreview, handoverMath, holdings,
   MAX_FLOW_LTRS_PER_MIN,
 };
