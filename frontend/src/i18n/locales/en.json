@@ -426,7 +426,16 @@
     "mode_pos": "POS live",
     "mode_consolidated_hint": "Sales entered as one consolidated total per attendant by the manager at close",
     "mode_pos_hint": "Each fill recorded live on the POS in the bay",
-    "end_shift": "End Shift"
+    "end_shift": "End Shift",
+    "viewDate": "Show shifts filed under",
+    "backToToday": "Today",
+    "noShiftsOn": "No shifts filed under {d}.",
+    "pickAnotherDay": "Pick another day above.",
+    "nozzles": "nozzles",
+    "stillOpen": "open",
+    "legTotal": "Meter total",
+    "moneyOnClose": "Amounts show once the shift is closed.",
+    "whoWasOn": "Who was on"
   },
   "users_page": {
     "title": "Users",
