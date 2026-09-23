@@ -939,11 +939,12 @@ owns them. Demoted, not deleted.
   took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
 - **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
 
-# 🛑 **PINE LABS CARES ABOUT THE DROPS. WE CARE ABOUT THE RUPEES.**
-### owner-set 22-Sep-2026 — the positioning decision. Read it before "fixing" a variance.
+# 🛑 **PINE LABS CONTROLS FUEL. PUMPINI CONTROLS MONEY.**
+### owner-set 22-Sep-2026, tagline sharpened 23-Sep-2026 — the positioning decision. Read it before "fixing" a variance.
 
+> *"Pinelabs controls fuel .... pumpini controls money !!!"* — the tagline, 23-Sep
 > *"let's not worry about the oil drift... let's worry about money drift."*
-> *"Pinelabs will care about your drops... we care about your rupees."*
+> *"Pinelabs will care about your drops... we care about your rupees."* — first form, 22-Sep
 
 **WE ARE NOT A TANK SYSTEM AND WE ARE NOT GOING TO BECOME ONE.** Every outlet already
 has an ATG from Pine Labs or its oil company. They have a probe in the tank reading
