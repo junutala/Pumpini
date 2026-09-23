@@ -5,8 +5,9 @@
 // the same transaction as its parent (see that file for why).
 //
 // Two endpoints and no more:
-//   GET /api/artifacts?entity_type=&entity_id=   — what proof exists for this record
-//   GET /api/artifacts/:id/image                 — the picture itself
+//   GET /api/artifacts?entity_type=&entity_id=       — what proof exists for this record
+//   GET /api/artifacts/:id/image                     — the picture itself
+//   GET /api/artifacts/meter-photo/:id/image         — the same, for `meter_photos`
 //
 // The image is served as real bytes with a content type rather than base64 in a
 // JSON envelope, so a screen can point an <img src> at it and the browser caches
@@ -63,6 +64,33 @@ router.get('/latest', authenticate, async (req, res, next) => {
       if (await canAccessStation(req.user.id, row.station_id)) out[entityId] = row;
     }
     res.json(out);
+  } catch (err) { next(err); }
+});
+
+// GET /api/artifacts/meter-photo/:id/image
+//
+// The SAME contract as /:id/image, for the other store. Meter photographs live in
+// `meter_photos`, not `station_artifacts`, because the settlement writes them from
+// inside its own transaction — but a screen showing one should not have to know
+// that, and ArtifactImage should not need a second copy of itself. So the shape is
+// identical and the component takes a `source` prop rather than being forked.
+//
+// Declared before '/:id/image': that route matches exactly two segments so it could
+// not capture this one, but the ordering says the intent out loud.
+router.get('/meter-photo/:id/image', authenticate, async (req, res, next) => {
+  try {
+    const m = await artifacts.getMeterPhotoImage(req.params.id);
+    if (!m) return res.status(404).json({ error: 'Meter photo not found' });
+    if (!(await canAccessStation(req.user.id, m.station_id))) {
+      return res.status(403).json({ error: 'You do not have access to this station.' });
+    }
+    if (!m.file_base64) {
+      return res.status(404).json({ error: 'This meter photo has no stored image.' });
+    }
+    const buf = Buffer.from(m.file_base64, 'base64');
+    res.set('Content-Type', m.media_type || 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.send(buf);
   } catch (err) { next(err); }
 });
 

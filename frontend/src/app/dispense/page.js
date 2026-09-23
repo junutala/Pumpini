@@ -1,240 +1,296 @@
 'use client';
+// NOZZLE HISTORY — one nozzle, its readings down the days.
+//
+// Owner, 23-Sep-2026: "we store the nozzle slips.... and its a crime not to let the
+// users see the historic data."
+//
+// WHAT USED TO BE HERE, AND WHY IT IS GONE. This route rendered a page titled
+// "Shift Reconciliation" under Reports → Reconciliation: a third settlement form
+// beside /reconcile/manager and /reconcile/self-settle. It had never produced a
+// single row in production — 1,098 settlements across all seven outlets, every one
+// of them mode='manager' — and it could not have:
+//
+//   * it asked for `date: today`, so SBR's shifts filed under 21/22-Sep showed
+//     "No shifts today" while two were running;
+//   * its submit posted to POST /api/reconcile, which refuses anybody but the
+//     attendant himself (403) — and this is a manager screen (reconcile.manage);
+//   * it summed dispense_events for the "sales so far", and all 5,084 of those
+//     across the real outlets are source='manager', synthesised AT shift close —
+//     so before settling, every figure it showed was zero;
+//   * it rendered blind-dropped money as a measurement: /dashboard/manager returns
+//     sales: null with sales_hidden, and the page printed ₹0;
+//   * and its variance dropdown was the canned reason code the owner ruled out on
+//     25-Aug ("a canned reason code becomes a reflex").
+//
+// So this is a NET REDUCTION: a dead settlement route closed, and the nozzle history
+// put in its place. No new page was added anywhere.
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle, AlertTriangle, Printer, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, RotateCcw, X, ImageOff } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
-import { getShifts, getManagerDashboard, submitReco, getReco } from '../../lib/api';
-import api from '../../lib/api';
+import ArtifactImage from '../../components/shared/ArtifactImage';
+import DateRangePicker from '../../components/shared/DateRangePicker';
+import api, { getNozzleHistory } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { useRefreshOnFocus } from '../../hooks/useRefreshOnFocus';
 import { nozName } from '../../lib/nozzle';
 
-const DENOMS = [500,200,100,50,20,10,5,2,1];
-const fmt = n => Number(n||0).toLocaleString('en-IN',{maximumFractionDigits:2});
-const toIST = ts => ts ? new Date(ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}) : '—';
+const toIST   = d => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+const fmtQty  = n => (n == null ? '—' : Number(n).toFixed(3));
+const fmtRead = n => (n == null ? null : Number(n).toFixed(3));
 
-export default function ReconcilePage() {
-  const { user, station } = useAuth();
+// DD MMM YYYY, HH:MM — en-IN / Asia/Kolkata, never a raw ISO stamp (house facts).
+const stamp = ts => ts
+  ? new Date(ts).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true })
+  : '—';
+
+// The day a shift was FILED under, read from the plain YYYY-MM-DD rather than parsed
+// into a Date — constructing one and formatting it in another zone is how a date
+// drifts by a day.
+const filedLabel = (d) => {
+  const k = String(d || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return k;
+  const [y, m, day] = k.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, day, 12))
+    .toLocaleDateString('en-IN', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+export default function NozzleHistoryPage() {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
-  const stationId = typeof station==='object'?station?.id:station;
-  const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+  const { station } = useAuth();
+  const stationId = typeof station === 'object' ? station?.id : station;
 
-  const [shifts,setShifts]         = useState([]);
-  const [selectedShift,setSelectedShift] = useState(null);
-  const [attendants,setAttendants] = useState([]);
-  const [expanded,setExpanded]     = useState(null);
-  const [denoms,setDenoms]         = useState({});   // {attendantId: {500:0,200:0,...}}
-  const [recos,setRecos]           = useState({});   // {attendantId: reco result}
-  const [loading,setLoading]       = useState(false);
-  const [dispute,setDispute]       = useState({});   // {attendantId: {type,notes}}
+  const today = toIST(new Date());
+  const weekAgo = toIST(new Date(Date.now() - 6 * 86400000));
 
-  const loadShifts = useCallback(()=>{
-    if(stationId) return getShifts({station_id:stationId,date:today}).then(setShifts);
-  },[stationId,today]);
+  const [nozzles,  setNozzles]  = useState([]);
+  const [nozzleId, setNozzleId] = useState('');
+  const [from,     setFrom]     = useState(weekAgo);
+  const [to,       setTo]       = useState(today);
+  const [rows,     setRows]     = useState(null);   // null = not run yet
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState('');
 
-  useEffect(()=>{ loadShifts(); },[loadShifts]);
-  useRefreshOnFocus(loadShifts);
-  
-  
-  const loadShift = async(shift) => {
-    setSelectedShift(shift);
-    setExpanded(null);
-    const mgr = await getManagerDashboard(stationId,shift.id);
-    setAttendants(mgr.attendant_summary||[]);
-    // load existing recos
-    const r = await getReco(shift.id);
-    const recoMap={};
-    (r||[]).forEach(x=>{ recoMap[x.attendant_id]=x; });
-    setRecos(recoMap);
-  };
+  useEffect(() => {
+    if (!stationId) return;
+    api.get(`/stations/${stationId}/nozzles`)
+      .then(n => setNozzles(Array.isArray(n) ? n : []))
+      .catch(() => setNozzles([]));
+  }, [stationId]);
 
-  const getDenomTotal = (attId) => {
-    const d = denoms[attId]||{};
-    return DENOMS.reduce((s,n)=>s+(parseInt(d[n]||0)*n),0);
-  };
-
-  const handleEndShift = async(att) => {
-    const cashActual = getDenomTotal(att.attendant_id);
-    if(cashActual===0 && !window.confirm(tc('dispp.confirmZeroCash','Cash total is ₹0. Continue?'))) return;
-    setLoading(true);
+  const run = useCallback(async () => {
+    if (!stationId || !nozzleId) return;
+    setLoading(true); setError('');
     try {
-      // Save denomination
-      await api.post('/reconcile/denomination',{
-        shift_id:selectedShift.id,
-        attendant_id:att.attendant_id,
-        ...Object.fromEntries(DENOMS.map(n=>[`note_${n}`,denoms[att.attendant_id]?.[n]||0])),
-      });
-      // Submit reconciliation
-      const res = await submitReco({
-        shift_id:selectedShift.id,
-        attendant_id:att.attendant_id,
-        cash_actual:cashActual,
-        remarks:dispute[att.attendant_id]?.notes||'',
-      });
-      setRecos(p=>({...p,[att.attendant_id]:res}));
-      setExpanded(null);
-      alert(tc('dispp.shiftEndedAlert','Shift ended for {name}. Variance: ₹{variance}').replace('{name}',att.name).replace('{variance}',fmt(res.variance)));
-    } catch(e){ alert(e.error||tc('dispp.failed','Failed')); }
-    finally{ setLoading(false); }
+      const r = await getNozzleHistory({ station_id: stationId, nozzle_id: nozzleId, date_from: from, date_to: to });
+      setRows(Array.isArray(r) ? r : []);
+    } catch (e) {
+      setError(e?.error || tc('nozhist.failed', 'Could not load the history.'));
+      setRows([]);
+    } finally { setLoading(false); }
+  }, [stationId, nozzleId, from, to]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // RESET puts the form back to where it opened and clears the result, so the next
+  // search starts from nothing rather than from a half-changed filter.
+  const reset = () => {
+    setNozzleId(''); setFrom(weekAgo); setTo(today);
+    setRows(null); setError('');
   };
+
+  // CLOSE dismisses the result and leaves the filters as they are — the manager has
+  // looked at one nozzle and wants the table out of the way, not his search undone.
+  const close = () => { setRows(null); setError(''); };
+
+  const chosen = nozzles.find(n => n.id === nozzleId) || null;
+
+  // Litres over the whole range, from the legs that actually closed. Quantity only:
+  // the owner asked for Qty, and a litre figure carries no blind-drop question the
+  // way a rupee figure would.
+  const totalQty = (rows || []).reduce((s, r) => s + (r.qty_ltrs == null ? 0 : Number(r.qty_ltrs)), 0);
+  const closedLegs = (rows || []).filter(r => r.qty_ltrs != null).length;
+  const slipCount = (rows || []).reduce(
+    (s, r) => s + (r.opening_photo_id ? 1 : 0) + (r.closing_photo_id ? 1 : 0), 0);
+
+  const th = { textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-3)',
+               textTransform: 'uppercase', letterSpacing: '.03em', padding: '8px 10px', whiteSpace: 'nowrap' };
+  const td = { padding: '10px', borderTop: '1px solid var(--border)', fontSize: 13, verticalAlign: 'middle' };
+  const mono = { ...td, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' };
 
   return (
     <AppShell>
       <div className="page-header">
-        <h1 className="page-title">{tc('dispp.pageTitle','Shift Reconciliation')}</h1>
-      </div>
-
-      {/* Shift selector */}
-      <div className="card" style={{marginBottom:'1.5rem'}}>
-        <div style={{fontWeight:600,marginBottom:'0.75rem',fontSize:14}}>{tc('dispp.selectShiftToClose','Select Shift to Close')}</div>
-        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-          {shifts.filter(s=>s.status==='open'||s.status==='closed').map(s=>(
-            <button key={s.id}
-              className={`btn ${selectedShift?.id===s.id?'btn-primary':'btn-secondary'}`}
-              onClick={()=>loadShift(s)}>
-              {tc('dispp.shiftButton','Shift {number} — {status}').replace('{number}',s.shift_number).replace('{status}',s.status)}
-            </button>
-          ))}
-          {shifts.length===0 && <div style={{color:'var(--text-3)',fontSize:13}}>{tc('dispp.noShiftsToday','No shifts today')}</div>}
+        <div>
+          <h1 className="page-title">{tc('nozhist.title', 'Nozzle History')}</h1>
+          <div style={{ fontSize: 13, color: 'var(--text-3)' }}>
+            {tc('nozhist.subtitle', 'Every reading this nozzle has carried, and the slip behind it.')}
+          </div>
         </div>
       </div>
 
-      {/* Attendant reconciliation cards */}
-      {selectedShift && (
-        <div>
-          <div style={{fontWeight:600,fontSize:14,marginBottom:'1rem',color:'var(--text-2)'}}>
-            {tc('dispp.attendantEndOfShift','Shift {number} — Attendant End-of-Shift · Last updated: {time}').replace('{number}',selectedShift.shift_number).replace('{time}',toIST(new Date()))}
+      {/* Filters */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 240 }}>
+            <label className="label">{tc('nozhist.nozzle', 'Nozzle')}</label>
+            {/* The LOV. Names come from pumpService through nozName() — the one
+                writer — so this list reads exactly as the slip and every other
+                screen does. Nothing is built here. */}
+            <select className="input" value={nozzleId} onChange={e => setNozzleId(e.target.value)}>
+              <option value="">{tc('nozhist.pickNozzle', 'Select a nozzle…')}</option>
+              {nozzles.map(n => (
+                <option key={n.id} value={n.id}>{nozName(n)} · {n.fuel_type}</option>
+              ))}
+            </select>
           </div>
 
-          {attendants.length===0 && (
-            <div className="card" style={{textAlign:'center',color:'var(--text-3)',padding:'2rem'}}>{tc('dispp.noAttendants','No attendants assigned to this shift')}</div>
-          )}
+          <div>
+            <label className="label">{tc('nozhist.dates', 'Dates')}</label>
+            <DateRangePicker from={from} to={to} onChange={(f, tt) => { setFrom(f); setTo(tt); }} />
+          </div>
 
-          {attendants.map(att=>{
-            const reco   = recos[att.attendant_id];
-            const isOpen = !reco;
-            const dTotal = getDenomTotal(att.attendant_id);
+          <button className="btn btn-primary" onClick={run} disabled={!nozzleId || loading}>
+            <Search size={15} /> {loading ? tc('nozhist.loading', 'Loading…') : tc('nozhist.show', 'Show History')}
+          </button>
 
-            return (
-              <div key={att.attendant_id} className="card" style={{marginBottom:'1rem',borderColor:reco?'var(--success)':'var(--border)'}}>
-                {/* Header */}
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:15}}>{att.name}</div>
-                    <div style={{fontSize:12,color:'var(--text-3)'}}>
-                      {tc('dispp.nozzleLine','Nozzle {nozzle} · {fuel} · {count} transactions').replace('{nozzle}',nozName(att)).replace('{fuel}',att.fuel_type).replace('{count}',att.txn_count)}
-                    </div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:10}}>
-                    <div style={{textAlign:'right'}}>
-                      <div style={{fontFamily:'var(--font-mono)',fontWeight:700,fontSize:16}}>₹{fmt(att.sales)}</div>
-                      <div style={{fontSize:11,color:'var(--text-3)'}}>{tc('dispp.litresDispensed','{litres} L dispensed').replace('{litres}',Number(att.litres).toFixed(2))}</div>
-                    </div>
-                    {reco
-                      ? <span className={`badge ${Math.abs(reco.variance)<=50?'badge-success':'badge-danger'}`}>
-                          {Math.abs(reco.variance)<=50?tc('dispp.badgeClosed','✓ Closed'):tc('dispp.badgeVariance','⚠ Variance')}
-                        </span>
-                      : <button className="btn btn-secondary btn-sm"
-                          onClick={()=>setExpanded(expanded===att.attendant_id?null:att.attendant_id)}>
-                          {tc('dispp.endShift','End Shift')} {expanded===att.attendant_id?<ChevronUp size={14}/>:<ChevronDown size={14}/>}
-                        </button>
-                    }
-                  </div>
-                </div>
+          {/* The two CTAs the owner asked for, 23-Sep-2026. */}
+          <button className="btn btn-secondary" onClick={reset} disabled={loading}>
+            <RotateCcw size={15} /> {tc('nozhist.reset', 'Reset')}
+          </button>
+          <button className="btn btn-secondary" onClick={close} disabled={loading || rows === null}>
+            <X size={15} /> {tc('nozhist.close', 'Close')}
+          </button>
+        </div>
 
-                {/* Reco summary if done */}
-                {reco && (
-                  <div style={{marginTop:'1rem',padding:'0.75rem',background:'var(--surface-2)',borderRadius:8}}>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,fontSize:13}}>
-                      {[['Total Sales',reco.total_sales,tc('dispp.totalSales','Total Sales')],['Cash Expected',reco.cash_expected,tc('dispp.cashExpected','Cash Expected')],['Cash Received',reco.cash_actual,tc('dispp.cashReceived','Cash Received')],['Variance',reco.variance,tc('dispp.variance','Variance')]].map(([l,v,lbl])=>(
-                        <div key={l}>
-                          <div style={{color:'var(--text-3)',fontSize:11}}>{lbl}</div>
-                          <div style={{fontFamily:'var(--font-mono)',fontWeight:600,color:l==='Variance'?(Math.abs(reco.variance)<=50?'var(--success)':'var(--danger)'):'inherit'}}>
-                            {l==='Variance'&&parseFloat(reco.variance)>=0?'+':''}₹{fmt(v)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <button className="btn btn-secondary btn-sm" style={{marginTop:8}} onClick={()=>window.print()}>
-                      <Printer size={13}/> {tc('dispp.printSlip','Print Slip')}
-                    </button>
-                  </div>
-                )}
+        {error && <div className="alert-banner danger" style={{ marginTop: '1rem' }}>{error}</div>}
+      </div>
 
-                {/* Denomination entry */}
-                {expanded===att.attendant_id && isOpen && (
-                  <div style={{marginTop:'1.25rem',borderTop:'1px solid var(--border)',paddingTop:'1.25rem'}}>
-                    {/* Sales summary — shown to manager */}
-                    <div style={{background:'var(--surface-2)',borderRadius:8,padding:'0.75rem',marginBottom:'1rem'}}>
-                      <div style={{fontSize:12,fontWeight:600,color:'var(--text-2)',marginBottom:8}}>{tc('dispp.salesSummary','Sales Summary (as of now)')}</div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,fontSize:13}}>
-                        <div><div style={{color:'var(--text-3)',fontSize:11}}>{tc('dispp.totalSales','Total Sales')}</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.sales)}</div></div>
-                        <div><div style={{color:'var(--text-3)',fontSize:11}}>{tc('dispp.cashSales','Cash Sales')}</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.cash||0)}</div></div>
-                        <div><div style={{color:'var(--text-3)',fontSize:11}}>{tc('dispp.upi','UPI')}</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.upi||0)}</div></div>
-                        <div><div style={{color:'var(--text-3)',fontSize:11}}>{tc('dispp.credit','Credit')}</div><div style={{fontFamily:'var(--font-mono)',fontWeight:700}}>₹{fmt(att.credit||0)}</div></div>
-                      </div>
-                    </div>
-
-                    {/* Denomination entry */}
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:'0.75rem'}}>{tc('dispp.cashCount','Cash Count — Enter number of notes/coins')}</div>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:'1rem'}}>
-                      {DENOMS.map(denom=>{
-                        const count = denoms[att.attendant_id]?.[denom]||0;
-                        const subtotal = count * denom;
-                        return (
-                          <div key={denom} style={{background:'var(--surface-2)',borderRadius:8,padding:'8px 10px',display:'flex',alignItems:'center',gap:8}}>
-                            <div style={{width:44,fontSize:13,fontWeight:600,color:'var(--text-2)'}}>₹{denom}</div>
-                            <input type="number" min="0" className="input" style={{flex:1,height:32,fontSize:13,textAlign:'center'}}
-                              value={count||''}
-                              placeholder="0"
-                              onChange={e=>setDenoms(p=>({
-                                ...p,
-                                [att.attendant_id]:{...(p[att.attendant_id]||{}),[denom]:parseInt(e.target.value)||0}
-                              }))}/>
-                            <div style={{width:60,fontSize:12,fontFamily:'var(--font-mono)',color:'var(--text-3)',textAlign:'right'}}>
-                              {subtotal>0?`₹${fmt(subtotal)}`:''}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Total */}
-                    <div style={{background:dTotal>0?'#dcfce7':'var(--surface-2)',borderRadius:8,padding:'0.75rem 1rem',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-                      <span style={{fontWeight:600}}>{tc('dispp.totalCashCounted','Total Cash Counted')}</span>
-                      <span style={{fontFamily:'var(--font-mono)',fontWeight:800,fontSize:20,color:dTotal>0?'var(--success)':'var(--text-3)'}}>₹{fmt(dTotal)}</span>
-                    </div>
-
-                    {/* Dispute notes */}
-                    <div style={{marginBottom:'1rem'}}>
-                      <label className="label">{tc('dispp.notesRemarks','Notes / Remarks (optional)')}</label>
-                      <textarea className="input" rows={2} placeholder={tc('dispp.notesPlaceholder','Any discrepancy notes, reason for variance...')}
-                        onChange={e=>setDispute(p=>({...p,[att.attendant_id]:{...(p[att.attendant_id]||{}),notes:e.target.value}}))}/>
-                    </div>
-
-                    {/* Dispute resolution */}
-                    <div style={{marginBottom:'1.25rem'}}>
-                      <label className="label">{tc('dispp.resolutionMethod','If variance: resolution method')}</label>
-                      <select className="input" onChange={e=>setDispute(p=>({...p,[att.attendant_id]:{...(p[att.attendant_id]||{}),type:e.target.value}}))}>
-                        <option value="">{tc('dispp.selectIfNeeded','Select if needed...')}</option>
-                        <option value="cash_collected">{tc('dispp.collectCash','Collect cash from attendant now')}</option>
-                        <option value="salary_deduction">{tc('dispp.deductSalary','Deduct from salary')}</option>
-                        <option value="waived">{tc('dispp.waive','Waive (management decision)')}</option>
-                      </select>
-                    </div>
-
-                    <button className="btn btn-primary btn-lg" style={{width:'100%',justifyContent:'center'}}
-                      onClick={()=>handleEndShift(att)} disabled={loading}>
-                      {loading?tc('dispp.processing','Processing...'):tc('dispp.endShiftSubmit','✓ End Shift & Submit')}
-                    </button>
-                  </div>
-                )}
+      {/* Results */}
+      {rows !== null && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                        gap: 12, flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                {chosen ? nozName(chosen) : tc('nozhist.title', 'Nozzle History')}
+                {chosen?.fuel_type && <span style={{ fontWeight: 400, color: 'var(--text-3)' }}> · {chosen.fuel_type}</span>}
               </div>
-            );
-          })}
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>
+                {tc('nozhist.rangeLine', '{n} reading(s) · {from} to {to}')
+                  .replace('{n}', rows.length)
+                  .replace('{from}', filedLabel(from)).replace('{to}', filedLabel(to))}
+              </div>
+            </div>
+            {closedLegs > 0 && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                  {tc('nozhist.rangeTotal', 'Total dispensed ({n} closed)').replace('{n}', closedLegs)}
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18 }}>
+                  {totalQty.toFixed(3)} L
+                </div>
+              </div>
+            )}
+          </div>
+
+          {rows.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '2rem', fontSize: 13 }}>
+              {tc('nozhist.noRows', 'No readings for this nozzle in that range.')}
+            </div>
+          ) : (
+            <>
+              <div className="table-wrap" style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>{tc('nozhist.colDate', 'Date')}</th>
+                      <th style={th}>{tc('nozhist.colAttendant', 'Attendant')}</th>
+                      <th style={{ ...th, textAlign: 'right' }}>{tc('nozhist.colOpening', 'Opening Reading')}</th>
+                      <th style={th}>{tc('nozhist.colSlip', 'Slip')}</th>
+                      <th style={{ ...th, textAlign: 'right' }}>{tc('nozhist.colClosing', 'Closing Reading')}</th>
+                      <th style={th}>{tc('nozhist.colSlip', 'Slip')}</th>
+                      <th style={{ ...th, textAlign: 'right' }}>{tc('nozhist.colQty', 'Total Sale (Qty)')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(r => {
+                      const filed = String(r.filed_under || '').slice(0, 10);
+                      const legDay = toIST(new Date(r.assigned_at));
+                      const open = fmtRead(r.opening_reading);
+                      const close = fmtRead(r.closing_reading);
+                      return (
+                        <tr key={r.leg_id}>
+                          <td style={td}>
+                            <div style={{ whiteSpace: 'nowrap' }}>{stamp(r.assigned_at)}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                              {tc('nozhist.shiftN', 'Shift {n}').replace('{n}', r.shift_number)}
+                              {/* The filed-under label, ONLY when it disagrees with the
+                                  day the leg was actually created. shifts.date is typed
+                                  by the manager; saying so where it differs is how the
+                                  three real outlets get to spot it. */}
+                              {filed && filed !== legDay && (
+                                <span style={{ color: '#b45309', fontWeight: 600 }}>
+                                  {' · '}{tc('nozhist.filedUnder', 'filed {d}').replace('{d}', filedLabel(filed))}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={td}>{r.attendant_name || '—'}</td>
+                          <td style={{ ...mono, textAlign: 'right' }}>{open ?? '—'}</td>
+                          <td style={td}>
+                            {r.opening_photo_id
+                              ? <ArtifactImage artifactId={r.opening_photo_id} source="meter" size={40}
+                                  alt={tc('nozhist.openingSlipAlt', 'Opening slip')}
+                                  label={`${chosen ? nozName(chosen) : ''} ${open || ''}`.trim()} />
+                              : <NoSlip title={tc('nozhist.noSlip', 'No slip was captured for this reading')} />}
+                          </td>
+                          <td style={{ ...mono, textAlign: 'right' }}>
+                            {close ?? <em style={{ color: '#b45309', fontStyle: 'normal', fontFamily: 'inherit' }}>
+                              {tc('nozhist.stillOpen', 'open')}</em>}
+                          </td>
+                          <td style={td}>
+                            {r.closing_photo_id
+                              ? <ArtifactImage artifactId={r.closing_photo_id} source="meter" size={40}
+                                  alt={tc('nozhist.closingSlipAlt', 'Closing slip')}
+                                  label={`${chosen ? nozName(chosen) : ''} ${close || ''}`.trim()} />
+                              : <NoSlip title={tc('nozhist.noSlip', 'No slip was captured for this reading')} />}
+                          </td>
+                          <td style={{ ...mono, textAlign: 'right', fontWeight: 700 }}>
+                            {r.qty_ltrs == null ? '—' : `${fmtQty(r.qty_ltrs)} L`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* SAY WHY THE SLIP COLUMN IS EMPTY, rather than leaving a column of
+                  dashes to be read as a fault. A slip is shown only when a meter
+                  photograph's OCR'd number EQUALS the reading it sits beside — an
+                  unmatched photo is left out rather than guessed at. Most outlets
+                  have never captured one at all. */}
+              {slipCount === 0 && (
+                <div style={{ marginTop: '0.9rem', fontSize: 12, color: 'var(--text-3)',
+                              background: 'var(--surface-2)', borderRadius: 8, padding: '10px 12px' }}>
+                  {tc('nozhist.noSlipsNote',
+                      'No slip photographs are stored against these readings. A slip appears here only when a meter photograph was captured and its reading matches.')}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
     </AppShell>
+  );
+}
+
+function NoSlip({ title }) {
+  return (
+    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 40, height: 40, borderRadius: 8, background: 'var(--surface-2)', color: '#cbd5e1' }}>
+      <ImageOff size={16} />
+    </span>
   );
 }

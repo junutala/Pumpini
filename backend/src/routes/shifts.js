@@ -63,6 +63,81 @@ router.get('/active', authenticate, requireStationAccess({ required: true }), as
   } catch (err) { next(err); }
 });
 
+// GET /api/shifts/nozzle-history?station_id=&nozzle_id=&date_from=&date_to=
+//
+// ONE NOZZLE, ITS READINGS DOWN THE DAYS. Owner, 23-Sep-2026: "we store the nozzle
+// slips.... and its a crime not to let the users see the historic data."
+//
+// 🔴 IT FILTERS ON `san.assigned_at`, NOT ON `shifts.date`. `shifts.date` is a LABEL
+// the manager types on Shift Start, not a fact the server derives — that is exactly
+// what hid SBR's live shifts from the Shifts screen on 22-Sep and emptied the old
+// Reconciliation page. A history that dropped rows because somebody mistyped the day
+// would be worse than no history, so the range is applied to the moment the leg was
+// actually created, and the filed-under label is returned alongside so a screen can
+// say when the two disagree.
+//
+// The slip is matched, not assumed: a meter photograph carries (shift_id, nozzle_id)
+// and an OCR'd number, and nothing marks it as opening or closing. So a photo counts
+// as the proof of a reading only when its OCR'd value EQUALS that reading. An
+// unmatched photo is left out rather than guessed at — a picture attached to the
+// wrong number is worse than no picture.
+//
+// Declared BEFORE '/:id' so it is not captured as an id (same reason as '/active').
+router.get('/nozzle-history', authenticate, requireStationAccess({ required: true }), async (req, res, next) => {
+  try {
+    const { nozzle_id, date_from, date_to } = req.query;
+    if (!nozzle_id) return res.status(400).json({ error: 'Pick a nozzle.' });
+
+    // The nozzle must belong to the station the caller is scoped to. Without this a
+    // valid station_id plus somebody else's nozzle_id would read their meters.
+    if ((await nozzlesOutsideStation(req.stationId, [nozzle_id])).length) {
+      return res.status(403).json({ error: 'That nozzle does not belong to this outlet.' });
+    }
+
+    const nm = await pumps.nozzleNameSelect(pool);
+    const { rows } = await pool.query(`
+      WITH slips AS (
+        SELECT mp.id, mp.shift_id, mp.created_at,
+               NULLIF(btrim(mp.ocr_reading), '')::numeric AS reading
+          FROM meter_photos mp
+         WHERE mp.nozzle_id = $1
+           AND btrim(COALESCE(mp.ocr_reading, '')) ~ '^[0-9]+(\.[0-9]+)?$'
+      )
+      SELECT san.id                AS leg_id,
+             san.shift_id,
+             san.assigned_at,
+             sh.date               AS filed_under,
+             sh.shift_number,
+             sh.status             AS shift_status,
+             usr.name              AS attendant_name,
+             nz.fuel_type${nm.col},
+             san.opening_reading,
+             san.closing_reading,
+             CASE WHEN san.closing_reading IS NULL THEN NULL
+                  ELSE san.closing_reading - san.opening_reading END AS qty_ltrs,
+             (SELECT so.id FROM slips so
+               WHERE so.shift_id = san.shift_id AND so.reading = san.opening_reading
+               ORDER BY so.created_at ASC  LIMIT 1) AS opening_photo_id,
+             (SELECT sc.id FROM slips sc
+               WHERE sc.shift_id = san.shift_id AND sc.reading = san.closing_reading
+               ORDER BY sc.created_at DESC LIMIT 1) AS closing_photo_id
+        FROM shift_attendant_nozzles san
+        JOIN shifts  sh ON sh.id = san.shift_id
+        JOIN nozzles nz ON nz.id = san.nozzle_id
+        ${nm.join}
+        LEFT JOIN users usr ON usr.id = san.attendant_id
+       WHERE san.nozzle_id = $1
+         AND sh.station_id = $2
+         AND ($3::date IS NULL OR (san.assigned_at AT TIME ZONE 'Asia/Kolkata')::date >= $3::date)
+         AND ($4::date IS NULL OR (san.assigned_at AT TIME ZONE 'Asia/Kolkata')::date <= $4::date)
+       ORDER BY san.assigned_at DESC NULLS LAST
+       LIMIT 500`,
+      [nozzle_id, req.stationId, date_from || null, date_to || null]);
+
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
 // GET /api/shifts/:id
 router.get('/:id', authenticate, requireStationVia('SELECT station_id FROM shifts WHERE id=$1', 'id'), async (req, res, next) => {
   try {

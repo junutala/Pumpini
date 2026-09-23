@@ -161,7 +161,7 @@ const SPOKES_GROUP = {
 
 const NAV_LABELS = {
   dashboard:'Bunk View',   live:'Live Events',      pos:'POS Entry',
-  shifts:'Shifts',          dispense:'Dispense Log', attendance:'Attendance',
+  shifts:'Shifts',          dispense:'Nozzle History', attendance:'Attendance',
   dipstick:'Dipstick',      deliveries:'Deliveries', corporate:'Credit Customers',
   group:'Group View',       reports:'Reports',       alerts:'Alerts',
   invoices:'Credit Invoices',  receipts:'Credit Receipts', settings:'Settings',
