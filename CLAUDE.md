@@ -863,6 +863,20 @@ shift **and no open leg**, in either direction. The open-leg half is new and it 
 one that mattered — a shift can be closed with its legs still open, and SBR had 16 of
 those against zero at every other real outlet.
 
+### Attendant Close — two money rules, owner-set 23-Sep-2026
+
+- **Under ₹1 is cleared.** Cash is counted in rupees and meters in paise, so nearly
+  every settlement leaves paise (ABR DUMMY1 owed ₹7,010.83, brought ₹7,010.00). The
+  paise are not zeroed — they stay in the running account and ride into the next
+  settlement. They just stop showing as a debt.
+- **A settlement completes him, even if short.** Once his last settlement is later than
+  his last close he leaves the Attendant Close list; any balance is already inside the
+  running account (`outstanding()` = all he has sold − all he has brought) and meets him
+  at his next close. A man holding a nozzle is never removed.
+- **The known consequence:** a man who settles short and never returns is invisible on
+  that screen. Owner: carried balances are to be shown on the rebuilt owner dashboard —
+  that is where they are meant to be caught, not on Attendant Close.
+
 ### 🛑 SWITCHING BACK TO SHIFT-LED IS NOT YET SAFE. Say so before anyone promises it.
 
 The owner asked, 23-Sep: *"if Ramana wants to revert to the shift pattern, it's just a
