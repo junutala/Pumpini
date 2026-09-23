@@ -3504,7 +3504,8 @@
     "noMovement": "Same reading as before — no fuel moved, so nothing is added.",
     "carriesNote": "This stays against him until he settles it. It does not hold up the pump, and it is not a field anybody can blank.",
     "addToOutstanding": "Add to outstanding & hand over",
-    "assignNozzle": "Assign the nozzle"
+    "assignNozzle": "Assign the nozzle",
+    "since": "since"
   },
   "dues": {
     "title": "Attendant Close",

@@ -252,6 +252,10 @@ export default function NozzleEventsPage() {
                         : n.reading != null
                           ? tc('spoke.idle', 'idle')
                           : tc('spoke.uncommissioned', 'no opening reading yet')}
+                      {/* WHEN he took it (owner spec #4, 23-Sep-2026). The latest
+                          event's time is the moment the current man was assigned —
+                          or, for an idle nozzle, when it was last read. */}
+                      {n.recorded_at ? ` · ${tc('spoke.since', 'since')} ${when(n.recorded_at)}` : ''}
                     </span>
                     <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
                       {L(n.reading)}

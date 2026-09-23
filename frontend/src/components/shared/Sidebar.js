@@ -150,10 +150,14 @@ const NAV_GROUPS = [
 // The group NAME is a placeholder (design/Nav.dc.html says so in as many words).
 // Permissions REUSE the ones these acts already run under — a spoke is the same
 // job by a different route, not a new privilege.
+// NO TANK RECON. Owner, 23-Sep-2026: "why do we still have the tank recon? We can
+// never work on a tank recon because these guys will not stop dispensing... why do we
+// claim to do something but lack the data?" A nozzle-led outlet has no shift boundary,
+// so nozzle sales cannot be tied to a tank window — offering the screen would be
+// claiming a reconciliation the data cannot support. (His spec, item 10.)
 const SPOKES_GROUP = {
   label: 'Daily Flow',
   items: [
-    { key:'tankrecon',     href:'/tank-recon',     icon:Droplet, perm:'stock.reconcile' },
     { key:'nozzleevents',  href:'/nozzle-events',  icon:Gauge,   perm:'reconcile.manage' },
     { key:'attendantdues', href:'/attendant-dues', icon:Wallet,  perm:'reconcile.manage' },
   ]
@@ -237,9 +241,16 @@ export default function Sidebar({ open, onClose }) {
   // Behind the migration flag the SHIFT stops being the boundary, so Shift Open and
   // Shift Close leave and the three spokes take their place — in the same slot, so
   // nothing else moves. Flag off (every outlet today) returns the array untouched.
+  // NOZZLE-LED DROPS EVERY SCREEN THAT NEEDS A SHIFT TO BE TRUE: Shift Open, Shift
+  // Close, and Stock Reco. Stock Reco's sales come from dispense_events, which are only
+  // written at a shift close — with no shift close every litre sold would read as a
+  // tank LOSS, and a screen that accuses on missing data is worse than no screen.
+  // Dipstick stays: auditing their ATG against the OMC chart is the one tank act we
+  // keep (CLAUDE.md, "the ONE thing we keep on the oil side").
+  const NOT_IN_NOZZLE_LED = new Set(['startshift', 'endshift', 'stockreco']);
   const navGroups = !hubSpokesFlow ? NAV_GROUPS : NAV_GROUPS.flatMap(g => {
-    if (g.label !== 'Shift') return [g];
-    const kept = g.items.filter(i => i.key !== 'startshift' && i.key !== 'endshift');
+    const kept = g.items.filter(i => !NOT_IN_NOZZLE_LED.has(i.key));
+    if (g.label !== 'Shift') return kept.length ? [{ ...g, items: kept }] : [];
     return kept.length ? [{ ...g, items: kept }, SPOKES_GROUP] : [SPOKES_GROUP];
   });
 
