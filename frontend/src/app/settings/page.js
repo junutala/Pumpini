@@ -1859,92 +1859,55 @@ function ShiftsTab({ stationId, onSaved }) {
                 {hubSpokes ? tc('setp.flowNozzleLed', 'NOZZLE-LED') : tc('setp.flowShiftLed', 'SHIFT-LED')}
               </span>
             </div>
-            <div style={{fontSize:13,color:'#666',marginTop:2}}>
+            {/* SAY LITTLE. Owner, 23-Sep-2026, looking at nine lines of prose on a
+                phone: "SO, much text? who will read all these?" One line for what the
+                current mode means, one line of caution, one line of status. The why
+                lives in CLAUDE.md and in spokeService.quietMoment, not on this card. */}
+            <div style={{fontSize:13,color:'#666',marginTop:3}}>
               {hubSpokes
-                ? tc('setp.flowDescOn', 'NOZZLE-LED. The shift is not the boundary here. A nozzle carries one chain of readings, each reading closes one man and opens the next, and the outstanding follows from his own readings. Shift Open and Shift Close leave the sidebar.')
-                : tc('setp.flowDescOff', 'SHIFT-LED. The outlet works shift by shift, exactly as it does today, and nozzle movement can be reconciled against the tank.')}
+                ? tc('setp.flowLineOn',  'Nozzle by nozzle, no shifts. Sales are not checked against the tank.')
+                : tc('setp.flowLineOff', 'Shift by shift. Sales are checked against the tank.')}
             </div>
-            <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
-              {tc('setp.flowHonest', 'Choose Nozzle-led only if the outlet genuinely cannot hold a clean, non-overlapping shift pattern. It is the honest answer for such an outlet — but with no shift boundary there is no way to tie nozzle sales to the tank, so wet-stock reconciliation goes away with it.')}
+            {/* The one caution that matters for the NEXT tap. Switching back is not yet
+                safe: the shift carry reads only shift_attendant_nozzles, the nozzle-led
+                flow writes only nozzle_events, so the first shift back opens stale. */}
+            <div style={{fontSize:12,color:'#9a3412',marginTop:4}}>
+              {hubSpokes
+                ? tc('setp.flowCautionOn',  'Switching back is not safe yet. Ask support first.')
+                : tc('setp.flowCautionOff', 'Only for outlets that cannot keep clean shifts.')}
             </div>
-            <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
-              {/* 🔴 CORRECTED 23-Sep-2026. This said "It can be changed back", and the
-                  switch does flip back — but the shift flow's carry reads only
-                  shift_attendant_nozzles and the nozzle-led flow writes only
-                  nozzle_events, so the first shift after switching back would open on a
-                  stale reading and land every litre sold in between on one man. A screen
-                  must not promise what the code cannot yet keep. See CLAUDE.md. */}
-              {tc('setp.flowReversible', 'Choose carefully. Switching TO nozzle-led is safe at a quiet moment. Switching BACK to shift-led is not yet safe after the outlet has run nozzle-led: the shift flow would carry stale opening readings. Talk to Pumpini support before switching back.')}
-            </div>
-            {/* THE THIRD REFUSAL, SAID BEFORE HE TAPS. The backend gates switching ON
-                until every nozzle has been commissioned from a real slip, because the
-                new flow matches money on <serial>.<printed no> and a guessed printed
-                number puts one man's litres on another man's account. Showing the count
-                here means he learns what is missing without meeting a 409 first. */}
-            {/* 🔴 THE QUIET MOMENT, SAID BEFORE HE TAPS — and it names what is open
-                rather than just refusing. The switch decides where a nozzle's opening
-                comes from, so flipping it with work in flight leaves half a leg under
-                each model.
 
-                THE OPEN-LEG HALF IS THE ONE THAT WAS MISSING. The old guard asked only
-                whether a SHIFT was open; a leg keeps its liability until it has a
-                closing reading, and a shift can be closed with its legs still open.
-                SBR had 16 of those on 23-Sep-2026 — every one would have passed. */}
-            {flowReady?.quiet_moment && !flowReady.quiet_moment.quiet && (
-              <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
-                background:'#fbeee4',color:'#9a3412'}}>
-                <div style={{fontWeight:700,marginBottom:3}}>
-                  {tc('setp.flowNotQuiet', 'Held — there is still work open here.')}
-                </div>
-                {flowReady.quiet_moment.open_shifts.length > 0 && (
-                  <div>{tc('setp.flowOpenShifts', '{n} shift(s) still running')
-                    .replace('{n}', flowReady.quiet_moment.open_shifts.length)}
-                    {': '}
-                    {flowReady.quiet_moment.open_shifts
-                      .map(o => `shift ${o.shift_number} of ${o.on_date}`).join(', ')}
-                  </div>
-                )}
-                {flowReady.quiet_moment.open_legs > 0 && (
-                  <div>
-                    {tc('setp.flowOpenLegs', '{n} nozzle leg(s) with no closing reading')
-                      .replace('{n}', flowReady.quiet_moment.open_legs)}
-                    {flowReady.quiet_moment.stranded_legs > 0 && (
-                      <> {tc('setp.flowStranded', '— {n} of them on a shift that is already closed, so no ordinary screen can clear them')
-                        .replace('{n}', flowReady.quiet_moment.stranded_legs)}</>
-                    )}
-                    {flowReady.quiet_moment.attendants.length > 0 && (
-                      <div style={{marginTop:2}}>
-                        {tc('setp.flowWho', 'Held by')}: {flowReady.quiet_moment.attendants.join(', ')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Commissioning gates turning ON only: the new flow matches money on
-                <serial>.<printed no>, and a guessed printed number puts one man's
-                litres on another man's account. Switching OFF is never gated on it —
-                a way back must not depend on the thing that is going wrong. */}
-            {!hubSpokes && flowReady?.commissioning && !flowReady.commissioning.ready && (
-              <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
-                background:'#fbeee4',color:'#9a3412'}}>
-                {flowReady.commissioning.spokes_ready
-                  ? `${flowReady.commissioning.missing} ${tc('setp.hubSpokesNotComm', 'of')} ${flowReady.commissioning.total} ${tc('setp.hubSpokesNotComm2', 'nozzles have not been commissioned from a slip yet, so the switch is held.')}`
-                  : tc('setp.hubSpokesNoTables', 'The hub-and-spokes tables are not in this database yet.')}
-                {' '}
-                <a href="/settings/commissioning" style={{color:'#9a3412',fontWeight:700}}>
-                  {tc('setp.hubSpokesGoComm', 'Commission them →')}
-                </a>
-              </div>
-            )}
-
-            {flowReady?.quiet_moment?.quiet && (
-              <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
-                background:'#e7f2ec',color:'#15803d'}}>
-                {tc('setp.flowQuiet', 'Nothing is open here — this is a quiet moment, so the flow can be changed.')}
-              </div>
-            )}
+            {/* ONE STATUS LINE. Held → how much is open and by whom (so he knows whom
+                to chase); not commissioned → how many nozzles lack a start; quiet → go. */}
+            {(() => {
+              const qm = flowReady?.quiet_moment;
+              const cm = flowReady?.commissioning;
+              const box = (bg, fg, children) => (
+                <div style={{fontSize:12,marginTop:8,padding:'6px 10px',borderRadius:7,background:bg,color:fg}}>{children}</div>
+              );
+              if (qm && !qm.quiet) {
+                const who = qm.attendants.slice(0, 3).join(', ') + (qm.attendants.length > 3 ? '…' : '');
+                return box('#fbeee4', '#9a3412', <>
+                  {tc('setp.flowHeld', 'Held: {s} shift(s) and {l} nozzle(s) still open')
+                    .replace('{s}', qm.open_shifts.length).replace('{l}', qm.open_legs)}
+                  {who ? ` — ${who}` : ''}
+                </>);
+              }
+              if (!hubSpokes && cm && !cm.ready) {
+                return box('#fbeee4', '#9a3412', <>
+                  {tc('setp.flowNeedsStart', '{m} of {t} nozzles need a starting reading.')
+                    .replace('{m}', cm.missing).replace('{t}', cm.total)}
+                  {' '}
+                  <a href="/settings/commissioning" style={{color:'#9a3412',fontWeight:700}}>
+                    {tc('setp.flowSetUp', 'Set up →')}
+                  </a>
+                </>);
+              }
+              if (qm?.quiet) {
+                return box('#e7f2ec', '#15803d', tc('setp.flowQuietShort', 'Nothing open — you can change this now.'));
+              }
+              return null;
+            })()}
           </div>
           <button onClick={toggleHubSpokes} disabled={hubBusy}
             style={{background:'none',border:'none',cursor:hubBusy?'wait':'pointer',padding:0,flexShrink:0}}>
