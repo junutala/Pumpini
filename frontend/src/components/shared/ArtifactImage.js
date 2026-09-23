@@ -13,9 +13,13 @@
 // record itself is still perfectly valid.
 import { useState, useEffect } from 'react';
 import { ImageOff, Image as ImageIcon } from 'lucide-react';
-import { fetchArtifactImageUrl } from '../../lib/api';
+import { fetchArtifactImageUrl, fetchMeterPhotoUrl } from '../../lib/api';
 
-export default function ArtifactImage({ artifactId, alt = 'Stored image', size = 46, label = '' }) {
+// `source` picks the store the id belongs to: 'artifact' (station_artifacts, the
+// default and every existing caller) or 'meter' (meter_photos). Both endpoints
+// return raw bytes with a content type, so everything below is identical — which is
+// the point. A second component would have been a second viewer to keep in step.
+export default function ArtifactImage({ artifactId, alt = 'Stored image', size = 46, label = '', source = 'artifact' }) {
   const [url, setUrl] = useState('');
   const [state, setState] = useState('idle');   // idle | loading | ready | error
   const [zoom, setZoom] = useState(false);
@@ -25,14 +29,14 @@ export default function ArtifactImage({ artifactId, alt = 'Stored image', size =
     let dead = false;
     let made = '';
     setState('loading');
-    fetchArtifactImageUrl(artifactId)
+    (source === 'meter' ? fetchMeterPhotoUrl : fetchArtifactImageUrl)(artifactId)
       .then(u => {
         if (dead) { URL.revokeObjectURL(u); return; }
         made = u; setUrl(u); setState('ready');
       })
       .catch(() => { if (!dead) setState('error'); });
     return () => { dead = true; if (made) URL.revokeObjectURL(made); };
-  }, [artifactId]);
+  }, [artifactId, source]);
 
   if (!artifactId) {
     return (

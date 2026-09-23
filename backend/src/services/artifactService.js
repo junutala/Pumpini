@@ -222,6 +222,44 @@ async function getImage(id, client = pool) {
   }
 }
 
+// THE READER meter_photos never had.
+//
+// 81 meter photographs have been uploaded since June — Kamala's 12, Sri Balaji's
+// 59, SBR's 3 — and until 23-Sep-2026 there was not one line of code anywhere that
+// showed them to anybody. `storeMeterPhoto` wrote them, the backfill moved them to
+// the bucket, the prune compared them byte-for-byte, and nothing ever read one. A
+// photograph nobody can look at is not evidence; it is storage cost.
+//
+// Same contract as getImage(): the caller asks for an image and gets the bytes,
+// bucket or inline, and never learns which. station_id comes from the photo's own
+// shift so the route can scope it without trusting the caller.
+async function getMeterPhotoImage(id, client = pool) {
+  if (!id) return null;
+  try {
+    const { rows } = await client.query(
+      `SELECT mp.id, sh.station_id, mp.shift_id, mp.nozzle_id, mp.media_type,
+              mp.image_base64 AS file_base64, mp.storage_path,
+              mp.ocr_reading, mp.ocr_legible, mp.created_at
+         FROM meter_photos mp
+         JOIN shifts sh ON sh.id = mp.shift_id
+        WHERE mp.id = $1`, [id]
+    );
+    const row = rows[0] || null;
+    if (!row) return null;
+    if (!row.file_base64 && row.storage_path) {
+      try {
+        row.file_base64 = (await downloadDocument(row.storage_path)).toString('base64');
+      } catch (e) {
+        log('error', `meter photo: download failed for ${row.storage_path} — ${e.message || e}`);
+      }
+    }
+    return row;
+  } catch (e) {
+    log('error', `meter photo: fetch failed — ${e.message || e}`);
+    return null;
+  }
+}
+
 // The NEWEST artifact of one kind for each of many parents, as { entity_id: row }.
 // A list screen showing a face against fifty names must not fire fifty requests,
 // and listFor() answers for exactly one parent. DISTINCT ON is the cheap way to
@@ -323,6 +361,6 @@ function log(level, msg) {
 }
 
 module.exports = {
-  save, listFor, latestForMany, getImage, hasTable, cleanDescriptor, cleanMatch,
+  save, listFor, latestForMany, getImage, getMeterPhotoImage, hasTable, cleanDescriptor, cleanMatch,
   saveAttendantPhoto, KINDS, ENTITY_TYPES,
 };

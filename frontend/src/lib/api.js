@@ -240,3 +240,13 @@ export const fetchArtifactImageUrl = async (id) => {
   const blob = await api.get(`/artifacts/${id}/image`, { responseType: 'blob', timeout: 60000 });
   return URL.createObjectURL(blob);
 };
+// The same, for a photograph that lives in `meter_photos` rather than
+// `station_artifacts`. Two stores, one viewer — ArtifactImage picks between these
+// with its `source` prop instead of being forked.
+export const fetchMeterPhotoUrl = async (id) => {
+  const blob = await api.get(`/artifacts/meter-photo/${id}/image`, { responseType: 'blob', timeout: 60000 });
+  return URL.createObjectURL(blob);
+};
+// One nozzle's readings down the days. Filtered on when each leg was actually
+// created, never on the manager-typed shifts.date.
+export const getNozzleHistory = (params) => api.get('/shifts/nozzle-history', { params });
