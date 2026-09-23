@@ -123,12 +123,28 @@ export default function AttendantDuesPage() {
     );
   }
 
-  const owing = rows.filter(r => Number(r.outstanding) > 0.5);
+  // ── WHO IS ON THIS LIST, AND WHEN HE LEAVES IT ─────────────────────────────
+  //
+  // Owner, 23-Sep-2026: "₹1 is fine... remove him if the settlement completes. If he
+  // has outstanding, add it to the next settlement, now that we have the running
+  // account for the attendant."
+  //
+  // UNDER ₹1 IS CLEARED. Cash is counted in rupees and meters in paise, so nearly
+  // every settlement leaves a few paise — ABR DUMMY1 owed ₹7,010.83 and brought
+  // ₹7,010.00. The paise are not zeroed: they stay in the ledger and ride into his
+  // next settlement with everything else. They just stop being shown as a debt.
+  const CLEARED_BELOW = 1;
+  const isClear = r => Math.abs(Number(r.outstanding) || 0) < CLEARED_BELOW;
 
-  // ONE LIST, STARTING FROM WHO IS HOLDING A NOZZLE. A man can be in either half or
-  // both: holding and owing nothing (he has just started), owing and holding nothing
-  // (he has handed everything over and not settled), or both. Holders sort first —
-  // they are the ones who cannot leave yet.
+  // A SETTLEMENT COMPLETES HIM. Once his last settlement is later than his last
+  // close, he has nothing new to answer for today and he leaves the list — even if
+  // he settled short. The shortfall is NOT forgotten: outstanding() is his running
+  // account (everything he has ever sold, less everything he has ever brought), so
+  // the balance is already inside the figure he meets at his next close. A man
+  // holding a nozzle is never removed: fuel is still being sold on his account.
+  const settledSinceClose = r =>
+    r.last_settled && (!r.last_close || new Date(r.last_settled) >= new Date(r.last_close));
+
   const byId = new Map();
   for (const h of held) {
     byId.set(String(h.attendant_id), {
@@ -141,11 +157,15 @@ export default function AttendantDuesPage() {
     const k = String(r.attendant_id);
     byId.set(k, { ...(byId.get(k) || { holds: [] }), ...r });
   }
-  const people = [...byId.values()].sort((a, b) => {
-    const ah = (a.holds || []).length > 0, bh = (b.holds || []).length > 0;
-    if (ah !== bh) return ah ? -1 : 1;                      // holders first
-    return (Number(b.outstanding) || 0) - (Number(a.outstanding) || 0);
-  });
+  const people = [...byId.values()]
+    .filter(r => (r.holds || []).length > 0                 // still on a nozzle
+              || (!isClear(r) && !settledSinceClose(r)))   // owes, and not yet settled
+    .sort((a, b) => {
+      const ah = (a.holds || []).length > 0, bh = (b.holds || []).length > 0;
+      if (ah !== bh) return ah ? -1 : 1;                    // holders first
+      return (Number(b.outstanding) || 0) - (Number(a.outstanding) || 0);
+    });
+  const owing = people.filter(r => !isClear(r));
 
   return (
     <AppShell>
@@ -180,20 +200,20 @@ export default function AttendantDuesPage() {
         ) : people.length === 0 ? (
           <div className="card">
             <div style={{ fontWeight: 700, fontSize: 15.5, marginBottom: 6 }}>
-              {tc('dues.emptyTitle', 'Nothing outstanding')}
+              {tc('dues.emptyTitle2', 'Nobody to close')}
             </div>
             <div style={{ fontSize: 13.5, color: '#666', lineHeight: 1.6 }}>
-              {tc('dues.emptyBody2', 'Nobody is holding a nozzle and nobody owes anything. What a man owes is worked out from his own nozzle readings — it is never typed in. Assign a nozzle on Nozzle Events and he will appear here.')}
+              {tc('dues.emptyBody3', 'Men holding a nozzle, or with a close not yet settled, appear here.')}
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1fr)' }}>
             {people.map(r => {
               const out = Number(r.outstanding) || 0;
-              const clear = out <= 0.5;
+              const clear = isClear(r);
               return (
                 <div key={r.attendant_id} className="card"
-                  style={{ borderLeft: `3px solid ${clear ? '#166534' : 'var(--brand)'}` }}>
+                  style={{ minWidth: 0, borderLeft: `3px solid ${clear ? '#166534' : 'var(--brand)'}` }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
                     <span style={{ fontWeight: 700, fontSize: 15 }}>{r.name}</span>
                     <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: 16, fontWeight: 800,
@@ -219,7 +239,7 @@ export default function AttendantDuesPage() {
                       </div>
                       <div style={{ display: 'grid', gap: 3 }}>
                         {r.holds.map(h => (
-                          <div key={h.nozzle_id} style={{ display: 'flex', gap: 10,
+                          <div key={h.nozzle_id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap',
                                 justifyContent: 'space-between', fontFamily: 'var(--font-mono)' }}>
                             <span>{nozName(h)}</span>
                             <span style={{ color: 'var(--text-3)' }}>

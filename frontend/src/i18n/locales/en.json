@@ -3511,8 +3511,9 @@
     "stillHolding": "Still holding {n} nozzle(s)",
     "closeFirst": "Take the closing reading on each before settling him — the same reading closes him and opens whoever takes over.",
     "goHandover": "Go to Nozzle Events →",
-    "emptyBody2": "Nobody is holding a nozzle and nobody owes anything. What a man owes is worked out from his own nozzle readings — it is never typed in. Assign a nozzle on Nozzle Events and he will appear here.",
     "off": "Attendant Close belongs to the nozzle-led flow, which is switched off here. This outlet runs shift-led — its operators are closed from Shift Close. You can change the flow in Settings.",
-    "notMigrated": "Attendant Close is not switched on for this database yet. Nothing is lost — it will appear once the tables are added."
+    "notMigrated": "Attendant Close is not switched on for this database yet. Nothing is lost — it will appear once the tables are added.",
+    "emptyTitle2": "Nobody to close",
+    "emptyBody3": "Men holding a nozzle, or with a close not yet settled, appear here."
   }
 }
