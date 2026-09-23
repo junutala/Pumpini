@@ -75,8 +75,12 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
           error: v.code,
           // The two certainties, in words a manager can act on. Everything else is
           // trade and is recorded as drift without a murmur.
+          // A decrease is FINAL on a handover — no reason is asked for, because none is
+          // accepted (spokeService.mayRecord). Check the figure; a real reset is a new
+          // starting reading in Settings → Commissioning.
+          final: !!v.final,
           message: v.code === 'reading_decreased'
-            ? `That reading is ${Math.abs(v.delta).toLocaleString('en-IN')} L BELOW the last one. A totaliser only counts up, so this is a reset, a replacement or a misread — say which, in your own words.`
+            ? `That reading is ${Math.abs(v.delta).toLocaleString('en-IN')} L BELOW the last one. A meter only counts up — check the figure. If the meter was reset or replaced, give the nozzle a new starting reading in Settings → Commissioning.`
             : `That is ${Math.round(v.delta).toLocaleString('en-IN')} L in ${v.seconds} seconds, and the pump cannot deliver more than about ${Math.round(v.ceiling).toLocaleString('en-IN')} L in that time. Check the figure, or say what happened.`,
           detail: v,
         });

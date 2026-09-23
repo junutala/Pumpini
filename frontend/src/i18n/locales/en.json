@@ -3506,7 +3506,8 @@
     "addToOutstanding": "Add to outstanding & hand over",
     "assignNozzle": "Assign the nozzle",
     "since": "since",
-    "pickAttendant": "Select an attendant"
+    "pickAttendant": "Select an attendant",
+    "belowLast": "Below the last reading ({prev}). A meter only counts up — check the figure."
   },
   "dues": {
     "title": "Attendant Close",

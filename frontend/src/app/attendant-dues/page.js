@@ -114,7 +114,7 @@ export default function AttendantDuesPage() {
         } catch (e) {
           const code = errCode(e);
           if (code === 'reading_decreased' || code === 'faster_than_the_pump') {
-            setRefused(x => ({ ...x, [h.nozzle_id]: errText(e, 'That figure cannot be right.') }));
+            setRefused(x => ({ ...x, [h.nozzle_id]: { text: errText(e, 'That figure cannot be right.'), code } }));
           } else {
             setErr(errText(e, tc('dues.closeFailed', 'Could not record that closing reading.')));
           }
@@ -380,12 +380,14 @@ export default function AttendantDuesPage() {
                     const earlier = Number(r.outstanding) || 0;
                     const pvs = holds.map(h => closePv[h.nozzle_id]);
                     const pvKnown = pvs.every(pv => pv && pv.found);
+                    // A reading below the last one cannot close him (23-Sep-2026, MBR).
+                    const anyBelow = pvs.some(pv => pv?.physics?.code === 'reading_decreased');
                     const dueNow = pvs.reduce((sum, pv) => sum + (Number(pv?.value) || 0), 0);
                     const due = earlier + dueNow;
                     // He may go home having brought nothing only when nothing is due.
                     const canGo = holds.length === 0
                       ? brought > 0
-                      : allRead && (brought > 0 || (pvKnown && Math.abs(due) < CLEARED_BELOW));
+                      : allRead && !anyBelow && (brought > 0 || (pvKnown && Math.abs(due) < CLEARED_BELOW));
                     return (
                     <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0ebe3', display: 'grid', gap: 12 }}>
                       {holds.length > 0 && (

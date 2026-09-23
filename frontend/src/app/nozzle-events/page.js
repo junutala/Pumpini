@@ -65,6 +65,8 @@ export default function NozzleEventsPage() {
   // HAS THE PREVIEW NAMED A MAN BEING CLOSED? Only the CTA label needs it; the
   // working itself is drawn by HandoverReading.
   const [closing, setClosing] = useState({});    // nozzle_id -> bool
+  // A READING BELOW THE LAST ONE blocks the CTA before it is pressed (23-Sep-2026, MBR).
+  const [below, setBelow]     = useState({});    // nozzle_id -> bool
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState('');
@@ -126,7 +128,7 @@ export default function NozzleEventsPage() {
       // in front of a manager in a red box.
       const code = errCode(e);
       if (code === 'reading_decreased' || code === 'faster_than_the_pump') {
-        setRefused(x => ({ ...x, [n.id]: errText(e, 'That figure cannot be right.') }));
+        setRefused(x => ({ ...x, [n.id]: { text: errText(e, 'That figure cannot be right.'), code } }));
       } else {
         setErr(errText(e, 'Could not record that handover.'));
       }
@@ -221,7 +223,10 @@ export default function NozzleEventsPage() {
                       <HandoverReading stationId={sid} nozzle={n} value={f}
                         onChange={patch => set(n.id, patch)}
                         refused={refused[n.id]} disabled={busy}
-                        onPreview={pv => setClosing(x => ({ ...x, [n.id]: !!(pv && pv.found && pv.closes) }))} />
+                        onPreview={pv => {
+                          setClosing(x => ({ ...x, [n.id]: !!(pv && pv.found && pv.closes) }));
+                          setBelow(x => ({ ...x, [n.id]: pv?.physics?.code === 'reading_decreased' }));
+                        }} />
 
                       {/* WHO TAKES OVER — always a person. Owner, 23-Sep-2026: "The
                           nozzle events — this is used to assign/reassign nozzle to an
@@ -245,7 +250,7 @@ export default function NozzleEventsPage() {
                           leaving. CLOSE abandons the whole thing. */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         {(() => {
-                          const ready = f.reading !== undefined && f.reading !== '' && !!f.opens;
+                          const ready = f.reading !== undefined && f.reading !== '' && !!f.opens && !below[n.id];
                           const label = busy
                             ? tc('spoke.recording', 'Recording…')
                             : closing[n.id]

@@ -16,6 +16,40 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-23 · A reading that went DOWN was priced at ₹0 and excused by a keyboard mash
+
+**We believed** the handover checks made a backwards reading impossible to slip through:
+`physicsVerdict` refuses a decrease, and the reassign preview shows the rupees before
+anything is recorded.
+
+**Actually**, at MBR, nozzle 1.1 was reassigned from ABR DUMMY2 to ABR DUMMY5 at
+**1255** when the last reading was **1925** — a typo. Three things let it through:
+
+1. **The preview I built that morning showed ₹0**, quietly. The server floors a backwards
+   leg at zero litres, and the preview priced it instead of saying what it was. ₹0 reads
+   as "he owes nothing".
+2. **The refusal accepted any reason.** The physics check did fire; the reason box took
+   `"Hdjsjsjsbsn"`. CLAUDE.md had said since 26-Aug that a decrease is always a misread,
+   reset or replacement and that a reset is a commissioning act, *never* a number on a
+   handover screen — but the code let a typed reason excuse it.
+3. **The floor made it silent downstream.** DUMMY2's leg became 0 L, he was charged ₹0,
+   and he dropped off Attendant Close. DUMMY5 was opened 670 L low, so his next close
+   would have carried DUMMY2's litres and the gap.
+
+**We found out** because the owner was testing the flow at MBR: *"Now dummy2 is gone with
+all the money!!"* He had also, minutes earlier, reminded me to carry the reassign suspense
+into the settlement — the money was not dropped by the settlement, it was never charged,
+and the screen gave no sign of it.
+
+**It cost** nothing real — MBR is a fixture. On a live outlet it would have been a man's
+shift on the wrong account. Now a decrease is refused whatever is typed
+(`spokeService.mayRecord`, tested by putting the old rule back and watching the test fail),
+the preview says "below the last reading" in red instead of pricing it, and the button
+stays disabled. **A reason box on a decrease is a click-through, and the keyboard mash is
+the proof that people click through.**
+
+---
+
 ## 2026-09-23 · I shipped a query that had never been run, and said I had run it
 
 **We believed** the Nozzle History endpoint was verified against production. The PR

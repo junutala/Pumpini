@@ -13,8 +13,9 @@
 //     (POST /reconcile/parse-slips) — only the line for THIS nozzle is taken;
 //   * the working behind it, from GET /spokes/handover-preview — two readings, the
 //     litres, the rate, the rupees. Derived by spokeService; nothing is computed here;
-//   * the reason box, only after the physics has refused the figure (a reading that
-//     went DOWN, or rose faster than a pump can pour). Never a dropdown.
+//   * a reading BELOW the last one is flagged in red and cannot be recorded here;
+//   * the reason box, only after a reading that rose faster than a pump can pour was
+//     refused. Never a dropdown, and never for a decrease.
 //
 // It does not record anything. The screen that embeds it decides what the reading is
 // FOR — a handover to a man, or a close — and calls POST /spokes/event itself.
@@ -32,7 +33,9 @@ const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractio
 
 // value:    { reading, source, serial, no, reason }
 // onChange: patch => void
-// refused:  the physics sentence from the backend, or null
+// refused:  { text, code } from the backend's physics refusal, or null. A decrease
+//           ('reading_decreased') is FINAL: no reason box, because no reason is
+//           accepted — check the figure, or re-commission the nozzle in Settings.
 // onPreview:(preview|null) => void — so a screen closing several nozzles can show one
 //           total built from these server-derived parts
 // showBalance: the "already outstanding / after this handover" lines. Off where a
@@ -109,9 +112,25 @@ export default function HandoverReading({
       </div>
       {photoErr && <div style={{ fontSize: 12, color: '#9a3412', marginTop: 6 }}>{photoErr}</div>}
 
+      {/* 🔴 A READING BELOW THE LAST ONE IS SAID OUT LOUD, BEFORE HE PRESSES ANYTHING.
+          23-Sep-2026, MBR: 1925 → 1255 showed a quiet "₹0" here, because the server
+          floors a backwards leg at zero litres. ₹0 read as "he owes nothing". It is a
+          misread, and the screen must say so rather than price it. */}
+      {pv && pv.found && pv.physics?.code === 'reading_decreased' && (
+        <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8, background: '#fde8e8',
+                      color: '#991b1b', fontSize: 12.5, lineHeight: 1.5,
+                      display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            {tc('spoke.belowLast', 'Below the last reading ({prev}). A meter only counts up — check the figure.')
+              .replace('{prev}', L(pv.prev_reading))}
+          </span>
+        </div>
+      )}
+
       {/* THE MONEY, SHOWN BEFORE IT IS MOVED. He checks one line against the paper in
           ten seconds and after that he stops checking. */}
-      {pv && pv.found && pv.closes && (
+      {pv && pv.found && pv.closes && pv.physics?.code !== 'reading_decreased' && (
         <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8,
                       background: 'var(--surface-2)', fontSize: 12.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 5 }}>
@@ -144,18 +163,25 @@ export default function HandoverReading({
       )}
 
       {/* A JUSTIFIED DRIFT, IN HIS OWN WORDS — only after the physics has refused. */}
-      {refused && (
-        <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8,
-                      background: '#fbeee4', color: '#9a3412', fontSize: 12.5, lineHeight: 1.5 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
-            <span>{refused}</span>
+      {refused && (() => {
+        const text = typeof refused === 'string' ? refused : refused.text;
+        const final = typeof refused === 'object' && refused.code === 'reading_decreased';
+        return (
+          <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8,
+                        background: '#fbeee4', color: '#9a3412', fontSize: 12.5, lineHeight: 1.5 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>{text}</span>
+            </div>
+            {/* Only a too-fast reading may be explained. A decrease may not. */}
+            {!final && (
+              <input value={value.reason || ''} placeholder={tc('spoke.reasonPh', 'Say what happened, in your own words')}
+                onChange={e => onChange?.({ reason: e.target.value })}
+                style={{ ...inputStyle, marginTop: 8, border: '1.5px solid #f0c9a8', background: '#fff' }} />
+            )}
           </div>
-          <input value={value.reason || ''} placeholder={tc('spoke.reasonPh', 'Say what happened, in your own words')}
-            onChange={e => onChange?.({ reason: e.target.value })}
-            style={{ ...inputStyle, marginTop: 8, border: '1.5px solid #f0c9a8', background: '#fff' }} />
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
