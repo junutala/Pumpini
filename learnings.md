@@ -16,6 +16,83 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-23 · The meter carry looks at when a SHIFT opened, not when a LEG closed
+
+**We believed** `openingService.nozzleOpenings()` carried a nozzle's opening forward
+from the last reading that nozzle actually had.
+
+**Actually** it bounds the search on the SHIFT clock:
+
+```sql
+OR (san.shift_id <> cur.id AND s2.start_time < cur.start_time)
+ORDER BY s2.start_time DESC, san.assigned_at DESC
+```
+
+Only shifts that *started* earlier are eligible. At SBR ENERGIES on 22-Sep, Raju's
+shift 3 had started at **08:17**; the leg that closed nozzle `1.2 · M2601076.2` at
+**4226.390** belonged to a shift that started at **08:40**. Later by start time, so
+invisible — even though it had closed twelve hours before Raju was assigned at 20:56.
+The carry fell back to the previous close, **2572.900**.
+
+That is **1653.490 L** on one leg. At SBR's ₹104.08 diesel it is **₹1,72,095** put on
+the wrong man's account — larger than the 25-Aug loss that the Flow v2 outstanding was
+designed to make structurally impossible.
+
+**We found out** when the owner sent one line — *"M2601076.2 open value is 4226.39"* —
+and the manager held the shift close rather than settle against a figure he knew was
+wrong. He was right and the system was wrong, and he is the only reason it was caught.
+
+**It cost** nothing in the end, because he refused to close. **The guard that saved us
+was a man's judgement, not a line of code** — and the same bound is still there for
+every outlet that overlaps its shifts. The fix is not a bigger window: a shift's start
+time is simply the wrong clock for a meter. The chain is ordered by when readings
+happened.
+
+---
+
+## 2026-09-23 · "One open leg per nozzle" is really "one per nozzle PER SHIFT"
+
+**We believed** a nozzle could be open for only one attendant at a time. It is enforced
+in three places, which is why nobody doubted it.
+
+**Actually** all three are keyed on the shift:
+
+```
+frontend  assignedNozzles      built from THIS shift's attendants only
+backend   /assign 409          WHERE shift_id=$1 AND nozzle_id=$2 AND closing_reading IS NULL
+database  uq_san_shift_nozzle_open   UNIQUE (shift_id, nozzle_id) WHERE closing_reading IS NULL
+```
+
+Two shifts open at once, and the same nozzle can be handed to a second man with every
+guard passing. On 22-Sep at SBR, Nagamani and Raju both held `1.2 · M2601076.2` and
+`1.4 · M2601076.4` from the same opening — whoever closed second would have been
+charged litres the other had already been charged for.
+
+It was written that way deliberately and the intent was never wrong. `git log -L` on
+the route shows the original error text: *"already assigned to another operator **in
+this shift**."* Nobody ever wrote the cross-shift half, and for months nothing needed
+it.
+
+**We found out** because the owner asked the question directly — *"our cardinal rule is
+that if the nozzle is open for an attendant, then the same nozzle cannot be used for
+another attendant — is this rule compromised in this event?"* The answer was yes, and
+checking it took one query.
+
+**It cost** almost nothing so far: three overlapping settled ranges in three months,
+**117.8 L in total**. But look at where they are. Every occurrence is at one of the two
+outlets that run overlapping shifts — Sri Balaji (32 pairs across 10 nozzles, 29–31 Aug)
+and SBR (2, this week). Kamala, Highway and Adhoc Highway have never triggered it once.
+**The rule held for three years of forecourt habit and broke on the first customers who
+did not share it** — which is what every assumption about how an outlet runs its day is
+going to do as we add outlets.
+
+And the fix is not a lock. CLAUDE.md already killed that on 26-Aug with the 02-Aug
+Kamala data: a literal one-open-per-nozzle lock would have refused 8 legitimate
+handovers. It is the Spoke 2 rule, already written: **the act of taking over is the act
+of closing.**
+
+---
+
 ## 2026-09-22 · Srinivas did not abandon Pumpini. He abandoned the shift.
 
 **We believed** Sri Balaji went quiet on us, cause unknown — and earlier the same day
