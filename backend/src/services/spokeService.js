@@ -281,6 +281,98 @@ async function outstandingDetail(station_id, attendant_id) {
   return rows;
 }
 
+// THE ARITHMETIC OF ONE LEG, on its own so it can be tested without a database.
+//
+// Deliberately identical to what outstanding() and outstandingDetail() do in SQL:
+//   * GREATEST(reading - prev, 0) — a misread that goes BACKWARDS must never become a
+//     negative charge. The physics test calls that out separately; the money floors at
+//     zero either way.
+//   * litres times the fuel's CURRENT price. Price changes are not this system's
+//     problem (owner-set 27-Aug): the price is updated by hand at the controller and by
+//     hand here, and there is no gating pre/post change to build.
+//   * no previous reading means no leg and no charge — a first reading opens a chain,
+//     it does not close one.
+function handoverMath({ prevReading, reading, price }) {
+  const prev = prevReading == null ? null : Number(prevReading);
+  const now  = Number(reading);
+  const rate = Number(price) || 0;
+  if (prev == null || !Number.isFinite(now) || !Number.isFinite(prev)) {
+    return { ltrs: 0, value: 0 };
+  }
+  const ltrs = Math.max(now - prev, 0);
+  return { ltrs, value: ltrs * rate };
+}
+
+// ── THE HANDOVER, PRICED, BEFORE IT IS RECORDED ──────────────────────────────
+//
+// WHAT THE OUTGOING MAN WILL OWE, shown at the moment of the handover instead of
+// discovered later on his settlement screen. Owner, 23-Sep-2026: on Reassign,
+// "seek nozzle reading (entry/slip) and show the amount due from the existing
+// attendant."
+//
+// It is a PREVIEW, not a second arithmetic. It reuses the same pieces outstanding()
+// and outstandingDetail() use — the same GREATEST() floor, the same current-price
+// lookup — so the figure a manager confirms here is the figure that appears against
+// the man afterwards. Two formulas for one number is how a screen and a ledger come
+// to disagree, and a manager who finds them disagreeing stops trusting both.
+//
+// 🔴 IT DERIVES, IT NEVER ACCEPTS. No caller may pass an outstanding in. This returns
+// what the reading WOULD mean; recording it is a separate, deliberate act.
+async function handoverPreview({ station_id, nozzle_id, reading, at = new Date() }) {
+  if (!(await hasSpokeTables())) return { enabled: false };
+
+  const nm = await pumps.nozzleNameSelect(pool);
+  const { rows: nz } = await pool.query(
+    `SELECT n.id, n.fuel_type${nm.col},
+            (SELECT fp.price FROM fuel_prices fp
+              WHERE fp.station_id = $2 AND fp.fuel_type = n.fuel_type
+              ORDER BY fp.effective_from DESC LIMIT 1) AS price
+       FROM nozzles n ${nm.join}
+      WHERE n.id = $1 AND n.station_id = $2`, [nozzle_id, station_id]);
+  if (!nz.length) return { enabled: true, found: false };
+  const n = nz[0];
+
+  const prev = await lastEvent(nozzle_id);
+  const num_ = Number(reading);
+  const price = prev ? Number(n.price ?? 0) : 0;
+  const { ltrs, value } = handoverMath({
+    prevReading: prev ? prev.reading : null, reading: num_, price,
+  });
+
+  // WHO IT CLOSES IS NOT ASKED AND NOT ACCEPTED — the chain already knows. Asking
+  // would let a manager strike the outstanding against a different name.
+  const closesId = prev?.opens_attendant_id || null;
+  let closes = null, before = 0;
+  if (closesId) {
+    const { rows: u } = await pool.query('SELECT id, name FROM users WHERE id=$1', [closesId]);
+    closes = u[0] || null;
+    const all = await outstanding(station_id);
+    before = Number(all.find(r => String(r.attendant_id) === String(closesId))?.outstanding || 0);
+  }
+
+  return {
+    enabled: true,
+    found: true,
+    nozzle_name: n.nozzle_name ?? null,
+    fuel_type: n.fuel_type,
+    // The working, every part of it, never a total on its own.
+    prev_reading: prev ? Number(prev.reading) : null,
+    prev_at:      prev ? prev.recorded_at : null,
+    reading:      Number.isFinite(num_) ? num_ : null,
+    ltrs, price, value,
+    closes,
+    outstanding_before: before,
+    outstanding_after:  before + value,
+    // Shown before he confirms, not after — the two physics tests, nothing else.
+    physics: prev ? physicsVerdict({
+      prevReading: prev.reading, prevAt: prev.recorded_at, reading: num_, at,
+    }) : null,
+    // A reading identical to the one before it moves nothing. Worth saying out loud so
+    // "₹0" reads as a handover with no sale rather than as a screen that failed.
+    co_event: !!(prev && Number.isFinite(num_) && Number(prev.reading) === num_),
+  };
+}
+
 // WHAT HE BROUGHT — the only manual entry in Spoke 3. It brings his suspense down; it
 // never sets it, and it may not complete silently at zero.
 async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
@@ -360,6 +452,6 @@ const num = v => Number(v) || 0;
 
 module.exports = {
   hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding,
-  outstandingDetail, settle, quietMoment,
+  outstandingDetail, settle, quietMoment, handoverPreview, handoverMath,
   MAX_FLOW_LTRS_PER_MIN,
 };

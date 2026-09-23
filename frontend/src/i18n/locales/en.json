@@ -3498,5 +3498,17 @@
     "closingSlipAlt": "Closing slip",
     "noSlip": "No slip was captured for this reading",
     "noSlipsNote": "No slip photographs are stored against these readings. A slip appears here only when a meter photograph was captured and its reading matches."
+  },
+  "spoke": {
+    "reassign": "Reassign",
+    "assign": "Assign",
+    "close": "Close",
+    "closing": "Closing",
+    "alreadyOwed": "Already outstanding",
+    "afterHandover": "After this handover",
+    "noMovement": "Same reading as before — no fuel moved, so nothing is added.",
+    "carriesNote": "This stays against him until he settles it. It does not hold up the pump, and it is not a field anybody can blank.",
+    "addToOutstanding": "Add to outstanding & hand over",
+    "assignNozzle": "Assign the nozzle"
   }
 }

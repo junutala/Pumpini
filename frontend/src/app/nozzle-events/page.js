@@ -34,6 +34,7 @@ const when = ts => ts ? new Date(ts).toLocaleString('en-IN', {
   hour: '2-digit', minute: '2-digit', hour12: false,
 }) : '';
 const L = n => n == null ? '—' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 // Drift is about discipline, so it reads in the units a person argues in.
 const drift = s => {
   if (s == null) return null;
@@ -64,6 +65,10 @@ export default function NozzleEventsPage() {
   // The physics refusal, held per nozzle so the reason box appears exactly where it is
   // needed rather than as a page-level alarm.
   const [refused, setRefused] = useState({});
+  // WHAT THIS READING WOULD COST THE MAN LEAVING, fetched as he types it. Derived by
+  // spokeService and never computed here: a screen that does its own money arithmetic
+  // is a second answer waiting to disagree with the ledger.
+  const [preview, setPreview] = useState({});     // nozzle_id -> preview | 'loading'
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState('');
@@ -94,6 +99,28 @@ export default function NozzleEventsPage() {
   useEffect(() => { load(); }, [load]);
 
   const set = (id, patch) => setForm(f => ({ ...f, [id]: { ...(f[id] || {}), ...patch } }));
+
+  // THE PREVIEW. Debounced, because it follows the keystrokes in the reading box and a
+  // request per digit is a request per digit. Failure is silent: the preview is an
+  // explanation, and losing it must never stop a handover being recorded.
+  const openNozzleId = openId;
+  const openReading  = openId ? (form[openId] || {}).reading : undefined;
+  useEffect(() => {
+    if (!sid || !openNozzleId) return;
+    const r = Number(openReading);
+    if (openReading === undefined || openReading === '' || !Number.isFinite(r)) {
+      setPreview(p => ({ ...p, [openNozzleId]: null }));
+      return;
+    }
+    let dead = false;
+    setPreview(p => ({ ...p, [openNozzleId]: 'loading' }));
+    const t = setTimeout(() => {
+      api.get('/spokes/handover-preview', { params: { station_id: sid, nozzle_id: openNozzleId, reading: r } })
+        .then(res => { if (!dead) setPreview(p => ({ ...p, [openNozzleId]: res })); })
+        .catch(() => { if (!dead) setPreview(p => ({ ...p, [openNozzleId]: null })); });
+    }, 400);
+    return () => { dead = true; clearTimeout(t); };
+  }, [sid, openNozzleId, openReading]);
 
   // ONE PHOTOGRAPH OF THE SLIP, read by the ONE reader — the same endpoint the shift
   // flow, Spoke 1 and commissioning all scan with. A screen with its own OCR prompt is
@@ -146,6 +173,7 @@ export default function NozzleEventsPage() {
       setOpenId(null);
       setForm(x => ({ ...x, [n.id]: undefined }));
       setRefused(x => ({ ...x, [n.id]: null }));
+      setPreview(x => ({ ...x, [n.id]: null }));
       await load();
     } catch (e) {
       // THE TWO PHYSICS REFUSALS come back with the sentence already written. It is
@@ -228,11 +256,17 @@ export default function NozzleEventsPage() {
                     <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
                       {L(n.reading)}
                     </span>
+                    {/* REASSIGN when a man is on it, ASSIGN when it is free. The word
+                        says what is about to happen: reassigning ends somebody's
+                        account, assigning does not. Owner, 23-Sep-2026. */}
                     {!open && (
                       <button onClick={() => { setOpenId(n.id); setOk(''); }}
                         style={{ background: 'none', border: '1px solid #e5e3de', borderRadius: 7,
-                                 padding: '5px 11px', fontSize: 12.5, cursor: 'pointer' }}>
-                        {tc('spoke.handOver', 'Hand over')}
+                                 padding: '5px 11px', fontSize: 12.5, cursor: 'pointer',
+                                 fontWeight: n.on_attendant_id ? 700 : 400 }}>
+                        {n.on_attendant_id
+                          ? tc('spoke.reassign', 'Reassign')
+                          : tc('spoke.assign', 'Assign')}
                       </button>
                     )}
                   </div>
@@ -262,6 +296,60 @@ export default function NozzleEventsPage() {
                         </div>
                       </div>
 
+                      {/* 🔴 THE MONEY, SHOWN BEFORE IT IS MOVED — every part of it.
+                          Owner, 23-Sep-2026: on Reassign, "show the amount due from
+                          the existing attendant".
+
+                          Two readings HE has in front of him, the litres between them,
+                          the rate and the rupees. He checks one line against the paper
+                          in ten seconds and after that he stops checking; that is what
+                          trust is, and it cannot be asserted, only shown.
+
+                          Derived by spokeService.handoverPreview — the same legs, the
+                          same GREATEST() floor and the same price lookup outstanding()
+                          uses — so the figure he confirms here is the figure that
+                          appears against the man afterwards. */}
+                      {(() => {
+                        const pv = preview[n.id];
+                        if (!pv || pv === 'loading' || !pv.found || !pv.closes) return null;
+                        return (
+                          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                                        background: 'var(--surface-2)', fontSize: 12.5 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                              {tc('spoke.closing', 'Closing')} {pv.closes.name}
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-mono)', display: 'flex',
+                                          justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                              <span>{L(pv.prev_reading)} → {L(pv.reading)}</span>
+                              <span>
+                                {L(pv.ltrs)} L
+                                {pv.price ? ` × ${money(pv.price)}` : ''}
+                              </span>
+                              <span style={{ fontWeight: 700 }}>{money(pv.value)}</span>
+                            </div>
+                            {pv.co_event && (
+                              <div style={{ color: 'var(--text-3)', marginTop: 5 }}>
+                                {tc('spoke.noMovement', 'Same reading as before — no fuel moved, so nothing is added.')}
+                              </div>
+                            )}
+                            <div style={{ borderTop: '1px solid #e5e3de', marginTop: 8, paddingTop: 7,
+                                          display: 'grid', gap: 3 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--text-3)' }}>{tc('spoke.alreadyOwed', 'Already outstanding')}</span>
+                                <span style={{ fontFamily: 'var(--font-mono)' }}>{money(pv.outstanding_before)}</span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                                <span>{tc('spoke.afterHandover', 'After this handover')}</span>
+                                <span style={{ fontFamily: 'var(--font-mono)' }}>{money(pv.outstanding_after)}</span>
+                              </div>
+                            </div>
+                            <div style={{ color: 'var(--text-3)', marginTop: 7, lineHeight: 1.5 }}>
+                              {tc('spoke.carriesNote', 'This stays against him until he settles it. It does not hold up the pump, and it is not a field anybody can blank.')}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* A JUSTIFIED DRIFT, IN HIS OWN WORDS. The box appears only after
                           the physics has refused — never a dropdown, because a canned
                           reason code becomes a reflex, and it is not offered up front
@@ -288,18 +376,48 @@ export default function NozzleEventsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11, flexWrap: 'wrap' }}>
                         <PhotoCapture onCapture={cap => onSlip(cap, n)} disabled={busy}
                           label={tc('spoke.photograph', 'Photograph the slip')} />
-                        <button onClick={() => record(n)} disabled={busy || !(f.reading !== undefined && f.reading !== '')}
-                          style={{ marginLeft: 'auto',
-                                   background: (busy || !(f.reading !== undefined && f.reading !== '')) ? '#e5e3de' : 'var(--brand)',
-                                   color: (busy || !(f.reading !== undefined && f.reading !== '')) ? '#8b9099' : '#fff',
-                                   border: 'none', borderRadius: 8, padding: '8px 15px', fontSize: 13,
-                                   fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
-                          {busy ? tc('spoke.recording', 'Recording…') : tc('spoke.recordHandover', 'Record the handover')}
-                        </button>
-                        <button onClick={() => { setOpenId(null); setRefused(x => ({ ...x, [n.id]: null })); }}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-3)',
+                        {/* 🔴 TWO CTAs, AND THE OUTSTANDING IS NOT ONE OF THE CHOICES.
+                            The owner asked for "Add to outstanding" and "Close", and
+                            the label is his. What it must NOT become is a decision:
+                            if a manager could take the reading and then decline to
+                            charge it, the liability vanishes on a click — which is the
+                            25-Aug loss of Rs 1,25,275 with a button on it, and exactly
+                            what Spoke 3 exists to make impossible.
+                            So the handover and the charge are ONE act. This records
+                            the reading, which closes the man leaving and opens the man
+                            taking over, and the outstanding follows by construction.
+                            CLOSE abandons the whole thing — no reading, no transfer.
+                            The figure above is shown so he can audit it, not decline it. */}
+                        {(() => {
+                          const ready = f.reading !== undefined && f.reading !== '';
+                          const pv = preview[n.id];
+                          const held = pv && pv !== 'loading' && pv.found && pv.closes;
+                          const label = busy
+                            ? tc('spoke.recording', 'Recording…')
+                            : held
+                              ? tc('spoke.addToOutstanding', 'Add to outstanding & hand over')
+                              : tc('spoke.assignNozzle', 'Assign the nozzle');
+                          return (
+                            <button onClick={() => record(n)} disabled={busy || !ready}
+                              style={{ marginLeft: 'auto',
+                                       background: (busy || !ready) ? '#e5e3de' : 'var(--brand)',
+                                       color: (busy || !ready) ? '#8b9099' : '#fff',
+                                       border: 'none', borderRadius: 8, padding: '8px 15px', fontSize: 13,
+                                       fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>
+                              {label}
+                            </button>
+                          );
+                        })()}
+                        <button onClick={() => {
+                            setOpenId(null);
+                            setRefused(x => ({ ...x, [n.id]: null }));
+                            setForm(x => ({ ...x, [n.id]: undefined }));
+                            setPreview(x => ({ ...x, [n.id]: null }));
+                          }}
+                          style={{ background: 'none', border: '1px solid #e5e3de', borderRadius: 8,
+                                   color: 'var(--text-2)', padding: '8px 15px',
                                    fontSize: 13, cursor: 'pointer' }}>
-                          {tc('spoke.cancel', 'Cancel')}
+                          {tc('spoke.close', 'Close')}
                         </button>
                       </div>
                     </div>
