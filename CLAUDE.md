@@ -939,10 +939,15 @@ owns them. Demoted, not deleted.
   took the cash. Owner-only is slow. Middle path: manager records, owner confirms.
 - **The owner dashboard is reworked AFTER the flow is frozen**, not alongside it.
 
-# 🛑 **PINE LABS CONTROLS FUEL. PUMPINI CONTROLS MONEY.**
-### owner-set 22-Sep-2026, tagline sharpened 23-Sep-2026 — the positioning decision. Read it before "fixing" a variance.
+# 🛑 **AUTOMATION CONTROLS FUEL. PUMPINI CONTROLS THE MONEY FLOW.**
+### owner-set 22-Sep-2026, tagline settled 23-Sep-2026 — the positioning decision. Read it before "fixing" a variance.
 
-> *"Pinelabs controls fuel .... pumpini controls money !!!"* — the tagline, 23-Sep
+> *"Automation controls fuel.... Pumpini controls the money flow"* — the tagline, 23-Sep.
+> "Automation" is the trade term: the oil company's retail automation — the ATG
+> (Automatic Tank Gauge) and the forecourt controllers — whoever supplies it. Pine
+> Labs is one supplier, not the category. The tank is theirs; from the totalizer
+> reading onward, the money is ours.
+> *"Pinelabs controls fuel .... pumpini controls money !!!"* — earlier the same day
 > *"let's not worry about the oil drift... let's worry about money drift."*
 > *"Pinelabs will care about your drops... we care about your rupees."* — first form, 22-Sep
 
