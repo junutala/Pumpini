@@ -76,11 +76,63 @@ const pumps = require('./pumpService');
 // a shift that has already been assigned cannot read its own figures back — and bounded
 // by `start_time`, so a shift entered out of order cannot carry a LATER shift's meter
 // backwards into an earlier one.
+// 🔴 SWITCHING BACK FROM NOZZLE-LED — WHICH READING IS THE TRUTH. Pure, so it can be
+// tested without a database.
+//
+// Owner, 23-Sep-2026: "go ahead with the switch-back fix". An outlet that runs
+// nozzle-led writes every handover to nozzle_events and nothing to the shift legs. When
+// it switches back to shift-led, the newest true reading of each nozzle is therefore
+// its chain head, not its last shift leg — which is a fortnight stale if the outlet ran
+// nozzle-led for a fortnight. Carrying the stale leg would open the first shift back on
+// it and land every litre sold in between on one attendant: the exact gap the carry
+// exists to close, opened by the switch itself.
+//
+// So the chain head wins ONLY when all of these hold:
+//   * it MOVED — the head is not a genesis. A genesis alone is a starting point taken at
+//     commissioning, not a handover, and an outlet may commission while still
+//     shift-led — possibly mid-leg — so its shift legs stay the truth until a nozzle is
+//     actually handed over. EXCEPT where the nozzle has no shift leg at all: then the
+//     genesis is the only true reading there is, and it beats a figure typed at Shift
+//     Start (MBR, 23-Sep: 10 of 12 nozzles genesis-only, never on a shift);
+//   * it is NEWER than the nozzle's latest shift leg — so the chain can only win after a
+//     nozzle-led period, never over a shift that came after it;
+//   * it is before this shift started (the caller's SQL bounds it).
+//
+// 🔴 THIS IS NOT THE THREE-TABLE COALESCE THE 01-AUG RULE RETIRED. That fallback read
+// tables the money did not trust, whenever the good row was missing. nozzle_events is
+// the money's own store in nozzle-led — outstanding() is computed from it — and it is
+// used only when it is the NEWER true reading, never to fill a gap. An outlet that has
+// never run nozzle-led has no chain at all, and its carry is byte-for-byte unchanged.
+function carryFrom({ legClosing, legAt, hasLeg, chainReading, chainAt, chainIsGenesis }) {
+  const moved = chainReading != null && (!chainIsGenesis || !hasLeg);
+  const newer = moved && (!hasLeg || !legAt || new Date(chainAt) > new Date(legAt));
+  if (newer) return { carried: Number(chainReading), from: 'chain' };
+  return { carried: legClosing, from: legClosing != null ? 'shift' : null };
+}
+
 async function nozzleOpenings(shift_id, client = pool) {
   const nm = await pumps.nozzleNameSelect(client);
+  // The chain is read only where its table exists. Probed, never try-and-caught: this
+  // runs inside Shift Start's own work, and a missing table must not 42P01 it.
+  const chainOn = await require('./spokeService').hasSpokeTables();
+  const chainCols = chainOn
+    ? `, ch.reading AS chain_reading, ch.recorded_at AS chain_at,
+         (ch.prev_event_id IS NULL) AS chain_is_genesis`
+    : `, NULL::numeric AS chain_reading, NULL::timestamptz AS chain_at,
+         NULL::boolean AS chain_is_genesis`;
+  const chainJoin = chainOn
+    ? `LEFT JOIN LATERAL (
+         SELECT e.reading, e.recorded_at, e.prev_event_id
+           FROM nozzle_events e
+          WHERE e.nozzle_id = n.id AND e.recorded_at < cur.start_time
+          ORDER BY e.recorded_at DESC, e.created_at DESC
+          LIMIT 1
+       ) ch ON TRUE`
+    : '';
   const { rows } = await client.query(`
     SELECT n.id AS nozzle_id, n.nozzle_number, n.fuel_type${nm.col},
            prev.closing_reading                AS carried_opening,
+           prev.assigned_at                    AS prior_leg_at${chainCols},
            (prev.shift_id IS NOT NULL)         AS has_prior_leg,
            prev.shift_number                   AS prior_shift_number,
            prev.date::text                     AS prior_shift_date
@@ -88,7 +140,7 @@ async function nozzleOpenings(shift_id, client = pool) {
       JOIN nozzles n ON n.station_id = cur.station_id AND n.is_active
       ${nm.join}
       LEFT JOIN LATERAL (
-        SELECT san.closing_reading, san.shift_id, s2.shift_number, s2.date
+        SELECT san.closing_reading, san.shift_id, san.assigned_at, s2.shift_number, s2.date
           FROM shift_attendant_nozzles san
           JOIN shifts s2 ON s2.id = san.shift_id
          -- A HANDOVER INSIDE THIS SHIFT COUNTS TOO, and it counts first.
@@ -114,16 +166,25 @@ async function nozzleOpenings(shift_id, client = pool) {
                   san.assigned_at DESC NULLS LAST
          LIMIT 1
       ) prev ON TRUE
+      ${chainJoin}
      ORDER BY n.nozzle_number`, [shift_id]);
 
   const map = {};
   for (const r of rows) {
+    const c = carryFrom({
+      legClosing: r.carried_opening, legAt: r.prior_leg_at, hasLeg: r.has_prior_leg,
+      chainReading: r.chain_reading, chainAt: r.chain_at, chainIsGenesis: r.chain_is_genesis,
+    });
+    r.carried_opening = c.carried;
     map[r.nozzle_id] = {
       nozzle_id: r.nozzle_id,
       nozzle_number: r.nozzle_number,
       nozzle_name: r.nozzle_name,
       fuel_type: r.fuel_type,
       carried_opening: r.carried_opening,
+      // Where the carried figure came from: 'shift' (the last shift leg), 'chain' (the
+      // last nozzle-led handover, after a switch back), or null (nothing to carry).
+      carried_from: c.from,
       // 'carried'  — taken from the last close; the client cannot change it.
       // 'pending'  — the shift before this one worked the nozzle and has not been
       //              settled, so there is no close to carry YET. The client's figure
@@ -290,4 +351,4 @@ async function backfillOpeningFromClose({ station_id, tank_id, shift_id }, clien
   }
 }
 
-module.exports = { nozzleOpenings, resolveNozzleOpening, seedOpeningDips, backfillOpeningFromClose };
+module.exports = { nozzleOpenings, resolveNozzleOpening, seedOpeningDips, backfillOpeningFromClose, carryFrom };

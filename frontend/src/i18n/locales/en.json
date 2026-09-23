@@ -2600,6 +2600,7 @@
     "lfrHelp": "Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own.",
     "flowTitle": "How this outlet runs its day",
     "flowHeld": "Can't change now: {s} shift(s) and {l} nozzle(s) still open",
+    "flowHeldNozzle": "Can't change now: {h} nozzle(s) assigned and {o} attendant(s) not settled",
     "flowNeedsStart": "{m} of {t} nozzles need a starting reading.",
     "flowSetUp": "Set up →",
     "flowOneLine": "Close attendants shift by shift, or nozzle by nozzle.",

@@ -191,12 +191,24 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
             + (who ? ` (${who})` : '')
             + (qm.stranded_legs ? ` — ${qm.stranded_legs} of them on a shift that is already closed` : ''));
         }
+        const few = names => names.slice(0, 3).join(', ')
+          + (names.length > 3 ? ` and ${names.length - 3} more` : '');
+        if (qm.held_nozzles) {
+          parts.push(`${qm.held_nozzles} nozzle${qm.held_nozzles === 1 ? ' is' : 's are'} still assigned`
+            + (qm.holders.length ? ` (${few(qm.holders)})` : ''));
+        }
+        if (qm.owing.length) {
+          parts.push(`${qm.owing.length} attendant${qm.owing.length === 1 ? ' has' : 's have'} not settled`
+            + ` (${few(qm.owing.map(o => o.name))})`);
+        }
         return res.status(409).json({
           error: 'not_quiet',
           open_shifts: qm.open_shifts.length,
           open_legs: qm.open_legs,
           stranded_legs: qm.stranded_legs,
           attendants: qm.attendants,
+          held_nozzles: qm.held_nozzles,
+          owing: qm.owing.length,
           message: `The outlet flow cannot change while work is still open — ${parts.join(', and ')}. `
             + `Settle and close everything first; the switch is meant for a quiet moment, not the middle of a day.`,
         });

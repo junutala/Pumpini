@@ -16,6 +16,26 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-23 · The switch-back rule I designed would have made MBR's managers type ten openings
+
+**We believed** a genesis-only chain should never carry into a shift. A genesis is taken
+at commissioning, possibly while a man is still on the nozzle, so his leg's close is the
+later truth. The rule was written that way and its tests passed.
+
+**Actually** MBR has twelve nozzles, ten of them genesis-only, and **none has ever been
+on a shift**. Under that rule, switching MBR to shift-led would have carried nothing for
+those ten, and Shift Start would have asked the manager to type ten openings. The only
+true reading we hold for each of them, taken from a slip, would have been thrown away.
+
+**We found out** by querying what MBR would actually carry before shipping, not after.
+The tests had pinned the rule I had in my head, and MBR's rows did not match it.
+
+**It cost** nothing. The rule is now: a genesis loses to a shift leg, and beats no leg at
+all. A test pins each half, and each was checked by breaking the code and watching the
+test fail.
+
+---
+
 ## 2026-09-23 · A reading that went DOWN was priced at ₹0 and excused by a keyboard mash
 
 **We believed** the handover checks made a backwards reading impossible to slip through:

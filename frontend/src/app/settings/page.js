@@ -1884,13 +1884,26 @@ function ShiftsTab({ stationId, onSaved }) {
 
         {/* Said only when the switch CANNOT move, so a greyed switch is never a
             mystery. Quiet says nothing. */}
-        {qm && !qm.quiet && (
-          <div style={{fontSize:12,marginTop:10,color:'#9a3412'}}>
-            {tc('setp.flowHeld', "Can't change now: {s} shift(s) and {l} nozzle(s) still open")
-              .replace('{s}', qm.open_shifts.length).replace('{l}', qm.open_legs)}
-            {qm.attendants.length ? ` — ${qm.attendants.slice(0, 3).join(', ')}${qm.attendants.length > 3 ? '…' : ''}` : ''}
-          </div>
-        )}
+        {qm && !qm.quiet && (() => {
+          // Shift work and nozzle work are each named only when they are what holds it.
+          const shiftOpen  = qm.open_shifts.length > 0 || qm.open_legs > 0;
+          const owing      = qm.owing || [];
+          const nozzleOpen = (qm.held_nozzles || 0) > 0 || owing.length > 0;
+          const names = [...new Set([
+            ...(shiftOpen ? qm.attendants : []),
+            ...(qm.holders || []), ...owing.map(o => o.name),
+          ].filter(Boolean))];
+          return (
+            <div style={{fontSize:12,marginTop:10,color:'#9a3412'}}>
+              {shiftOpen && tc('setp.flowHeld', "Can't change now: {s} shift(s) and {l} nozzle(s) still open")
+                .replace('{s}', qm.open_shifts.length).replace('{l}', qm.open_legs)}
+              {shiftOpen && nozzleOpen && '. '}
+              {nozzleOpen && tc('setp.flowHeldNozzle', "Can't change now: {h} nozzle(s) assigned and {o} attendant(s) not settled")
+                .replace('{h}', qm.held_nozzles || 0).replace('{o}', owing.length)}
+              {names.length ? ` — ${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}` : ''}
+            </div>
+          );
+        })()}
         {qm?.quiet && !hubSpokes && cm && !cm.ready && (
           <div style={{fontSize:12,marginTop:10,color:'#9a3412'}}>
             {tc('setp.flowNeedsStart', '{m} of {t} nozzles need a starting reading.')

@@ -498,8 +498,21 @@ async function quietMoment(station_id, client = pool) {
   const stranded = legs.filter(l => l.shift_status !== 'open');
   const attendants = [...new Set(legs.map(l => l.attendant_name).filter(Boolean))];
 
+  // 🔴 AND THE NOZZLE-LED SIDE, added 23-Sep-2026 with the switch-back carry. The legs
+  // above are open work under the SHIFT model; a nozzle still held in the chain, or a
+  // man who still owes, is open work under the NOZZLE model. Switching back over
+  // either leaves an account that the new flow cannot see and nobody can settle: the
+  // shift screens never read attendant_settlements. So the switch waits until every
+  // nozzle is back in the pool and every account is under ₹1 — the same line Attendant
+  // Close draws for "cleared". Empty where the spoke tables do not exist.
+  const [held, owed] = await Promise.all([holdings(station_id), outstanding(station_id)]);
+  const owing = owed
+    .filter(r => Math.abs(num(r.outstanding)) >= CLEARED_BELOW_RUPEES)
+    .map(r => ({ attendant_id: r.attendant_id, name: r.name, outstanding: num(r.outstanding) }));
+  const heldNozzles = held.reduce((a, h) => a + h.nozzles.length, 0);
+
   return {
-    quiet: openShifts.length === 0 && legs.length === 0,
+    quiet: openShifts.length === 0 && legs.length === 0 && heldNozzles === 0 && owing.length === 0,
     open_shifts: openShifts,
     open_legs: legs.length,
     // A leg left open on a shift that is already CLOSED. No ordinary flow can
@@ -507,8 +520,15 @@ async function quietMoment(station_id, client = pool) {
     stranded_legs: stranded.length,
     attendants,
     legs,
+    held_nozzles: heldNozzles,
+    holders: held.map(h => h.name).filter(Boolean),
+    owing,
   };
 }
+
+// Under one rupee is cleared — owner, 23-Sep-2026: "yes ₹1 is fine". The Attendant
+// Close screen draws the same line (CLEARED_BELOW); the switch must not disagree.
+const CLEARED_BELOW_RUPEES = 1;
 
 const num = v => Number(v) || 0;
 
