@@ -78,6 +78,58 @@ for (const abs of walk(path.join(ROOT, 'backend/src'))) {
   }
 }
 
+// THE ALIAS CONTRACT — splice the join in, and the alias it references must exist.
+//
+// WHAT PUT THIS HERE (23-Sep-2026). `pumpService.nozzleNameSelect()` hands back a
+// SELECT fragment and a JOIN to splice into a query, and BOTH reference the caller's
+// nozzles alias — which defaults to `n`:
+//
+//     LEFT JOIN pumps _np ON _np.id = n.pump_id AND _np.end_date IS NULL
+//
+// The new /shifts/nozzle-history query aliased its nozzles table `nz`. That parses,
+// lints, builds, passes every other gate and ships — then throws
+//     42P01  missing FROM-clause entry for table "n"
+// at the FIRST REAL REQUEST. The owner found it by opening the screen.
+//
+// Nothing could have caught it. ci-sql-read-check reads a template literal as one
+// flat string and cannot resolve `${nm.join}`, so the alias the helper introduces is
+// invisible to it — a blind spot sitting exactly on the one-writer helper that
+// dozens of queries splice in.
+//
+// So: for every literal that splices the join, require the matching nozzles alias to
+// be bound in that same literal.
+const aliasProblems = [];
+for (const abs of walk(path.join(ROOT, 'backend/src'))) {
+  const rel = path.relative(ROOT, abs);
+  const src = fs.readFileSync(abs, 'utf8');
+  if (!/nozzleNameSelect\s*\(/.test(src)) continue;
+
+  // Which alias does each holder of a nozzleNameSelect() result expect? The default
+  // is 'n'; an options object may override it with { n: 'x' }.
+  const expected = new Map();
+  for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+[\w$.]*nozzleNameSelect\s*\(([^)]*)\)/g)) {
+    const opts = /\bn\s*:\s*['"`]([^'"`]+)['"`]/.exec(m[2] || '');
+    expected.set(m[1], opts ? opts[1] : 'n');
+  }
+  if (!expected.size) continue;
+
+  // Every template literal in the file, with the line it starts on.
+  for (const lit of src.matchAll(/`(?:[^`\\]|\\[\s\S])*`/g)) {
+    const body = lit[0];
+    for (const [holder, alias] of expected) {
+      if (!body.includes('${' + holder + '.join}')) continue;
+      const bound = new RegExp(String.raw`\b(?:JOIN|FROM)\s+nozzles\s+(?:AS\s+)?` + alias + String.raw`\b`, 'i');
+      if (!bound.test(body)) {
+        const lineNo = src.slice(0, lit.index).split('\n').length;
+        aliasProblems.push(
+          `${rel}:${lineNo}  splices \${${holder}.join} but no "nozzles ${alias}" in the same query — ` +
+          `the join it adds references ${alias}.pump_id, so this throws 42P01 at runtime`);
+      }
+    }
+  }
+}
+problems.push(...aliasProblems);
+
 if (problems.length) {
   console.error('\n✗ ONE NOZZLE NAME — violations found:\n');
   problems.forEach(p => console.error('  ' + p + '\n'));
@@ -85,4 +137,4 @@ if (problems.length) {
   console.error('  See CLAUDE.md "ONE nozzle name, one pump name".\n');
   process.exit(1);
 }
-console.log('✓ one nozzle name — no inline labels, every slip line names itself');
+console.log('✓ one nozzle name — no inline labels, every slip line names itself, every spliced join has its alias');
