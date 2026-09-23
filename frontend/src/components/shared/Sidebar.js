@@ -189,7 +189,7 @@ const NAV_LABELS = {
   // what covers hi/ta/mr/kn, which are still partial locale files.
   settlement:'Settlement',
   startshift:'Start Shift',  endshift:'End Shift',  pos:'POS',
-  tankrecon:'Tank Recon',    nozzleevents:'Nozzle Events',  attendantdues:'Attendant Dues',
+  tankrecon:'Tank Recon',    nozzleevents:'Nozzle Events',  attendantdues:'Attendant Close',
   accounts:'Accounts',
   bills:'Bill & Payment',
   ownermoney:'Owner Money',

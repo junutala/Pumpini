@@ -230,6 +230,43 @@ async function outstanding(station_id) {
   return rows;
 }
 
+// WHO IS HOLDING A NOZZLE RIGHT NOW, and which ones.
+//
+// outstanding() answers "who owes what", and it derives that from CLOSINGS — so a man
+// who has taken a nozzle and not yet handed it over does not appear in it at all. He
+// owes nothing yet, which is true, and he is also the man most likely to be standing
+// in front of the manager wanting to go home.
+//
+// Owner, 23-Sep-2026: Attendant Close should "show all the attendants who have assigned
+// nozzles and let the flow start from there instead of the current LOV for attendants."
+//
+// Built on nozzleState() rather than a second query: that function is already the one
+// answer to "where does each nozzle stand", and a second SELECT over nozzle_events
+// would be a second answer waiting to disagree with it.
+async function holdings(station_id) {
+  if (!(await hasSpokeTables())) return [];
+  const nozzles = await nozzleState(station_id);
+  const by = new Map();
+  for (const n of nozzles) {
+    if (!n.on_attendant_id) continue;
+    if (!by.has(n.on_attendant_id)) {
+      by.set(n.on_attendant_id, {
+        attendant_id: n.on_attendant_id,
+        name: n.on_attendant_name || null,
+        nozzles: [],
+      });
+    }
+    by.get(n.on_attendant_id).nozzles.push({
+      nozzle_id: n.id,
+      nozzle_name: n.nozzle_name ?? n.nozzle_number ?? null,
+      fuel_type: n.fuel_type,
+      reading: n.reading,
+      since: n.recorded_at,
+    });
+  }
+  return [...by.values()].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+}
+
 // THE WORKING BEHIND ONE MAN'S OUTSTANDING — every leg, both readings, the price.
 //
 // outstanding() derives each leg and then SUMs it away, so the screen could only ever
@@ -452,6 +489,6 @@ const num = v => Number(v) || 0;
 
 module.exports = {
   hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding,
-  outstandingDetail, settle, quietMoment, handoverPreview, handoverMath,
+  outstandingDetail, settle, quietMoment, handoverPreview, handoverMath, holdings,
   MAX_FLOW_LTRS_PER_MIN,
 };
