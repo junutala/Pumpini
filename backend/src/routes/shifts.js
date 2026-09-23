@@ -110,7 +110,7 @@ router.get('/nozzle-history', authenticate, requireStationAccess({ required: tru
              sh.shift_number,
              sh.status             AS shift_status,
              usr.name              AS attendant_name,
-             nz.fuel_type${nm.col},
+             n.fuel_type${nm.col},
              san.opening_reading,
              san.closing_reading,
              CASE WHEN san.closing_reading IS NULL THEN NULL
@@ -123,7 +123,13 @@ router.get('/nozzle-history', authenticate, requireStationAccess({ required: tru
                ORDER BY sc.created_at DESC LIMIT 1) AS closing_photo_id
         FROM shift_attendant_nozzles san
         JOIN shifts  sh ON sh.id = san.shift_id
-        JOIN nozzles nz ON nz.id = san.nozzle_id
+        -- THE NOZZLES ALIAS MUST BE n. pumpService.nozzleNameSelect() defaults to
+        -- { n: 'n', p: '_np' } and the JOIN it hands back reads
+        --     LEFT JOIN pumps _np ON _np.id = n.pump_id
+        -- so any other alias compiles fine and then throws 42P01 "missing FROM-clause
+        -- entry for table n" at the first real request. Every other call site in this
+        -- file uses n; this one said nz and shipped broken (23-Sep-2026).
+        JOIN nozzles n  ON n.id = san.nozzle_id
         ${nm.join}
         LEFT JOIN users usr ON usr.id = san.attendant_id
        WHERE san.nozzle_id = $1
