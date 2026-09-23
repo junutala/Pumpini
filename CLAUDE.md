@@ -877,28 +877,35 @@ those against zero at every other real outlet.
   that screen. Owner: carried balances are to be shown on the rebuilt owner dashboard —
   that is where they are meant to be caught, not on Attendant Close.
 
-### 🛑 SWITCHING BACK TO SHIFT-LED IS NOT YET SAFE. Say so before anyone promises it.
+### 🔴 SWITCHING BACK TO SHIFT-LED — the handoff, built 23-Sep-2026
 
 The owner asked, 23-Sep: *"if Ramana wants to revert to the shift pattern, it's just a
-switch off and he is back to the shift ringfencing? correct?"* **No — not yet**, and the
-reason is structural:
+switch off and he is back to the shift ringfencing? correct?"* It was **not** true when
+he asked. The two flows kept separate meters: the shift carry
+(`openingService.nozzleOpenings()`) read only `shift_attendant_nozzles`, and nozzle-led
+writes only `nozzle_events`. After a fortnight nozzle-led, the first shift back would
+have opened on a fortnight-stale closing and landed every litre in between on one man.
 
-- the shift flow's carry, `openingService.nozzleOpenings()`, reads
-  `shift_attendant_nozzles` **and nothing else** (deliberately — the 01-Aug rule);
-- the nozzle-led flow writes `nozzle_events` **and nothing else**;
-- `nozzle_events` is read only by `spokeService` and `commissionService`.
+**What makes it true now — two halves, both required:**
 
-So the two flows do not share a meter. After a fortnight nozzle-led, the first shift
-opened on switching back would carry each nozzle's opening from the **last shift-led
-closing**, a fortnight stale, and its first closing would land every litre sold in
-between on one attendant. The quiet-moment guard does **not** catch this: in nozzle-led
-there are no open shifts or shift legs, so it reports quiet and lets the switch through.
+1. **The carry reads the chain head when it is the newer truth** (`carryFrom()`, pure,
+   `test/switchBackCarry.test.js`). The chain wins only if it has MOVED past a genesis
+   and is newer than the nozzle's latest shift leg — or the nozzle has no shift leg at
+   all, where even a genesis beats a typed figure. Every other case is the shift leg,
+   exactly as before. An outlet that never ran nozzle-led has no chain, so its carry is
+   byte-for-byte unchanged: checked 23-Sep against all 3,660 historical shift-nozzle
+   rows at nine outlets (none had a chain) and the composed old/new query on Kamala's
+   latest shift (8 of 8 identical). This is not the retired three-table fallback —
+   `nozzle_events` is the money's own store in nozzle-led, and it is used only when
+   newer, never to fill a gap.
+2. **The switch waits until the nozzle side is settled too** (`quietMoment()`): no
+   nozzle held in the chain, and nobody owing ₹1 or more — on top of no open shift and
+   no open leg. That guarantee is what lets (1) compare against `assigned_at`: with
+   both guards, chain events and shift legs can never interleave.
 
-Nothing is broken today — only MBR has a chain. But **do not tell a customer the switch
-is reversible until the handoff is built.** The fix under discussion: on switching back
-to shift-led, seed each nozzle's carry from its chain head, inside the same guard, so
-one meter store stays authoritative for each flow and the handoff is explicit rather
-than implied.
+A man who owes ₹500 blocks the switch until he settles. That is intended: the shift
+screens never read `attendant_settlements`, so a balance carried across the switch
+would be a balance nobody could ever see again.
 
 **ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows,
 and if any of them is copied we no longer have two flows — we have two products:
