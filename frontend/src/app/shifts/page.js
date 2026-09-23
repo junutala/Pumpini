@@ -40,8 +40,17 @@ export default function ShiftsPage() {
   const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
   const isManager = ['owner','manager'].includes(user?.role);
 
+  // THE DAY BEING LOOKED AT. Defaults to today, which is every previous version of
+  // this screen. Ramana, 23-Sep-2026, asked how to see an attendant's earlier
+  // readings; the answer was that the list hardcoded today and the endpoint had
+  // taken a `date` all along.
+  const [viewDate,  setViewDate]  = useState(today);
   const [shifts,    setShifts]    = useState([]);
   const [selected,  setSelected]  = useState(null);
+  // The pump rate in force on the viewed shift's own date, so a reading from last
+  // week is priced at last week's rate. `/prices/:id/as-at` already existed for the
+  // back-dated credit invoice — this is its second reader, not a second endpoint.
+  const [prices,    setPrices]    = useState({});
   const [attendants,setAttendants]= useState([]);
   const [nozzles,   setNozzles]   = useState([]);
   const [shiftDefs, setShiftDefs] = useState([]);
@@ -69,11 +78,18 @@ export default function ShiftsPage() {
   // So an OPEN shift is fetched unconditionally. Nothing else changes: the day's
   // closed shifts still come back by date, and the two lists are merged by id, newest
   // first, so a shift that is both today's and open appears exactly once.
+  //
+  // THE OPEN-SHIFT INJECTION IS FOR TODAY ONLY. Its whole purpose is that a live
+  // shift can never be hidden on the screen a manager opens by default. Carrying it
+  // into a browsed past date would do the opposite — today's running shift would
+  // appear inside 15-Sep and read as though it belonged there, which is the same
+  // confusion in a new place.
   const loadShifts = async() => {
     if(!stationId) return;
+    const isToday = viewDate === today;
     const [byDate, open] = await Promise.all([
-      api.get('/shifts',{params:{station_id:stationId,date:today}}).catch(()=>[]),
-      api.get('/shifts',{params:{station_id:stationId,status:'open'}}).catch(()=>[]),
+      api.get('/shifts',{params:{station_id:stationId,date:viewDate}}).catch(()=>[]),
+      isToday ? api.get('/shifts',{params:{station_id:stationId,status:'open'}}).catch(()=>[]) : [],
     ]);
     const merged = new Map();
     for (const s of [...(Array.isArray(byDate)?byDate:[]), ...(Array.isArray(open)?open:[])]) {
@@ -85,13 +101,21 @@ export default function ShiftsPage() {
 
   const loadShiftDetail = async(shift) => {
     setSelected(shift);
-    const detail = await api.get(`/shifts/${shift.id}`);
+    const [detail, px] = await Promise.all([
+      api.get(`/shifts/${shift.id}`),
+      api.get(`/prices/${stationId}/as-at`,{params:{date:dateKey(shift.date)}}).catch(()=>[]),
+    ]);
+    const byFuel = {};
+    (Array.isArray(px)?px:[]).forEach(r=>{ byFuel[r.fuel_type] = parseFloat(r.price); });
+    setPrices(byFuel);
     setSelected(detail);
   };
 
+  // The list reloads on the picked date; the station's fixtures load once.
+  useEffect(()=>{ if(stationId) { loadShifts(); setSelected(null); } },[stationId,viewDate]);
+
   useEffect(()=>{
     if(!stationId) return;
-    loadShifts();
     Promise.all([
       api.get(`/stations/${stationId}/nozzles`),
       api.get(`/shifts/definitions/${stationId}`),
@@ -141,13 +165,42 @@ export default function ShiftsPage() {
   const shiftAttendants = selected?.attendants || [];
   const shiftTotalSales = shiftAttendants.reduce((s,a)=>s+parseFloat(a.total_sales||0),0);
 
+  // BLIND DROP, MIRRORED EXACTLY. `GET /shifts` nulls total_sales for a non-owner on
+  // an OPEN shift. Litres × price would hand that same figure straight back, so the
+  // rupee column obeys the identical rule and nothing else changes: the READINGS and
+  // the LITRES always show, because they are the meter, and the manager photographs
+  // them off the slips himself. It is the money that is masked, not the evidence.
+  const isOwner   = user?.role === 'owner';
+  const showMoney = !!selected && (selected.status !== 'open' || isOwner);
+
+  // One leg's working, as a manager checks it against paper: two readings he took,
+  // the litres between them, the rate, the rupees. Never a total on its own —
+  // CLAUDE.md, 29-Aug-2026: "when a total is computed from parts, return the parts."
+  const legWorking = (nz) => {
+    const open  = nz.opening_reading == null ? null : Number(nz.opening_reading);
+    const close = nz.closing_reading == null ? null : Number(nz.closing_reading);
+    const ltrs  = (open == null || close == null) ? null : close - open;
+    const price = prices[nz.fuel_type];
+    const amt   = (ltrs == null || price == null) ? null : ltrs * price;
+    return { open, close, ltrs, price, amt };
+  };
+
   return (
     <AppShell>
       <div className="page-header">
         <div>
           <h1 className="page-title">{tc('shifts_page.title','Shifts')}</h1>
-          <div style={{fontSize:13,color:'var(--text-3)'}}>
-            {today} · {shifts.filter(s=>s.status==='open').length} {tc('shifts_page.shifts_open','shift(s) open')}
+          <div style={{fontSize:13,color:'var(--text-3)',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <input className="input" type="date" value={viewDate} max={today}
+              onChange={e=>setViewDate(e.target.value || today)}
+              style={{width:150,height:30,fontSize:12.5,padding:'2px 8px'}}
+              aria-label={tc('shifts_page.viewDate','Show shifts filed under')} />
+            {viewDate !== today && (
+              <button className="btn btn-secondary btn-sm" onClick={()=>setViewDate(today)}>
+                {tc('shifts_page.backToToday','Today')}
+              </button>
+            )}
+            <span>{shifts.filter(s=>s.status==='open').length} {tc('shifts_page.shifts_open','shift(s) open')}</span>
             {managerMode && <span style={{marginLeft:8,fontSize:11,fontWeight:700,color:'#9a3412',background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:6,padding:'2px 7px'}}>🔒 Manager-driven mode</span>}
           </div>
         </div>
@@ -164,8 +217,12 @@ export default function ShiftsPage() {
         <div>
           {shifts.length===0 && (
             <div className="card" style={{textAlign:'center',color:'var(--text-3)',padding:'2rem',fontSize:13}}>
-              {tc('shifts_page.no_shifts','No shifts today.')}<br/>
-              {isManager?tc('shifts_page.click_open','Click "Open Shift" to start.'):tc('shifts_page.contact_mgr','Contact your manager to open a shift.')}
+              {viewDate === today
+                ? tc('shifts_page.no_shifts','No shifts today.')
+                : tc('shifts_page.noShiftsOn','No shifts filed under {d}.').replace('{d}', fmtShiftDate(viewDate))}<br/>
+              {viewDate !== today
+                ? tc('shifts_page.pickAnotherDay','Pick another day above.')
+                : (isManager?tc('shifts_page.click_open','Click "Open Shift" to start.'):tc('shifts_page.contact_mgr','Contact your manager to open a shift.'))}
             </div>
           )}
           {shifts.map(shift=>(
@@ -248,12 +305,21 @@ export default function ShiftsPage() {
           ))}
         </div>
 
-        {/* Shift detail — assignment view only (sales hidden by blind drop) */}
+        {/* Shift detail — who was on, and every nozzle leg they held with its two
+            readings. The readings were always in this payload (`GET /shifts/:id`
+            returns attendants[].nozzles[] with opening_reading and closing_reading);
+            until 23-Sep-2026 the panel fetched them and rendered the attendant's name
+            and ONE nozzle. Rupees still obey blind drop — see showMoney above. */}
         {selected && (
           <div className="card" style={{alignSelf:'flex-start'}}>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.75rem'}}>
               <div style={{fontWeight:700,fontSize:14}}>
-                {tc('shifts_page.active_attendants','Active Attendants')} — {shiftAttendants.length} {tc('shifts_page.assigned','assigned')}
+                {selected.status === 'open'
+                  ? tc('shifts_page.active_attendants','Active Attendants')
+                  : tc('shifts_page.whoWasOn','Who was on')} — {shiftAttendants.length} {tc('shifts_page.assigned','assigned')}
+                <div style={{fontWeight:400,fontSize:11.5,color:'var(--text-3)',marginTop:2}}>
+                  {getShiftLabel(selected.shift_number)} · {fmtShiftDate(selected.date)}
+                </div>
               </div>
               <button style={{background:'none',border:'none',cursor:'pointer'}} onClick={()=>setSelected(null)}><X size={18}/></button>
             </div>
@@ -262,8 +328,17 @@ export default function ShiftsPage() {
                 {tc('shifts_page.none_assigned','No attendants assigned yet.')}{isManager?tc('shifts_page.use_add_btn',' Use "Add Attendant" button.'):''}
               </div>
             ) : (
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:'0.75rem'}}>
-                {shiftAttendants.map(att=>(
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:'0.75rem'}}>
+                {shiftAttendants.map(att=>{
+                  // HIS LEGS, NOT "his nozzle". `shift_attendants.nozzle_id` is the
+                  // legacy single slot and shows ONE machine for a man working four.
+                  // The legs are the truth and have been arriving in this payload all
+                  // along — this panel simply threw them away.
+                  const legs  = att.nozzles || [];
+                  const works = legs.map(nz => [nz, legWorking(nz)]);
+                  const total = works.reduce((s,[,w]) => s + (w.amt ?? 0), 0);
+                  const anyAmt = works.some(([,w]) => w.amt != null);
+                  return (
                   <div key={att.id} style={{background:'var(--surface-2)',borderRadius:10,padding:'0.85rem',border:'1px solid var(--border)'}}>
                     <div style={{display:'flex',alignItems:'center',gap:8}}>
                       <div style={{width:32,height:32,borderRadius:'50%',background:'var(--brand)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:700,fontSize:14,flexShrink:0}}>
@@ -271,14 +346,60 @@ export default function ShiftsPage() {
                       </div>
                       <div style={{minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{att.attendant_name}</div>
-                        <div style={{fontSize:11,color:'var(--text-3)'}}>{nozName(att)} · {att.fuel_type}</div>
+                        <div style={{fontSize:11,color:'var(--text-3)'}}>
+                          {legs.length
+                            ? `${legs.length} ${legs.length===1?tc('shifts_page.nozzle','nozzle'):tc('shifts_page.nozzles','nozzles')}`
+                            : `${nozName(att)} · ${att.fuel_type}`}
+                        </div>
                       </div>
                     </div>
+
+                    {/* THE READINGS. Two numbers he photographed, the litres between
+                        them, and — when the money is his to see — the rupees. He
+                        verifies one line against paper in ten seconds and after that
+                        he stops verifying; that is what trust is. */}
+                    {legs.length > 0 && (
+                      <div style={{marginTop:8,borderTop:'1px solid var(--border)',paddingTop:8,display:'grid',gap:6}}>
+                        {works.map(([nz,w])=>(
+                          <div key={nz.nozzle_id} style={{fontSize:11.5}}>
+                            <div style={{fontWeight:600,color:'var(--text-2)'}}>{nozName(nz)}</div>
+                            <div style={{fontFamily:'var(--font-mono)',color:'var(--text-3)',display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+                              <span>
+                                {w.open == null ? '—' : w.open.toFixed(3)}
+                                {' → '}
+                                {w.close == null
+                                  ? <em style={{color:'#b45309',fontStyle:'normal'}}>{tc('shifts_page.stillOpen','open')}</em>
+                                  : w.close.toFixed(3)}
+                              </span>
+                              <span>
+                                {w.ltrs == null ? '' : `${fmtL(w.ltrs)} L`}
+                                {showMoney && w.price != null && w.ltrs != null && ` × ₹${w.price}`}
+                              </span>
+                            </div>
+                            {showMoney && w.amt != null && (
+                              <div style={{textAlign:'right',fontWeight:700,fontSize:12}}>₹{fmt(w.amt)}</div>
+                            )}
+                          </div>
+                        ))}
+                        {showMoney && anyAmt && (
+                          <div style={{borderTop:'1px solid var(--border)',paddingTop:6,display:'flex',justifyContent:'space-between',fontSize:12,fontWeight:700}}>
+                            <span>{tc('shifts_page.legTotal','Meter total')}</span><span>₹{fmt(total)}</span>
+                          </div>
+                        )}
+                        {!showMoney && (
+                          <div style={{fontSize:10.5,color:'var(--text-3)'}}>
+                            {tc('shifts_page.moneyOnClose','Amounts show once the shift is closed.')}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {att.tag_uid && (
                       <div style={{marginTop:6,fontSize:10,color:'var(--text-3)',fontFamily:'var(--font-mono)'}}>RFID: {att.tag_uid}</div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
