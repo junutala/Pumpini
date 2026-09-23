@@ -2599,16 +2599,12 @@
     "lfrNone": "No LFR — you own the land and the equipment",
     "lfrHelp": "Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own.",
     "flowTitle": "How this outlet runs its day",
-    "flowShiftLed": "SHIFT-LED",
-    "flowNozzleLed": "NOZZLE-LED",
-    "flowLineOn": "Nozzle by nozzle, no shifts. Sales are not checked against the tank.",
-    "flowLineOff": "Shift by shift. Sales are checked against the tank.",
-    "flowCautionOn": "Switching back is not safe yet. Ask support first.",
-    "flowCautionOff": "Only for outlets that cannot keep clean shifts.",
-    "flowHeld": "Held: {s} shift(s) and {l} nozzle(s) still open",
+    "flowHeld": "Can't change now: {s} shift(s) and {l} nozzle(s) still open",
     "flowNeedsStart": "{m} of {t} nozzles need a starting reading.",
     "flowSetUp": "Set up →",
-    "flowQuietShort": "Nothing open — you can change this now."
+    "flowOneLine": "Close attendants shift by shift, or nozzle by nozzle.",
+    "flowLabelShift": "Shift-led",
+    "flowLabelNozzle": "Nozzle-led"
   },
   "sstart": {
     "dashboard": "Dashboard",

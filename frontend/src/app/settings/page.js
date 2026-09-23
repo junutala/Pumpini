@@ -1814,6 +1814,9 @@ function ShiftsTab({ stationId, onSaved }) {
   // refuses the flip while any shift is open at this outlet and answers with a sentence
   // naming the shift; errText() surfaces it as-is.
   const toggleHubSpokes = async () => {
+    // No pop-up. Owner, 23-Sep-2026: "this is settings, so we know the risks." The
+    // switch is owner-only and disabled unless the outlet is at a quiet moment; the
+    // switch-back gap is recorded in CLAUDE.md, not argued at the tap.
     setHubBusy(true);
     try {
       const r = await api.post(`/stations/${sid}/settings`, { hub_spokes_migration_enabled: !hubSpokes });
@@ -1846,80 +1849,61 @@ function ShiftsTab({ stationId, onSaved }) {
         Stored in `hub_spokes_migration_enabled` — the column keeps its name because
         renaming a live column breaks every read between deploy and migration. It is
         the MEANING that changed, from a temporary migration to a standing choice. */}
-    {isOwner && (
+    {isOwner && (() => {
+      // One sentence, and a switch labelled at BOTH ends. Owner, 23-Sep-2026: "nobody
+      // knows if we have to switch on or off for nozzle led path!!!" Neither side is
+      // "on" — they are two ways of running a day — so the track is the same colour
+      // either way and the chosen side's label is the one in bold.
+      const canFlip = !flowReady ? true : (hubSpokes ? flowReady.can_turn_off : flowReady.can_turn_on);
+      const qm = flowReady?.quiet_moment;
+      const cm = flowReady?.commissioning;
+      const side = (active) => ({ fontSize:13, fontWeight: active ? 700 : 400,
+        color: active ? 'var(--text-1)' : 'var(--text-3)' });
+      return (
       <div className="card" style={{marginBottom:'1rem'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <div style={{paddingRight:12}}>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <div style={{fontWeight:700,fontSize:15}}>{tc('setp.flowTitle', 'How this outlet runs its day')}</div>
-              <span style={{fontSize:10,fontWeight:700,letterSpacing:'.06em',padding:'2px 6px',
-                borderRadius:4,
-                background: hubSpokes ? '#e7f2ec' : '#eef1f5',
-                color:      hubSpokes ? '#15803d' : '#475569'}}>
-                {hubSpokes ? tc('setp.flowNozzleLed', 'NOZZLE-LED') : tc('setp.flowShiftLed', 'SHIFT-LED')}
-              </span>
-            </div>
-            {/* SAY LITTLE. Owner, 23-Sep-2026, looking at nine lines of prose on a
-                phone: "SO, much text? who will read all these?" One line for what the
-                current mode means, one line of caution, one line of status. The why
-                lives in CLAUDE.md and in spokeService.quietMoment, not on this card. */}
-            <div style={{fontSize:13,color:'#666',marginTop:3}}>
-              {hubSpokes
-                ? tc('setp.flowLineOn',  'Nozzle by nozzle, no shifts. Sales are not checked against the tank.')
-                : tc('setp.flowLineOff', 'Shift by shift. Sales are checked against the tank.')}
-            </div>
-            {/* The one caution that matters for the NEXT tap. Switching back is not yet
-                safe: the shift carry reads only shift_attendant_nozzles, the nozzle-led
-                flow writes only nozzle_events, so the first shift back opens stale. */}
-            <div style={{fontSize:12,color:'#9a3412',marginTop:4}}>
-              {hubSpokes
-                ? tc('setp.flowCautionOn',  'Switching back is not safe yet. Ask support first.')
-                : tc('setp.flowCautionOff', 'Only for outlets that cannot keep clean shifts.')}
-            </div>
+        <div style={{fontWeight:700,fontSize:15}}>{tc('setp.flowTitle', 'How this outlet runs its day')}</div>
+        <div style={{fontSize:13,color:'#666',marginTop:3}}>
+          {tc('setp.flowOneLine', 'Close attendants shift by shift, or nozzle by nozzle.')}
+        </div>
 
-            {/* ONE STATUS LINE. Held → how much is open and by whom (so he knows whom
-                to chase); not commissioned → how many nozzles lack a start; quiet → go. */}
-            {(() => {
-              const qm = flowReady?.quiet_moment;
-              const cm = flowReady?.commissioning;
-              const box = (bg, fg, children) => (
-                <div style={{fontSize:12,marginTop:8,padding:'6px 10px',borderRadius:7,background:bg,color:fg}}>{children}</div>
-              );
-              if (qm && !qm.quiet) {
-                const who = qm.attendants.slice(0, 3).join(', ') + (qm.attendants.length > 3 ? '…' : '');
-                return box('#fbeee4', '#9a3412', <>
-                  {tc('setp.flowHeld', 'Held: {s} shift(s) and {l} nozzle(s) still open')
-                    .replace('{s}', qm.open_shifts.length).replace('{l}', qm.open_legs)}
-                  {who ? ` — ${who}` : ''}
-                </>);
-              }
-              if (!hubSpokes && cm && !cm.ready) {
-                return box('#fbeee4', '#9a3412', <>
-                  {tc('setp.flowNeedsStart', '{m} of {t} nozzles need a starting reading.')
-                    .replace('{m}', cm.missing).replace('{t}', cm.total)}
-                  {' '}
-                  <a href="/settings/commissioning" style={{color:'#9a3412',fontWeight:700}}>
-                    {tc('setp.flowSetUp', 'Set up →')}
-                  </a>
-                </>);
-              }
-              if (qm?.quiet) {
-                return box('#e7f2ec', '#15803d', tc('setp.flowQuietShort', 'Nothing open — you can change this now.'));
-              }
-              return null;
-            })()}
-          </div>
-          <button onClick={toggleHubSpokes} disabled={hubBusy}
-            style={{background:'none',border:'none',cursor:hubBusy?'wait':'pointer',padding:0,flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginTop:12}}>
+          <span style={side(!hubSpokes)}>{tc('setp.flowLabelShift', 'Shift-led')}</span>
+          <button onClick={toggleHubSpokes} disabled={hubBusy || !canFlip}
+            aria-label={tc('setp.flowTitle', 'How this outlet runs its day')}
+            style={{background:'none',border:'none',padding:0,flexShrink:0,
+              cursor: hubBusy ? 'wait' : canFlip ? 'pointer' : 'not-allowed',
+              opacity: canFlip ? 1 : 0.45}}>
             <div style={{width:52,height:28,borderRadius:14,position:'relative',
-              background: hubSpokes ? '#16a34a' : '#e5e3de', transition:'all .2s'}}>
+              background:'var(--brand)', transition:'all .2s'}}>
               <div style={{width:22,height:22,borderRadius:'50%',background:'#fff',position:'absolute',top:3,
                 left: hubSpokes ? 27 : 3, transition:'all .2s',boxShadow:'0 1px 4px rgba(0,0,0,.2)'}}/>
             </div>
           </button>
+          <span style={side(hubSpokes)}>{tc('setp.flowLabelNozzle', 'Nozzle-led')}</span>
         </div>
+
+        {/* Said only when the switch CANNOT move, so a greyed switch is never a
+            mystery. Quiet says nothing. */}
+        {qm && !qm.quiet && (
+          <div style={{fontSize:12,marginTop:10,color:'#9a3412'}}>
+            {tc('setp.flowHeld', "Can't change now: {s} shift(s) and {l} nozzle(s) still open")
+              .replace('{s}', qm.open_shifts.length).replace('{l}', qm.open_legs)}
+            {qm.attendants.length ? ` — ${qm.attendants.slice(0, 3).join(', ')}${qm.attendants.length > 3 ? '…' : ''}` : ''}
+          </div>
+        )}
+        {qm?.quiet && !hubSpokes && cm && !cm.ready && (
+          <div style={{fontSize:12,marginTop:10,color:'#9a3412'}}>
+            {tc('setp.flowNeedsStart', '{m} of {t} nozzles need a starting reading.')
+              .replace('{m}', cm.missing).replace('{t}', cm.total)}
+            {' '}
+            <a href="/settings/commissioning" style={{color:'#9a3412',fontWeight:700}}>
+              {tc('setp.flowSetUp', 'Set up →')}
+            </a>
+          </div>
+        )}
       </div>
-    )}
+      );
+    })()}
 
     {/* Who closes an operator's line at this outlet (owner only) */}
     {isOwner && (
