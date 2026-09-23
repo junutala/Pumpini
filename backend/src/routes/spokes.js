@@ -113,8 +113,18 @@ router.get('/handover-preview', authenticate, requireStationAccess({ required: t
 router.get('/outstanding', authenticate, requireStationAccess({ required: true }),
   async (req, res, next) => {
     try {
-      if (!(await spokes.hasSpokeTables())) return res.json({ enabled: false, attendants: [] });
-      res.json({ enabled: true, attendants: await spokes.outstanding(req.query.station_id) });
+      if (!(await spokes.hasSpokeTables())) {
+        return res.json({ enabled: false, attendants: [], holdings: [] });
+      }
+      // BOTH HALVES IN ONE ANSWER. `attendants` is who owes (derived from closings);
+      // `holdings` is who is ON a nozzle right now — a man with no closing yet owes
+      // nothing and is still the man waiting to go home. Attendant Close starts from
+      // the second list, which is why they travel together rather than as two calls.
+      const [attendants, held] = await Promise.all([
+        spokes.outstanding(req.query.station_id),
+        spokes.holdings(req.query.station_id),
+      ]);
+      res.json({ enabled: true, attendants, holdings: held });
     } catch (err) { next(err); }
   });
 

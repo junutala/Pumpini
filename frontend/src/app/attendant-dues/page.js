@@ -1,5 +1,21 @@
 'use client';
-// SPOKE 3 — ATTENDANT DUES.
+// SPOKE 3 — ATTENDANT CLOSE.
+//
+// Owner, 23-Sep-2026: "the shift end will be renamed as Attendant Close... show all the
+// attendants who have assigned nozzles and let the flow start from there instead of the
+// current LOV for attendants."
+//
+// 🔴 WHY THE LIST CHANGED. It was built from outstanding(), which derives from
+// CLOSINGS — so a man who had taken a nozzle and not yet handed it over did not appear
+// at all. He owes nothing yet, which is true, and he is also exactly the man standing
+// in front of the manager wanting to go home. The list now STARTS from who is holding a
+// nozzle, and the men who owe follow.
+//
+// 🔴 AND WHY THE READING IS NOT TAKEN HERE. Closing a man's nozzle is a handover — the
+// same one reading that closes him and opens the next man — and that form lives on
+// Nozzle Events. A second copy of it here, differing only in where it was reached from,
+// is precisely the "forms above forms" the cardinal rule forbids. So this screen names
+// the nozzles he holds and sends the manager to the one form that records them.
 //
 // THE OUTSTANDING IS CALCULATED, NEVER TYPED. It is derived from the man's own nozzle
 // events, and there is deliberately NO FIELD for it anywhere on this screen. That is
@@ -36,6 +52,9 @@ export default function AttendantDuesPage() {
   const sid = typeof station === 'object' ? station?.id : station;
 
   const [rows, setRows]       = useState([]);
+  // WHO IS ON A NOZZLE RIGHT NOW. Travels with the dues in one answer — see
+  // GET /spokes/outstanding.
+  const [held, setHeld]       = useState([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId]   = useState(null);
@@ -56,6 +75,7 @@ export default function AttendantDuesPage() {
       const r = await api.get('/spokes/outstanding', { params: { station_id: sid } });
       setEnabled(r?.enabled !== false);
       setRows(Array.isArray(r?.attendants) ? r.attendants : []);
+      setHeld(Array.isArray(r?.holdings) ? r.holdings : []);
     } catch (e) { setErr(errText(e, 'Could not load the dues just now.')); }
     setLoading(false);
   }, [sid]);
@@ -96,7 +116,7 @@ export default function AttendantDuesPage() {
         <div className="card" style={{ maxWidth: 640, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
           <Info size={18} style={{ color: 'var(--text-3)', flexShrink: 0, marginTop: 2 }} />
           <div style={{ fontSize: 13.5, color: '#666' }}>
-            {tc('dues.off', 'Attendant Dues belongs to the hub-and-spokes flow, which is switched off here. Turn it on in Settings → Shift Timings, one outlet at a time.')}
+            {tc('dues.off', 'Attendant Close belongs to the nozzle-led flow, which is switched off here. This outlet runs shift-led — its operators are closed from Shift Close. You can change the flow in Settings.')}
           </div>
         </div>
       </AppShell>
@@ -105,13 +125,35 @@ export default function AttendantDuesPage() {
 
   const owing = rows.filter(r => Number(r.outstanding) > 0.5);
 
+  // ONE LIST, STARTING FROM WHO IS HOLDING A NOZZLE. A man can be in either half or
+  // both: holding and owing nothing (he has just started), owing and holding nothing
+  // (he has handed everything over and not settled), or both. Holders sort first —
+  // they are the ones who cannot leave yet.
+  const byId = new Map();
+  for (const h of held) {
+    byId.set(String(h.attendant_id), {
+      attendant_id: h.attendant_id, name: h.name,
+      holds: h.nozzles || [],
+      ltrs: 0, value: 0, handed_over: 0, outstanding: 0, last_close: null,
+    });
+  }
+  for (const r of rows) {
+    const k = String(r.attendant_id);
+    byId.set(k, { ...(byId.get(k) || { holds: [] }), ...r });
+  }
+  const people = [...byId.values()].sort((a, b) => {
+    const ah = (a.holds || []).length > 0, bh = (b.holds || []).length > 0;
+    if (ah !== bh) return ah ? -1 : 1;                      // holders first
+    return (Number(b.outstanding) || 0) - (Number(a.outstanding) || 0);
+  });
+
   return (
     <AppShell>
       <div style={{ maxWidth: 640 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
           <Wallet size={19} style={{ color: 'var(--brand)' }} />
           <h1 style={{ fontSize: 19, fontWeight: 800, margin: 0, letterSpacing: '-.01em' }}>
-            {tc('dues.title', 'Attendant Dues')}
+            {tc('dues.title', 'Attendant Close')}
           </h1>
           {owing.length > 0 && (
             <span style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 700, padding: '2px 8px',
@@ -128,25 +170,25 @@ export default function AttendantDuesPage() {
           <div className="card" style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Info size={17} style={{ color: 'var(--text-3)', flexShrink: 0, marginTop: 2 }} />
             <div style={{ fontSize: 13.5, color: '#666' }}>
-              {tc('dues.notMigrated', 'Attendant Dues is not switched on for this database yet. Nothing is lost — it will appear once the tables are added.')}
+              {tc('dues.notMigrated', 'Attendant Close is not switched on for this database yet. Nothing is lost — it will appear once the tables are added.')}
             </div>
           </div>
         ) : loading ? (
           <div className="card" style={{ fontSize: 13.5, color: 'var(--text-3)' }}>
             {tc('dues.loading', 'Loading…')}
           </div>
-        ) : rows.length === 0 ? (
+        ) : people.length === 0 ? (
           <div className="card">
             <div style={{ fontWeight: 700, fontSize: 15.5, marginBottom: 6 }}>
               {tc('dues.emptyTitle', 'Nothing outstanding')}
             </div>
             <div style={{ fontSize: 13.5, color: '#666', lineHeight: 1.6 }}>
-              {tc('dues.emptyBody', 'What a man owes is worked out from his own nozzle readings — it is never typed in. Once handovers are being recorded, anyone who has not settled will appear here.')}
+              {tc('dues.emptyBody2', 'Nobody is holding a nozzle and nobody owes anything. What a man owes is worked out from his own nozzle readings — it is never typed in. Assign a nozzle on Nozzle Events and he will appear here.')}
             </div>
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
-            {rows.map(r => {
+            {people.map(r => {
               const out = Number(r.outstanding) || 0;
               const clear = out <= 0.5;
               return (
@@ -159,6 +201,43 @@ export default function AttendantDuesPage() {
                       {money(out)}
                     </span>
                   </div>
+
+                  {/* WHAT HE IS STILL HOLDING. Owner, 23-Sep-2026: the flow starts
+                      from the men who have nozzles assigned. Each one is named the one
+                      way a nozzle is ever named, and the reading it stands at is shown
+                      so the manager knows what he is going to be reading against.
+
+                      He cannot be finished while he holds one: a nozzle still open
+                      against him is fuel still being sold on his account. The link goes
+                      to the ONE form that records a handover rather than repeating it
+                      here — see the note at the top of this file. */}
+                  {(r.holds || []).length > 0 && (
+                    <div style={{ marginTop: 9, padding: '9px 11px', borderRadius: 8,
+                                  background: 'var(--surface-2)', fontSize: 12.5 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 5 }}>
+                        {tc('dues.stillHolding', 'Still holding {n} nozzle(s)').replace('{n}', r.holds.length)}
+                      </div>
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        {r.holds.map(h => (
+                          <div key={h.nozzle_id} style={{ display: 'flex', gap: 10,
+                                justifyContent: 'space-between', fontFamily: 'var(--font-mono)' }}>
+                            <span>{nozName(h)}</span>
+                            <span style={{ color: 'var(--text-3)' }}>
+                              {h.reading == null ? '—' : Number(h.reading).toFixed(3)}
+                              {h.since ? ` · ${when(h.since)}` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 7, color: 'var(--text-3)', lineHeight: 1.5 }}>
+                        {tc('dues.closeFirst', 'Take the closing reading on each before settling him — the same reading closes him and opens whoever takes over.')}
+                        {' '}
+                        <a href="/nozzle-events" style={{ color: 'var(--brand)', fontWeight: 700 }}>
+                          {tc('dues.goHandover', 'Go to Nozzle Events →')}
+                        </a>
+                      </div>
+                    </div>
+                  )}
 
                   {/* HOW IT WAS ARRIVED AT, shown rather than asserted. He can see the
                       litres and the money behind the figure he is being asked about. */}

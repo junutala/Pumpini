@@ -1868,7 +1868,13 @@ function ShiftsTab({ stationId, onSaved }) {
               {tc('setp.flowHonest', 'Choose Nozzle-led only if the outlet genuinely cannot hold a clean, non-overlapping shift pattern. It is the honest answer for such an outlet — but with no shift boundary there is no way to tie nozzle sales to the tank, so wet-stock reconciliation goes away with it.')}
             </div>
             <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
-              {tc('setp.flowReversible', 'It can be changed back. Neither direction touches history, credit, cash, petty cash or margins — but it can only be changed at a quiet moment, with nothing left open.')}
+              {/* 🔴 CORRECTED 23-Sep-2026. This said "It can be changed back", and the
+                  switch does flip back — but the shift flow's carry reads only
+                  shift_attendant_nozzles and the nozzle-led flow writes only
+                  nozzle_events, so the first shift after switching back would open on a
+                  stale reading and land every litre sold in between on one man. A screen
+                  must not promise what the code cannot yet keep. See CLAUDE.md. */}
+              {tc('setp.flowReversible', 'Choose carefully. Switching TO nozzle-led is safe at a quiet moment. Switching BACK to shift-led is not yet safe after the outlet has run nozzle-led: the shift flow would carry stale opening readings. Talk to Pumpini support before switching back.')}
             </div>
             {/* THE THIRD REFUSAL, SAID BEFORE HE TAPS. The backend gates switching ON
                 until every nozzle has been commissioned from a real slip, because the

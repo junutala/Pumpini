@@ -85,7 +85,8 @@
     "grp_promotions": "Promotions",
     "campaign_run": "Issue a Gift",
     "campaign_report": "Gift Report",
-    "lube_transfer": "Stock Transfer"
+    "lube_transfer": "Stock Transfer",
+    "attendantdues": "Attendant Close"
   },
   "roles": {
     "owner": "Owner",
@@ -2603,7 +2604,7 @@
     "flowDescOn": "NOZZLE-LED. The shift is not the boundary here. A nozzle carries one chain of readings, each reading closes one man and opens the next, and the outstanding follows from his own readings. Shift Open and Shift Close leave the sidebar.",
     "flowDescOff": "SHIFT-LED. The outlet works shift by shift, exactly as it does today, and nozzle movement can be reconciled against the tank.",
     "flowHonest": "Choose Nozzle-led only if the outlet genuinely cannot hold a clean, non-overlapping shift pattern. It is the honest answer for such an outlet — but with no shift boundary there is no way to tie nozzle sales to the tank, so wet-stock reconciliation goes away with it.",
-    "flowReversible": "It can be changed back. Neither direction touches history, credit, cash, petty cash or margins — but it can only be changed at a quiet moment, with nothing left open.",
+    "flowReversible": "Choose carefully. Switching TO nozzle-led is safe at a quiet moment. Switching BACK to shift-led is not yet safe after the outlet has run nozzle-led: the shift flow would carry stale opening readings. Talk to Pumpini support before switching back.",
     "flowNotQuiet": "Held — there is still work open here.",
     "flowOpenShifts": "{n} shift(s) still running",
     "flowOpenLegs": "{n} nozzle leg(s) with no closing reading",
@@ -3510,5 +3511,14 @@
     "carriesNote": "This stays against him until he settles it. It does not hold up the pump, and it is not a field anybody can blank.",
     "addToOutstanding": "Add to outstanding & hand over",
     "assignNozzle": "Assign the nozzle"
+  },
+  "dues": {
+    "title": "Attendant Close",
+    "stillHolding": "Still holding {n} nozzle(s)",
+    "closeFirst": "Take the closing reading on each before settling him — the same reading closes him and opens whoever takes over.",
+    "goHandover": "Go to Nozzle Events →",
+    "emptyBody2": "Nobody is holding a nozzle and nobody owes anything. What a man owes is worked out from his own nozzle readings — it is never typed in. Assign a nozzle on Nozzle Events and he will appear here.",
+    "off": "Attendant Close belongs to the nozzle-led flow, which is switched off here. This outlet runs shift-led — its operators are closed from Shift Close. You can change the flow in Settings.",
+    "notMigrated": "Attendant Close is not switched on for this database yet. Nothing is lost — it will appear once the tables are added."
   }
 }

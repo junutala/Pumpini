@@ -21,8 +21,8 @@ during a session.**
   investigate: always fine, that is the evidence discipline below. `UPDATE`, `INSERT`,
   `DELETE`, DDL: only on his clear word, one statement at a time, and I say exactly what
   it will touch before I run it.
-- **"It is only a test outlet" IS NOT AN EXEMPTION.** Dilsukhnagar, Hayat Nagar, Nagole
-  and the unnamed outlet are fixtures, but they live in the SAME production database as
+- **"It is only a test outlet" IS NOT AN EXEMPTION.** Dilsukhnagar, Hayat Nagar, Nagole,
+  MBR and the unnamed outlet are fixtures, but they live in the SAME production database as
   Kamala, Highway and Adhoc. A wrong `WHERE` reaches a real outlet from either side of
   that line, and the owner cannot see which one I typed.
 - **A revert is not a licence.** "I will put it back in a few minutes" is how the change
@@ -469,8 +469,8 @@ hands the number back, and the settlement writes it. One writer.
    `docs/drift-audit.md` lists the rest. Find any other concept with two homes.
 3. **Peel the test outlets off PRODUCTION.** Only **Kamala**, **Adhoc Highway** and
    **Highway** are real — **and Sri Balaji, and anything onboarded since** (House
-   facts: the FIXTURE list is the closed one). Dilsukhnagar, Nagole, Hayat Nagar and
-   the unnamed outlet are the fixtures, and every analysis run against
+   facts: the FIXTURE list is the closed one). Dilsukhnagar, Nagole, Hayat Nagar, MBR
+   and the unnamed outlet are the fixtures, and every analysis run against
    prod has to filter them out by hand — which is how a wrong conclusion gets drawn.
    Precondition the owner set: **VAWE live and staging at parity with production**,
    then demos run on staging and prod holds only real outlets.
@@ -842,6 +842,50 @@ has not field-tested the composite nozzle scan — so treat the whole flow as un
 not as shipped. That is also why the 19-Sep slip-proposal defect sat unnoticed: the
 only screen it broke is one no real outlet can open.
 
+**🔴 UPDATED 23-Sep-2026 — the switch is now SHIFT-LED / NOZZLE-LED, not a migration.**
+The owner redefined it as a standing per-outlet choice: an outlet that genuinely cannot
+hold a clean, non-overlapping shift pattern runs **nozzle-led**, and is told plainly that
+with no shift boundary its nozzle sales cannot be tied to the tank. The column keeps its
+old name because renaming a live column breaks every read between deploy and migration;
+it is the meaning that changed. The Settings card reads *"How this outlet runs its day"*.
+
+State on 23-Sep, queried:
+
+      nozzle_events rows          12 at MBR (seeded genesis), 0 everywhere else
+      attendant_settlements rows  0 everywhere
+      flag ON                     Dilsukhnagar only — with 11 stranded shift legs and no
+                                  chain at all. A half-state; do not demo from it.
+      MBR                         flag OFF, 12 of 12 nozzles commissioned, quiet (0 open
+                                  shifts, 0 open legs) — the owner can switch it on
+
+**THE SWITCH NOW WAITS FOR A QUIET MOMENT** (`spokeService.quietMoment`, #428): no open
+shift **and no open leg**, in either direction. The open-leg half is new and it is the
+one that mattered — a shift can be closed with its legs still open, and SBR had 16 of
+those against zero at every other real outlet.
+
+### 🛑 SWITCHING BACK TO SHIFT-LED IS NOT YET SAFE. Say so before anyone promises it.
+
+The owner asked, 23-Sep: *"if Ramana wants to revert to the shift pattern, it's just a
+switch off and he is back to the shift ringfencing? correct?"* **No — not yet**, and the
+reason is structural:
+
+- the shift flow's carry, `openingService.nozzleOpenings()`, reads
+  `shift_attendant_nozzles` **and nothing else** (deliberately — the 01-Aug rule);
+- the nozzle-led flow writes `nozzle_events` **and nothing else**;
+- `nozzle_events` is read only by `spokeService` and `commissionService`.
+
+So the two flows do not share a meter. After a fortnight nozzle-led, the first shift
+opened on switching back would carry each nozzle's opening from the **last shift-led
+closing**, a fortnight stale, and its first closing would land every litre sold in
+between on one attendant. The quiet-moment guard does **not** catch this: in nozzle-led
+there are no open shifts or shift legs, so it reports quiet and lets the switch through.
+
+Nothing is broken today — only MBR has a chain. But **do not tell a customer the switch
+is reversible until the handoff is built.** The fix under discussion: on switching back
+to shift-led, seed each nozzle's carry from its chain head, inside the same guard, so
+one meter store stays authoritative for each flow and the handoff is explicit rather
+than implied.
+
 **ONLY THE FLOW BRANCHES. NOT THE FOUNDATIONS.** These stay single across both flows,
 and if any of them is copied we no longer have two flows — we have two products:
 
@@ -978,14 +1022,36 @@ what was actually true, how we found out, and what it cost. Not plans, not desig
   timestamp. India is DD/MM — never MM/DD.
 - **THE FIXTURE LIST IS CLOSED. EVERYTHING ELSE IS REAL** (owner-set 29-Aug-2026).
 
-  **These four are fixtures, and this list NEVER GROWS:**
+  **These five are fixtures, and this list grows ONLY by the owner's named word:**
 
       Dilsukhnagar Bunk
       Nagole Petrol Bunk
       Hayat Nagar Petrol Bunk
+      MBR                         ← added 23-Sep-2026, see below
       the unnamed outlet
 
   **ANY OTHER OUTLET IS REAL — including every outlet created from this day on.**
+
+  **🔴 MBR — ADDED 23-Sep-2026, BY THE OWNER, BY NAME.** *"yes MBR is a test outlet...
+  Since I cannot access SBR, we created a mirror of SBR as MBR."* Created 18-Sep, four
+  days after SBR ENERGIES, as a 1:1 mirror: the same three pump serials (M2601076,
+  M2602051, M2601180), the same twelve nozzles with the same fuels and printed numbers,
+  the same prices (diesel ₹104.08, petrol ₹116.35), and seven attendants named
+  `ABR DUMMY1`–`ABR DUMMY7`. It had run nothing — 0 shifts, 0 settlements, 0
+  deliveries — when it was declared.
+
+  **THIS DOES NOT LOOSEN THE RULE BELOW — IT IS THE RULE WORKING.** MBR was not on the
+  list, so it was treated as REAL until the owner said otherwise, which is exactly the
+  direction the list exists to force. The list moved because he named an outlet, not
+  because an assistant decided one looked disposable. **An outlet I do not recognise is
+  still real.** Nothing gets added here on inference.
+
+  **What MBR is FOR.** It is where the nozzle-led flow is tested with real-shaped data
+  before any customer is told about it. On 23-Sep-2026 it was seeded with one genesis
+  event per nozzle — twelve `nozzle_events` rows, `source='typed'`, each carrying SBR's
+  newest meter for the nozzle with the same number. `typed` and NULL
+  `read_pump_serial`/`read_nozzle_no` because **no slip was read**: a `photo` source
+  would claim evidence that does not exist. Every nozzle starts idle; the tester assigns.
   Owner: *"I promise, i will not create more dummy outlets as I am happy with three
   test. So, the converse MUST BE true. Any new outlet we create from now on, will be
   REAL OUTLETS and the data has to be protected as GOLD."*
@@ -1001,14 +1067,15 @@ what was actually true, how we found out, and what it cost. Not plans, not desig
   Station, Sri Balaji Oil Company** — and whatever is onboarded next, without anybody
   editing this line.
 
-  **Drift in the four fixtures is not a finding.** *"no amount of drift in these
+  **Drift in the five fixtures is not a finding.** *"no amount of drift in these
   outlets are a cause for concern."* Do not report it, do not propose cleaning it, and
-  exclude the four before drawing any conclusion from production data — a query
+  exclude all five before drawing any conclusion from production data — a query
   averaging across all of them is measuring demo keystrokes.
 
   **RULE ZERO IS NOT SOFTENED BY ANY OF THIS.** A fixture is not a licence to write.
-  All seven share ONE database, and a wrong `WHERE` reaches a real outlet from either
-  side of that line.
+  Every outlet shares ONE database, and a wrong `WHERE` reaches a real outlet from
+  either side of that line. The MBR seed on 23-Sep was one statement, scoped by station,
+  stated in full before it ran, and verified afterwards to have written nowhere else.
 - i18n: user-facing strings go through `tc('key', 'English fallback')`; add Telugu (`te.json`)
   for manager-facing text.
 - Attendants = `users` with `role='attendant'` linked via `station_users`; `is_active` +
