@@ -6,6 +6,7 @@ const { requireStationId } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const pumpService = require('../services/pumpService');
 const commissionService = require('../services/commissionService');
+const spokeService = require('../services/spokeService');
 const slipParser  = require('../services/slipParser');
 const calibrationService = require('../services/calibrationService');
 
@@ -166,19 +167,38 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
           message: 'Only the outlet owner can change the outlet flow.',
         });
       }
-      const { rows: openShifts } = await pool.query(
-        `SELECT sh.shift_number, to_char(sh.date, 'DD Mon YYYY') AS on_date
-           FROM shifts sh
-          WHERE sh.station_id=$1 AND sh.status='open'
-          ORDER BY sh.date, sh.shift_number`, [req.params.id]);
-      if (openShifts.length) {
-        const which = openShifts.map(o => `shift ${o.shift_number} of ${o.on_date}`).join(', ');
+      // THE QUIET MOMENT. One function, shared with GET /:id/flow-readiness, so the
+      // screen and this refusal cannot disagree about what is outstanding.
+      //
+      // 🔴 AMENDED 23-Sep-2026: this used to ask ONLY whether a shift was open. A leg
+      // keeps its liability until it gets a closing reading, and a shift can be CLOSED
+      // with its legs still open — SBR had 16 of those, against zero at every other
+      // real outlet, and every one would have passed the old check. Flipping the flow
+      // over an open leg leaves half a leg under each model.
+      const qm = await spokeService.quietMoment(req.params.id);
+      if (!qm.quiet) {
+        const parts = [];
+        if (qm.open_shifts.length) {
+          parts.push(qm.open_shifts.length === 1
+            ? `shift ${qm.open_shifts[0].shift_number} of ${qm.open_shifts[0].on_date} is still running`
+            : `${qm.open_shifts.length} shifts are still running`);
+        }
+        if (qm.open_legs) {
+          const who = qm.attendants.slice(0, 3).join(', ')
+            + (qm.attendants.length > 3 ? ` and ${qm.attendants.length - 3} more` : '');
+          parts.push(`${qm.open_legs} nozzle leg${qm.open_legs === 1 ? '' : 's'} `
+            + `${qm.open_legs === 1 ? 'has' : 'have'} no closing reading`
+            + (who ? ` (${who})` : '')
+            + (qm.stranded_legs ? ` — ${qm.stranded_legs} of them on a shift that is already closed` : ''));
+        }
         return res.status(409).json({
-          error: 'shift_open',
-          open_shifts: openShifts.length,
-          message: openShifts.length === 1
-            ? `The outlet flow cannot change while a shift is open — ${which} is still running. Close it first.`
-            : `The outlet flow cannot change while shifts are open — ${which} are still running. Close them first.`,
+          error: 'not_quiet',
+          open_shifts: qm.open_shifts.length,
+          open_legs: qm.open_legs,
+          stranded_legs: qm.stranded_legs,
+          attendants: qm.attendants,
+          message: `The outlet flow cannot change while work is still open — ${parts.join(', and ')}. `
+            + `Settle and close everything first; the switch is meant for a quiet moment, not the middle of a day.`,
         });
       }
       // Switching OFF is always allowed: a way back must never be gated on the thing
@@ -353,6 +373,31 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
 // "confirmed" column.
 
 // GET /api/stations/:id/commissioning — what the outlet still owes before the switch.
+// GET /api/stations/:id/flow-readiness
+//
+// EVERYTHING THE FLOW SWITCH DEPENDS ON, in one answer, so the owner sees WHY it is
+// held before he presses it rather than after. Both halves come from the same two
+// functions the POST guard calls, so the screen and the refusal cannot drift apart.
+//
+// Read-only and on plain station access: seeing that three legs are open is not a
+// privileged fact, and the owner-only rule belongs on the CHANGE, not the view.
+router.get('/:id/flow-readiness', authenticate, requireStationId('id'), async (req, res, next) => {
+  try {
+    const [quiet, commissioned] = await Promise.all([
+      spokeService.quietMoment(req.params.id),
+      commissionService.readiness(req.params.id),
+    ]);
+    res.json({
+      quiet_moment: quiet,
+      commissioning: commissioned,
+      // Turning OFF is deliberately NOT gated on commissioning: a way back must never
+      // depend on the thing that is going wrong. It still waits for a quiet moment.
+      can_turn_on:  quiet.quiet && commissioned.ready,
+      can_turn_off: quiet.quiet,
+    });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id/commissioning', authenticate, requireStationId('id'), async (req, res, next) => {
   try {
     res.json(await commissionService.readiness(req.params.id));

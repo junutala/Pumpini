@@ -1776,7 +1776,7 @@ function ShiftsTab({ stationId, onSaved }) {
   const [hubBusy,setHubBusy] = useState(false);
   // What still stands between this outlet and the switch, read from the SAME endpoint
   // the backend gate uses so the screen and the refusal cannot disagree.
-  const [commReady, setCommReady] = useState(null);
+  const [flowReady, setFlowReady] = useState(null);
   const isOwner = user?.role === 'owner';
 
   useEffect(()=>{
@@ -1786,9 +1786,9 @@ function ShiftsTab({ stationId, onSaved }) {
       setMgrMode(!!s?.manager_blind_drop);
       setSelfSettle(s?.self_settlement_enabled !== false);
       setHubSpokes(!!s?.hub_spokes_migration_enabled);
-      // Read through the SAME endpoint the gate uses, so the screen and the refusal
-      // cannot disagree about what is missing.
-      api.get(`/stations/${sid}/commissioning`).then(setCommReady).catch(() => setCommReady(null));
+      // Read through the SAME functions the gate uses, so the screen and the refusal
+      // cannot disagree about what is holding the switch.
+      api.get(`/stations/${sid}/flow-readiness`).then(setFlowReady).catch(() => setFlowReady(null));
     }).catch(()=>{});
   },[sid]);
 
@@ -1818,7 +1818,7 @@ function ShiftsTab({ stationId, onSaved }) {
     try {
       const r = await api.post(`/stations/${sid}/settings`, { hub_spokes_migration_enabled: !hubSpokes });
       setHubSpokes(!!r?.hub_spokes_migration_enabled);
-      api.get(`/stations/${sid}/commissioning`).then(setCommReady).catch(() => {});
+      api.get(`/stations/${sid}/flow-readiness`).then(setFlowReady).catch(() => {});
       // TELL THE SIDEBAR. The flag is read once in AuthProvider (the sidebar remounts
       // on every navigation, so reading it there would cost a fetch per screen), and
       // that read keys on the STATION — which does not change when the switch is
@@ -1837,41 +1837,106 @@ function ShiftsTab({ stationId, onSaved }) {
 
   return (
     <div style={{maxWidth:560}}>
-    {/* The hub-and-spokes MIGRATION FLAG (owner only). A switch that is meant to be
-        deleted once every outlet has moved — presented as a migration, not a feature,
-        so nobody mistakes it for a permanent setting. */}
+    {/* HOW THIS OUTLET RUNS ITS DAY (owner only).
+        Owner, 23-Sep-2026: an outlet that cannot enforce a clean, non-overlapping
+        shift pattern cannot have its nozzle sales tied to the tank, so it should not
+        be made to pretend. Shift-led keeps everything as it is. Nozzle-led drops the
+        shift as the boundary: the nozzle carries the chain and the attendant carries
+        the outstanding.
+        Stored in `hub_spokes_migration_enabled` — the column keeps its name because
+        renaming a live column breaks every read between deploy and migration. It is
+        the MEANING that changed, from a temporary migration to a standing choice. */}
     {isOwner && (
       <div className="card" style={{marginBottom:'1rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <div style={{paddingRight:12}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <div style={{fontWeight:700,fontSize:15}}>{tc('setp.hubSpokes', 'Hub-and-spokes flow')}</div>
+              <div style={{fontWeight:700,fontSize:15}}>{tc('setp.flowTitle', 'How this outlet runs its day')}</div>
               <span style={{fontSize:10,fontWeight:700,letterSpacing:'.06em',padding:'2px 6px',
-                borderRadius:4,background:'#fdf0e3',color:'#b45309'}}>
-                {tc('setp.hubSpokesBadge', 'MIGRATION')}
+                borderRadius:4,
+                background: hubSpokes ? '#e7f2ec' : '#eef1f5',
+                color:      hubSpokes ? '#15803d' : '#475569'}}>
+                {hubSpokes ? tc('setp.flowNozzleLed', 'NOZZLE-LED') : tc('setp.flowShiftLed', 'SHIFT-LED')}
               </span>
             </div>
             <div style={{fontSize:13,color:'#666',marginTop:2}}>
-              {tc('setp.hubSpokesDesc', 'When ON, this outlet stops working shift-by-shift. Shift Open and Shift Close leave the sidebar and the three spokes take their place — Tank Recon, Nozzle Events and Attendant Dues. One outlet at a time; every other outlet is untouched.')}
+              {hubSpokes
+                ? tc('setp.flowDescOn', 'NOZZLE-LED. The shift is not the boundary here. A nozzle carries one chain of readings, each reading closes one man and opens the next, and the outstanding follows from his own readings. Shift Open and Shift Close leave the sidebar.')
+                : tc('setp.flowDescOff', 'SHIFT-LED. The outlet works shift by shift, exactly as it does today, and nozzle movement can be reconciled against the tank.')}
             </div>
             <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
-              {tc('setp.hubSpokesUntouched', 'It does not touch history, credit, cash, petty cash or margins. It cannot be flipped while a shift is open here — close it first. To roll back, switch it off: the old sidebar and the old flow come straight back, and any recons taken meanwhile stay on file.')}
+              {tc('setp.flowHonest', 'Choose Nozzle-led only if the outlet genuinely cannot hold a clean, non-overlapping shift pattern. It is the honest answer for such an outlet — but with no shift boundary there is no way to tie nozzle sales to the tank, so wet-stock reconciliation goes away with it.')}
+            </div>
+            <div style={{fontSize:12,color:'var(--text-3)',marginTop:6}}>
+              {tc('setp.flowReversible', 'It can be changed back. Neither direction touches history, credit, cash, petty cash or margins — but it can only be changed at a quiet moment, with nothing left open.')}
             </div>
             {/* THE THIRD REFUSAL, SAID BEFORE HE TAPS. The backend gates switching ON
                 until every nozzle has been commissioned from a real slip, because the
                 new flow matches money on <serial>.<printed no> and a guessed printed
                 number puts one man's litres on another man's account. Showing the count
                 here means he learns what is missing without meeting a 409 first. */}
-            {!hubSpokes && commReady && !commReady.ready && (
+            {/* 🔴 THE QUIET MOMENT, SAID BEFORE HE TAPS — and it names what is open
+                rather than just refusing. The switch decides where a nozzle's opening
+                comes from, so flipping it with work in flight leaves half a leg under
+                each model.
+
+                THE OPEN-LEG HALF IS THE ONE THAT WAS MISSING. The old guard asked only
+                whether a SHIFT was open; a leg keeps its liability until it has a
+                closing reading, and a shift can be closed with its legs still open.
+                SBR had 16 of those on 23-Sep-2026 — every one would have passed. */}
+            {flowReady?.quiet_moment && !flowReady.quiet_moment.quiet && (
               <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
                 background:'#fbeee4',color:'#9a3412'}}>
-                {commReady.spokes_ready
-                  ? `${commReady.missing} ${tc('setp.hubSpokesNotComm', 'of')} ${commReady.total} ${tc('setp.hubSpokesNotComm2', 'nozzles have not been commissioned from a slip yet, so the switch is held.')}`
+                <div style={{fontWeight:700,marginBottom:3}}>
+                  {tc('setp.flowNotQuiet', 'Held — there is still work open here.')}
+                </div>
+                {flowReady.quiet_moment.open_shifts.length > 0 && (
+                  <div>{tc('setp.flowOpenShifts', '{n} shift(s) still running')
+                    .replace('{n}', flowReady.quiet_moment.open_shifts.length)}
+                    {': '}
+                    {flowReady.quiet_moment.open_shifts
+                      .map(o => `shift ${o.shift_number} of ${o.on_date}`).join(', ')}
+                  </div>
+                )}
+                {flowReady.quiet_moment.open_legs > 0 && (
+                  <div>
+                    {tc('setp.flowOpenLegs', '{n} nozzle leg(s) with no closing reading')
+                      .replace('{n}', flowReady.quiet_moment.open_legs)}
+                    {flowReady.quiet_moment.stranded_legs > 0 && (
+                      <> {tc('setp.flowStranded', '— {n} of them on a shift that is already closed, so no ordinary screen can clear them')
+                        .replace('{n}', flowReady.quiet_moment.stranded_legs)}</>
+                    )}
+                    {flowReady.quiet_moment.attendants.length > 0 && (
+                      <div style={{marginTop:2}}>
+                        {tc('setp.flowWho', 'Held by')}: {flowReady.quiet_moment.attendants.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Commissioning gates turning ON only: the new flow matches money on
+                <serial>.<printed no>, and a guessed printed number puts one man's
+                litres on another man's account. Switching OFF is never gated on it —
+                a way back must not depend on the thing that is going wrong. */}
+            {!hubSpokes && flowReady?.commissioning && !flowReady.commissioning.ready && (
+              <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
+                background:'#fbeee4',color:'#9a3412'}}>
+                {flowReady.commissioning.spokes_ready
+                  ? `${flowReady.commissioning.missing} ${tc('setp.hubSpokesNotComm', 'of')} ${flowReady.commissioning.total} ${tc('setp.hubSpokesNotComm2', 'nozzles have not been commissioned from a slip yet, so the switch is held.')}`
                   : tc('setp.hubSpokesNoTables', 'The hub-and-spokes tables are not in this database yet.')}
                 {' '}
                 <a href="/settings/commissioning" style={{color:'#9a3412',fontWeight:700}}>
                   {tc('setp.hubSpokesGoComm', 'Commission them →')}
                 </a>
+              </div>
+            )}
+
+            {flowReady?.quiet_moment?.quiet && (
+              <div style={{fontSize:12,marginTop:8,padding:'8px 10px',borderRadius:7,
+                background:'#e7f2ec',color:'#15803d'}}>
+                {tc('setp.flowQuiet', 'Nothing is open here — this is a quiet moment, so the flow can be changed.')}
               </div>
             )}
           </div>

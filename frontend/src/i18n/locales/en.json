@@ -2596,7 +2596,20 @@
     "lfrA": "'A' site — oil company owns the land and the equipment",
     "lfrB": "'B' site — you own the land and building, they own the equipment",
     "lfrNone": "No LFR — you own the land and the equipment",
-    "lfrHelp": "Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own."
+    "lfrHelp": "Licence Fee Recovery arrives on a separate oil-company invoice, charged per KL lifted. Setting this lets Pumpini check an uploaded LFR invoice against the rate your site should be billed at. Optional — leave it unset and we read the rate off the invoice itself. It never adds a charge on its own.",
+    "flowTitle": "How this outlet runs its day",
+    "flowShiftLed": "SHIFT-LED",
+    "flowNozzleLed": "NOZZLE-LED",
+    "flowDescOn": "NOZZLE-LED. The shift is not the boundary here. A nozzle carries one chain of readings, each reading closes one man and opens the next, and the outstanding follows from his own readings. Shift Open and Shift Close leave the sidebar.",
+    "flowDescOff": "SHIFT-LED. The outlet works shift by shift, exactly as it does today, and nozzle movement can be reconciled against the tank.",
+    "flowHonest": "Choose Nozzle-led only if the outlet genuinely cannot hold a clean, non-overlapping shift pattern. It is the honest answer for such an outlet — but with no shift boundary there is no way to tie nozzle sales to the tank, so wet-stock reconciliation goes away with it.",
+    "flowReversible": "It can be changed back. Neither direction touches history, credit, cash, petty cash or margins — but it can only be changed at a quiet moment, with nothing left open.",
+    "flowNotQuiet": "Held — there is still work open here.",
+    "flowOpenShifts": "{n} shift(s) still running",
+    "flowOpenLegs": "{n} nozzle leg(s) with no closing reading",
+    "flowStranded": "— {n} of them on a shift that is already closed, so no ordinary screen can clear them",
+    "flowWho": "Held by",
+    "flowQuiet": "Nothing is open here — this is a quiet moment, so the flow can be changed."
   },
   "sstart": {
     "dashboard": "Dashboard",

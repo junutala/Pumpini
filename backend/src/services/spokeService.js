@@ -12,7 +12,8 @@
 // THE PUMP IS NEVER BLOCKED. If a man walks off without printing, the next man's scan
 // IS the closing event and the outstanding stands against the man who left. The act of
 // taking over is the act of closing, so there is nothing to freeze and no break-glass.
-const pool = require('../db/pool');
+const pool  = require('../db/pool');
+const pumps = require('./pumpService');
 
 let _hasTables = false;
 async function hasSpokeTables() {
@@ -296,10 +297,69 @@ async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
   return { settlement: rows[0] };
 }
 
+// ── THE QUIET MOMENT ─────────────────────────────────────────────────────────
+//
+// CAN THIS OUTLET CHANGE ITS FLOW RIGHT NOW? One function, so the Settings screen
+// and the refusal can never disagree about the answer.
+//
+// The flow switch decides where a nozzle's opening comes from. Flip it with work
+// still open and a leg is half under one model and half under the other, which
+// leaves a reading nobody can defend. So the switch waits for a boundary where
+// nothing is in flight — end of day, everybody settled.
+//
+// 🔴 OPEN SHIFTS WERE ALREADY CHECKED. OPEN LEGS WERE NOT, AND THAT IS THE HOLE.
+// A leg keeps its liability until it gets a closing reading, and a shift can be
+// CLOSED with its legs still open — SBR had 16 of those on 23-Sep-2026, against
+// zero at every other real outlet. Every one would have passed the old guard,
+// because it only asked whether a shift was running.
+//
+// Reported, never merely counted: the screen names the men and the nozzles, so
+// the owner knows what to go and clear rather than being told "not yet".
+async function quietMoment(station_id, client = pool) {
+  const { rows: openShifts } = await client.query(
+    `SELECT sh.id, sh.shift_number, to_char(sh.date, 'DD Mon YYYY') AS on_date
+       FROM shifts sh
+      WHERE sh.station_id = $1 AND sh.status = 'open'
+      ORDER BY sh.date, sh.shift_number`, [station_id]);
+
+  const nm = await pumps.nozzleNameSelect(client);
+  const { rows: legs } = await client.query(`
+    SELECT san.id                AS leg_id,
+           usr.name              AS attendant_name,
+           sh.status             AS shift_status,
+           sh.shift_number,
+           to_char(sh.date, 'DD Mon YYYY') AS on_date,
+           san.opening_reading
+           ${nm.col}
+      FROM shift_attendant_nozzles san
+      JOIN shifts  sh ON sh.id = san.shift_id
+      JOIN nozzles n  ON n.id = san.nozzle_id
+      ${nm.join}
+      LEFT JOIN users usr ON usr.id = san.attendant_id
+     WHERE sh.station_id = $1
+       AND san.closing_reading IS NULL
+     ORDER BY sh.date DESC, san.assigned_at DESC NULLS LAST
+     LIMIT 200`, [station_id]);
+
+  const stranded = legs.filter(l => l.shift_status !== 'open');
+  const attendants = [...new Set(legs.map(l => l.attendant_name).filter(Boolean))];
+
+  return {
+    quiet: openShifts.length === 0 && legs.length === 0,
+    open_shifts: openShifts,
+    open_legs: legs.length,
+    // A leg left open on a shift that is already CLOSED. No ordinary flow can
+    // close it, so it is named separately — it needs the owner, not the manager.
+    stranded_legs: stranded.length,
+    attendants,
+    legs,
+  };
+}
+
 const num = v => Number(v) || 0;
 
 module.exports = {
   hasSpokeTables, physicsVerdict, recordEvent, chain, nozzleState, outstanding,
-  outstandingDetail, settle,
+  outstandingDetail, settle, quietMoment,
   MAX_FLOW_LTRS_PER_MIN,
 };
