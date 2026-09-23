@@ -85,6 +85,29 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
     } catch (err) { next(err); }
   });
 
+// GET /api/spokes/handover-preview?station_id=&nozzle_id=&reading=
+//
+// WHAT THIS READING WOULD MEAN, before it is recorded. The manager sees the amount
+// the outgoing man will owe AT THE MOMENT OF THE HANDOVER, with the working shown —
+// two readings, the litres between them, the rate, the rupees — rather than meeting
+// it later on a settlement screen he did not expect.
+//
+// READ-ONLY AND DERIVED. It writes nothing, and it accepts no outstanding as an
+// input: the arithmetic is spokeService's and the caller may only ask.
+//
+// Same permission as the handover it precedes — a man allowed to record one is
+// allowed to see what it costs before he does.
+router.get('/handover-preview', authenticate, requireStationAccess({ required: true }),
+  async (req, res, next) => {
+    try {
+      const { station_id, nozzle_id, reading } = req.query;
+      if (!nozzle_id) return res.status(400).json({ error: 'nozzle_id is required' });
+      res.json(await spokes.handoverPreview({
+        station_id, nozzle_id, reading: reading === undefined ? null : Number(reading),
+      }));
+    } catch (err) { next(err); }
+  });
+
 // GET /api/spokes/outstanding?station_id=
 // WHAT EACH MAN OWES — calculated, never stored, never typed.
 router.get('/outstanding', authenticate, requireStationAccess({ required: true }),
