@@ -1401,11 +1401,22 @@ async function runPrune({ table, blobCol, limit, res }) {
 //     there, except the delivery invoices"). Guarded TWICE and deliberately so: by
 //     the referential check above, and again by an explicit path exclusion, so an
 //     invoice whose row was lost is still never deleted. Belt and braces on the one
-//     thing he asked to keep.
+//     thing he asked to keep. The exclusion is by FOLDER, and a delivery document
+//     can live in four of them (PROTECTED_FOLDERS below) — the LFR invoice's two
+//     were missing until 24-Sep-2026, so an LFR invoice whose row had gone was
+//     purgeable while every screen said "delivery invoices are never touched".
 //   * dry=1 (the default) CHANGES NOTHING and reports exactly what would go. The
 //     delete only happens on an explicit dry=0.
 //
 // Repeat until `remaining` is 0. Idempotent; safe to re-run.
+// Every folder a delivery document (tax invoice or LFR invoice) has ever been
+// written to. Two naming schemes, two kinds: vaweStorage's human-readable folders
+// (`deliveries/`, `lfr_invoice/`) and the legacy `<prefix>/<station>/` shape it
+// still falls back to when the outlet cannot be resolved (`delivery-invoices/`,
+// `lfr-invoices/`) — see routes/deliveries.js insertDeliveryInvoice. Matched as an
+// exact top-level folder, never with LIKE, where `_` is a wildcard.
+const PROTECTED_FOLDERS = ['deliveries', 'delivery-invoices', 'lfr_invoice', 'lfr-invoices'];
+
 router.post('/purge-orphan-objects', authAdmin, async (req, res, next) => {
   try {
     if (!storageConfigured()) return res.status(503).json({ error: 'Object storage not configured' });
@@ -1418,8 +1429,7 @@ router.post('/purge-orphan-objects', authAdmin, async (req, res, next) => {
       `SELECT o.name, (o.metadata->>'size')::bigint AS size_bytes
          FROM storage.objects o
         WHERE o.bucket_id = $1
-          AND o.name NOT LIKE 'delivery-invoices/%'   -- protected, second guard
-          AND o.name NOT LIKE 'deliveries/%'          -- protected, new-scheme folder
+          AND split_part(o.name, '/', 1) <> ALL($3::text[])   -- protected, second guard
           AND NOT EXISTS (
                 SELECT 1 FROM delivery_invoices  d WHERE d.storage_path = o.name
                 UNION ALL
@@ -1428,21 +1438,20 @@ router.post('/purge-orphan-objects', authAdmin, async (req, res, next) => {
                 SELECT 1 FROM station_artifacts  a WHERE a.storage_path = o.name)
         ORDER BY o.created_at
         LIMIT $2`,
-      [docBucket(), limit]);
+      [docBucket(), limit, PROTECTED_FOLDERS]);
 
     const { rows: [tot] } = await pool.query(
       `SELECT count(*)::int AS remaining, COALESCE(sum((o.metadata->>'size')::bigint),0)::bigint AS bytes
          FROM storage.objects o
         WHERE o.bucket_id = $1
-          AND o.name NOT LIKE 'delivery-invoices/%'
-          AND o.name NOT LIKE 'deliveries/%'
+          AND split_part(o.name, '/', 1) <> ALL($2::text[])
           AND NOT EXISTS (
                 SELECT 1 FROM delivery_invoices  d WHERE d.storage_path = o.name
                 UNION ALL
                 SELECT 1 FROM meter_photos       m WHERE m.storage_path = o.name
                 UNION ALL
                 SELECT 1 FROM station_artifacts  a WHERE a.storage_path = o.name)`,
-      [docBucket()]);
+      [docBucket(), PROTECTED_FOLDERS]);
 
     const paths = orphans.map(o => o.name);
     let deleted = [];
@@ -1456,7 +1465,7 @@ router.post('/purge-orphan-objects', authAdmin, async (req, res, next) => {
       batch_bytes: orphans.reduce((n, o) => n + Number(o.size_bytes || 0), 0),
       remaining: tot.remaining,
       remaining_bytes: Number(tot.bytes),
-      protected: 'delivery invoices, and anything a live row points at',
+      protected: 'delivery and LFR invoices, and anything a live row points at',
       sample: paths.slice(0, 10),
     });
   } catch (err) { next(err); }

@@ -142,6 +142,38 @@ router.get('/:id/nozzles', authenticate, requireStationId('id'), async (req, res
 });
 
 // POST /api/stations/:id/settings
+// LFR site category — ONE writer for BOTH settings routes. The dropdown lives on the
+// Station Information form, which saves through PATCH /:id/settings; the toggles save
+// through POST. Until 24-Sep-2026 only POST wrote this column, so every pick on the
+// form returned OK and came back "Not set" — no outlet had ever managed to save one.
+//
+// '' from a <select> means "clear it back to unknown", which is why '' maps to NULL
+// rather than being COALESCEd away — unknown has to be reachable again, or a wrong
+// pick would be permanent.
+function lfrSiteCategory(raw) {
+  if (raw === undefined) return { present: false };
+  const value = (raw === '' || raw === null) ? null : String(raw).trim();
+  if (value !== null && !['A', 'B', 'none'].includes(value)) {
+    return { error: "lfr_site_category must be 'A', 'B' or 'none'." };
+  }
+  return { present: true, value };
+}
+
+// Guarded for the same reason invoice_fy is: this code deploys before the owner runs
+// the DDL, and a missing column must not 500 the whole settings save.
+async function saveLfrSiteCategory(stationId, value) {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE station_settings SET lfr_site_category = $2, updated_at = NOW()
+        WHERE station_id = $1 RETURNING *`, [stationId, value]);
+    return rows[0] || null;
+  } catch (e) {
+    if (e.code !== '42703') throw e;
+    try { require('../utils/logger').warn('lfr_site_category not migrated yet — skipped'); } catch { /* noop */ }
+    return null;
+  }
+}
+
 router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('settings.manage'), async (req, res, next) => {
   try {
     // ── The hub-and-spokes MIGRATION FLAG — a temporary switch, not a feature ──
@@ -306,26 +338,11 @@ router.post('/:id/settings', authenticate, requireStationId('id'), requirePerm('
     // outlets nobody ever asked for an LFR invoice before. This column only says which
     // rate card to check an uploaded invoice against; unset simply means we validate
     // against whatever the invoice itself implies instead of a stored expectation.
-    //
-    // '' from a <select> means "clear it back to unknown", which is why '' maps to NULL
-    // rather than being COALESCEd away — unknown has to be reachable again, or a wrong
-    // pick would be permanent.
-    const { lfr_site_category } = req.body;
-    if (lfr_site_category !== undefined) {
-      const v = (lfr_site_category === '' || lfr_site_category === null) ? null
-              : String(lfr_site_category).trim();
-      if (v !== null && !['A', 'B', 'none'].includes(v)) {
-        return res.status(400).json({ error: "lfr_site_category must be 'A', 'B' or 'none'." });
-      }
-      try {
-        const { rows: upd } = await pool.query(
-          `UPDATE station_settings SET lfr_site_category = $2, updated_at = NOW()
-            WHERE station_id = $1 RETURNING *`, [req.params.id, v]);
-        if (upd.length) rows[0] = upd[0];
-      } catch (e) {
-        if (e.code !== '42703') throw e;
-        try { require('../utils/logger').warn('lfr_site_category not migrated yet — skipped'); } catch { /* noop */ }
-      }
+    const lfr = lfrSiteCategory(req.body.lfr_site_category);
+    if (lfr.error) return res.status(400).json({ error: lfr.error });
+    if (lfr.present) {
+      const upd = await saveLfrSiteCategory(req.params.id, lfr.value);
+      if (upd) rows[0] = upd;
     }
 
     // The outlet's settlement policy, written through the SAME settings endpoint
@@ -580,6 +597,9 @@ router.patch('/:id/settings', authenticate, requireStationId('id'), requirePerm(
   try {
     const { name, address, state, city, pincode, oil_company, gstn, pan,
             owner_whatsapp, invoice_prefix } = req.body;
+    // Checked before anything is written, so a bad value cannot leave a half-saved form.
+    const lfr = lfrSiteCategory(req.body.lfr_site_category);
+    if (lfr.error) return res.status(400).json({ error: lfr.error });
     // Update stations table
     await pool.query(
       `UPDATE stations SET
@@ -600,6 +620,8 @@ router.patch('/:id/settings', authenticate, requireStationId('id'), requirePerm(
          invoice_prefix=COALESCE($5,station_settings.invoice_prefix)`,
       [req.params.id, gstn, pan, owner_whatsapp, invoice_prefix||'INV']
     );
+    // After the upsert, so the station_settings row is guaranteed to exist.
+    if (lfr.present) await saveLfrSiteCategory(req.params.id, lfr.value);
     res.json({ ok:true });
   } catch(err) { next(err); }
 });
