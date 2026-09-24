@@ -16,6 +16,38 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-24 · The runbook for clearing an outlet went stale the day after it was written
+
+**We believed** `ops/clear-outlet-transactions.sql` was the safe, reviewed way to reset an
+outlet. It was written on 18-Sep after clearing SBR by hand, it had a guard and ran in
+one transaction, and when Ramana asked on 24-Sep to start over it was the obvious tool.
+
+**Actually** it would have done three things nobody asked for. It deleted **every**
+`station_artifacts` row for the outlet, and that table holds the attendants'
+face-enrolment photographs (`attendant_photo`). SBR's first was taken on 19-Sep, the day
+after the script was written, and it has 7. Those are master data. The script also
+deleted each pump's commissioning slip and the coupon-book sample photo. Its own header
+says it did that on purpose, but that treats evidence about a pump it keeps as
+disposable. It had no way to keep deliveries, which is exactly what the
+owner asked for: *"clear all transaction data, except the deliveries. Keep the master
+data intact."* And its "OPTIONAL" step that zeroes tank stock was **not commented out**,
+so by default it ran.
+
+**We found out** by reading the script against the live rows before running anything.
+SBR was then cleared by a hand-built statement instead, one transaction that asserted
+every count it had shown the owner (718 rows, deliveries kept). The script was then
+fixed and tested on a local copy of the production structure (87 tables, 212 foreign
+keys) with a bystander outlet. The old version, run against the same fixture, left the
+outlet with no photographs at all and zero tank stock.
+
+**It cost** nothing at a customer, because it was read before it ran. But a runbook
+that lists "everything for the station" goes wrong the day a table starts holding a
+new kind of row, and nothing tells anyone. The fix deletes photographs by allow-list
+(a shift's, a sale's, a gauge reading) so an unknown kind is kept, and the AFTER report
+names every photograph that stayed.
+
+---
+
 ## 2026-09-23 · The switch-back rule I designed would have made MBR's managers type ten openings
 
 **We believed** a genesis-only chain should never carry into a shift. A genesis is taken
