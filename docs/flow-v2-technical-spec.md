@@ -200,14 +200,16 @@ MIN_GAP_SECONDS       = 30   -- floor, so a legitimate back-to-back print at the
 ```
 legs    each event with closes_attendant_id, contributing
         GREATEST(reading − prev.reading, 0) litres
-priced  litres × the fuel's CURRENT price (fuel_prices.price, latest effective_from)
+priced  litres × the price IN FORCE WHEN THE LEG CLOSED (latest effective_from <= closing reading)
 brought SUM(cash+upi+card+credit+petty) from attendant_settlements
         outstanding = priced.value − brought.handed_over
 ```
 
-Price changes are deliberately not modelled: the price is updated by hand at the
-controller and by hand in Pumpini, and there is no pre/post-change gating to build
-(owner-set, 27-Aug).
+A price change is PROSPECTIVE (owner, 27-Sep-2026): a leg takes the price in force when it closed,
+and a later change never reaches back into it. One price per leg and no proration — the 27-Aug
+ruling that the manager closes and recommences around a change still stands. This line used to
+read "litres × the fuel's CURRENT price", credited to the 27-Aug ruling; that ruling said build
+nothing, not reprice history (learnings.md, 27-Sep).
 
 ### `services/commissionService`
 `readiness` · `commission` · `wantsFor`

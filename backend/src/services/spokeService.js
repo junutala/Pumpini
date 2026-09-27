@@ -303,9 +303,31 @@ const LEG_TEST_LTRS = `COALESCE((SELECT SUM(td.litres) FROM fuel_test_draws td
        WHERE td.nozzle_id = e.nozzle_id AND p.recorded_at IS NOT NULL
          AND td.drawn_at > p.recorded_at AND td.drawn_at <= e.recorded_at), 0)`;
 
+// ── A PRICE CHANGE IS PROSPECTIVE ────────────────────────────────────────────
+// Owner, 27-Sep-2026: "A price change has to be prospective." A leg is priced at the
+// price IN FORCE WHEN IT CLOSED — the moment its figure comes into existence, and the
+// moment the handover preview showed the manager. A change applies to legs closed
+// after it and never reaches back into one already closed.
+//
+// 🔴 UNTIL 27-Sep-2026 EVERY LEG WAS PRICED AT TODAY'S PRICE, with a comment crediting
+// the owner's 27-Aug ruling. That ruling (docs/flow-v2-build-plan.md §11.2) said to
+// build NOTHING for a price change — the manager closes and recommences around it, no
+// proration, no price-boundary machinery. "Build nothing" was read as "use today's
+// price", which is the opposite: a ₹0.50 change turned six settled men into debtors in
+// the MBR rehearsal, and made closing around the change pointless. One price per leg,
+// no proration, is still exactly the ruling. See learnings.md, 27-Sep.
+//
+// A leg that closed before the outlet had any price for that fuel prices at ₹0 and
+// shows "× ₹0" on the statement — visible and checkable, never a guessed price.
+// Expects the station as $1.
+const priceAt = (fuelExpr, momentExpr) => `(SELECT fp.price FROM fuel_prices fp
+            WHERE fp.station_id = $1 AND fp.fuel_type = ${fuelExpr}
+              AND fp.effective_from <= ${momentExpr}
+            ORDER BY fp.effective_from DESC LIMIT 1)`;
+
 // ── SPOKE 3 ──────────────────────────────────────────────────────────────────
-// WHAT A MAN OWES, DERIVED. His litres are the sum of every closing he was on, priced
-// at the fuel's current rate, less what he has already handed over.
+// WHAT A MAN OWES, DERIVED. His litres are the sum of every closing he was on, each
+// priced at the rate in force when it closed, less what he has already handed over.
 //
 // It is a LIABILITY that stands until cleared, exactly as credit_suspense_entries
 // already does — and nothing silently zeroes it. A man with an outstanding works his
@@ -330,18 +352,10 @@ async function outstanding(station_id) {
      priced AS (
        SELECT l.attendant_id,
               SUM(l.ltrs) AS ltrs,
-              -- The CURRENT price for that fuel. Price changes are not this system's
-              -- problem (owner-set 27-Aug): the price is updated by hand at the
-              -- controller and by hand in Pumpini, and there is no gating pre/post
-              -- change to build.
-              SUM(l.ltrs * COALESCE(pr.price, 0)) AS value,
+              -- Each leg at the price in force when it closed (priceAt). Prospective.
+              SUM(l.ltrs * COALESCE(${priceAt('l.fuel_type', 'l.recorded_at')}, 0)) AS value,
               MAX(l.recorded_at) AS last_close
          FROM legs l
-         LEFT JOIN LATERAL (
-           SELECT fp.price FROM fuel_prices fp
-            WHERE fp.station_id = $1 AND fp.fuel_type = l.fuel_type
-            ORDER BY fp.effective_from DESC LIMIT 1
-         ) pr ON true
         GROUP BY l.attendant_id
      ),
      brought AS (
@@ -419,7 +433,7 @@ async function holdings(station_id) {
 // seconds, and after that he stops verifying. That is what trust is.
 //
 // Same shape as outstanding() deliberately — the same legs, the same test-draw
-// fragment, the same price lookup, the same GREATEST() floor — so the lines can never
+// fragment, the same priceAt(), the same GREATEST() floor — so the lines can never
 // sum to a different figure than the total they sit under. The test litres come back
 // as their own column: a line that silently came out 5 L short of the two readings
 // would be a line he could not check.
@@ -444,11 +458,7 @@ async function outstandingDetail(station_id, attendant_id) {
        JOIN nozzles n ON n.id = e.nozzle_id
        ${nm.join}
        LEFT JOIN nozzle_events p ON p.id = e.prev_event_id
-       LEFT JOIN LATERAL (
-         SELECT fp.price FROM fuel_prices fp
-          WHERE fp.station_id = $1 AND fp.fuel_type = n.fuel_type
-          ORDER BY fp.effective_from DESC LIMIT 1
-       ) pr ON true
+       LEFT JOIN LATERAL (SELECT ${priceAt('n.fuel_type', 'e.recorded_at')} AS price) pr ON true
       WHERE e.station_id = $1 AND e.closes_attendant_id = $2
       ORDER BY e.recorded_at DESC, n.nozzle_number`,
     [station_id, attendant_id]);
@@ -461,9 +471,8 @@ async function outstandingDetail(station_id, attendant_id) {
 //   * GREATEST(reading - prev, 0) — a misread that goes BACKWARDS must never become a
 //     negative charge. The physics test calls that out separately; the money floors at
 //     zero either way.
-//   * litres times the fuel's CURRENT price. Price changes are not this system's
-//     problem (owner-set 27-Aug): the price is updated by hand at the controller and by
-//     hand here, and there is no gating pre/post change to build.
+//   * litres times the price in force when the leg closes (priceAt) — prospective,
+//     one price per leg, no proration.
 //   * no previous reading means no leg and no charge — a first reading opens a chain,
 //     it does not close one.
 //   * test litres drawn in the leg come off before pricing (LEG_TEST_LTRS).
@@ -486,8 +495,8 @@ function handoverMath({ prevReading, reading, price, testLtrs = 0 }) {
 // attendant."
 //
 // It is a PREVIEW, not a second arithmetic. It reuses the same pieces outstanding()
-// and outstandingDetail() use — the same GREATEST() floor, the same current-price
-// lookup — so the figure a manager confirms here is the figure that appears against
+// and outstandingDetail() use — the same GREATEST() floor, the same priceAt() at the
+// moment of the handover — so the figure a manager confirms here is the figure that appears against
 // the man afterwards. Two formulas for one number is how a screen and a ledger come
 // to disagree, and a manager who finds them disagreeing stops trusting both.
 //
@@ -498,12 +507,13 @@ async function handoverPreview({ station_id, nozzle_id, reading, at = new Date()
 
   const nm = await pumps.nozzleNameSelect(pool);
   const { rows: nz } = await pool.query(
+    // The price in force at the moment of the handover — the same priceAt() the ledger
+    // uses for this leg once it is recorded, so the preview and the statement agree.
+    // A price entered with a future effective date is not yet in force and is not used.
     `SELECT n.id, n.fuel_type${nm.col},
-            (SELECT fp.price FROM fuel_prices fp
-              WHERE fp.station_id = $2 AND fp.fuel_type = n.fuel_type
-              ORDER BY fp.effective_from DESC LIMIT 1) AS price
+            ${priceAt('n.fuel_type', '$3::timestamptz')} AS price
        FROM nozzles n ${nm.join}
-      WHERE n.id = $1 AND n.station_id = $2`, [nozzle_id, station_id]);
+      WHERE n.id = $2 AND n.station_id = $1`, [station_id, nozzle_id, at]);
   if (!nz.length) return { enabled: true, found: false };
   const n = nz[0];
 
