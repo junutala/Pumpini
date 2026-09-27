@@ -760,6 +760,15 @@ becomes link ONE of the nozzle's chain, and every later handover chains off it.
 because a boolean can drift away from reality and an event cannot. A nozzle with no
 chain was never commissioned, whatever any column says.
 
+**CORRECTING A WRONG READING — the owner's void, approved 27-Sep-2026.** A decrease is
+refused finally on a handover, so a wrong figure that got under every physics bound used
+to freeze the nozzle for good. The owner (and only the owner) may void the LATEST reading
+on a nozzle, with a reason in his own words (`spokeService.voidLastEvent`, Nozzle Events).
+The row leaves `nozzle_events` and goes, whole, to `audit_log` in the same transaction.
+**Do not replace this with a "voided" flag on `nozzle_events`:** twelve places read the
+chain, and a flag is a filter every one of them must remember. A genuine meter reset or
+replacement is still a commissioning act and has no path yet.
+
 ### 🔴 TWO TABLES FOR THE SLIP READINGS. Deliberate, priced, do not "fix" it.
 
 > *"The nozzle slips at two different hands serve different purposes... I know this

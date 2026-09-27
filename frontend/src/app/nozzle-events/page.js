@@ -47,7 +47,8 @@ const drift = s => {
 };
 
 export default function NozzleEventsPage() {
-  const { station, hubSpokesFlow } = useAuth();
+  const { station, hubSpokesFlow, user } = useAuth();
+  const isOwner = user?.role === 'owner';
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
   const sid = typeof station === 'object' ? station?.id : station;
@@ -73,6 +74,9 @@ export default function NozzleEventsPage() {
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState('');
+  // THE OWNER'S VOID — which reading's box is open, and the reason he is typing.
+  const [voidOpen, setVoidOpen] = useState(null);   // event id
+  const [voidWhy, setVoidWhy]   = useState('');
 
   const load = useCallback(async () => {
     if (!sid) return;
@@ -138,6 +142,28 @@ export default function NozzleEventsPage() {
     }
     setBusy(false);
   };
+
+  // VOID THE LAST READING — owner only, the latest reading on a nozzle only, a reason in
+  // his own words. The backend decides all three; this only asks. The row is kept in the
+  // audit log, and the nozzle goes back to the reading before it, so the right figure is
+  // then recorded through the ordinary handover above.
+  const voidReading = async (e) => {
+    setBusy(true); setErr(''); setOk('');
+    try {
+      const r = await api.post(`/spokes/event/${e.id}/void`, { station_id: sid, reason: voidWhy });
+      setOk(r?.head
+        ? `${nozName(e)} — ${tc('spoke.voided', 'reading voided. The nozzle is back at')} ${L(r.head.reading)}.`
+        : `${nozName(e)} — ${tc('spoke.voidedGenesis', 'starting reading voided. Commission this nozzle again in Settings before its next handover.')}`);
+      setVoidOpen(null); setVoidWhy('');
+      await load();
+    } catch (x) {
+      setErr(errText(x, tc('spoke.voidFailed', 'Could not void that reading.')));
+    }
+    setBusy(false);
+  };
+
+  // The latest reading on each nozzle — the only one that may be voided.
+  const heads = new Set(state.map(n => n.head_event_id).filter(Boolean));
 
   if (!hubSpokesFlow) {
     return (
@@ -364,6 +390,35 @@ export default function NozzleEventsPage() {
                       <span>{e.drift_reason}</span>
                     </div>
                   )}
+
+                  {/* THE OWNER'S CORRECTION — only on a nozzle's latest reading. */}
+                  {isOwner && heads.has(e.id) && (voidOpen === e.id ? (
+                    <div style={{ marginTop: 9, display: 'grid', gap: 7 }}>
+                      <input value={voidWhy} autoFocus disabled={busy}
+                        onChange={x => setVoidWhy(x.target.value)}
+                        placeholder={tc('spoke.voidWhyPh', 'Why is this reading wrong? In your own words')}
+                        style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid #f0c9a8', fontSize: 13 }} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => voidReading(e)} disabled={busy || !voidWhy.trim()}
+                          style={{ background: (busy || !voidWhy.trim()) ? '#e5e3de' : '#9a3412', color: '#fff',
+                                   border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12.5,
+                                   fontWeight: 700, cursor: (busy || !voidWhy.trim()) ? 'not-allowed' : 'pointer' }}>
+                          {tc('spoke.voidConfirm', 'Void this reading')}
+                        </button>
+                        <button onClick={() => { setVoidOpen(null); setVoidWhy(''); }} disabled={busy}
+                          style={{ background: 'none', border: '1px solid #e5e3de', borderRadius: 8,
+                                   padding: '7px 12px', fontSize: 12.5, color: 'var(--text-3)', cursor: 'pointer' }}>
+                          {tc('cancel', 'Cancel')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setVoidOpen(e.id); setVoidWhy(''); }} disabled={busy}
+                      style={{ marginTop: 7, background: 'none', border: 'none', padding: 0,
+                               fontSize: 12, color: '#9a3412', textDecoration: 'underline', cursor: 'pointer' }}>
+                      {tc('spoke.voidAsk', 'Wrong reading? Void it')}
+                    </button>
+                  ))}
                 </div>
               );
             })}

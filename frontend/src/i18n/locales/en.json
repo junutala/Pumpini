@@ -3510,7 +3510,13 @@
     "pickAttendant": "Select an attendant",
     "belowLast": "Below the last reading ({prev}). A meter only counts up — check the figure.",
     "overTank": "{ltrs} L since the last reading ({prev}) is more than this tank could have given. Check the figure — a decimal point in the wrong place does this.",
-    "testDraw": "test draw"
+    "testDraw": "test draw",
+    "voidAsk": "Wrong reading? Void it",
+    "voidWhyPh": "Why is this reading wrong? In your own words",
+    "voidConfirm": "Void this reading",
+    "voided": "reading voided. The nozzle is back at",
+    "voidedGenesis": "starting reading voided. Commission this nozzle again in Settings before its next handover.",
+    "voidFailed": "Could not void that reading."
   },
   "dues": {
     "title": "Attendant Close",
