@@ -104,6 +104,19 @@ router.post('/:id/confirm', authenticate, requireStationAccess({ required: true 
       const owned = await ownedBy(req.params.id, req.body.station_id);
       if (!owned) return res.status(404).json({ error: 'not_found', message: 'That recon is not at this outlet.' });
       const out = await recon.confirm(req.params.id, req.user.id);
+      if (out?.incomplete) {
+        // Named, so he knows which console line or which slip to go back for.
+        const g = out.incomplete;
+        const parts = [
+          ...g.tanks.map(t => `Tank ${t.tank_number} (console figure)`),
+          ...g.nozzles.map(n => `${n.nozzle_name} (slip)`),
+        ];
+        return res.status(409).json({
+          error: 'recon_incomplete',
+          message: `Not every figure is in yet: ${parts.join(', ')}. Read them, then confirm — a recon with a part missing would count those sales as a loss.`,
+          detail: g,
+        });
+      }
       if (out?.locked) {
         return res.status(409).json({
           error: 'recon_confirmed',

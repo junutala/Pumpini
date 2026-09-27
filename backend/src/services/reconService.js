@@ -17,6 +17,7 @@
 // the owner runs the DDL picks it up with no restart.
 const pool = require('../db/pool');
 const { reconcileTank, toleranceFor } = require('../lib/varianceMath');
+const pumps = require('./pumpService');
 
 let _hasTables = false;
 async function hasReconTables() {
@@ -130,7 +131,17 @@ async function saveFigures(recon_id, { tanks = [], nozzles = [] } = {}) {
         [recon_id, n.nozzle_id, num(n.cumulative_volume), num(n.cumulative_amount),
          src(n.source), n.read_pump_serial || null, n.read_nozzle_no || null]);
     }
-    await client.query(`UPDATE tank_recons SET updated_at=now() WHERE id=$1`, [recon_id]);
+    // THE MOMENT IS WHEN THE TANKS WERE READ, not when the draft was opened. The window
+    // closes at taken_at, and until 27-Sep-2026 that was the INSERT time — so a draft
+    // opened, a tanker decanted, and the console read afterwards left the delivery
+    // outside the window while the console already held it: +8,000 L "gain" in the MBR
+    // rehearsal. A draft can also sit overnight and be resumed. The ATG step is the
+    // act the nozzle readings are taken beside, so saving tank figures sets the moment;
+    // saving nozzle figures does not move it.
+    const readTanks = tanks.some(t => t?.tank_id);
+    await client.query(
+      `UPDATE tank_recons SET updated_at=now()${readTanks ? ', taken_at=now()' : ''} WHERE id=$1`,
+      [recon_id]);
     await client.query('COMMIT');
     return withFigures((await pool.query(`SELECT * FROM tank_recons WHERE id=$1`, [recon_id])).rows[0]);
   } catch (e) {
@@ -201,7 +212,21 @@ async function computeVariance(recon_id, client = pool) {
                  AND (ftd.to_tank_id = t.id OR ftd.from_tank_id = t.id)
                  AND ($3::timestamptz IS NULL OR ftd.drawn_at > $3)
                  AND ftd.drawn_at <= $4
-            ), 0) AS test_move_ltrs
+            ), 0) AS test_move_ltrs,
+            -- EVERY NOZZLE ON THE TANK, AT BOTH ENDS. A nozzle with no figure moved
+            -- nothing as far as the sum above can tell, so its real sales would read as
+            -- a LOSS from the tank (MBR rehearsal, 27-Sep-2026). Counted here so the
+            -- tank says it cannot be reconciled instead of reporting a phantom.
+            (SELECT count(*) FROM nozzles nz
+              WHERE nz.tank_id = t.id AND COALESCE(nz.is_active, TRUE)
+                AND NOT EXISTS (SELECT 1 FROM tank_recon_nozzles rn
+                                 WHERE rn.recon_id = $1 AND rn.nozzle_id = nz.id
+                                   AND rn.cumulative_volume IS NOT NULL))::int AS nozzles_unread,
+            (SELECT count(*) FROM nozzles nz
+              WHERE $5::uuid IS NOT NULL AND nz.tank_id = t.id AND COALESCE(nz.is_active, TRUE)
+                AND NOT EXISTS (SELECT 1 FROM tank_recon_nozzles pn
+                                 WHERE pn.recon_id = $5 AND pn.nozzle_id = nz.id
+                                   AND pn.cumulative_volume IS NOT NULL))::int AS nozzles_unread_before
        FROM tanks t
        LEFT JOIN tank_recon_tanks rt ON rt.tank_id = t.id AND rt.recon_id = $1
        LEFT JOIN tank_recon_tanks prev ON prev.tank_id = t.id AND prev.recon_id = $5
@@ -225,6 +250,11 @@ async function computeVariance(recon_id, client = pool) {
       sales, testMove: r.test_move_ltrs, actual: r.actual,
     });
     const tolerance = toleranceFor({ base: m.base, pct: pctFor(r.fuel_type), floor: Number(s.floor) });
+    // A SUM WITH A MISSING PART IS NOT A SUM. Same rule as a missing opening in
+    // varianceMath: no figure rather than a confident wrong one.
+    const incomplete = r.nozzles_unread > 0 ? 'nozzles_unread'
+      : r.nozzles_unread_before > 0 ? 'nozzles_unread_before' : null;
+    if (incomplete) { m.book = null; m.variance = null; }
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: numOrNull(r.opening),
@@ -239,6 +269,7 @@ async function computeVariance(recon_id, client = pool) {
       book_ltrs: m.book, variance_ltrs: m.variance,
       tolerance_ltrs: tolerance,
       beyond_tolerance: m.variance != null ? Math.abs(m.variance) > tolerance : false,
+      incomplete,
     };
   });
 
@@ -253,6 +284,32 @@ async function computeVariance(recon_id, client = pool) {
   };
 }
 
+// WHAT THIS RECON HAS NOT READ YET — every dippable tank without a console figure and
+// every nozzle on one without a slip figure, by name. confirm() refuses until both lists
+// are empty: a recon is ONE ACT AT ONE MOMENT, and one with a part missing becomes the
+// opening the next window is measured from, carrying the gap forward.
+async function unread(recon_id, client = pool) {
+  const nm = await pumps.nozzleNameSelect(client);
+  const [{ rows: tanks }, { rows: nozzles }] = await Promise.all([
+    client.query(
+      `SELECT t.id AS tank_id, t.tank_number
+         FROM tank_recons r JOIN tanks t ON t.station_id = r.station_id
+         LEFT JOIN tank_recon_tanks rt ON rt.recon_id = r.id AND rt.tank_id = t.id
+        WHERE r.id = $1 AND ${DIPPABLE} AND rt.volume_ltrs IS NULL
+        ORDER BY t.tank_number`, [recon_id]),
+    client.query(
+      `SELECT n.id AS nozzle_id, n.nozzle_number${nm.col}
+         FROM tank_recons r
+         JOIN tanks t ON t.station_id = r.station_id AND ${DIPPABLE}
+         JOIN nozzles n ON n.tank_id = t.id AND COALESCE(n.is_active, TRUE)
+         ${nm.join}
+         LEFT JOIN tank_recon_nozzles rn ON rn.recon_id = r.id AND rn.nozzle_id = n.id
+        WHERE r.id = $1 AND rn.cumulative_volume IS NULL
+        ORDER BY n.nozzle_number`, [recon_id]),
+  ]);
+  return { tanks, nozzles };
+}
+
 // FREEZE IT. The arithmetic is written onto the row so a confirmed recon explains
 // itself from its own record rather than by recomputation against data that has since
 // moved. From here it is the boundary the next window starts from.
@@ -260,6 +317,8 @@ async function confirm(recon_id, user_id) {
   if (!(await hasReconTables())) return null;
   const v = await computeVariance(recon_id);
   if (!v) return null;
+  const gaps = await unread(recon_id);
+  if (gaps.tanks.length || gaps.nozzles.length) return { incomplete: gaps };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -304,5 +363,5 @@ const src = v => (v === 'photo' || v === 'typed') ? v : null;
 
 module.exports = {
   hasReconTables, lastConfirmed, openDraft, startDraft,
-  saveFigures, computeVariance, confirm, abandon,
+  saveFigures, computeVariance, confirm, abandon, unread,
 };
