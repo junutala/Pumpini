@@ -209,7 +209,12 @@ async function recordEvent({ station_id, nozzle_id, reading,
     // both close the same man.
     const closes_attendant_id = prev?.opens_attendant_id || null;
     const isCo = prev != null && Number(prev.reading) === Number(reading);
-    const driftSeconds = prev
+    // THE CO-EVENT'S METRIC, and only the co-event's: the gap between the outgoing
+    // man's print and the incoming man's, for the owner to push the manager on. On an
+    // ordinary handover the same subtraction is just the length of the leg — eight
+    // hours under a clock icon read as eight hours of indiscipline (MBR rehearsal,
+    // 27-Sep-2026). So it is stored only where it means what it says.
+    const driftSeconds = prev && isCo
       ? Math.round((now - new Date(prev.recorded_at)) / 1000)
       : null;
 

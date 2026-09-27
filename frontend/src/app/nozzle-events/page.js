@@ -343,8 +343,10 @@ export default function NozzleEventsPage() {
                                 fontSize: 12.5, color: 'var(--text-3)', flexWrap: 'wrap' }}>
                     <span>{when(e.recorded_at)}</span>
                     {/* THE CO-EVENT'S WHOLE PURPOSE: the gap between one man's print and
-                        the next's, so the owner has data to push the manager on. */}
-                    {e.drift_seconds != null && (
+                        the next's, so the owner has data to push the manager on. Rows
+                        written before 27-Sep-2026 carry a leg length on every event, so
+                        the flag is checked, not only the number. */}
+                    {e.is_co_event && e.drift_seconds != null && (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <Clock size={12} /> {drift(e.drift_seconds)}
                       </span>
