@@ -912,11 +912,13 @@ those against zero at every other real outlet.
   in force when it OPENED (`spokeService.priceAt`).
 - **Time alone never splits a leg.** Two readings give litres, not when they were sold;
   dividing them by the clock is proration, which this file already rules out.
-- **Two places at real outlets still read today's price for a past figure**, found 27-Sep,
-  and are waiting on the owner's word: the shift-led settlement prices at the moment of
+- **Two places at real outlets read today's price for a past figure, and stay as they
+  are — owner's decision, 27-Sep-2026:** the shift-led settlement prices at the moment of
   settling (`settlementService.priceLookup`; a shift settled after a change would take the
-  new price, and that has happened 0 times in 5,239 sales), and the dashboard's per-operator
-  target revenue for a chosen day (`dashboard.js`, display only).
+  new price, 0 times in 5,239 sales), and the dashboard's per-operator target revenue for a
+  chosen day (`dashboard.js`, display only). *"no need for now. the three outlets know about
+  this gate and they follow properly. So, let's cross the bridge when we reach it."* Do not
+  re-propose them unless a settlement actually lands after a price change.
 
 **🔴 A COMMENT THAT CITES THE OWNER IS NOT THE OWNER.** Before writing "owner-set" on a
 line of code, quote his words next to it, and if the code does something his words do not
