@@ -49,6 +49,31 @@ owner") are now in CLAUDE.md.
 
 ---
 
+## 2026-09-27 · I fixed the price rule, and then carried the shift-led ruling into nozzle-led myself
+
+**We believed**, by that afternoon, that the fix for the entry below was complete:
+nozzle-led legs priced at the price in force when they closed, "one price per leg, no
+proration", which I wrote into CLAUDE.md as the 27-Aug ruling still standing.
+
+**Actually** the 27-Aug ruling only works because shift-led outlets close their shift at
+the change, usually 6 AM. Nozzle-led has no such boundary, so a leg that spans a change
+was still priced wholly at the new price. I had made the same kind of mistake as the
+31-Aug code: a ruling carried beyond the process it was made for. The owner:
+*"This is when the shift led process is in place... But now for the nozzle led process,
+we MUST worry about the time factor and then price the settlement Pre and Post price
+change."*
+
+**We found out** because he asked what had been built for it, and the honest answer was:
+nothing that splits a leg.
+
+**It cost** one more PR and nothing in money (no real outlet runs nozzle-led). The fix is
+his design: at a nozzle-led outlet a price change takes a reading of every nozzle of that
+fuel, in the same screen, so each man's sales until then land in his account at the old
+price. He added the part I would have missed: one pump printout carries every nozzle on
+the pump, so only the repriced fuel's lines may be used.
+
+---
+
 ## 2026-09-24 · The runbook for clearing an outlet went stale the day after it was written
 
 **We believed** `ops/clear-outlet-transactions.sql` was the safe, reviewed way to reset an

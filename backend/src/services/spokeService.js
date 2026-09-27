@@ -160,7 +160,7 @@ async function lastEvent(nozzle_id, client = pool) {
 // all. The screens never send either, but the writer must not depend on the screens.
 async function recordEvent({ station_id, nozzle_id, reading,
                              opens_attendant_id, source, recorded_by, drift_reason,
-                             read_pump_serial, read_nozzle_no, at }) {
+                             read_pump_serial, read_nozzle_no, at, client: outer = null }) {
   if (!(await hasSpokeTables())) return null;
   const badReading = readingProblem(reading);
   if (badReading) return { invalid: badReading };
@@ -168,72 +168,140 @@ async function recordEvent({ station_id, nozzle_id, reading,
   if (opens_attendant_id && !UUID_RE.test(String(opens_attendant_id))) {
     return { invalid: 'not_an_attendant_here' };
   }
-  reading = Number(reading);
+  const args = { station_id, nozzle_id, reading: Number(reading), opens_attendant_id, source,
+                 recorded_by, drift_reason, read_pump_serial, read_nozzle_no, at };
+
+  // COMPOSED INTO A CALLER'S TRANSACTION when one is passed — a price change and the
+  // readings it closes must land together or not at all (priceService.setPrice). The
+  // caller owns BEGIN/COMMIT/ROLLBACK; a refusal here writes nothing and says why.
+  if (outer) return recordEventIn(outer, args);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // The chain is per nozzle, so the lock is per nozzle: two managers closing two
-    // different pumps must not queue behind each other.
-    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(nozzle_id)]);
-
-    const { rows: own } = await client.query(
-      `SELECT 1 FROM nozzles WHERE id = $1 AND station_id = $2`, [nozzle_id, station_id]);
-    if (!own.length) { await client.query('ROLLBACK'); return { invalid: 'nozzle_not_at_outlet' }; }
-    if (opens_attendant_id) {
-      const { rows: who } = await client.query(
-        `SELECT 1 FROM users u JOIN station_users su ON su.user_id = u.id
-          WHERE u.id = $1 AND su.station_id = $2 AND u.role = 'attendant'`,
-        [opens_attendant_id, station_id]);
-      if (!who.length) { await client.query('ROLLBACK'); return { invalid: 'not_an_attendant_here' }; }
-    }
-
-    const prev = await lastEvent(nozzle_id, client);
-    const now = at ? new Date(at) : new Date();
-    const verdict = physicsVerdict({
-      prevReading: prev?.reading, prevAt: prev?.recorded_at, reading, at: now,
-      tankLimit: prev ? await tankCeiling(nozzle_id, prev.recorded_at, client) : null,
-    });
-
-    // A CERTAIN IMPOSSIBILITY IS REFUSED UNLESS HE EXPLAINS IT IN HIS OWN WORDS. Never
-    // a dropdown: a canned reason code becomes a reflex. A meter RESET is not a reason
-    // typed on a handover screen either — it is a commissioning action in Settings,
-    // under the owner's eye, because the chain needs a new starting point.
-    const may = mayRecord(verdict, drift_reason);
-    if (may !== 'ok') {
-      await client.query('ROLLBACK');
-      return { refused: { ...verdict, final: may === 'refuse' } };
-    }
-
-    // Read off the chain inside the same lock, so two handovers on one nozzle cannot
-    // both close the same man.
-    const closes_attendant_id = prev?.opens_attendant_id || null;
-    const isCo = prev != null && Number(prev.reading) === Number(reading);
-    // THE CO-EVENT'S METRIC, and only the co-event's: the gap between the outgoing
-    // man's print and the incoming man's, for the owner to push the manager on. On an
-    // ordinary handover the same subtraction is just the length of the leg — eight
-    // hours under a clock icon read as eight hours of indiscipline (MBR rehearsal,
-    // 27-Sep-2026). So it is stored only where it means what it says.
-    const driftSeconds = prev && isCo
-      ? Math.round((now - new Date(prev.recorded_at)) / 1000)
-      : null;
-
-    const { rows } = await client.query(
-      `INSERT INTO nozzle_events(station_id, nozzle_id, closes_attendant_id,
-         opens_attendant_id, reading, recorded_at, source, is_co_event, prev_event_id,
-         drift_seconds, drift_reason, read_pump_serial, read_nozzle_no, recorded_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [station_id, nozzle_id, closes_attendant_id || null, opens_attendant_id || null,
-       reading, now, (source === 'photo' || source === 'typed') ? source : null,
-       isCo, prev ? prev.id : null, driftSeconds,
-       String(drift_reason || '').trim() || null,
-       read_pump_serial || null, read_nozzle_no || null, recorded_by || null]);
-
-    await client.query('COMMIT');
-    return { event: rows[0], co_event: isCo, drift_seconds: driftSeconds };
+    const r = await recordEventIn(client, args);
+    await client.query(r?.event ? 'COMMIT' : 'ROLLBACK');
+    return r;
   } catch (e) {
     await client.query('ROLLBACK'); throw e;
   } finally { client.release(); }
+}
+
+// The body of recordEvent, inside a transaction somebody else opened. Writes one row
+// or nothing, and returns { event } / { invalid } / { refused }.
+async function recordEventIn(client, { station_id, nozzle_id, reading, opens_attendant_id,
+                                       source, recorded_by, drift_reason,
+                                       read_pump_serial, read_nozzle_no, at }) {
+  // The chain is per nozzle, so the lock is per nozzle: two managers closing two
+  // different pumps must not queue behind each other.
+  await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(nozzle_id)]);
+
+  const { rows: own } = await client.query(
+    `SELECT 1 FROM nozzles WHERE id = $1 AND station_id = $2`, [nozzle_id, station_id]);
+  if (!own.length) return { invalid: 'nozzle_not_at_outlet' };
+
+  const prev = await lastEvent(nozzle_id, client);
+  // GIVING THE NOZZLE TO SOMEONE must be giving it to an attendant of this outlet.
+  // Continuing the man already on it gives nothing new — a price change reopens every
+  // holder at the same figure — so that is not re-checked, and a holder whose link has
+  // since changed cannot block a price change.
+  if (opens_attendant_id && String(opens_attendant_id) !== String(prev?.opens_attendant_id || '')) {
+    const { rows: who } = await client.query(
+      `SELECT 1 FROM users u JOIN station_users su ON su.user_id = u.id
+        WHERE u.id = $1 AND su.station_id = $2 AND u.role = 'attendant'`,
+      [opens_attendant_id, station_id]);
+    if (!who.length) return { invalid: 'not_an_attendant_here' };
+  }
+
+  const now = at ? new Date(at) : new Date();
+  const verdict = physicsVerdict({
+    prevReading: prev?.reading, prevAt: prev?.recorded_at, reading, at: now,
+    tankLimit: prev ? await tankCeiling(nozzle_id, prev.recorded_at, client) : null,
+  });
+
+  // A CERTAIN IMPOSSIBILITY IS REFUSED UNLESS HE EXPLAINS IT IN HIS OWN WORDS. Never
+  // a dropdown: a canned reason code becomes a reflex. A meter RESET is not a reason
+  // typed on a handover screen either — it is a commissioning action in Settings,
+  // under the owner's eye, because the chain needs a new starting point.
+  const may = mayRecord(verdict, drift_reason);
+  if (may !== 'ok') return { refused: { ...verdict, final: may === 'refuse' } };
+
+  // Read off the chain inside the same lock, so two handovers on one nozzle cannot
+  // both close the same man.
+  const closes_attendant_id = prev?.opens_attendant_id || null;
+  const isCo = prev != null && Number(prev.reading) === Number(reading);
+  // THE CO-EVENT'S METRIC, and only the co-event's: the gap between the outgoing
+  // man's print and the incoming man's, for the owner to push the manager on. On an
+  // ordinary handover the same subtraction is just the length of the leg — eight
+  // hours under a clock icon read as eight hours of indiscipline (MBR rehearsal,
+  // 27-Sep-2026). So it is stored only where it means what it says.
+  const driftSeconds = prev && isCo
+    ? Math.round((now - new Date(prev.recorded_at)) / 1000)
+    : null;
+
+  const { rows } = await client.query(
+    `INSERT INTO nozzle_events(station_id, nozzle_id, closes_attendant_id,
+       opens_attendant_id, reading, recorded_at, source, is_co_event, prev_event_id,
+       drift_seconds, drift_reason, read_pump_serial, read_nozzle_no, recorded_by)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+    [station_id, nozzle_id, closes_attendant_id || null, opens_attendant_id || null,
+     reading, now, (source === 'photo' || source === 'typed') ? source : null,
+     isCo, prev ? prev.id : null, driftSeconds,
+     String(drift_reason || '').trim() || null,
+     read_pump_serial || null, read_nozzle_no || null, recorded_by || null]);
+
+  return { event: rows[0], co_event: isCo, drift_seconds: driftSeconds };
+}
+
+// Why a handover could not be recorded at all — decided in recordEvent above.
+const EVENT_INVALID = {
+  no_reading: 'A nozzle and a reading are required.',
+  bad_reading: 'Type the reading as the slip prints it: digits and one decimal point, no commas.',
+  nozzle_not_at_outlet: 'That nozzle is not at this outlet.',
+  not_an_attendant_here: 'That person is not an attendant at this outlet, so the nozzle cannot be given to him.',
+};
+
+// Why the physics refused a reading.
+//
+// 🔴 THE DECREASE TEXT USED TO SEND HIM TO Settings → Commissioning, which refuses any
+// nozzle that already has a chain (commissionService: no second genesis). So a manager
+// with a mistyped last reading was sent to a screen that could not help him, and the
+// nozzle could never be handed over again (MBR rehearsal, 27-Sep-2026). The correction
+// is now the owner's void on Nozzle Events (POST /event/:id/void). A genuine meter reset
+// or replacement still has no path here, and the text says so.
+const absL = n => Math.abs(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const REFUSAL_TEXT = {
+  reading_decreased: v =>
+    `That reading is ${absL(v.delta)} L BELOW the last one. A meter only counts up — check the figure against the slip. If the last reading on this nozzle was itself wrong, the owner can void it on Nozzle Events, and then the right figure can be recorded. If the meter was reset or replaced, tell the owner — that cannot be done from this screen.`,
+  more_than_the_tank: v =>
+    `That is ${absL(v.delta)} L since the last reading, and this nozzle's tank could have given at most ${absL(v.tank_limit)} L, deliveries included. Check the figure against the slip — a decimal point in the wrong place does this. If a tanker came in, enter the delivery first.`,
+  faster_than_the_pump: v =>
+    `That is ${Math.round(v.delta).toLocaleString('en-IN')} L in ${v.seconds} seconds, and the pump cannot deliver more than about ${Math.round(v.ceiling).toLocaleString('en-IN')} L in that time. Check the figure, or say what happened.`,
+};
+
+// WHAT TO TELL THE MANAGER when recordEvent did not record — { status, body }, or null
+// when it did. One wording for every screen that records a reading: the handover, and
+// the readings a price change takes (priceService.setPrice).
+function eventProblem(out) {
+  if (out?.invalid) {
+    return { status: 400, body: {
+      error: out.invalid,
+      message: EVENT_INVALID[out.invalid] || EVENT_INVALID.bad_reading,
+    } };
+  }
+  if (out?.refused) {
+    const v = out.refused;
+    return { status: 409, body: {
+      error: v.code,
+      // The certainties, in words a manager can act on. Everything else is trade and is
+      // recorded as drift without a murmur. A FINAL refusal asks for no reason, because
+      // none is accepted (mayRecord).
+      final: !!v.final,
+      message: REFUSAL_TEXT[v.code] ? REFUSAL_TEXT[v.code](v) : REFUSAL_TEXT.faster_than_the_pump(v),
+      detail: v,
+    } };
+  }
+  return null;
 }
 
 // VOID THE LAST READING ON A NOZZLE — the owner's correction, and the only one.
@@ -376,21 +444,26 @@ const LEG_TEST_LTRS = `COALESCE((SELECT SUM(td.litres) FROM fuel_test_draws td
        WHERE td.nozzle_id = e.nozzle_id AND p.recorded_at IS NOT NULL
          AND td.drawn_at > p.recorded_at AND td.drawn_at <= e.recorded_at), 0)`;
 
-// ── A PRICE CHANGE IS PROSPECTIVE ────────────────────────────────────────────
-// Owner, 27-Sep-2026: "A price change has to be prospective." A leg is priced at the
-// price IN FORCE WHEN IT CLOSED — the moment its figure comes into existence, and the
-// moment the handover preview showed the manager. A change applies to legs closed
-// after it and never reaches back into one already closed.
+// ── A PRICE CHANGE IS PROSPECTIVE, AND IN NOZZLE-LED IT IS A BOUNDARY ───────────
+// Owner, 27-Sep-2026: "A price change has to be prospective." And, the same afternoon,
+// on the 27-Aug ruling: "This is when the shift led process is in place. That's exactly
+// why most of the outlets close their shift at 6AM... But now for the nozzle led
+// process, we MUST worry about the time factor and then price the settlement Pre and
+// Post price change."
 //
-// 🔴 UNTIL 27-Sep-2026 EVERY LEG WAS PRICED AT TODAY'S PRICE, with a comment crediting
-// the owner's 27-Aug ruling. That ruling (docs/flow-v2-build-plan.md §11.2) said to
-// build NOTHING for a price change — the manager closes and recommences around it, no
-// proration, no price-boundary machinery. "Build nothing" was read as "use today's
-// price", which is the opposite: a ₹0.50 change turned six settled men into debtors in
-// the MBR rehearsal, and made closing around the change pointless. One price per leg,
-// no proration, is still exactly the ruling. See learnings.md, 27-Sep.
+// HOW PRE AND POST ARE KNOWN. Two readings give the litres between them, not when they
+// were sold, so the clock alone cannot split a leg — that would be proration. Instead a
+// price change at a nozzle-led outlet TAKES A READING of every nozzle of that fuel at
+// that moment (priceService.setPrice): each man's account is closed and reopened at the
+// same figure, and the price starts at that reading. So no leg spans a change, and
+// every leg is priced at the price IN FORCE WHEN IT OPENED — the leg before the
+// reading at the old price, the leg after it at the new.
 //
-// A leg that closed before the outlet had any price for that fuel prices at ₹0 and
+// 🔴 HISTORY. Until 27-Sep every leg was priced at TODAY's price, credited in a comment
+// to the 27-Aug ruling, which is a shift-led rule. #443 then priced at the leg's close,
+// which still put a leg that spanned a change wholly at the new price. See learnings.md.
+//
+// A leg that opened before the outlet had any price for that fuel prices at ₹0 and
 // shows "× ₹0" on the statement — visible and checkable, never a guessed price.
 // Expects the station as $1.
 const priceAt = (fuelExpr, momentExpr) => `(SELECT fp.price FROM fuel_prices fp
@@ -416,7 +489,8 @@ async function outstanding(station_id) {
        SELECT e.closes_attendant_id AS attendant_id,
               n.fuel_type,
               GREATEST(e.reading - COALESCE(p.reading, e.reading) - ${LEG_TEST_LTRS}, 0) AS ltrs,
-              e.recorded_at
+              e.recorded_at,
+              COALESCE(p.recorded_at, e.recorded_at) AS opened_at
          FROM nozzle_events e
          JOIN nozzles n ON n.id = e.nozzle_id
          LEFT JOIN nozzle_events p ON p.id = e.prev_event_id
@@ -425,8 +499,9 @@ async function outstanding(station_id) {
      priced AS (
        SELECT l.attendant_id,
               SUM(l.ltrs) AS ltrs,
-              -- Each leg at the price in force when it closed (priceAt). Prospective.
-              SUM(l.ltrs * COALESCE(${priceAt('l.fuel_type', 'l.recorded_at')}, 0)) AS value,
+              -- Each leg at the price in force when it OPENED (priceAt). A price change
+              -- takes a reading, so no leg spans one.
+              SUM(l.ltrs * COALESCE(${priceAt('l.fuel_type', 'l.opened_at')}, 0)) AS value,
               MAX(l.recorded_at) AS last_close
          FROM legs l
         GROUP BY l.attendant_id
@@ -531,7 +606,7 @@ async function outstandingDetail(station_id, attendant_id) {
        JOIN nozzles n ON n.id = e.nozzle_id
        ${nm.join}
        LEFT JOIN nozzle_events p ON p.id = e.prev_event_id
-       LEFT JOIN LATERAL (SELECT ${priceAt('n.fuel_type', 'e.recorded_at')} AS price) pr ON true
+       LEFT JOIN LATERAL (SELECT ${priceAt('n.fuel_type', 'COALESCE(p.recorded_at, e.recorded_at)')} AS price) pr ON true
       WHERE e.station_id = $1 AND e.closes_attendant_id = $2
       ORDER BY e.recorded_at DESC, n.nozzle_number`,
     [station_id, attendant_id]);
@@ -544,8 +619,8 @@ async function outstandingDetail(station_id, attendant_id) {
 //   * GREATEST(reading - prev, 0) — a misread that goes BACKWARDS must never become a
 //     negative charge. The physics test calls that out separately; the money floors at
 //     zero either way.
-//   * litres times the price in force when the leg closes (priceAt) — prospective,
-//     one price per leg, no proration.
+//   * litres times the price in force when the leg OPENED (priceAt). A price change
+//     takes a reading of that fuel's nozzles, so no leg spans one.
 //   * no previous reading means no leg and no charge — a first reading opens a chain,
 //     it does not close one.
 //   * test litres drawn in the leg come off before pricing (LEG_TEST_LTRS).
@@ -569,7 +644,7 @@ function handoverMath({ prevReading, reading, price, testLtrs = 0 }) {
 //
 // It is a PREVIEW, not a second arithmetic. It reuses the same pieces outstanding()
 // and outstandingDetail() use — the same GREATEST() floor, the same priceAt() at the
-// moment of the handover — so the figure a manager confirms here is the figure that appears against
+// leg's opening — so the figure a manager confirms here is the figure that appears against
 // the man afterwards. Two formulas for one number is how a screen and a ledger come
 // to disagree, and a manager who finds them disagreeing stops trusting both.
 //
@@ -578,19 +653,19 @@ function handoverMath({ prevReading, reading, price, testLtrs = 0 }) {
 async function handoverPreview({ station_id, nozzle_id, reading, at = new Date() }) {
   if (!(await hasSpokeTables())) return { enabled: false };
 
+  const prev = await lastEvent(nozzle_id);
   const nm = await pumps.nozzleNameSelect(pool);
   const { rows: nz } = await pool.query(
-    // The price in force at the moment of the handover — the same priceAt() the ledger
-    // uses for this leg once it is recorded, so the preview and the statement agree.
-    // A price entered with a future effective date is not yet in force and is not used.
+    // The price in force when this leg OPENED — the same priceAt() the ledger uses for it
+    // once it is recorded, so the preview and the statement agree.
     `SELECT n.id, n.fuel_type${nm.col},
             ${priceAt('n.fuel_type', '$3::timestamptz')} AS price
        FROM nozzles n ${nm.join}
-      WHERE n.id = $2 AND n.station_id = $1`, [station_id, nozzle_id, at]);
+      WHERE n.id = $2 AND n.station_id = $1`,
+    [station_id, nozzle_id, prev ? prev.recorded_at : at]);
   if (!nz.length) return { enabled: true, found: false };
   const n = nz[0];
 
-  const prev = await lastEvent(nozzle_id);
   const num_ = Number(reading);
   const price = prev ? Number(n.price ?? 0) : 0;
   // The leg is still open, so its end is NOW — the same rule as LEG_TEST_LTRS.
@@ -804,7 +879,7 @@ const CLEARED_BELOW_RUPEES = 1;
 const num = v => Number(v) || 0;
 
 module.exports = {
-  hasSpokeTables, physicsVerdict, mayRecord, recordEvent, voidLastEvent, chain, nozzleState, outstanding,
+  hasSpokeTables, physicsVerdict, mayRecord, recordEvent, eventProblem, voidLastEvent, chain, nozzleState, outstanding,
   outstandingDetail, settle, settlementProblem, readingProblem, quietMoment, handoverPreview,
   handoverMath, holdings, MAX_FLOW_LTRS_PER_MIN,
 };

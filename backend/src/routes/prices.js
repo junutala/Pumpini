@@ -3,6 +3,8 @@ const pool   = require('../db/pool');
 const { authenticate, authorize } = require('../middleware/auth');
 const { requirePerm } = require('../middleware/permissions');
 const { requireStationAccess } = require('../middleware/stationAccess');
+const prices = require('../services/priceService');
+const spokes = require('../services/spokeService');
 
 router.get('/:station_id/current', authenticate, requireStationAccess(), async (req, res, next) => {
   try {
@@ -41,15 +43,33 @@ router.get('/:station_id/as-at', authenticate, requireStationAccess(), async (re
   } catch (err) { next(err); }
 });
 
+// POST /api/prices — the one writer is priceService.setPrice.
+//
+// Shift-led: unchanged, one row. Nozzle-led: the new price also needs the slip reading
+// of every nozzle of THAT fuel, taken now, and the two save together. The response is
+// still the price row, so the shift-led screens read it exactly as before.
 router.post('/', authenticate, requireStationAccess({ required: true }), requirePerm('prices.manage'), async (req, res, next) => {
   try {
     const { station_id, fuel_type, price, effective_from } = req.body;
-    const { rows } = await pool.query(
-      `INSERT INTO fuel_prices(station_id,fuel_type,price,effective_from,set_by)
-       VALUES($1,$2,$3,$4,$5) RETURNING *`,
-      [station_id, fuel_type, price, effective_from || new Date(), req.user.id]
-    );
-    res.status(201).json(rows[0]);
+    const out = await prices.setPrice({
+      station_id, fuel_type, price, effective_from, set_by: req.user.id,
+      readings: Array.isArray(req.body.readings) ? req.body.readings : [],
+    });
+    if (out.refused === 'readings_needed') {
+      return res.status(400).json({
+        error: 'readings_needed',
+        message: `This outlet runs nozzle-led, so a new ${String(fuel_type).replace('_', ' ')} price needs the slip reading of every ${String(fuel_type).replace('_', ' ')} nozzle at this moment. Missing: ${out.missing.map(m => m.nozzle_name).join(', ')}.`,
+        missing: out.missing,
+      });
+    }
+    if (out.refused === 'reading_refused') {
+      const p = spokes.eventProblem(out.out) || { status: 400, body: { error: 'reading_refused' } };
+      return res.status(p.status).json({
+        ...p.body, nozzle_id: out.nozzle_id,
+        message: `${out.nozzle_name}: ${p.body.message || 'that reading could not be recorded.'} The price has not been changed.`,
+      });
+    }
+    res.status(201).json({ ...out.price, boundary_readings: out.readings.length, ignored_lines: out.ignored || 0 });
   } catch (err) { next(err); }
 });
 

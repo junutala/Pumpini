@@ -17,7 +17,8 @@ import { useTranslation } from 'react-i18next';
 import { nozName } from '../../lib/nozzle';
 import { dipToVolume } from '../../lib/calibration';
 
-import { errText } from '../../lib/apiError';
+import { errText, errCode, errPayload } from '../../lib/apiError';
+import HandoverReading from '../../components/shared/HandoverReading';
 const FUEL_TYPES = [
   {value:'petrol',         label:'Petrol (MS)'},
   {value:'diesel',         label:'Diesel (HSD)'},
@@ -1613,18 +1614,92 @@ function AddPumpForm({ stationId, tc, onAdded }) {
 function PricesTab({ stationId, prices, reload }) {
   const { t } = useTranslation();
   const tc = (k, d) => { const v = t(k); return v === k ? d : v; };
+  const { hubSpokesFlow } = useAuth();
   const [form,setForm]     = useState({fuel_type:'petrol',price:'',effective_from:nowIST()});
   const [loading,setLoading] = useState(false);
   const f = (k,v) => setForm(p=>({...p,[k]:v}));
 
+  // ── NOZZLE-LED: A PRICE CHANGE TAKES THAT FUEL'S READINGS ─────────────────────
+  // Owner, 27-Sep-2026: scan the nozzle slips at the price change, in the same screen,
+  // so the sales till now go into each man's account at the old price and his next leg
+  // opens at the new one — and "read only those nozzles for that fuel type and not all",
+  // because one pump printout carries every nozzle on the pump. The backend decides
+  // (priceService.setPrice); this collects the readings and shows the working.
+  const [chainNozzles, setChainNozzles] = useState([]);   // /spokes/nozzles
+  const [readings, setReadings] = useState({});           // nozzle_id -> { reading, source, serial, no, reason }
+  const [refused, setRefused]   = useState({});           // nozzle_id -> { text, code, final }
+  const [slipBusy, setSlipBusy] = useState(false);
+  const [note, setNote] = useState('');
+  const [err, setErr]   = useState('');
+  useEffect(() => {
+    if (!hubSpokesFlow || !stationId) { setChainNozzles([]); return; }
+    api.get('/spokes/nozzles', { params: { station_id: stationId } })
+      .then(r => setChainNozzles(Array.isArray(r?.nozzles) ? r.nozzles : []))
+      .catch(() => setChainNozzles([]));
+  }, [hubSpokesFlow, stationId]);
+  // Only this fuel's nozzles, and only those with a chain (a nozzle never commissioned
+  // has no leg to split). The same rule as priceService.priceBoundaryPlan.
+  const toRead = hubSpokesFlow
+    ? chainNozzles.filter(n => n.fuel_type === form.fuel_type && n.head_event_id) : [];
+  const allRead = toRead.every(n => String(readings[n.id]?.reading ?? '').trim() !== '');
+  const setReading = (id, patch) => {
+    setReadings(r => ({ ...r, [id]: { ...(r[id] || {}), ...patch } }));
+    setRefused(x => ({ ...x, [id]: null }));
+  };
+
+  // ONE PHOTOGRAPH OF THE PUMP'S PRINTOUT fills every nozzle of THIS fuel on it. The
+  // other fuels' lines are read and left alone.
+  const onSlip = async (cap) => {
+    if (!cap) return;
+    setSlipBusy(true); setNote(''); setErr('');
+    try {
+      const res = await api.post('/reconcile/parse-slips', {
+        station_id: stationId, image_base64: cap.base64, media_type: cap.media_type });
+      const want = new Set(toRead.map(n => n.id));
+      let took = 0, left = 0;
+      for (const slip of (Array.isArray(res?.slips) ? res.slips : [])) {
+        for (const ln of (slip.lines || [])) {
+          if (!ln.nozzle_id || !ln.legible || ln.cumulative_volume == null) continue;
+          if (want.has(ln.nozzle_id)) {
+            setReading(ln.nozzle_id, { reading: String(ln.cumulative_volume), source: 'photo',
+                                       serial: slip.pump_serial || '', no: String(ln.slip_no ?? '') });
+            took++;
+          } else left++;
+        }
+      }
+      setNote(tc('setp.slipTook', 'Read {n} nozzle(s) of this fuel from the slip; {m} line(s) for other fuels were left alone.')
+        .replace('{n}', took).replace('{m}', left));
+    } catch (e) { setErr(errText(e, tc('setp.slipFailed', 'That photograph could not be read. Type the readings instead.'))); }
+    setSlipBusy(false);
+  };
+
   const save = async(e) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault(); setLoading(true); setErr(''); setNote('');
     try {
       await setPrice({ station_id:stationId, ...form,
-        effective_from: new Date(form.effective_from).toISOString() });
+        effective_from: new Date(form.effective_from).toISOString(),
+        readings: toRead.map(n => {
+          const r = readings[n.id] || {};
+          return { nozzle_id: n.id, reading: r.reading, source: r.source === 'photo' ? 'photo' : 'typed',
+                   drift_reason: r.reason || undefined,
+                   read_pump_serial: r.serial || undefined, read_nozzle_no: r.no || undefined };
+        }) });
       setForm(p=>({...p,price:'',effective_from:nowIST()}));
+      setReadings({}); setRefused({});
       reload();
-    } catch(err){ alert(err.error||tc('setp.failed', 'Failed')); }
+      if (hubSpokesFlow) {
+        api.get('/spokes/nozzles', { params: { station_id: stationId } })
+          .then(r => setChainNozzles(Array.isArray(r?.nozzles) ? r.nozzles : [])).catch(() => {});
+      }
+    } catch(x){
+      const code = errCode(x);
+      const nid = errPayload(x).nozzle_id;
+      if (nid && ['reading_decreased', 'more_than_the_tank', 'faster_than_the_pump'].includes(code)) {
+        setRefused(r => ({ ...r, [nid]: { text: errText(x, 'That figure cannot be right.'), code, final: !!errPayload(x).final } }));
+      } else {
+        setErr(errText(x, tc('setp.failed', 'Failed')));
+      }
+    }
     finally{ setLoading(false); }
   };
 
@@ -1645,12 +1720,38 @@ function PricesTab({ stationId, prices, reload }) {
               placeholder={tc('setp.egPrice', 'e.g. 105.50')} value={form.price}
               onChange={e=>f('price',e.target.value)}/>
           </div>
-          <div style={{marginBottom:'1.25rem'}}>
-            <label className="label">{tc('setp.effectiveFrom', 'Effective From (IST) *')}</label>
-            <input className="input" type="datetime-local" value={form.effective_from}
-              onChange={e=>f('effective_from',e.target.value)} required/>
-          </div>
-          <button className="btn btn-primary" type="submit" style={{width:'100%',justifyContent:'center'}} disabled={loading}>
+          {!hubSpokesFlow ? (
+            <div style={{marginBottom:'1.25rem'}}>
+              <label className="label">{tc('setp.effectiveFrom', 'Effective From (IST) *')}</label>
+              <input className="input" type="datetime-local" value={form.effective_from}
+                onChange={e=>f('effective_from',e.target.value)} required/>
+            </div>
+          ) : (
+            <div style={{marginBottom:'1.25rem', display:'grid', gap:10}}>
+              {/* NO START TIME TO TYPE: the new price starts at these readings. */}
+              <div style={{fontSize:12.5, color:'var(--text-3)', lineHeight:1.5}}>
+                {toRead.length
+                  ? tc('setp.nlIntro', 'This outlet runs nozzle-led. The new price starts when you save, at the readings below: what each man sold until now stays at the old price, and his next sales are at the new one. Only this fuel\'s nozzles are read.')
+                  : tc('setp.nlNone', 'This outlet runs nozzle-led, and no nozzle of this fuel is commissioned, so there is nothing to read. The new price starts when you save.')}
+              </div>
+              {toRead.length > 0 && (
+                <PhotoCapture onCapture={onSlip} disabled={loading || slipBusy}
+                  label={tc('setp.photoPumpSlip', 'Photograph the pump slip')} />
+              )}
+              {note && <div style={{fontSize:12.5, color:'#166534'}}>{note}</div>}
+              {toRead.map(n => (
+                <div key={n.id} style={{borderTop:'1px solid var(--border)', paddingTop:8}}>
+                  <div style={{fontFamily:'monospace', fontWeight:600, fontSize:13, marginBottom:4}}>{nozName(n)}</div>
+                  <HandoverReading stationId={stationId} nozzle={n} value={readings[n.id] || {}}
+                    onChange={patch => setReading(n.id, patch)} refused={refused[n.id]}
+                    disabled={loading} showBalance={false} />
+                </div>
+              ))}
+            </div>
+          )}
+          {err && <div style={{fontSize:12.5, color:'#9a3412', marginBottom:8}}>{err}</div>}
+          <button className="btn btn-primary" type="submit" style={{width:'100%',justifyContent:'center'}}
+            disabled={loading || (hubSpokesFlow && !allRead)}>
             {loading?tc('setp.saving', 'Saving...'):tc('setp.setPriceBtn', 'Set Price')}
           </button>
         </form>

@@ -52,31 +52,9 @@ router.get('/nozzles', authenticate, requireStationAccess({ required: true }), a
 // without printing, the next man's scan IS the closing event and the outstanding
 // stands against the man who left. What CAN be refused is a figure the physics says
 // cannot be true — and only until he types a reason in his own words.
-// Why a handover could not be recorded at all — decided in spokeService.recordEvent.
-const EVENT_INVALID = {
-  no_reading: 'A nozzle and a reading are required.',
-  bad_reading: 'Type the reading as the slip prints it: digits and one decimal point, no commas.',
-  nozzle_not_at_outlet: 'That nozzle is not at this outlet.',
-  not_an_attendant_here: 'That person is not an attendant at this outlet, so the nozzle cannot be given to him.',
-};
 
-// Why the physics refused a reading.
-//
-// 🔴 THE DECREASE TEXT USED TO SEND HIM TO Settings → Commissioning, which refuses any
-// nozzle that already has a chain (commissionService: no second genesis). So a manager
-// with a mistyped last reading was sent to a screen that could not help him, and the
-// nozzle could never be handed over again (MBR rehearsal, 27-Sep-2026). The correction
-// is now the owner's void on Nozzle Events (POST /event/:id/void). A genuine meter reset
-// or replacement still has no path here, and the text says so.
-const L = n => Math.abs(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-const REFUSAL_TEXT = {
-  reading_decreased: v =>
-    `That reading is ${L(v.delta)} L BELOW the last one. A meter only counts up — check the figure against the slip. If the last reading on this nozzle was itself wrong, the owner can void it on Nozzle Events, and then the right figure can be recorded. If the meter was reset or replaced, tell the owner — that cannot be done from this screen.`,
-  more_than_the_tank: v =>
-    `That is ${L(v.delta)} L since the last reading, and this nozzle's tank could have given at most ${L(v.tank_limit)} L, deliveries included. Check the figure against the slip — a decimal point in the wrong place does this. If a tanker came in, enter the delivery first.`,
-  faster_than_the_pump: v =>
-    `That is ${Math.round(v.delta).toLocaleString('en-IN')} L in ${v.seconds} seconds, and the pump cannot deliver more than about ${Math.round(v.ceiling).toLocaleString('en-IN')} L in that time. Check the figure, or say what happened.`,
-};
+
+
 
 router.post('/event', authenticate, requireStationAccess({ required: true }),
   requirePerm('reconcile.manage'), async (req, res, next) => {
@@ -95,24 +73,10 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
         read_pump_serial: req.body.read_pump_serial, read_nozzle_no: req.body.read_nozzle_no,
         recorded_by: req.user.id,
       });
-      if (out?.invalid) {
-        return res.status(400).json({
-          error: out.invalid,
-          message: EVENT_INVALID[out.invalid] || EVENT_INVALID.bad_reading,
-        });
-      }
-      if (out?.refused) {
-        const v = out.refused;
-        return res.status(409).json({
-          error: v.code,
-          // The certainties, in words a manager can act on. Everything else is trade and
-          // is recorded as drift without a murmur. A FINAL refusal asks for no reason,
-          // because none is accepted (spokeService.mayRecord).
-          final: !!v.final,
-          message: REFUSAL_TEXT[v.code] ? REFUSAL_TEXT[v.code](v) : REFUSAL_TEXT.faster_than_the_pump(v),
-          detail: v,
-        });
-      }
+      // Why it could not be recorded, in the manager's words — one wording, shared with
+      // the price screen's readings (spokeService.eventProblem).
+      const problem = spokes.eventProblem(out);
+      if (problem) return res.status(problem.status).json(problem.body);
       res.status(201).json(out);
     } catch (err) { next(err); }
   });
