@@ -236,6 +236,79 @@ async function recordEvent({ station_id, nozzle_id, reading,
   } finally { client.release(); }
 }
 
+// VOID THE LAST READING ON A NOZZLE — the owner's correction, and the only one.
+//
+// Owner, 27-Sep-2026, approving it: a correction is something the outlet asked for. A
+// decrease is refused finally on a handover (mayRecord), so a wrong figure that got
+// through — a slip under every physics bound — used to freeze the nozzle for good:
+// every true reading after it was "below the last one" (MBR rehearsal, 27-Sep).
+//
+// WHAT IT DOES. Takes the nozzle's LATEST event off the chain, so the one before it is
+// the head again: the man that earlier event opened holds the nozzle again, and the
+// manager records the right figure through the ordinary handover, physics and all.
+// Nothing about the money is typed; the outstanding re-derives from the chain.
+//
+// WHY THE ROW LEAVES THE TABLE instead of carrying a "voided" flag. Twelve places read
+// nozzle_events, and a flag is a filter every one of them must remember — "a forgotten
+// WHERE clause away", the same reason Spoke 1 and Spoke 2 are two tables. Out of the
+// table, every reader is right by construction. THE ROW IS KEPT: the whole of it, with
+// who voided it and why in his own words, goes to audit_log in the same transaction.
+//
+// Guarded here, in the one writer, not in the screen:
+//   * OWNER ONLY — checked by the route; this is the owner's eye on the chain.
+//   * ONLY THE LATEST EVENT, and only if nothing chains off it. Voiding from the middle
+//     would move every later leg; that is a different act and not this one.
+//   * THE EVENT HE WAS LOOKING AT. If a manager recorded a newer reading meanwhile, the
+//     request names the wrong head and is refused rather than voiding the newer one.
+//   * A REASON IN HIS OWN WORDS. Never a dropdown.
+async function voidLastEvent({ station_id, event_id, reason, voided_by }) {
+  if (!(await hasSpokeTables())) return null;
+  const why = String(reason || '').trim();
+  if (!why) return { refused: 'no_reason' };
+  if (!UUID_RE.test(String(event_id || ''))) return { refused: 'not_found' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: ev } = await client.query(
+      `SELECT * FROM nozzle_events WHERE id = $1 AND station_id = $2`, [event_id, station_id]);
+    if (!ev.length) { await client.query('ROLLBACK'); return { refused: 'not_found' }; }
+    const target = ev[0];
+    // The same per-nozzle lock recordEvent takes, so a handover and a void on one nozzle
+    // cannot interleave.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(target.nozzle_id)]);
+
+    const head = await lastEvent(target.nozzle_id, client);
+    const { rows: child } = await client.query(
+      `SELECT 1 FROM nozzle_events WHERE prev_event_id = $1 LIMIT 1`, [event_id]);
+    if (!head || String(head.id) !== String(event_id) || child.length) {
+      await client.query('ROLLBACK');
+      return { refused: 'not_the_last' };
+    }
+
+    await client.query(
+      `INSERT INTO audit_log(user_id, action, entity, entity_id, old_data, new_data)
+       VALUES($1, 'void', 'nozzle_events', $2, $3::jsonb, $4::jsonb)`,
+      [voided_by || null, event_id, JSON.stringify(target),
+       JSON.stringify({ reason: why, station_id, nozzle_id: target.nozzle_id })]);
+    await client.query(`DELETE FROM nozzle_events WHERE id = $1 AND station_id = $2`,
+      [event_id, station_id]);
+
+    const back = await lastEvent(target.nozzle_id, client);
+    await client.query('COMMIT');
+    return {
+      voided: target,
+      // What the nozzle stands at now, so the screen can say it in one line. No head at
+      // all means the voided reading was the nozzle's STARTING reading: it has to be
+      // commissioned again in Settings before its next handover.
+      head: back ? { reading: back.reading, recorded_at: back.recorded_at,
+                     opens_attendant_id: back.opens_attendant_id } : null,
+    };
+  } catch (e) {
+    await client.query('ROLLBACK'); throw e;
+  } finally { client.release(); }
+}
+
 // WHERE EVERY NOZZLE STANDS RIGHT NOW — its last reading, when it was taken, and the
 // man it is currently open against. This is what the handover screen needs before it
 // can ask for anything: the manager sees the number the pump last printed and the name
@@ -257,7 +330,7 @@ async function nozzleState(station_id) {
   }
   const { rows } = await pool.query(
     `SELECT n.id, n.nozzle_number, n.fuel_type ${nm.col},
-            e.reading, e.recorded_at, e.opens_attendant_id AS on_attendant_id,
+            e.id AS head_event_id, e.reading, e.recorded_at, e.opens_attendant_id AS on_attendant_id,
             u.name AS on_attendant_name
        FROM nozzles n
        ${nm.join}
@@ -731,7 +804,7 @@ const CLEARED_BELOW_RUPEES = 1;
 const num = v => Number(v) || 0;
 
 module.exports = {
-  hasSpokeTables, physicsVerdict, mayRecord, recordEvent, chain, nozzleState, outstanding,
+  hasSpokeTables, physicsVerdict, mayRecord, recordEvent, voidLastEvent, chain, nozzleState, outstanding,
   outstandingDetail, settle, settlementProblem, readingProblem, quietMoment, handoverPreview,
   handoverMath, holdings, MAX_FLOW_LTRS_PER_MIN,
 };

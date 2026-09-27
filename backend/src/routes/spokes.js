@@ -65,13 +65,13 @@ const EVENT_INVALID = {
 // 🔴 THE DECREASE TEXT USED TO SEND HIM TO Settings → Commissioning, which refuses any
 // nozzle that already has a chain (commissionService: no second genesis). So a manager
 // with a mistyped last reading was sent to a screen that could not help him, and the
-// nozzle could never be handed over again (MBR rehearsal, 27-Sep-2026). Until there is
-// a correction path, the true sentence is that he cannot fix it here and the owner must
-// be told.
+// nozzle could never be handed over again (MBR rehearsal, 27-Sep-2026). The correction
+// is now the owner's void on Nozzle Events (POST /event/:id/void). A genuine meter reset
+// or replacement still has no path here, and the text says so.
 const L = n => Math.abs(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const REFUSAL_TEXT = {
   reading_decreased: v =>
-    `That reading is ${L(v.delta)} L BELOW the last one. A meter only counts up — check the figure against the slip. If the last reading on this nozzle was itself wrong, or the meter was reset or replaced, tell the owner: this nozzle's readings need correcting, and that cannot be done from this screen.`,
+    `That reading is ${L(v.delta)} L BELOW the last one. A meter only counts up — check the figure against the slip. If the last reading on this nozzle was itself wrong, the owner can void it on Nozzle Events, and then the right figure can be recorded. If the meter was reset or replaced, tell the owner — that cannot be done from this screen.`,
   more_than_the_tank: v =>
     `That is ${L(v.delta)} L since the last reading, and this nozzle's tank could have given at most ${L(v.tank_limit)} L, deliveries included. Check the figure against the slip — a decimal point in the wrong place does this. If a tanker came in, enter the delivery first.`,
   faster_than_the_pump: v =>
@@ -114,6 +114,44 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
         });
       }
       res.status(201).json(out);
+    } catch (err) { next(err); }
+  });
+
+// POST /api/spokes/event/:id/void   { station_id, reason }
+//
+// THE OWNER TAKES THE LAST READING ON A NOZZLE OFF ITS CHAIN — the correction for a
+// wrong figure that got through. All of it is decided in spokeService.voidLastEvent;
+// this only guards who may ask.
+//
+// WHICH ROUTE THIS CLOSES: none, and it opens no parallel path. Nothing else removes a
+// chain event — before this, the only way to correct one was a database edit.
+const VOID_REFUSALS = {
+  no_reason:    { status: 400, message: 'Say why this reading is being voided, in your own words.' },
+  not_found:    { status: 404, message: 'That reading is not on this outlet\'s chain.' },
+  not_the_last: { status: 409, message: 'Only the latest reading on a nozzle can be voided, and a newer one has been recorded since. Refresh and look again.' },
+};
+
+router.post('/event/:id/void', authenticate, requireStationAccess({ required: true }),
+  async (req, res, next) => {
+    try {
+      if (!(await spokes.hasSpokeTables())) return res.status(503).json(NOT_MIGRATED);
+      // OWNER ONLY. The manager records readings; taking one back is the owner's eye on
+      // the chain, the same line the outlet-flow switch draws.
+      if (req.user.role !== 'owner') {
+        return res.status(403).json({
+          error: 'owner_only',
+          message: 'Only the outlet owner can void a reading.',
+        });
+      }
+      const out = await spokes.voidLastEvent({
+        station_id: req.body.station_id, event_id: req.params.id,
+        reason: req.body.reason, voided_by: req.user.id,
+      });
+      if (out?.refused) {
+        const r = VOID_REFUSALS[out.refused] || VOID_REFUSALS.not_found;
+        return res.status(r.status).json({ error: out.refused, message: r.message });
+      }
+      res.json(out);
     } catch (err) { next(err); }
   });
 
