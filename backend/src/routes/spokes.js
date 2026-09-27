@@ -155,17 +155,33 @@ router.get('/outstanding/:attendant_id/detail', authenticate, requireStationAcce
     } catch (err) { next(err); }
   });
 
+// Why a settlement was refused, in words the manager can act on. Every refusal is
+// decided in spokeService.settle; this only says it.
+const SETTLE_REFUSALS = {
+  // IT MAY NOT COMPLETE SILENTLY AT ZERO. That is precisely how Rs 1,25,275 left
+  // three settlements on 25-Aug with cash_actual = 0 and nobody the wiser.
+  nothing_brought: { status: 400,
+    message: 'Record what he actually handed over. A settlement of nothing is not a settlement.' },
+  negative_amount: { status: 400,
+    message: o => `The ${o.field || 'amount'} figure is below zero. Enter what he handed over — a settlement cannot take money back.` },
+  bad_amount: { status: 400,
+    message: o => `The ${o.field || 'amount'} figure is not a number. Type it as digits.` },
+  not_an_attendant_here: { status: 400,
+    message: 'That person is not an attendant at this outlet, so there is nothing to settle against.' },
+  duplicate: { status: 409,
+    message: 'This settlement was already recorded a moment ago with the same amounts. It has not been recorded twice.' },
+};
+
 router.post('/settle', authenticate, requireStationAccess({ required: true }),
   requirePerm('settlement.enter'), async (req, res, next) => {
     try {
       if (!(await spokes.hasSpokeTables())) return res.status(503).json(NOT_MIGRATED);
       const out = await spokes.settle({ ...req.body, recorded_by: req.user.id });
-      if (out?.refused === 'nothing_brought') {
-        // IT MAY NOT COMPLETE SILENTLY AT ZERO. That is precisely how Rs 1,25,275 left
-        // three settlements on 25-Aug with cash_actual = 0 and nobody the wiser.
-        return res.status(400).json({
-          error: 'nothing_brought',
-          message: 'Record what he actually handed over. A settlement of nothing is not a settlement.',
+      if (out?.refused) {
+        const r = SETTLE_REFUSALS[out.refused] || SETTLE_REFUSALS.bad_amount;
+        return res.status(r.status).json({
+          error: out.refused,
+          message: typeof r.message === 'function' ? r.message(out) : r.message,
         });
       }
       res.status(201).json(out);

@@ -435,20 +435,84 @@ async function handoverPreview({ station_id, nozzle_id, reading, at = new Date()
   };
 }
 
+// IS THIS A SETTLEMENT AT ALL? Pure, so it can be tested without a database.
+//
+// Every part must be a real, non-negative amount, and the whole must be more than
+// nothing. Until 27-Sep-2026 only the TOTAL was checked, so cash −5,000 alongside UPI
+// +5,010 passed as "₹10 brought" — a negative figure on a money screen is never a
+// payment, it is a typo or a way of moving a debt, and either way it is refused.
+function settlementProblem({ cash, upi, card, credit, petty } = {}) {
+  const parts = { cash, upi, card, credit, petty };
+  for (const [field, v] of Object.entries(parts)) {
+    if (v === undefined || v === null || v === '') continue;
+    const x = Number(v);
+    if (!Number.isFinite(x)) return { code: 'bad_amount', field };
+    if (x < 0) return { code: 'negative_amount', field };
+  }
+  const total = Object.values(parts).reduce((a, b) => a + (Number(b) || 0), 0);
+  if (!(total > 0)) return { code: 'nothing_brought' };
+  return null;
+}
+
+// A settlement is refused as a repeat when the SAME amounts for the SAME man arrive
+// within this window. A double-tap on a slow phone is the case; two genuinely separate
+// hand-overs of identical sums inside two minutes is not a thing that happens.
+const DUPLICATE_WINDOW_SECONDS = 120;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // WHAT HE BROUGHT — the only manual entry in Spoke 3. It brings his suspense down; it
 // never sets it, and it may not complete silently at zero.
+//
+// 🔴 THREE CHECKS, ALL FOUND IN THE MBR REHEARSAL OF 27-Sep-2026:
+//   * the amounts (settlementProblem above);
+//   * the man — he must be an attendant at THIS outlet. A settlement against a
+//     manager's id was accepted and sat at −₹10 for ever, blocking the flow switch
+//     with nothing able to reverse it; an unknown id surfaced a database error;
+//   * the repeat — two identical requests sent together were BOTH recorded, and the
+//     second became a credit that Attendant Close hides and his next day's sales
+//     silently absorb. One man's settlements now queue behind a lock, so the repeat
+//     check cannot be raced.
 async function settle({ station_id, attendant_id, cash = 0, upi = 0, card = 0,
                         credit = 0, petty = 0, notes, recorded_by }) {
   if (!(await hasSpokeTables())) return null;
-  const total = [cash, upi, card, credit, petty].reduce((a, b) => a + (Number(b) || 0), 0);
-  if (!(total > 0)) return { refused: 'nothing_brought' };
-  const { rows } = await pool.query(
-    `INSERT INTO attendant_settlements(station_id, attendant_id, cash, upi, card,
-        credit, petty, notes, recorded_by)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [station_id, attendant_id, num(cash), num(upi), num(card), num(credit), num(petty),
-     notes || null, recorded_by || null]);
-  return { settlement: rows[0] };
+  const problem = settlementProblem({ cash, upi, card, credit, petty });
+  if (problem) return { refused: problem.code, field: problem.field };
+  if (!UUID_RE.test(String(attendant_id || ''))) return { refused: 'not_an_attendant_here' };
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`settle:${attendant_id}`]);
+
+    const { rows: who } = await client.query(
+      `SELECT 1 FROM users u JOIN station_users su ON su.user_id = u.id
+        WHERE u.id = $1 AND su.station_id = $2 AND u.role = 'attendant'`,
+      [attendant_id, station_id]);
+    if (!who.length) { await client.query('ROLLBACK'); return { refused: 'not_an_attendant_here' }; }
+
+    const amounts = [num(cash), num(upi), num(card), num(credit), num(petty)];
+    const { rows: dup } = await client.query(
+      `SELECT id FROM attendant_settlements
+        WHERE station_id = $1 AND attendant_id = $2
+          AND cash = $3 AND upi = $4 AND card = $5 AND credit = $6 AND petty = $7
+          AND settled_at > now() - make_interval(secs => $8)
+        LIMIT 1`,
+      [station_id, attendant_id, ...amounts, DUPLICATE_WINDOW_SECONDS]);
+    if (dup.length) {
+      await client.query('ROLLBACK');
+      return { refused: 'duplicate', settlement_id: dup[0].id };
+    }
+
+    const { rows } = await client.query(
+      `INSERT INTO attendant_settlements(station_id, attendant_id, cash, upi, card,
+          credit, petty, notes, recorded_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [station_id, attendant_id, ...amounts, notes || null, recorded_by || null]);
+    await client.query('COMMIT');
+    return { settlement: rows[0] };
+  } catch (e) {
+    await client.query('ROLLBACK'); throw e;
+  } finally { client.release(); }
 }
 
 // ── THE QUIET MOMENT ─────────────────────────────────────────────────────────
@@ -534,6 +598,6 @@ const num = v => Number(v) || 0;
 
 module.exports = {
   hasSpokeTables, physicsVerdict, mayRecord, recordEvent, chain, nozzleState, outstanding,
-  outstandingDetail, settle, quietMoment, handoverPreview, handoverMath, holdings,
-  MAX_FLOW_LTRS_PER_MIN,
+  outstandingDetail, settle, settlementProblem, quietMoment, handoverPreview, handoverMath,
+  holdings, MAX_FLOW_LTRS_PER_MIN,
 };
