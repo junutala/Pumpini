@@ -185,8 +185,26 @@ export default function ReconVariancePage() {
                       </span>
                     </div>
 
+                    {/* A NOZZLE WITH NO FIGURE WOULD READ AS A LOSS, so the tank says why it
+                        has no variance instead of showing one (27-Sep-2026). */}
+                    {t.incomplete && (
+                      <div style={{ fontSize: 12.5, color: '#9a3412', marginBottom: 8 }}>
+                        {t.incomplete === 'nozzles_unread'
+                          ? tc('recon.nozzlesUnread', 'Not every nozzle on this tank has a slip figure yet, so there is no variance to show.')
+                          : tc('recon.nozzlesUnreadBefore', 'The last recon did not read every nozzle on this tank, so this window cannot be reconciled. The next one will be.')}
+                      </div>
+                    )}
+
                     <Row label={tc('recon.opening', 'Opening')} value={L(t.opening_ltrs)} tc={tc} />
                     <Row label={tc('recon.delivered', 'Delivered')} value={L(t.delivered_ltrs)} tc={tc} />
+                    {/* TEST DRAWS ARE NOT SALES. When one was taken, the working shows the
+                        meter's movement, the test that came off it, and what was sold. */}
+                    {Number(t.tested_ltrs) > 0 && (
+                      <>
+                        <Row label={tc('recon.moved', 'Moved on the meters')} value={L(t.moved_ltrs)} tc={tc} />
+                        <Row label={tc('recon.tested', 'Test draws, poured back')} value={`−${L(t.tested_ltrs)}`} tc={tc} />
+                      </>
+                    )}
                     <Row label={tc('recon.sales', 'Sold, by the nozzles')} value={L(t.sales_ltrs)} tc={tc} />
                     {/* TESTING ON ITS OWN LINE — but only when a draw crossed tanks. */}
                     {Number(t.testing_ltrs) !== 0 && (

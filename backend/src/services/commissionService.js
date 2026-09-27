@@ -171,6 +171,8 @@ async function commission({ station_id, entries, recorded_by }) {
           recorded_by,
           read_pump_serial: serial || null, read_nozzle_no: printed,
         });
+        // A starting reading the writer would not accept is reported, never swallowed.
+        if (r?.invalid) { out.skipped.push({ nozzle_id, why: r.invalid }); continue; }
         genesis = r?.event?.id || null;
       }
     }

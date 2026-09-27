@@ -99,3 +99,23 @@ test('it agrees with outstandingDetail()s SQL, leg for leg', () => {
       `disagreed on ${prev} -> ${read}`);
   }
 });
+
+// ── TEST DRAWS ARE NOT SALES ────────────────────────────────────────────────────
+// MBR rehearsal, 27-Sep-2026: a 5 L can check cost the man Rs 581.75, because the leg
+// was priced on the raw totaliser.
+test('a test draw in the leg comes off before pricing', () => {
+  const r = handoverMath({ prevReading: 1000, reading: 1105, price: 116.35, testLtrs: 5 });
+  assert.strictEqual(r.ltrs, 100);
+  assert.strictEqual(Math.round(r.value * 100) / 100, 11635);
+});
+
+test('a leg that was ONLY a test draw owes nothing, and never goes negative', () => {
+  assert.deepStrictEqual(handoverMath({ prevReading: 1000, reading: 1005, price: 116.35, testLtrs: 5 }),
+    { ltrs: 0, value: 0 });
+  assert.strictEqual(handoverMath({ prevReading: 1000, reading: 1003, price: 116.35, testLtrs: 5 }).ltrs, 0);
+});
+
+test('no test litres given behaves exactly as before', () => {
+  assert.deepStrictEqual(handoverMath({ prevReading: 1000, reading: 1105, price: 2 }),
+    handoverMath({ prevReading: 1000, reading: 1105, price: 2, testLtrs: 0 }));
+});

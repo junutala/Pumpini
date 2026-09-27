@@ -33,7 +33,10 @@ import SettlementBreakup, { emptyBreakup, breakupTotal } from '../../components/
 import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
-import { errText, errCode } from '../../lib/apiError';
+import { errText, errCode, errPayload } from '../../lib/apiError';
+
+// The physics refusals, shown beside the reading rather than as a page alarm.
+const PHYSICS = ['reading_decreased', 'more_than_the_tank', 'faster_than_the_pump'];
 import HandoverReading from '../../components/shared/HandoverReading';
 import { nozName } from '../../lib/nozzle';
 
@@ -113,8 +116,8 @@ export default function AttendantDuesPage() {
           });
         } catch (e) {
           const code = errCode(e);
-          if (code === 'reading_decreased' || code === 'faster_than_the_pump') {
-            setRefused(x => ({ ...x, [h.nozzle_id]: { text: errText(e, 'That figure cannot be right.'), code } }));
+          if (PHYSICS.includes(code)) {
+            setRefused(x => ({ ...x, [h.nozzle_id]: { text: errText(e, 'That figure cannot be right.'), code, final: !!errPayload(e).final } }));
           } else {
             setErr(errText(e, tc('dues.closeFailed', 'Could not record that closing reading.')));
           }
@@ -344,6 +347,13 @@ export default function AttendantDuesPage() {
                                     : `${Number(l.opened_at_reading).toFixed(3)} → ${Number(l.closed_at_reading).toFixed(3)}`}
                                 </td>
                                 <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {/* A test draw comes off before pricing, and says so — a line
+                                      5 L short of its two readings would be a line he cannot check. */}
+                                  {Number(l.test_ltrs) > 0 && (
+                                    <span style={{ color: 'var(--text-3)', marginRight: 6 }}>
+                                      −{Number(l.test_ltrs).toFixed(2)} {tc('dues.testShort', 'test')} =
+                                    </span>
+                                  )}
                                   {Number(l.ltrs).toFixed(2)} L
                                 </td>
                                 <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
@@ -380,8 +390,9 @@ export default function AttendantDuesPage() {
                     const earlier = Number(r.outstanding) || 0;
                     const pvs = holds.map(h => closePv[h.nozzle_id]);
                     const pvKnown = pvs.every(pv => pv && pv.found);
-                    // A reading below the last one cannot close him (23-Sep-2026, MBR).
-                    const anyBelow = pvs.some(pv => pv?.physics?.code === 'reading_decreased');
+                    // A reading the physics refuses finally — below the last one (23-Sep-2026,
+                    // MBR) or more than the tank could give (27-Sep) — cannot close him.
+                    const anyBelow = pvs.some(pv => !!pv?.physics?.final);
                     const dueNow = pvs.reduce((sum, pv) => sum + (Number(pv?.value) || 0), 0);
                     const due = earlier + dueNow;
                     // He may go home having brought nothing only when nothing is due.

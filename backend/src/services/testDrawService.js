@@ -39,6 +39,7 @@
 //   case, and it is the one the reconciliation has never seen.
 const pool = require('../db/pool');
 const pumps = require('./pumpService');
+const spokes = require('./spokeService');
 
 class TestDrawError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -83,6 +84,10 @@ async function loadDestinationTank(client, { to_tank_id, station_id, fuel_type }
 // operator on it is a fact the shift already knows. Absent (no open shift, or nobody
 // assigned) is not an error — a draw taken between shifts is still a real draw, and
 // refusing it would only push the manager to record nothing at all.
+//
+// A NOZZLE-LED OUTLET HAS NO OPEN SHIFT, so the man is the one the nozzle's chain is
+// open against. The draw is taken off his leg by time (spokeService.LEG_TEST_LTRS),
+// not by this column — this only records whose meter it was, as the shift flow does.
 async function currentOperator(client, { station_id, nozzle_id }) {
   const { rows } = await client.query(`
     SELECT s.id AS shift_id, san.attendant_id
@@ -92,7 +97,13 @@ async function currentOperator(client, { station_id, nozzle_id }) {
      WHERE s.station_id = $1 AND s.status = 'open'
      ORDER BY s.start_time DESC
      LIMIT 1`, [station_id, nozzle_id]);
-  return rows[0] || { shift_id: null, attendant_id: null };
+  if (rows[0]) return rows[0];
+  if (!(await spokes.hasSpokeTables())) return { shift_id: null, attendant_id: null };
+  const { rows: head } = await client.query(`
+    SELECT opens_attendant_id AS attendant_id FROM nozzle_events
+     WHERE nozzle_id = $1 AND station_id = $2
+     ORDER BY recorded_at DESC, created_at DESC LIMIT 1`, [nozzle_id, station_id]);
+  return { shift_id: null, attendant_id: head[0]?.attendant_id || null };
 }
 
 // Record the draw. `to_tank_id` defaults to the nozzle's own tank, which is the

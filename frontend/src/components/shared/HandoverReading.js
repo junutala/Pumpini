@@ -33,9 +33,9 @@ const money = n => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractio
 
 // value:    { reading, source, serial, no, reason }
 // onChange: patch => void
-// refused:  { text, code } from the backend's physics refusal, or null. A decrease
-//           ('reading_decreased') is FINAL: no reason box, because no reason is
-//           accepted — check the figure, or re-commission the nozzle in Settings.
+// refused:  { text, code, final } from the backend's physics refusal, or null. A FINAL
+//           refusal (a decrease, or more than the tank could give) has no reason box,
+//           because no reason is accepted. The server decides which are final.
 // onPreview:(preview|null) => void — so a screen closing several nozzles can show one
 //           total built from these server-derived parts
 // showBalance: the "already outstanding / after this handover" lines. Off where a
@@ -116,21 +116,26 @@ export default function HandoverReading({
           23-Sep-2026, MBR: 1925 → 1255 showed a quiet "₹0" here, because the server
           floors a backwards leg at zero litres. ₹0 read as "he owes nothing". It is a
           misread, and the screen must say so rather than price it. */}
-      {pv && pv.found && pv.physics?.code === 'reading_decreased' && (
+      {/* The same for MORE THAN THE TANK COULD GIVE — MBR rehearsal, 27-Sep-2026: a decimal
+          slip priced a man at ₹15.99 lakh and this box showed the figure as money. */}
+      {pv && pv.found && pv.physics?.final && (
         <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8, background: '#fde8e8',
                       color: '#991b1b', fontSize: 12.5, lineHeight: 1.5,
                       display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
-            {tc('spoke.belowLast', 'Below the last reading ({prev}). A meter only counts up — check the figure.')
-              .replace('{prev}', L(pv.prev_reading))}
+            {pv.physics.code === 'more_than_the_tank'
+              ? tc('spoke.overTank', '{ltrs} L since the last reading ({prev}) is more than this tank could have given. Check the figure — a decimal point in the wrong place does this.')
+                  .replace('{ltrs}', L(pv.physics.delta)).replace('{prev}', L(pv.prev_reading))
+              : tc('spoke.belowLast', 'Below the last reading ({prev}). A meter only counts up — check the figure.')
+                  .replace('{prev}', L(pv.prev_reading))}
           </span>
         </div>
       )}
 
       {/* THE MONEY, SHOWN BEFORE IT IS MOVED. He checks one line against the paper in
           ten seconds and after that he stops checking. */}
-      {pv && pv.found && pv.closes && pv.physics?.code !== 'reading_decreased' && (
+      {pv && pv.found && pv.closes && !pv.physics?.final && (
         <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8,
                       background: 'var(--surface-2)', fontSize: 12.5 }}>
           <div style={{ fontWeight: 700, marginBottom: 5 }}>
@@ -139,6 +144,9 @@ export default function HandoverReading({
           <div style={{ fontFamily: 'var(--font-mono)', display: 'flex',
                         justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <span>{L(pv.prev_reading)} → {L(pv.reading)}</span>
+            {Number(pv.test_ltrs) > 0 && (
+              <span style={{ color: 'var(--text-3)' }}>−{L(pv.test_ltrs)} L {tc('spoke.testDraw', 'test draw')}</span>
+            )}
             <span>{L(pv.ltrs)} L{pv.price ? ` × ${money(pv.price)}` : ''}</span>
             <span style={{ fontWeight: 700 }}>{money(pv.value)}</span>
           </div>
@@ -165,7 +173,7 @@ export default function HandoverReading({
       {/* A JUSTIFIED DRIFT, IN HIS OWN WORDS — only after the physics has refused. */}
       {refused && (() => {
         const text = typeof refused === 'string' ? refused : refused.text;
-        const final = typeof refused === 'object' && refused.code === 'reading_decreased';
+        const final = typeof refused === 'object' && !!refused.final;
         return (
           <div style={{ marginTop: 8, padding: '9px 11px', borderRadius: 8,
                         background: '#fbeee4', color: '#9a3412', fontSize: 12.5, lineHeight: 1.5 }}>
@@ -173,7 +181,7 @@ export default function HandoverReading({
               <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
               <span>{text}</span>
             </div>
-            {/* Only a too-fast reading may be explained. A decrease may not. */}
+            {/* Only a too-fast reading may be explained. A final refusal may not. */}
             {!final && (
               <input value={value.reason || ''} placeholder={tc('spoke.reasonPh', 'Say what happened, in your own words')}
                 onChange={e => onChange?.({ reason: e.target.value })}

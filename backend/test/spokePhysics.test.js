@@ -80,3 +80,38 @@ test('faster than the pump may be recorded once he explains, and not before', ()
 test('ordinary trade needs nothing', () => {
   assert.strictEqual(mayRecord(null, ''), 'ok');
 });
+
+// ── THE TANK CEILING ────────────────────────────────────────────────────────────
+// MBR rehearsal, 27-Sep-2026: 19902.9 typed for 1990.29 across an eight-hour leg. The
+// pump-speed ceiling for eight hours is 19,200 L, so 17,912 L went through silently and
+// one man was charged Rs 15.99 lakh on a nozzle whose tank holds 15,000.
+
+test('A DECIMAL SLIP OVER A LONG LEG is refused by the tank, and finally', () => {
+  const v = physicsVerdict({ prevReading: 1990.29, prevAt: T0, reading: 19902.9, at: at(8 * 60),
+                             tankLimit: 15000 * 1.10 });
+  assert.strictEqual(v.code, 'more_than_the_tank');
+  assert.strictEqual(v.final, true);
+  assert.strictEqual(mayRecord(v, 'the man said so'), 'refuse', 'no reason makes a tank give more than it holds');
+});
+
+test('without the tank the same slip passed — the gap the ceiling closes', () => {
+  assert.strictEqual(
+    physicsVerdict({ prevReading: 1990.29, prevAt: T0, reading: 19902.9, at: at(8 * 60) }), null);
+});
+
+test('a big but real leg under the tank ceiling is still silent', () => {
+  // Highway tank 2's largest real leg: 4,405 L of a 22,000 L tank.
+  assert.strictEqual(physicsVerdict({ prevReading: 1000, prevAt: T0, reading: 5405, at: at(8 * 60),
+                                      tankLimit: 22000 * 1.10 }), null);
+});
+
+test('no tank bound (CNG, or no capacity on file) leaves the old tests alone', () => {
+  assert.strictEqual(physicsVerdict({ prevReading: 1000, prevAt: T0, reading: 2281.57, at: at(8 * 60),
+                                      tankLimit: null }), null);
+});
+
+test('a decrease is still reported as a decrease, not as a tank problem', () => {
+  const v = physicsVerdict({ prevReading: 1925, prevAt: T0, reading: 1255, at: at(24), tankLimit: 100 });
+  assert.strictEqual(v.code, 'reading_decreased');
+  assert.strictEqual(v.final, true);
+});
