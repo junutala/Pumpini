@@ -26,7 +26,10 @@ import api from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { nozName } from '../../lib/nozzle';
 import { useTranslation } from 'react-i18next';
-import { errText, errCode } from '../../lib/apiError';
+import { errText, errCode, errPayload } from '../../lib/apiError';
+
+// The physics refusals, shown beside the reading rather than as a page alarm.
+const PHYSICS = ['reading_decreased', 'more_than_the_tank', 'faster_than_the_pump'];
 
 const when = ts => ts ? new Date(ts).toLocaleString('en-IN', {
   timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short',
@@ -127,8 +130,8 @@ export default function NozzleEventsPage() {
       // exists because reading the payload by hand is what put `missing_closing_dip`
       // in front of a manager in a red box.
       const code = errCode(e);
-      if (code === 'reading_decreased' || code === 'faster_than_the_pump') {
-        setRefused(x => ({ ...x, [n.id]: { text: errText(e, 'That figure cannot be right.'), code } }));
+      if (PHYSICS.includes(code)) {
+        setRefused(x => ({ ...x, [n.id]: { text: errText(e, 'That figure cannot be right.'), code, final: !!errPayload(e).final } }));
       } else {
         setErr(errText(e, 'Could not record that handover.'));
       }
@@ -225,7 +228,7 @@ export default function NozzleEventsPage() {
                         refused={refused[n.id]} disabled={busy}
                         onPreview={pv => {
                           setClosing(x => ({ ...x, [n.id]: !!(pv && pv.found && pv.closes) }));
-                          setBelow(x => ({ ...x, [n.id]: pv?.physics?.code === 'reading_decreased' }));
+                          setBelow(x => ({ ...x, [n.id]: !!pv?.physics?.final }));
                         }} />
 
                       {/* WHO TAKES OVER — always a person. Owner, 23-Sep-2026: "The

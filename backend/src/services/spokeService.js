@@ -40,15 +40,63 @@ const MAX_FLOW_LTRS_PER_MIN = 40;   // a forecourt pump flat out
 // instant is not called impossible by arithmetic on a divide-by-nearly-zero.
 const MIN_GAP_SECONDS = 30;
 
-function physicsVerdict({ prevReading, prevAt, reading, at }) {
+// tankLimit — the most this nozzle's tank could have given since the last reading
+// (tankCeiling below), or null where there is no such bound.
+//
+// `final` is decided HERE, once, and every screen reads it rather than keeping its own
+// list of which codes may be explained.
+function physicsVerdict({ prevReading, prevAt, reading, at, tankLimit = null }) {
   if (prevReading == null) return null;
   const delta = Number(reading) - Number(prevReading);
-  if (delta < 0) return { code: 'reading_decreased', delta };
+  if (delta < 0) return { code: 'reading_decreased', delta, final: true };
+  if (tankLimit != null && delta > Number(tankLimit)) {
+    return { code: 'more_than_the_tank', delta, tank_limit: +Number(tankLimit).toFixed(2), final: true };
+  }
   const seconds = Math.max(MIN_GAP_SECONDS,
     Math.round((new Date(at) - new Date(prevAt)) / 1000) || MIN_GAP_SECONDS);
   const ceiling = (seconds / 60) * MAX_FLOW_LTRS_PER_MIN;
   if (delta > ceiling) return { code: 'faster_than_the_pump', delta, seconds, ceiling: +ceiling.toFixed(2) };
   return null;   // everything else is trade. Record the drift, stay silent.
+}
+
+// ── THE TANK CEILING ─────────────────────────────────────────────────────────
+// THE PUMP-SPEED TEST GROWS WITH THE GAP, so over a long leg it stops being a test: eight
+// hours allows 19,200 L. The MBR rehearsal of 27-Sep-2026 typed 19902.9 for 1990.29 — one
+// decimal place — across an eight-hour leg, and it went through without a murmur: 17,912 L
+// charged to one man, ₹15.99 lakh, on a nozzle whose tank holds 15,000.
+//
+// A nozzle cannot give more than its tank held plus what was delivered into it. That is
+// physics, not judgement, so like a decrease it is FINAL — there is no reason a man can
+// type that makes a tank give more than it holds. The one real way to exceed it, a tanker
+// not yet entered, has its own answer on the refusal: enter the delivery first.
+//
+// Deliberately generous, because a false refusal stops a handover:
+//   * capacity × 1.10 — the nameplate is not the shell. A tank called 16 KL holds
+//     17,279 L (CLAUDE.md, calibration authorities), and capacities here are nameplates.
+//   * deliveries from a day BEFORE the last reading — received_at is often an invoice
+//     date read off paper, and a day early only loosens the bound.
+//   * CNG is skipped. Its "tank" is a cascade topped up continuously by a compressor;
+//     Kamala's is configured at 500 and has legs of 1,281. There is no ceiling to test.
+//
+// Checked against production 27-Sep-2026 before it was written: 1,966 shift legs on the
+// real outlets' liquid-fuel tanks, the largest 20% of its tank (Highway tank 2, 4,405 of
+// 22,000), none over 110%. The bound would never have fired on a real leg.
+const TANK_SLACK = 1.10;
+async function tankCeiling(nozzle_id, sinceAt, client = pool) {
+  if (!sinceAt) return null;
+  const { rows } = await client.query(
+    `SELECT t.capacity_ltrs,
+            COALESCE((SELECT SUM(GREATEST(COALESCE(fd.gross_volume_ltrs, 0), COALESCE(fd.net_volume_ltrs, 0)))
+                        FROM fuel_deliveries fd
+                       WHERE fd.tank_id = t.id
+                         AND COALESCE(fd.received_at, fd.created_at) >= $2::timestamptz - interval '1 day'), 0)
+              AS delivered
+       FROM nozzles n JOIN tanks t ON t.id = n.tank_id
+      WHERE n.id = $1 AND COALESCE(lower(t.fuel_type), '') <> 'cng'`,
+    [nozzle_id, sinceAt]);
+  const cap = Number(rows[0]?.capacity_ltrs);
+  if (!rows.length || !Number.isFinite(cap) || cap <= 0) return null;
+  return cap * TANK_SLACK + (Number(rows[0].delivered) || 0);
 }
 
 // MAY THIS READING BE RECORDED? Pure, so it can be tested without a database.
@@ -71,7 +119,7 @@ function physicsVerdict({ prevReading, prevAt, reading, at }) {
 // box on a decrease is a click-through, and a click-through on money is a loss.
 function mayRecord(verdict, drift_reason) {
   if (!verdict) return 'ok';
-  if (verdict.code === 'reading_decreased') return 'refuse';
+  if (verdict.final) return 'refuse';
   return String(drift_reason || '').trim() ? 'ok' : 'reason';
 }
 
@@ -144,6 +192,7 @@ async function recordEvent({ station_id, nozzle_id, reading,
     const now = at ? new Date(at) : new Date();
     const verdict = physicsVerdict({
       prevReading: prev?.reading, prevAt: prev?.recorded_at, reading, at: now,
+      tankLimit: prev ? await tankCeiling(nozzle_id, prev.recorded_at, client) : null,
     });
 
     // A CERTAIN IMPOSSIBILITY IS REFUSED UNLESS HE EXPLAINS IT IN HIS OWN WORDS. Never
@@ -467,6 +516,7 @@ async function handoverPreview({ station_id, nozzle_id, reading, at = new Date()
     // Shown before he confirms, not after — the two physics tests, nothing else.
     physics: prev ? physicsVerdict({
       prevReading: prev.reading, prevAt: prev.recorded_at, reading: num_, at,
+      tankLimit: await tankCeiling(nozzle_id, prev.recorded_at),
     }) : null,
     // A reading identical to the one before it moves nothing. Worth saying out loud so
     // "₹0" reads as a handover with no sale rather than as a screen that failed.

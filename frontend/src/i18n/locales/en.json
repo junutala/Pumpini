@@ -3508,7 +3508,8 @@
     "assignNozzle": "Assign the nozzle",
     "since": "since",
     "pickAttendant": "Select an attendant",
-    "belowLast": "Below the last reading ({prev}). A meter only counts up — check the figure."
+    "belowLast": "Below the last reading ({prev}). A meter only counts up — check the figure.",
+    "overTank": "{ltrs} L since the last reading ({prev}) is more than this tank could have given. Check the figure — a decimal point in the wrong place does this."
   },
   "dues": {
     "title": "Attendant Close",

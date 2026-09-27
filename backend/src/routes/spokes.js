@@ -60,6 +60,24 @@ const EVENT_INVALID = {
   not_an_attendant_here: 'That person is not an attendant at this outlet, so the nozzle cannot be given to him.',
 };
 
+// Why the physics refused a reading.
+//
+// 🔴 THE DECREASE TEXT USED TO SEND HIM TO Settings → Commissioning, which refuses any
+// nozzle that already has a chain (commissionService: no second genesis). So a manager
+// with a mistyped last reading was sent to a screen that could not help him, and the
+// nozzle could never be handed over again (MBR rehearsal, 27-Sep-2026). Until there is
+// a correction path, the true sentence is that he cannot fix it here and the owner must
+// be told.
+const L = n => Math.abs(Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const REFUSAL_TEXT = {
+  reading_decreased: v =>
+    `That reading is ${L(v.delta)} L BELOW the last one. A meter only counts up — check the figure against the slip. If the last reading on this nozzle was itself wrong, or the meter was reset or replaced, tell the owner: this nozzle's readings need correcting, and that cannot be done from this screen.`,
+  more_than_the_tank: v =>
+    `That is ${L(v.delta)} L since the last reading, and this nozzle's tank could have given at most ${L(v.tank_limit)} L, deliveries included. Check the figure against the slip — a decimal point in the wrong place does this. If a tanker came in, enter the delivery first.`,
+  faster_than_the_pump: v =>
+    `That is ${Math.round(v.delta).toLocaleString('en-IN')} L in ${v.seconds} seconds, and the pump cannot deliver more than about ${Math.round(v.ceiling).toLocaleString('en-IN')} L in that time. Check the figure, or say what happened.`,
+};
+
 router.post('/event', authenticate, requireStationAccess({ required: true }),
   requirePerm('reconcile.manage'), async (req, res, next) => {
     try {
@@ -87,15 +105,11 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
         const v = out.refused;
         return res.status(409).json({
           error: v.code,
-          // The two certainties, in words a manager can act on. Everything else is
-          // trade and is recorded as drift without a murmur.
-          // A decrease is FINAL on a handover — no reason is asked for, because none is
-          // accepted (spokeService.mayRecord). Check the figure; a real reset is a new
-          // starting reading in Settings → Commissioning.
+          // The certainties, in words a manager can act on. Everything else is trade and
+          // is recorded as drift without a murmur. A FINAL refusal asks for no reason,
+          // because none is accepted (spokeService.mayRecord).
           final: !!v.final,
-          message: v.code === 'reading_decreased'
-            ? `That reading is ${Math.abs(v.delta).toLocaleString('en-IN')} L BELOW the last one. A meter only counts up — check the figure. If the meter was reset or replaced, give the nozzle a new starting reading in Settings → Commissioning.`
-            : `That is ${Math.round(v.delta).toLocaleString('en-IN')} L in ${v.seconds} seconds, and the pump cannot deliver more than about ${Math.round(v.ceiling).toLocaleString('en-IN')} L in that time. Check the figure, or say what happened.`,
+          message: REFUSAL_TEXT[v.code] ? REFUSAL_TEXT[v.code](v) : REFUSAL_TEXT.faster_than_the_pump(v),
           detail: v,
         });
       }
