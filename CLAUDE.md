@@ -890,15 +890,28 @@ those against zero at every other real outlet.
 
 > *"A price change has to be prospective... why such decisions are creeping without my
 > knowledge?"*
+>
+> *"Price changes are NOT this syste.... This is when the shift led process is in place.
+> That's exactly why most of the outlets close their shift at 6AM. so that the revised
+> price takes over from the new shift at 6AM. But now for the nozzle led process, we MUST
+> worry about the time factor and then price the settlement Pre and Post price change."*
 
-- **A sale is priced at the price in force when it was sold.** In nozzle-led, a leg takes
-  the price in force when it CLOSED (`spokeService.priceAt`). A change never reaches back
+- **A sale is priced at the price in force when it was sold.** A change never reaches back
   into a leg, a settlement or a figure already closed.
-- **The 27-Aug ruling still stands and says something different.** "Build nothing for price
-  changes" (`docs/flow-v2-build-plan.md` §11.2) means no proration and no price-boundary
-  machinery: one price per leg, and the manager closes and recommences around a change. It
-  never meant "price history at today's rate". From 31-Aug (#390) to 27-Sep that is exactly
-  what the code did, with a comment crediting the owner.
+- **The 27-Aug ruling ("build nothing for price changes", `docs/flow-v2-build-plan.md`
+  §11.2) is a SHIFT-LED rule.** It works because the outlet closes its shift at the change,
+  usually 6 AM. It does not carry over to nozzle-led, which has no shift boundary. (This
+  section first said it did, on the morning of 27-Sep. That was wrong.)
+- **NOZZLE-LED: A PRICE CHANGE TAKES A READING of every nozzle of THAT FUEL, in the same
+  screen (Settings → Prices), and the price and the readings save together or not at all**
+  (`priceService.setPrice`). Each reading closes the man on the nozzle and reopens him at
+  the same figure, so what he sold until then joins his account at the old price. The
+  price starts at that moment: no typed or backdated start time. **Only that fuel's
+  nozzles:** one pump printout carries every nozzle on the pump, and the other fuels'
+  lines are read and never written (owner, 27-Sep). Every leg is then priced at the price
+  in force when it OPENED (`spokeService.priceAt`).
+- **Time alone never splits a leg.** Two readings give litres, not when they were sold;
+  dividing them by the clock is proration, which this file already rules out.
 - **Two places at real outlets still read today's price for a past figure**, found 27-Sep,
   and are waiting on the owner's word: the shift-led settlement prices at the moment of
   settling (`settlementService.priceLookup`; a shift settled after a change would take the

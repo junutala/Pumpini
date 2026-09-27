@@ -200,16 +200,17 @@ MIN_GAP_SECONDS       = 30   -- floor, so a legitimate back-to-back print at the
 ```
 legs    each event with closes_attendant_id, contributing
         GREATEST(reading − prev.reading, 0) litres
-priced  litres × the price IN FORCE WHEN THE LEG CLOSED (latest effective_from <= closing reading)
+priced  litres × the price IN FORCE WHEN THE LEG OPENED (latest effective_from <= opening reading)
 brought SUM(cash+upi+card+credit+petty) from attendant_settlements
         outstanding = priced.value − brought.handed_over
 ```
 
-A price change is PROSPECTIVE (owner, 27-Sep-2026): a leg takes the price in force when it closed,
-and a later change never reaches back into it. One price per leg and no proration — the 27-Aug
-ruling that the manager closes and recommences around a change still stands. This line used to
-read "litres × the fuel's CURRENT price", credited to the 27-Aug ruling; that ruling said build
-nothing, not reprice history (learnings.md, 27-Sep).
+A price change is PROSPECTIVE (owner, 27-Sep-2026), and at a nozzle-led outlet it is a BOUNDARY:
+`priceService.setPrice` saves the new price together with one reading of every nozzle of THAT fuel,
+taken at that moment (a mixed-fuel printout's other lines are ignored). Each reading closes and
+reopens the same man, so his sales until then are priced at the old rate and his next leg at the new.
+No leg spans a change, so pricing at the opening is exact. The 27-Aug "build nothing" ruling is a
+shift-led rule — it relies on the 6 AM shift close (learnings.md, 27-Sep).
 
 ### `services/commissionService`
 `readiness` · `commission` · `wantsFor`

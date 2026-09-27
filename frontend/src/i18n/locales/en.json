@@ -2605,7 +2605,12 @@
     "flowSetUp": "Set up →",
     "flowOneLine": "Close attendants shift by shift, or nozzle by nozzle.",
     "flowLabelShift": "Shift-led",
-    "flowLabelNozzle": "Nozzle-led"
+    "flowLabelNozzle": "Nozzle-led",
+    "slipTook": "Read {n} nozzle(s) of this fuel from the slip; {m} line(s) for other fuels were left alone.",
+    "slipFailed": "That photograph could not be read. Type the readings instead.",
+    "nlIntro": "This outlet runs nozzle-led. The new price starts when you save, at the readings below: what each man sold until now stays at the old price, and his next sales are at the new one. Only this fuel's nozzles are read.",
+    "nlNone": "This outlet runs nozzle-led, and no nozzle of this fuel is commissioned, so there is nothing to read. The new price starts when you save.",
+    "photoPumpSlip": "Photograph the pump slip"
   },
   "sstart": {
     "dashboard": "Dashboard",
