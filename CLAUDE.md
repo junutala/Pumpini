@@ -877,6 +877,30 @@ those against zero at every other real outlet.
   that screen. Owner: carried balances are to be shown on the rebuilt owner dashboard —
   that is where they are meant to be caught, not on Attendant Close.
 
+### 🔴 A PRICE CHANGE IS PROSPECTIVE — owner-set 27-Sep-2026
+
+> *"A price change has to be prospective... why such decisions are creeping without my
+> knowledge?"*
+
+- **A sale is priced at the price in force when it was sold.** In nozzle-led, a leg takes
+  the price in force when it CLOSED (`spokeService.priceAt`). A change never reaches back
+  into a leg, a settlement or a figure already closed.
+- **The 27-Aug ruling still stands and says something different.** "Build nothing for price
+  changes" (`docs/flow-v2-build-plan.md` §11.2) means no proration and no price-boundary
+  machinery: one price per leg, and the manager closes and recommences around a change. It
+  never meant "price history at today's rate". From 31-Aug (#390) to 27-Sep that is exactly
+  what the code did, with a comment crediting the owner.
+- **Two places at real outlets still read today's price for a past figure**, found 27-Sep,
+  and are waiting on the owner's word: the shift-led settlement prices at the moment of
+  settling (`settlementService.priceLookup`; a shift settled after a change would take the
+  new price, and that has happened 0 times in 5,239 sales), and the dashboard's per-operator
+  target revenue for a chosen day (`dashboard.js`, display only).
+
+**🔴 A COMMENT THAT CITES THE OWNER IS NOT THE OWNER.** Before writing "owner-set" on a
+line of code, quote his words next to it, and if the code does something his words do not
+say, stop and ask him. A consequence he has never seen written down is a decision he never
+made. See learnings.md, 27-Sep.
+
 ### 🔴 SWITCHING BACK TO SHIFT-LED — the handoff, built 23-Sep-2026
 
 The owner asked, 23-Sep: *"if Ramana wants to revert to the shift pattern, it's just a

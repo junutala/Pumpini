@@ -16,6 +16,39 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-09-27 · A price change rewrote settled balances, and the code said the owner had ruled it
+
+**We believed** the nozzle-led money followed the owner's 27-Aug ruling on price changes.
+The code said so in as many words: *"The CURRENT price for that fuel. Price changes are
+not this system's problem (owner-set 27-Aug)"*, and the technical spec repeated it as
+*"litres × the fuel's CURRENT price … (owner-set, 27-Aug)"*.
+
+**Actually** the ruling (`docs/flow-v2-build-plan.md` §11.2) said to build NOTHING for a
+price change: no proration, no price-boundary machinery, the manager closes and
+recommences around it. The assistant who wrote `spokeService` on 31-Aug read "build
+nothing" as "price every leg at today's rate". That is retroactive, the opposite of what
+the owner means, and it defeats his own instruction, because a leg the manager closed
+before the change got repriced anyway. The file arrived in PR #390, titled *"ATG scan:
+fuel and CAPACITY decide, not fuel and the tank number"*, so the decision rode in under a
+title about something else. #429 (23-Sep) copied the same lookup into the handover
+preview, citing the same ruling.
+
+**We found out** in the MBR rehearsal on 27-Sep: a ₹0.50 diesel change turned six fully
+settled attendants into debtors. I then made it worse by listing the fix to the owner as
+"your decision", as though pricing prospectively were a new policy rather than his rule
+being broken. His answer: *"A price change has to be prospective... why such decisions are
+creeping without my knowledge?"*
+
+**It cost** nothing in money. Production, checked read-only: nozzle-led has run only at
+MBR (20 handovers, 3 settlements, no price change since the first one), and all 5,239
+shift-led sales at the five real outlets were priced at the price in force during their
+shift. What it cost was a month of a money rule standing with the owner's name on it,
+which he had never seen. The fix prices each leg at the price in force when it closed. The
+rule and the habit that would have caught it ("a comment that cites the owner is not the
+owner") are now in CLAUDE.md.
+
+---
+
 ## 2026-09-24 · The runbook for clearing an outlet went stale the day after it was written
 
 **We believed** `ops/clear-outlet-transactions.sql` was the safe, reviewed way to reset an
