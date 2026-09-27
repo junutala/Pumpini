@@ -347,6 +347,13 @@ export default function AttendantDuesPage() {
                                     : `${Number(l.opened_at_reading).toFixed(3)} → ${Number(l.closed_at_reading).toFixed(3)}`}
                                 </td>
                                 <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {/* A test draw comes off before pricing, and says so — a line
+                                      5 L short of its two readings would be a line he cannot check. */}
+                                  {Number(l.test_ltrs) > 0 && (
+                                    <span style={{ color: 'var(--text-3)', marginRight: 6 }}>
+                                      −{Number(l.test_ltrs).toFixed(2)} {tc('dues.testShort', 'test')} =
+                                    </span>
+                                  )}
                                   {Number(l.ltrs).toFixed(2)} L
                                 </td>
                                 <td style={{ padding: '5px 10px', fontFamily: 'monospace', textAlign: 'right', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>

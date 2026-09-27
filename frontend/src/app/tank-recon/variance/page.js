@@ -187,6 +187,14 @@ export default function ReconVariancePage() {
 
                     <Row label={tc('recon.opening', 'Opening')} value={L(t.opening_ltrs)} tc={tc} />
                     <Row label={tc('recon.delivered', 'Delivered')} value={L(t.delivered_ltrs)} tc={tc} />
+                    {/* TEST DRAWS ARE NOT SALES. When one was taken, the working shows the
+                        meter's movement, the test that came off it, and what was sold. */}
+                    {Number(t.tested_ltrs) > 0 && (
+                      <>
+                        <Row label={tc('recon.moved', 'Moved on the meters')} value={L(t.moved_ltrs)} tc={tc} />
+                        <Row label={tc('recon.tested', 'Test draws, poured back')} value={`−${L(t.tested_ltrs)}`} tc={tc} />
+                      </>
+                    )}
                     <Row label={tc('recon.sales', 'Sold, by the nozzles')} value={L(t.sales_ltrs)} tc={tc} />
                     {/* TESTING ON ITS OWN LINE — but only when a draw crossed tanks. */}
                     {Number(t.testing_ltrs) !== 0 && (

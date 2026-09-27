@@ -143,7 +143,8 @@ async function saveFigures(recon_id, { tanks = [], nozzles = [] } = {}) {
 //   opening    the previous CONFIRMED recon's figure for that tank
 //   deliveries what landed between the two moments
 //   sales      each nozzle's movement between the two moments — the same instants,
-//              which is the entire reason this flow exists
+//              which is the entire reason this flow exists — less the test draws
+//              poured back out of that tank in the window
 //   testMove   only draws that CROSSED tanks; a same-tank draw left and came back
 //
 // Returned rather than written, so the screen can show the manager what he is about to
@@ -167,9 +168,9 @@ async function computeVariance(recon_id, client = pool) {
                  AND ($3::timestamptz IS NULL OR fd.received_at > $3)
                  AND fd.received_at <= $4
             ), 0) AS deliveries_ltrs,
-            -- SALES BETWEEN THE SAME TWO MOMENTS the tank was read at. A totaliser only
-            -- counts up, so a negative movement is a reset or a misread and is dropped
-            -- to zero rather than credited as fuel returning to the tank.
+            -- METER MOVEMENT BETWEEN THE SAME TWO MOMENTS the tank was read at. A
+            -- totaliser only counts up, so a negative movement is a reset or a misread
+            -- and is dropped to zero rather than credited as fuel returning to the tank.
             COALESCE((
               SELECT SUM(GREATEST(rn.cumulative_volume - COALESCE(pn.cumulative_volume, rn.cumulative_volume), 0))
                 FROM tank_recon_nozzles rn
@@ -177,7 +178,20 @@ async function computeVariance(recon_id, client = pool) {
                 LEFT JOIN tank_recon_nozzles pn
                        ON pn.nozzle_id = rn.nozzle_id AND pn.recon_id = $5
                WHERE rn.recon_id = $1 AND nz.tank_id = t.id
-            ), 0) AS sales_ltrs,
+            ), 0) AS moved_ltrs,
+            -- TEST DRAWS OUT OF THIS TANK'S NOZZLES in the window. The movement above is
+            -- the raw totaliser, which counted them; they were poured back, not sold.
+            -- The shift flow's sales are already net of test (the settlement takes it
+            -- off the operator), which is why varianceMath warns against subtracting it
+            -- again THERE. Here nothing has taken it off yet, so this is the one place
+            -- it comes off. Without it every same-tank draw read as a gain of its own
+            -- size (MBR rehearsal, 27-Sep-2026).
+            COALESCE((
+              SELECT SUM(ftd.litres) FROM fuel_test_draws ftd
+               WHERE ftd.from_tank_id = t.id
+                 AND ($3::timestamptz IS NULL OR ftd.drawn_at > $3)
+                 AND ftd.drawn_at <= $4
+            ), 0) AS tested_ltrs,
             -- Only a CROSS-tank draw moves stock: the source is genuinely down and the
             -- destination genuinely up. A same-tank draw cancels itself.
             COALESCE((
@@ -205,16 +219,21 @@ async function computeVariance(recon_id, client = pool) {
     ? Number(s.pct_diesel) : Number(s.pct_petrol);
 
   const tanks = rows.map(r => {
+    const sales = Math.max((Number(r.moved_ltrs) || 0) - (Number(r.tested_ltrs) || 0), 0);
     const m = reconcileTank({
       opening: r.opening, deliveries: r.deliveries_ltrs,
-      sales: r.sales_ltrs, testMove: r.test_move_ltrs, actual: r.actual,
+      sales, testMove: r.test_move_ltrs, actual: r.actual,
     });
     const tolerance = toleranceFor({ base: m.base, pct: pctFor(r.fuel_type), floor: Number(s.floor) });
     return {
       tank_id: r.tank_id, tank_number: r.tank_number, fuel_type: r.fuel_type,
       opening_ltrs: numOrNull(r.opening),
       delivered_ltrs: Number(r.deliveries_ltrs) || 0,
-      sales_ltrs: Number(r.sales_ltrs) || 0,
+      // The working, not only the answer: the meter moved, the test came off, the rest
+      // was sold. sales_ltrs is what the arithmetic used and what confirm() freezes.
+      moved_ltrs: Number(r.moved_ltrs) || 0,
+      tested_ltrs: Number(r.tested_ltrs) || 0,
+      sales_ltrs: sales,
       testing_ltrs: Number(r.test_move_ltrs) || 0,
       actual_ltrs: numOrNull(r.actual),
       book_ltrs: m.book, variance_ltrs: m.variance,

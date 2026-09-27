@@ -283,6 +283,21 @@ async function chain(station_id, { nozzle_id = null, limit = 100 } = {}) {
   return rows;
 }
 
+// ── TEST DRAWS ARE NOT SALES ─────────────────────────────────────────────────
+// A calibration draw runs ~5 L through the meter into a can and pours it back. The
+// totaliser counted it; nobody bought it. The shift flow has always taken it off the
+// operator's sale (testDrawService); the nozzle flow did not, and the MBR rehearsal of
+// 27-Sep-2026 charged a man ₹581.75 for a 5 L can check.
+//
+// A draw belongs to the leg it happened in: on the same nozzle, after the reading that
+// opened the leg and no later than the one that closes it. ONE FRAGMENT, used by
+// outstanding(), outstandingDetail() and — with the leg's end still open — by
+// handoverPreview(), so the three can never disagree about what a leg is worth.
+// It expects the closing event as `e` and the opening event as `p`.
+const LEG_TEST_LTRS = `COALESCE((SELECT SUM(td.litres) FROM fuel_test_draws td
+       WHERE td.nozzle_id = e.nozzle_id AND p.recorded_at IS NOT NULL
+         AND td.drawn_at > p.recorded_at AND td.drawn_at <= e.recorded_at), 0)`;
+
 // ── SPOKE 3 ──────────────────────────────────────────────────────────────────
 // WHAT A MAN OWES, DERIVED. His litres are the sum of every closing he was on, priced
 // at the fuel's current rate, less what he has already handed over.
@@ -296,10 +311,11 @@ async function outstanding(station_id) {
   const { rows } = await pool.query(
     `WITH legs AS (
        -- Each event closes the man named on it, over the movement since the event
-       -- before. A co-event moves nothing and contributes nothing.
+       -- before, less any test draw poured back in between. A co-event moves nothing
+       -- and contributes nothing.
        SELECT e.closes_attendant_id AS attendant_id,
               n.fuel_type,
-              GREATEST(e.reading - COALESCE(p.reading, e.reading), 0) AS ltrs,
+              GREATEST(e.reading - COALESCE(p.reading, e.reading) - ${LEG_TEST_LTRS}, 0) AS ltrs,
               e.recorded_at
          FROM nozzle_events e
          JOIN nozzles n ON n.id = e.nozzle_id
@@ -397,9 +413,11 @@ async function holdings(station_id) {
 // subtraction and the multiplication shown. He verifies one line against paper in ten
 // seconds, and after that he stops verifying. That is what trust is.
 //
-// Same shape as outstanding() deliberately — the same legs, the same price lookup, the
-// same GREATEST() floor — so the lines can never sum to a different figure than the
-// total they sit under.
+// Same shape as outstanding() deliberately — the same legs, the same test-draw
+// fragment, the same price lookup, the same GREATEST() floor — so the lines can never
+// sum to a different figure than the total they sit under. The test litres come back
+// as their own column: a line that silently came out 5 L short of the two readings
+// would be a line he could not check.
 async function outstandingDetail(station_id, attendant_id) {
   if (!(await hasSpokeTables())) return [];
   const pumps = require('./pumpService');
@@ -409,9 +427,10 @@ async function outstandingDetail(station_id, attendant_id) {
             n.id AS nozzle_id, n.fuel_type${nm.col},
             p.reading      AS opened_at_reading,
             e.reading      AS closed_at_reading,
-            GREATEST(e.reading - COALESCE(p.reading, e.reading), 0) AS ltrs,
+            ${LEG_TEST_LTRS} AS test_ltrs,
+            GREATEST(e.reading - COALESCE(p.reading, e.reading) - ${LEG_TEST_LTRS}, 0) AS ltrs,
             COALESCE(pr.price, 0) AS price,
-            GREATEST(e.reading - COALESCE(p.reading, e.reading), 0) * COALESCE(pr.price, 0) AS value,
+            GREATEST(e.reading - COALESCE(p.reading, e.reading) - ${LEG_TEST_LTRS}, 0) * COALESCE(pr.price, 0) AS value,
             p.recorded_at  AS opened_at,
             e.recorded_at  AS closed_at,
             e.is_co_event,
@@ -442,14 +461,15 @@ async function outstandingDetail(station_id, attendant_id) {
 //     hand here, and there is no gating pre/post change to build.
 //   * no previous reading means no leg and no charge — a first reading opens a chain,
 //     it does not close one.
-function handoverMath({ prevReading, reading, price }) {
+//   * test litres drawn in the leg come off before pricing (LEG_TEST_LTRS).
+function handoverMath({ prevReading, reading, price, testLtrs = 0 }) {
   const prev = prevReading == null ? null : Number(prevReading);
   const now  = Number(reading);
   const rate = Number(price) || 0;
   if (prev == null || !Number.isFinite(now) || !Number.isFinite(prev)) {
     return { ltrs: 0, value: 0 };
   }
-  const ltrs = Math.max(now - prev, 0);
+  const ltrs = Math.max(now - prev - (Number(testLtrs) || 0), 0);
   return { ltrs, value: ltrs * rate };
 }
 
@@ -485,8 +505,17 @@ async function handoverPreview({ station_id, nozzle_id, reading, at = new Date()
   const prev = await lastEvent(nozzle_id);
   const num_ = Number(reading);
   const price = prev ? Number(n.price ?? 0) : 0;
+  // The leg is still open, so its end is NOW — the same rule as LEG_TEST_LTRS.
+  let testLtrs = 0;
+  if (prev) {
+    const { rows: td } = await pool.query(
+      `SELECT COALESCE(SUM(litres), 0) AS ltrs FROM fuel_test_draws
+        WHERE nozzle_id = $1 AND drawn_at > $2 AND drawn_at <= $3`,
+      [nozzle_id, prev.recorded_at, at]);
+    testLtrs = Number(td[0]?.ltrs) || 0;
+  }
   const { ltrs, value } = handoverMath({
-    prevReading: prev ? prev.reading : null, reading: num_, price,
+    prevReading: prev ? prev.reading : null, reading: num_, price, testLtrs,
   });
 
   // WHO IT CLOSES IS NOT ASKED AND NOT ACCEPTED — the chain already knows. Asking
@@ -509,6 +538,7 @@ async function handoverPreview({ station_id, nozzle_id, reading, at = new Date()
     prev_reading: prev ? Number(prev.reading) : null,
     prev_at:      prev ? prev.recorded_at : null,
     reading:      Number.isFinite(num_) ? num_ : null,
+    test_ltrs: testLtrs,
     ltrs, price, value,
     closes,
     outstanding_before: before,

@@ -144,6 +144,9 @@ export default function HandoverReading({
           <div style={{ fontFamily: 'var(--font-mono)', display: 'flex',
                         justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <span>{L(pv.prev_reading)} → {L(pv.reading)}</span>
+            {Number(pv.test_ltrs) > 0 && (
+              <span style={{ color: 'var(--text-3)' }}>−{L(pv.test_ltrs)} L {tc('spoke.testDraw', 'test draw')}</span>
+            )}
             <span>{L(pv.ltrs)} L{pv.price ? ` × ${money(pv.price)}` : ''}</span>
             <span style={{ fontWeight: 700 }}>{money(pv.value)}</span>
           </div>
