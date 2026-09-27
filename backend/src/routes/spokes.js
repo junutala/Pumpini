@@ -52,6 +52,14 @@ router.get('/nozzles', authenticate, requireStationAccess({ required: true }), a
 // without printing, the next man's scan IS the closing event and the outstanding
 // stands against the man who left. What CAN be refused is a figure the physics says
 // cannot be true — and only until he types a reason in his own words.
+// Why a handover could not be recorded at all — decided in spokeService.recordEvent.
+const EVENT_INVALID = {
+  no_reading: 'A nozzle and a reading are required.',
+  bad_reading: 'Type the reading as the slip prints it: digits and one decimal point, no commas.',
+  nozzle_not_at_outlet: 'That nozzle is not at this outlet.',
+  not_an_attendant_here: 'That person is not an attendant at this outlet, so the nozzle cannot be given to him.',
+};
+
 router.post('/event', authenticate, requireStationAccess({ required: true }),
   requirePerm('reconcile.manage'), async (req, res, next) => {
     try {
@@ -69,6 +77,12 @@ router.post('/event', authenticate, requireStationAccess({ required: true }),
         read_pump_serial: req.body.read_pump_serial, read_nozzle_no: req.body.read_nozzle_no,
         recorded_by: req.user.id,
       });
+      if (out?.invalid) {
+        return res.status(400).json({
+          error: out.invalid,
+          message: EVENT_INVALID[out.invalid] || EVENT_INVALID.bad_reading,
+        });
+      }
       if (out?.refused) {
         const v = out.refused;
         return res.status(409).json({

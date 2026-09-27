@@ -75,6 +75,20 @@ function mayRecord(verdict, drift_reason) {
   return String(drift_reason || '').trim() ? 'ok' : 'reason';
 }
 
+// IS THIS A READING AT ALL? Pure, so it can be tested without a database.
+//
+// Digits and one decimal point. "1,990.29" used to reach Postgres and come back as a
+// 500 with the database's own error text (MBR rehearsal, 27-Sep-2026); a meter figure
+// the screen cannot read is a question for the person typing it, not a crash.
+const READING_RE = /^\s*\d+(\.\d+)?\s*$/;
+function readingProblem(reading) {
+  if (reading === null || reading === undefined || reading === '') return 'no_reading';
+  if (typeof reading === 'string' && !READING_RE.test(reading)) return 'bad_reading';
+  const x = Number(reading);
+  if (!Number.isFinite(x) || x < 0) return 'bad_reading';
+  return null;
+}
+
 async function lastEvent(nozzle_id, client = pool) {
   const { rows } = await client.query(
     `SELECT * FROM nozzle_events WHERE nozzle_id=$1 ORDER BY recorded_at DESC, created_at DESC LIMIT 1`,
@@ -90,16 +104,41 @@ async function lastEvent(nozzle_id, client = pool) {
 // struck. A manager who is himself short would only have to pick a different name.
 // Spoke 3's outstanding is calculated from these rows, so this is the same rule one
 // step upstream: the only thing a person enters is what he BROUGHT.
+//
+// 🔴 WHOSE NOZZLE, WHOSE MAN — both checked here, in the one writer. The MBR rehearsal
+// of 27-Sep-2026 wrote ANOTHER outlet's nozzle onto MBR's chain: the row carried MBR's
+// station, so row-level security passed it, and the foreign chain was invisible, so the
+// reading was taken as a first one. The same gap let a nozzle be opened to any user at
+// all. The screens never send either, but the writer must not depend on the screens.
 async function recordEvent({ station_id, nozzle_id, reading,
                              opens_attendant_id, source, recorded_by, drift_reason,
                              read_pump_serial, read_nozzle_no, at }) {
   if (!(await hasSpokeTables())) return null;
+  const badReading = readingProblem(reading);
+  if (badReading) return { invalid: badReading };
+  if (!UUID_RE.test(String(nozzle_id || ''))) return { invalid: 'nozzle_not_at_outlet' };
+  if (opens_attendant_id && !UUID_RE.test(String(opens_attendant_id))) {
+    return { invalid: 'not_an_attendant_here' };
+  }
+  reading = Number(reading);
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // The chain is per nozzle, so the lock is per nozzle: two managers closing two
     // different pumps must not queue behind each other.
     await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [String(nozzle_id)]);
+
+    const { rows: own } = await client.query(
+      `SELECT 1 FROM nozzles WHERE id = $1 AND station_id = $2`, [nozzle_id, station_id]);
+    if (!own.length) { await client.query('ROLLBACK'); return { invalid: 'nozzle_not_at_outlet' }; }
+    if (opens_attendant_id) {
+      const { rows: who } = await client.query(
+        `SELECT 1 FROM users u JOIN station_users su ON su.user_id = u.id
+          WHERE u.id = $1 AND su.station_id = $2 AND u.role = 'attendant'`,
+        [opens_attendant_id, station_id]);
+      if (!who.length) { await client.query('ROLLBACK'); return { invalid: 'not_an_attendant_here' }; }
+    }
 
     const prev = await lastEvent(nozzle_id, client);
     const now = at ? new Date(at) : new Date();
@@ -598,6 +637,6 @@ const num = v => Number(v) || 0;
 
 module.exports = {
   hasSpokeTables, physicsVerdict, mayRecord, recordEvent, chain, nozzleState, outstanding,
-  outstandingDetail, settle, settlementProblem, quietMoment, handoverPreview, handoverMath,
-  holdings, MAX_FLOW_LTRS_PER_MIN,
+  outstandingDetail, settle, settlementProblem, readingProblem, quietMoment, handoverPreview,
+  handoverMath, holdings, MAX_FLOW_LTRS_PER_MIN,
 };

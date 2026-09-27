@@ -29,3 +29,25 @@ test('a part that is not a number is refused, never read as zero', () => {
   assert.deepStrictEqual(settlementProblem({ cash: 'abc', upi: 100 }), { code: 'bad_amount', field: 'cash' });
   assert.deepStrictEqual(settlementProblem({ cash: 100, card: 'Infinity' }), { code: 'bad_amount', field: 'card' });
 });
+
+// ── THE READING ITSELF ──────────────────────────────────────────────────────────
+const { readingProblem } = require('../src/services/spokeService');
+
+test('a meter figure as the slip prints it is a reading', () => {
+  assert.strictEqual(readingProblem(1990.29), null);
+  assert.strictEqual(readingProblem('1990.29'), null);
+  assert.strictEqual(readingProblem('  2203.890 '), null);
+  assert.strictEqual(readingProblem(0), null);
+});
+
+test('A COMMA IS REFUSED, not passed to the database — it used to come back as a 500', () => {
+  assert.strictEqual(readingProblem('1,990.29'), 'bad_reading');
+});
+
+test('blank, negative and non-numbers are refused', () => {
+  assert.strictEqual(readingProblem(''), 'no_reading');
+  assert.strictEqual(readingProblem(null), 'no_reading');
+  assert.strictEqual(readingProblem(-5), 'bad_reading');
+  assert.strictEqual(readingProblem('12a'), 'bad_reading');
+  assert.strictEqual(readingProblem(NaN), 'bad_reading');
+});
