@@ -8,6 +8,7 @@ const { requireStationAccess, requireStationVia } = require('../middleware/stati
 const { requirePerm } = require('../middleware/permissions');
 const stock = require('../services/stockService');
 const pricing = require('../services/productPricing');
+const { mrpChanging, mrpRefusal } = require('../services/mrpGuard');
 
 // product_invoice_items.mrp / .discount_amount — added 04-Oct-2026 for MRP-inclusive
 // pricing. Probed, never try-and-caught: the INSERT runs inside the sale's own
@@ -86,6 +87,11 @@ router.post('/catalogue', authenticate, requireStationAccess({ required: true })
   try {
     const { station_id, name, brand, barcode, hsn_code, unit='piece',
             selling_price, buying_price=0, gst_rate=18, min_stock_level=5 } = req.body;
+    // A new product is a new MRP — manager/owner only (services/mrpGuard).
+    if (mrpChanging(null, selling_price)) {
+      const no = await mrpRefusal(req, station_id);
+      if (no) return res.status(403).json(no);
+    }
     const { rows } = await pool.query(
       `INSERT INTO products
          (station_id,name,brand,barcode,hsn_code,unit,selling_price,
@@ -115,6 +121,15 @@ router.patch('/catalogue/:id', authenticate, requireStationVia('SELECT station_i
   try {
     const { name, brand, barcode, hsn_code, unit, selling_price,
             buying_price, gst_rate, min_stock_level, is_active } = req.body;
+    // Changing the MRP is manager/owner only (services/mrpGuard). The catalogue form
+    // sends the whole product, so compare: an edit that leaves the price alone passes.
+    if (selling_price !== undefined) {
+      const { rows: cur } = await pool.query('SELECT selling_price FROM products WHERE id=$1', [req.params.id]);
+      if (cur.length && mrpChanging(cur[0].selling_price, selling_price)) {
+        const no = await mrpRefusal(req, req.stationId);
+        if (no) return res.status(403).json(no);
+      }
+    }
     // require_barcode handled separately + guarded (column may not be migrated)
     if (req.body.require_barcode !== undefined) {
       const rb = req.body.require_barcode === true || req.body.require_barcode === 'true';
@@ -181,9 +196,14 @@ router.post('/stock', authenticate, requireStationAccess({ required: true }), as
     // Re-scope product to the validated station: a product_id from another
     // outlet must not be receivable here even though station_id passed the guard.
     const { rows: pr } = await pool.query(
-      'SELECT require_barcode, barcode FROM products WHERE id=$1 AND station_id=$2', [product_id, station_id]
+      'SELECT require_barcode, barcode, selling_price FROM products WHERE id=$1 AND station_id=$2', [product_id, station_id]
     );
     if (!pr.length) return res.status(404).json({ error: 'Product not found for this station.' });
+    // Receiving stock is open; changing the MRP while doing it is manager/owner only.
+    if (mrpChanging(pr[0].selling_price, selling_price, { zeroIsUnset: true })) {
+      const no = await mrpRefusal(req, station_id);
+      if (no) return res.status(403).json(no);
+    }
     if (pr[0].require_barcode && !pr[0].barcode) {
       return res.status(400).json({ error: 'Assign a barcode to this product before receiving stock.' });
     }
