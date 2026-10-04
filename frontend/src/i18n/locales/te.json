@@ -1886,7 +1886,7 @@
     "print": "ప్రింట్"
   },
   "lubecat": {
-    "nameAndPriceRequired": "పేరు మరియు అమ్మకపు ధర తప్పనిసరి",
+    "nameAndPriceRequired": "పేరు మరియు MRP తప్పనిసరి",
     "saveFailed": "సేవ్ విఫలమైంది",
     "removeProductConfirm": "ఈ ఉత్పత్తిని తీసివేయాలా?",
     "pageTitle": "ఉత్పత్తుల జాబితా",

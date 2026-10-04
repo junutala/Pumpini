@@ -69,7 +69,7 @@ export default function ProductCataloguePage() {
     // A PRICE OF ZERO IS A PRICE. `!form.selling_price` refused it as if the box
     // were empty, which made a gift-only catalogue item impossible to create.
     const noPrice = form.selling_price === '' || form.selling_price === null || form.selling_price === undefined;
-    if (!form.name || noPrice) return alert(tc('lubecat.nameAndPriceRequired', 'Name and selling price are required'));
+    if (!form.name || noPrice) return alert(tc('lubecat.nameAndPriceRequired', 'Name and MRP are required'));
     setSaving(true);
     try {
       if (form.id) {

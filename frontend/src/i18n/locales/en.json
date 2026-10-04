@@ -1892,7 +1892,7 @@
     "print": "Print"
   },
   "lubecat": {
-    "nameAndPriceRequired": "Name and selling price are required",
+    "nameAndPriceRequired": "Name and MRP are required",
     "saveFailed": "Save failed",
     "removeProductConfirm": "Remove this product?",
     "pageTitle": "Product Catalogue",
