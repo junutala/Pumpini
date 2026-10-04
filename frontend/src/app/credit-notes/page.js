@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { RotateCcw, X, Printer } from 'lucide-react';
 import AppShell from '../../components/shared/AppShell';
 import api from '../../lib/api';
+import { refundLine } from '../../lib/productPricing';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
@@ -106,7 +107,10 @@ export default function CreditNotesPage() {
     return { ...l, returnQty: q };
   }));
 
-  const lineAmt = (l) => l.returnQty * parseFloat(l.unit_price) * (1 + parseFloat(l.gst_rate)/100);
+  // The share of what was CHARGED on the line — the server's refundLine, so the
+  // preview is the credit note. Not unit_price × qty × (1 + GST): since 04-Oct-2026 the
+  // MRP is GST-inclusive and may carry a discount.
+  const lineAmt = (l) => l.returnQty > 0 ? refundLine(l, l.returnQty, l.already_returned).total_amount : 0;
   const grand = lines.reduce((s,l) => s + lineAmt(l), 0);
 
   const openNew = () => { setCustKey('cash'); setInvoiceId(''); setInvoices([]); setLines([]); setReason(''); setErr('');

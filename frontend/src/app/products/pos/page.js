@@ -8,6 +8,9 @@ import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
 import { errText } from '../../../lib/apiError';
+import { priceLine, priceInvoice } from '../../../lib/productPricing';
+import LineDiscount from '../../../components/shared/LineDiscount';
+import ProductInvoiceTable from '../../../components/shared/ProductInvoiceTable';
 const PAYMENT_MODES = [
   { id:'cash',   label:'💵 Cash',   en:'Cash',   color:'#16a34a' },
   { id:'upi',    label:'📱 UPI',    en:'UPI',    color:'#2563eb' },
@@ -131,9 +134,13 @@ export default function ProductsPOSPage() {
         product_name: product.name,
         hsn_code:     product.hsn_code,
         unit:         product.unit,
-        unit_price:   parseFloat(product.selling_price),
+        // The catalogue's selling price IS the MRP — GST inclusive (04-Oct-2026).
+        mrp:          parseFloat(product.selling_price),
         gst_rate:     parseFloat(product.gst_rate),
+        buying_price: parseFloat(product.buying_price) || 0,
         quantity:     1,
+        discount_mode:  'pct',
+        discount_value: '',
         max_stock:    parseFloat(product.current_stock),
       }];
     });
@@ -148,24 +155,23 @@ export default function ProductsPOSPage() {
 
   const removeItem = (productId) => setCart(prev => prev.filter(i => i.product_id !== productId));
 
-  // Calculate totals
-  const calcItem = (item) => {
-    const taxable = item.quantity * item.unit_price;
-    const cgst    = parseFloat((taxable * item.gst_rate / 200).toFixed(2));
-    const sgst    = parseFloat((taxable * item.gst_rate / 200).toFixed(2));
-    return { taxable, cgst, sgst, total: taxable + cgst + sgst };
-  };
+  const setDiscount = (productId, patch) =>
+    setCart(prev => prev.map(i => i.product_id===productId ? {...i, ...patch} : i));
 
-  const totals = cart.reduce((acc, item) => {
-    const c = calcItem(item);
-    return { subtotal: acc.subtotal+c.taxable, cgst: acc.cgst+c.cgst, sgst: acc.sgst+c.sgst, grand: acc.grand+c.total };
-  }, { subtotal:0, cgst:0, sgst:0, grand:0 });
+  // The MRP is what the customer pays; the GST is backed out of it, never added. The
+  // same function the server charges with (lib/productPricing is generated from it),
+  // so the figure on this screen is the figure on the invoice.
+  const calcItem = (item) => priceLine(item);
+  const priced  = cart.map(calcItem);
+  const lineErr = priced.find(p => p.error);
+  const totals  = priceInvoice(priced.filter(p => !p.error));
 
   const checkout = async () => {
     if (cart.length===0) return alert(tc('lubepos.cartEmpty', 'Cart is empty'));
     if (custType==='credit' && !custId) return alert(tc('lubepos.selectCreditCustomer', 'Please select a credit customer'));
-    if (custType!=='credit' && totals.grand > 50000 &&
-        !confirm(tc('lubepos.cashOver50k', '⚠️ This cash invoice is {amt}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to an identifiable (credit) customer and apply a receipt — or split the invoice.\n\nProceed as a cash sale anyway?').replace('{amt}', fmtCur(totals.grand)))) return;
+    if (lineErr) return alert(lineErr.error);
+    if (custType!=='credit' && totals.grand_total > 50000 &&
+        !confirm(tc('lubepos.cashOver50k', '⚠️ This cash invoice is {amt}, over ₹50,000.\n\nFor amounts above ₹50,000, bill it to an identifiable (credit) customer and apply a receipt — or split the invoice.\n\nProceed as a cash sale anyway?').replace('{amt}', fmtCur(totals.grand_total)))) return;
     setSaving(true);
     try {
       const res = await api.post('/products/invoices', {
@@ -175,7 +181,8 @@ export default function ProductsPOSPage() {
         customer_id:   custId||null,
         customer_name: custType==='credit' ? corps.find(c=>c.id===custId)?.company_name : custName,
         payment_mode:  payMode,
-        items:         cart,
+        items:         cart.map(i => ({ product_id: i.product_id, quantity: i.quantity,
+                                        discount_mode: i.discount_mode, discount_value: i.discount_value })),
       });
       setInvoice(res);
       setCart([]);
@@ -243,18 +250,19 @@ export default function ProductsPOSPage() {
             </div>
           ) : (
             <>
-              {cart.map(item => {
-                const c = calcItem(item);
+              {cart.map((item, idx) => {
+                const c = priced[idx];
                 return (
                   <div key={item.product_id} style={{borderBottom:'1px solid #f0f0f0',paddingBottom:'0.75rem',marginBottom:'0.75rem'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.product_name}</div>
-                        <div style={{fontSize:11,color:'#888'}}>₹{fmt2(item.unit_price)} × {item.quantity} {item.unit}s</div>
-                        <div style={{fontSize:11,color:'#888'}}>{tc('lubepos.gst', 'GST')} {item.gst_rate}%: ₹{fmt2(c.cgst+c.sgst)}</div>
+                        <div style={{fontSize:11,color:'#888'}}>{tc('lubepos.mrp', 'MRP')} ₹{fmt2(item.mrp)} × {item.quantity} {item.unit}s</div>
+                        {!c.error && <div style={{fontSize:11,color:'#888'}}>{tc('lubepos.gstIncluded', 'incl. GST {rate}%: {amt}').replace('{rate}', item.gst_rate).replace('{amt}', '₹'+fmt2(c.cgst_amount+c.sgst_amount))}</div>}
+                        <LineDiscount value={item} priced={c} onChange={patch=>setDiscount(item.product_id, patch)}/>
                       </div>
                       <div style={{textAlign:'right',marginLeft:8}}>
-                        <div style={{fontWeight:700,fontSize:14}}>₹{fmt2(c.total)}</div>
+                        <div style={{fontWeight:700,fontSize:14}}>{c.error ? '—' : '₹'+fmt2(c.total_amount)}</div>
                         <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4}}>
                           <button onClick={()=>updateQty(item.product_id,-1)} style={{width:22,height:22,background:'#f3f4f6',border:'none',borderRadius:4,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><Minus size={12}/></button>
                           <span style={{minWidth:20,textAlign:'center',fontSize:13,fontWeight:600}}>{item.quantity}</span>
@@ -267,13 +275,16 @@ export default function ProductsPOSPage() {
                 );
               })}
 
-              {/* Totals */}
+              {/* Totals — the MRP total is what he pays; taxable + GST is what it is made of */}
               <div style={{background:'#f8f7f5',borderRadius:8,padding:'0.75rem',marginBottom:'0.75rem',fontSize:13}}>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.subtotal', 'Subtotal')}</span><span>{fmtCur(totals.subtotal)}</span></div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.cgst', 'CGST')}</span><span>{fmtCur(totals.cgst)}</span></div>
-                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.sgst', 'SGST')}</span><span>{fmtCur(totals.sgst)}</span></div>
+                {totals.total_discount > 0 && (
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.discount', 'Discount')}</span><span>−{fmtCur(totals.total_discount)}</span></div>
+                )}
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.taxableValue', 'Taxable value')}</span><span>{fmtCur(totals.subtotal)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.cgst', 'CGST')}</span><span>{fmtCur(totals.total_cgst)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}><span style={{color:'#666'}}>{tc('lubepos.sgst', 'SGST')}</span><span>{fmtCur(totals.total_sgst)}</span></div>
                 <div style={{display:'flex',justifyContent:'space-between',fontWeight:800,fontSize:15,borderTop:'1px solid #e5e3de',paddingTop:6,marginTop:3}}>
-                  <span>{tc('lubepos.total', 'Total')}</span><span style={{color:'#FF6B00'}}>{fmtCur(totals.grand)}</span>
+                  <span>{tc('lubepos.totalInclGst', 'Total (incl. GST)')}</span><span style={{color:'#FF6B00'}}>{fmtCur(totals.grand_total)}</span>
                 </div>
               </div>
 
@@ -297,10 +308,10 @@ export default function ProductsPOSPage() {
                 )}
               </div>
 
-              <button onClick={checkout} disabled={saving}
+              <button onClick={checkout} disabled={saving || !!lineErr}
                 style={{width:'100%',height:46,background:'#FF6B00',color:'#fff',border:'none',
                   borderRadius:10,cursor:'pointer',fontWeight:800,fontSize:15}}>
-                {saving ? tc('lubepos.processing', 'Processing...') : tc('lubepos.bill', 'Bill {amt}').replace('{amt}', fmtCur(totals.grand))}
+                {saving ? tc('lubepos.processing', 'Processing...') : tc('lubepos.bill', 'Bill {amt}').replace('{amt}', fmtCur(totals.grand_total))}
               </button>
             </>
           )}
@@ -359,52 +370,8 @@ export default function ProductsPOSPage() {
                 </div>
               </div>
 
-              {/* Items table */}
-              <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'1rem',fontSize:12}}>
-                <thead>
-                  <tr style={{background:'#f3f4f6'}}>
-                    {[
-                      {k:'colNum',     en:'#'},
-                      {k:'colDesc',    en:'Description'},
-                      {k:'colHsn',     en:'HSN'},
-                      {k:'colQty',     en:'Qty'},
-                      {k:'colUnit',    en:'Unit'},
-                      {k:'colRate',    en:'Rate'},
-                      {k:'colTaxable', en:'Taxable'},
-                      {k:'colCgst',    en:'CGST'},
-                      {k:'colSgst',    en:'SGST'},
-                      {k:'colTotal',   en:'Total'},
-                    ].map(h=>(
-                      <th key={h.k} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'left',fontWeight:700}}>{tc('lubepos.'+h.k, h.en)}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(invoice.items||[]).map((item,i)=>(
-                    <tr key={i}>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd'}}>{i+1}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',fontWeight:600}}>{item.product_name}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',fontFamily:'monospace',fontSize:11}}>{item.hsn_code||'—'}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{item.quantity}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd'}}>{item.unit}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.unit_price)}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.taxable_amount)}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.cgst_amount)}<br/><span style={{fontSize:10,color:'#888'}}>({item.gst_rate/2}%)</span></td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.sgst_amount)}<br/><span style={{fontSize:10,color:'#888'}}>({item.gst_rate/2}%)</span></td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right',fontWeight:700}}>₹{fmt2(item.total_amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{background:'#f8f7f5',fontWeight:700}}>
-                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{tc('lubepos.totalRow', 'TOTAL')}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.subtotal)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.total_cgst)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(invoice.total_sgst)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right',fontSize:15}}>₹{fmt2(invoice.grand_total)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+              {/* Items table — shared with the reprint in Products → History */}
+              <ProductInvoiceTable invoice={invoice}/>
 
               {/* Amount in words */}
               <div style={{fontSize:12,marginBottom:'1rem',background:'#f8f7f5',padding:'0.5rem 0.75rem',borderRadius:6}}>

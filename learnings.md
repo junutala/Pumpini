@@ -16,6 +16,29 @@ lands, not "later" — later is how the schema snapshot went 30 tables stale.
 
 ---
 
+## 2026-10-04 · "Has he started using the system?" — I said no, and I was wrong twice
+
+**We believed**, because I said so: SBR had done nothing since 24-Sep, and its history
+before 24-Sep had vanished for reasons nobody knew. I gave the owner a table of what
+was entered on 24-Sep and told him to trace the "wipe" before anything else.
+
+**Actually** both halves were wrong. Ramana had raised **three lube invoices that same
+morning**, 04-Oct 12:38–12:41. My activity query listed ten tables and product sales
+were not one of them, so it reported silence. And the "wipe" was the **owner-authorised
+reset of 24-Sep** — Ramana asked to start over, the owner said *"clear all transaction
+data, except the deliveries"* — recorded in this very file the day it happened.
+
+**We found out** an hour later, when the owner's next request (MRP pricing) sent me to
+`product_invoices`, and then to this file.
+
+**It cost** a wrong answer to a question the owner was about to act on — he had just
+come off a call with Ramana — and an alarm about a deletion he had ordered himself. An
+activity check is only as complete as its table list, and "nothing happened" is the
+claim that most needs the full list. Before calling anything unexplained, read
+`learnings.md`.
+
+---
+
 ## 2026-09-27 · A price change rewrote settled balances, and the code said the owner had ruled it
 
 **We believed** the nozzle-led money followed the owner's 27-Aug ruling on price changes.

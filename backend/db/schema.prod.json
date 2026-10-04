@@ -5,7 +5,7 @@
     "backend/scripts/ci-sql-schema-check.js fails the build on a SQL write naming a column",
     "that is not here. Regenerate whenever the owner runs DDL: see docs/schema-manifest.md."
   ],
-  "generated_at": "2026-09-22",
+  "generated_at": "2026-10-04",
   "source": "information_schema.columns, production (project dcqxscjmeodxpwytgkxk)",
   "views": [
     "corporate_station_balance",
@@ -706,11 +706,13 @@
     ],
     "product_invoice_items": [
       "cgst_amount",
+      "discount_amount",
       "gst_rate",
       "hsn_code",
       "id",
       "igst_amount",
       "invoice_id",
+      "mrp",
       "product_id",
       "product_name",
       "quantity",

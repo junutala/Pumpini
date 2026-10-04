@@ -256,7 +256,7 @@ export default function ProductCataloguePage() {
                 </select>
               </div>
               <div>
-                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelSellingPrice', 'Selling Price (₹) *')}</label>
+                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubecat.labelSellingPrice', 'MRP (₹, incl. GST) *')}</label>
                 <input style={inp} type="number" step="0.01" placeholder="0.00"
                   value={form.selling_price ?? ''} onChange={e=>f('selling_price',e.target.value)}/>
               </div>

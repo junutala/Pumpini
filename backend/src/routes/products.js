@@ -7,6 +7,22 @@ const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
 const stock = require('../services/stockService');
+const pricing = require('../services/productPricing');
+
+// product_invoice_items.mrp / .discount_amount — added 04-Oct-2026 for MRP-inclusive
+// pricing. Probed, never try-and-caught: the INSERT runs inside the sale's own
+// transaction, where a 42703 would abort the sale. Cached only once TRUE, so the
+// owner running the DDL is picked up without a restart.
+let _lineDiscountCols = false;
+async function hasLineDiscountCols() {
+  if (_lineDiscountCols) return true;
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='product_invoice_items'
+        AND column_name IN ('mrp','discount_amount')`);
+  _lineDiscountCols = rows[0].n === 2;
+  return _lineDiscountCols;
+}
 
 // ── Helper: next invoice number ───────────────────────────
 async function nextInvoiceNumber(stationId) {
@@ -302,16 +318,50 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
 
     if (!items || !items.length) return res.status(400).json({ error:'No items provided' });
 
+    // EVERY LINE IS PRICED FROM THE PRODUCT ROW, not from what the screen sent. The MRP
+    // is printed on the pack; the till may change the quantity and give a discount,
+    // never the price. Also re-scopes every line to this station.
+    const pids = items.map(i => i.product_id);
+    if (pids.some(id => !id)) return res.status(400).json({ error: 'Every line needs a product from the catalogue.' });
+    const { rows: prodRows } = await pool.query(
+      `SELECT id, name, hsn_code, unit, selling_price, gst_rate, buying_price,
+              require_barcode, barcode
+         FROM products WHERE id = ANY($1) AND station_id = $2`,
+      [pids, station_id]
+    );
+    const byId = new Map(prodRows.map(p => [p.id, p]));
+    if (byId.size !== new Set(pids).size) {
+      return res.status(400).json({ error: 'One or more products do not belong to this station.' });
+    }
+    // Enforce: a require-barcode product must have a barcode tied before selling
+    const bad = prodRows.filter(p => p.require_barcode && !(p.barcode || '').trim());
+    if (bad.length) {
+      return res.status(400).json({ error: `Tie a barcode before selling: ${bad.map(b => b.name).join(', ')}` });
+    }
+
+    const processedItems = [];
+    for (const item of items) {
+      const p = byId.get(item.product_id);
+      const line = pricing.priceLine({
+        quantity: item.quantity, mrp: p.selling_price, gst_rate: p.gst_rate ?? 18,
+        buying_price: p.buying_price,
+        discount_mode: item.discount_mode, discount_value: item.discount_value,
+      });
+      if (line.error) return res.status(400).json({ error: `${p.name}: ${line.error}` });
+      processedItems.push({
+        product_id: p.id, product_name: p.name, hsn_code: p.hsn_code, unit: p.unit || 'piece',
+        ...line,
+      });
+    }
+    const { subtotal, total_cgst, total_sgst, grand_total } = pricing.priceInvoice(processedItems);
+
     // Credit limit applies to LUBE credit too — without this, a corporate capped
     // for fuel could take unlimited oil on credit. Outstanding = uninvoiced fuel
     // credit + prior credit lube invoices (conservative: lube payments aren't
     // netted here, so the gate errs toward blocking, never over-extending).
     if (payment_mode === 'credit') {
       if (!customer_id) return res.status(400).json({ error: 'Credit sale requires a credit customer.' });
-      const saleTotal = items.reduce((s, i) => {
-        const taxable = parseFloat(i.quantity) * parseFloat(i.unit_price);
-        return s + taxable * (1 + parseFloat(i.gst_rate || 18) / 100);
-      }, 0);
+      const saleTotal = grand_total;
       const { rows: limitRows } = await pool.query(
         `SELECT credit_limit FROM corporate_station_links
          WHERE corporate_id=$1 AND station_id=$2 AND is_active=TRUE LIMIT 1`,
@@ -339,45 +389,10 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
       }
     }
 
-    // Enforce: a require-barcode product must have a barcode tied before selling
-    const pids = items.map(i => i.product_id).filter(Boolean);
-    if (pids.length) {
-      // Re-scope every line item to this station — reject product_ids from another outlet.
-      const { rows: owned } = await pool.query(
-        'SELECT COUNT(DISTINCT id)::int AS n FROM products WHERE id = ANY($1) AND station_id = $2',
-        [pids, station_id]
-      );
-      if (owned[0].n !== new Set(pids).size) {
-        return res.status(400).json({ error: 'One or more products do not belong to this station.' });
-      }
-      const { rows: bad } = await pool.query(
-        `SELECT name FROM products WHERE id = ANY($1)
-           AND require_barcode = TRUE AND (barcode IS NULL OR barcode = '')`,
-        [pids]
-      );
-      if (bad.length) {
-        return res.status(400).json({ error: `Tie a barcode before selling: ${bad.map(b => b.name).join(', ')}` });
-      }
-    }
-
+    const withDiscountCols = await hasLineDiscountCols();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-
-      // Calculate totals
-      let subtotal=0, total_cgst=0, total_sgst=0, grand_total=0;
-      const processedItems = items.map(item => {
-        const taxable  = parseFloat(item.quantity) * parseFloat(item.unit_price);
-        const gstRate  = parseFloat(item.gst_rate || 18);
-        const cgst     = parseFloat((taxable * gstRate / 200).toFixed(2));
-        const sgst     = parseFloat((taxable * gstRate / 200).toFixed(2));
-        const total    = parseFloat((taxable + cgst + sgst).toFixed(2));
-        subtotal    += taxable;
-        total_cgst  += cgst;
-        total_sgst  += sgst;
-        grand_total += total;
-        return { ...item, taxable_amount:taxable, cgst_amount:cgst, sgst_amount:sgst, total_amount:total };
-      });
 
       // Generate invoice number
       const invoice_number = await nextInvoiceNumber(station_id);
@@ -399,15 +414,27 @@ router.post('/invoices', authenticate, requireStationAccess({ required: true }),
 
       // Insert line items + deduct stock
       for (const item of processedItems) {
-        await client.query(
-          `INSERT INTO product_invoice_items
-             (invoice_id, product_id, product_name, hsn_code, unit, quantity,
-              unit_price, gst_rate, taxable_amount, cgst_amount, sgst_amount, total_amount)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [invoice.id, item.product_id, item.product_name, item.hsn_code||null,
-           item.unit||'piece', item.quantity, item.unit_price, item.gst_rate||18,
-           item.taxable_amount, item.cgst_amount, item.sgst_amount, item.total_amount]
-        );
+        const lineVals = [invoice.id, item.product_id, item.product_name, item.hsn_code||null,
+           item.unit, item.quantity, item.unit_price, item.gst_rate,
+           item.taxable_amount, item.cgst_amount, item.sgst_amount, item.total_amount];
+        if (withDiscountCols) {
+          await client.query(
+            `INSERT INTO product_invoice_items
+               (invoice_id, product_id, product_name, hsn_code, unit, quantity,
+                unit_price, gst_rate, taxable_amount, cgst_amount, sgst_amount, total_amount,
+                mrp, discount_amount)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [...lineVals, item.mrp, item.discount_amount]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO product_invoice_items
+               (invoice_id, product_id, product_name, hsn_code, unit, quantity,
+                unit_price, gst_rate, taxable_amount, cgst_amount, sgst_amount, total_amount)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            lineVals
+          );
+        }
         // Deduct from total + the location bucket this sale draws from
         await client.query(
           `UPDATE products SET current_stock = current_stock - $1,

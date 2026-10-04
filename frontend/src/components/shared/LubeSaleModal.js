@@ -8,6 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { X, Plus, Minus, Trash2, CheckCircle } from 'lucide-react';
 import api from '../../lib/api';
 import BarcodeScanner from './BarcodeScanner';
+import LineDiscount from './LineDiscount';
+import { priceLine, priceInvoice } from '../../lib/productPricing';
 
 const inp = { width:'100%', padding:'9px 11px', border:'1.5px solid #e5e3de', borderRadius:8,
   fontSize:14, outline:'none', boxSizing:'border-box', background:'#fff' };
@@ -37,8 +39,11 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
     setCart(prev => {
       const ex = prev.find(i => i.product_id === p.id);
       if (ex) return prev.map(i => i.product_id === p.id ? { ...i, quantity: i.quantity + 1 } : i);
+      // The catalogue's selling price IS the MRP — GST inclusive (04-Oct-2026).
       return [...prev, { product_id: p.id, product_name: p.name, hsn_code: p.hsn_code, unit: p.unit,
-        unit_price: parseFloat(p.selling_price), gst_rate: parseFloat(p.gst_rate), quantity: 1 }];
+        mrp: parseFloat(p.selling_price), gst_rate: parseFloat(p.gst_rate),
+        buying_price: parseFloat(p.buying_price) || 0, quantity: 1,
+        discount_mode: 'pct', discount_value: '' }];
     });
   };
 
@@ -54,11 +59,17 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
     prev.map(i => i.product_id === pid ? { ...i, quantity: Math.max(0.1, i.quantity + d) } : i).filter(i => i.quantity > 0));
   const removeItem = (pid) => setCart(prev => prev.filter(i => i.product_id !== pid));
 
-  const lineTotal = (it) => it.quantity * it.unit_price * (1 + it.gst_rate / 100);
-  const grand = cart.reduce((s, it) => s + lineTotal(it), 0);
+  const setDiscount = (pid, patch) => setCart(prev => prev.map(i => i.product_id === pid ? { ...i, ...patch } : i));
+
+  // MRP is what the customer pays; GST is backed out of it — the same function the
+  // server charges with, so this total is the invoice total.
+  const priced  = cart.map(it => priceLine(it));
+  const lineErr = priced.find(p => p.error);
+  const grand   = priceInvoice(priced.filter(p => !p.error)).grand_total;
 
   const checkout = async () => {
     if (!cart.length) return;
+    if (lineErr) { setErr(lineErr.error); return; }
     if (payMode === 'credit' && !custId) { setErr(tc('lubemodal.selectCreditCustomerErr', 'Select a credit customer')); return; }
     // ₹50,000 cash-invoice cap: a "Cash Customer" (non-credit) lube invoice over
     // ₹50k needs an identifiable buyer (credit customer + receipt) or a split.
@@ -75,7 +86,8 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
         customer_id:   payMode === 'credit' ? custId : null,
         customer_name: payMode === 'credit' ? (corps.find(c => c.id === custId)?.company_name) : 'Walk-in',
         payment_mode:  payMode,
-        items:         cart,
+        items:         cart.map(i => ({ product_id: i.product_id, quantity: i.quantity,
+                                        discount_mode: i.discount_mode, discount_value: i.discount_value })),
       });
       setDone(res);
       onDone && onDone(res);
@@ -138,18 +150,20 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
               <div style={{ textAlign:'center', color:'#aaa', fontSize:13, padding:'1rem 0' }}>{tc('lubemodal.scanOrAdd', 'Scan or add a product')}</div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
-                {cart.map(it => (
-                  <div key={it.product_id} style={{ display:'flex', alignItems:'center', gap:8,
-                    background:'#f8fafc', borderRadius:8, padding:'7px 10px' }}>
+                {cart.map((it, idx) => (
+                  <div key={it.product_id} style={{ background:'#f8fafc', borderRadius:8, padding:'7px 10px' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{it.product_name}</div>
-                      <div style={{ fontSize:11, color:'#888' }}>₹{it.unit_price.toFixed(2)} · {tc('lubemodal.gstSuffix', '{rate}% GST').replace('{rate}', it.gst_rate)}</div>
+                      <div style={{ fontSize:11, color:'#888' }}>{tc('lubemodal.mrp', 'MRP')} ₹{it.mrp.toFixed(2)} · {tc('lubemodal.gstIncl', 'incl. {rate}% GST').replace('{rate}', it.gst_rate)}</div>
                     </div>
                     <button onClick={() => setQty(it.product_id, -1)} style={{ border:'none', background:'#e2e8f0', borderRadius:6, width:24, height:24, cursor:'pointer' }}><Minus size={13}/></button>
                     <span style={{ fontSize:13, fontWeight:700, minWidth:24, textAlign:'center' }}>{it.quantity}</span>
                     <button onClick={() => setQty(it.product_id, 1)} style={{ border:'none', background:'#e2e8f0', borderRadius:6, width:24, height:24, cursor:'pointer' }}><Plus size={13}/></button>
-                    <span style={{ fontSize:13, fontWeight:700, minWidth:64, textAlign:'right' }}>₹{lineTotal(it).toFixed(2)}</span>
+                    <span style={{ fontSize:13, fontWeight:700, minWidth:64, textAlign:'right' }}>{priced[idx].error ? '—' : `₹${priced[idx].total_amount.toFixed(2)}`}</span>
                     <button onClick={() => removeItem(it.product_id)} style={{ border:'none', background:'none', cursor:'pointer', color:'#dc2626' }}><Trash2 size={14}/></button>
+                  </div>
+                  <LineDiscount value={it} priced={priced[idx]} onChange={patch => setDiscount(it.product_id, patch)}/>
                   </div>
                 ))}
               </div>
@@ -177,7 +191,7 @@ export default function LubeSaleModal({ stationId, shiftId, attendantId, corps =
               <span style={{ fontSize:14, color:'#555' }}>{tc('lubemodal.totalInclGst', 'Total (incl. GST)')}</span>
               <span style={{ fontSize:22, fontWeight:900 }}>₹{grand.toLocaleString('en-IN', { minimumFractionDigits:2 })}</span>
             </div>
-            <button onClick={checkout} disabled={saving || !cart.length}
+            <button onClick={checkout} disabled={saving || !cart.length || !!lineErr}
               style={{ width:'100%', height:48, background: cart.length ? '#16a34a' : '#cbd5e1', color:'#fff',
                 border:'none', borderRadius:10, fontWeight:800, fontSize:15, cursor: cart.length ? 'pointer' : 'not-allowed' }}>
               {saving ? tc('lubemodal.processing', 'Processing…') : tc('lubemodal.completeSale', 'Complete Sale')}
