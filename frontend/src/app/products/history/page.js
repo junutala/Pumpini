@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Printer, Download, Eye, X } from 'lucide-react';
 import AppShell from '../../../components/shared/AppShell';
 import api from '../../../lib/api';
+import ProductInvoiceTable from '../../../components/shared/ProductInvoiceTable';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from 'react-i18next';
 
@@ -180,40 +181,8 @@ export default function ProductsHistoryPage() {
                   {selected.customer_gstn && <div><strong>{tc('lubehist.gstnLabel', 'GSTN')}:</strong> {selected.customer_gstn}</div>}
                 </div>
               </div>
-              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,marginBottom:'1rem'}}>
-                <thead>
-                  <tr style={{background:'#f3f4f6'}}>
-                    {['#',tc('lubehist.colDescription','Description'),'HSN',tc('lubehist.colQty','Qty'),tc('lubehist.colUnit','Unit'),tc('lubehist.colRate','Rate'),tc('lubehist.colTaxable','Taxable'),'CGST','SGST',tc('lubehist.colTotal','Total')].map(h=>(
-                      <th key={h} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'left',fontWeight:700}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selected.items||[]).map((item,i)=>(
-                    <tr key={i}>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd'}}>{i+1}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',fontWeight:600}}>{item.product_name}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',fontFamily:'monospace',fontSize:11}}>{item.hsn_code||'—'}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{item.quantity}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd'}}>{item.unit}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.unit_price)}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.taxable_amount)}</td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.cgst_amount)}<br/><span style={{fontSize:10,color:'#888'}}>({item.gst_rate/2}%)</span></td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(item.sgst_amount)}<br/><span style={{fontSize:10,color:'#888'}}>({item.gst_rate/2}%)</span></td>
-                      <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right',fontWeight:700}}>₹{fmt2(item.total_amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={{background:'#f8f7f5',fontWeight:700}}>
-                    <td colSpan={6} style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>{tc('lubehist.totalRow', 'TOTAL')}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.subtotal)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.total_cgst)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right'}}>₹{fmt2(selected.total_sgst)}</td>
-                    <td style={{padding:'6px 8px',border:'1px solid #ddd',textAlign:'right',fontSize:15}}>₹{fmt2(selected.grand_total)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+              {/* Shared with the receipt on Products POS — one printed invoice, not two. */}
+              <ProductInvoiceTable invoice={selected}/>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'2rem',marginTop:'2rem',fontSize:11,color:'#666'}}>
                 <div><div style={{fontWeight:700,color:'#000',marginBottom:4}}>{tc('lubehist.termsTitle', 'Terms & Conditions')}</div>
                   <div>{tc('lubehist.termsBody', 'Goods once sold will not be taken back.')}</div></div>

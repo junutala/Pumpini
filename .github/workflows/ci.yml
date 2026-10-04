@@ -173,6 +173,12 @@ jobs:
       - name: Gauge-matcher mirror is in sync
         run: node scripts/ci-gauge-match-sync.js
 
+      # The MRP arithmetic is written once, in the backend service that charges the
+      # customer; the sale screens show a GENERATED copy. A drifted copy would show
+      # one price on the screen and charge another.
+      - name: Product-pricing mirror is in sync
+        run: node scripts/ci-product-pricing-sync.js
+
       # Every column a SQL write names must exist in production. On 22-Sep-2026 a
       # manager could not add a vehicle because routes/corporate.js wrote
       # `driver_name` to a table whose column is `name` — wrong since the screen was

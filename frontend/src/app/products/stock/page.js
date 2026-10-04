@@ -68,7 +68,7 @@ export default function ProductStockPage() {
   };
 
   const createNew = async () => {
-    if (!np.name || !np.selling_price) return alert(tc('lubestk.nameAndPriceRequired', 'Name and selling price are required'));
+    if (!np.name || !np.selling_price) return alert(tc('lubestk.nameAndPriceRequired', 'Name and MRP are required'));
     setBcBusy(true);
     try {
       const res = await api.post('/products/catalogue', {
@@ -171,7 +171,7 @@ export default function ProductStockPage() {
         ) : (
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr style={{background:'#f8f7f5'}}>
-              {[['date','Date'],['product','Product'],['location','Location'],['quantity','Quantity'],['buyingPrice','Buying Price'],['sellingPrice','Selling Price'],['notes','Notes']].map(([k,h])=>(
+              {[['date','Date'],['product','Product'],['location','Location'],['quantity','Quantity'],['buyingPrice','Buying Price'],['sellingPrice','MRP'],['notes','Notes']].map(([k,h])=>(
                 <th key={k} style={{padding:'9px 14px',textAlign:'left',color:'#666',fontWeight:600,
                   fontSize:11,textTransform:'uppercase',borderBottom:'1px solid #e5e3de'}}>{tc('lubestk.col_'+k, h)}</th>
               ))}
@@ -257,7 +257,7 @@ export default function ProductStockPage() {
                 {newMode==='create' && (
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                     <input style={{...inp,gridColumn:'1/-1'}} placeholder={tc('lubestk.productNameReq', 'Product name *')} value={np.name||''} onChange={e=>setNp(s=>({...s,name:e.target.value}))}/>
-                    <input style={inp} type="number" step="0.01" placeholder={tc('lubestk.sellingPriceReq', 'Selling price ₹ *')} value={np.selling_price||''} onChange={e=>setNp(s=>({...s,selling_price:e.target.value}))}/>
+                    <input style={inp} type="number" step="0.01" placeholder={tc('lubestk.sellingPriceReq', 'MRP ₹ (incl. GST) *')} value={np.selling_price||''} onChange={e=>setNp(s=>({...s,selling_price:e.target.value}))}/>
                     <select style={inp} value={np.gst_rate??18} onChange={e=>setNp(s=>({...s,gst_rate:parseFloat(e.target.value)}))}>
                       {[0,5,12,18,28].map(r=><option key={r} value={r}>{r}% {tc('lubestk.gst', 'GST')}</option>)}
                     </select>
@@ -285,7 +285,7 @@ export default function ProductStockPage() {
             {selectedProduct && (
               <div style={{background:'#f0f9ff',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.85rem',fontSize:12,color:'#1A5F7A'}}>
                 {tc('lubestk.currentStock', 'Current stock')}: <strong>{Number(selectedProduct.current_stock).toFixed(1)} {selectedProduct.unit}s</strong>
-                {' · '}{tc('lubestk.currentSellingPrice', 'Current selling price')}: <strong>₹{Number(selectedProduct.selling_price).toFixed(2)}</strong>
+                {' · '}{tc('lubestk.currentSellingPrice', 'Current MRP')}: <strong>₹{Number(selectedProduct.selling_price).toFixed(2)}</strong>
               </div>
             )}
 
@@ -315,7 +315,7 @@ export default function ProductStockPage() {
                   value={form.buying_price||''} onChange={e=>f('buying_price',e.target.value)}/>
               </div>
               <div style={{gridColumn:'1/-1'}}>
-                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubestk.updateSellingPrice', 'Update Selling Price (₹)')}</label>
+                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>{tc('lubestk.updateSellingPrice', 'Update MRP (₹, incl. GST)')}</label>
                 <input style={inp} type="number" step="0.01"
                   placeholder={selectedProduct ? tc('lubestk.currentPricePh', 'Current: ₹{p}').replace('{p}', Number(selectedProduct.selling_price).toFixed(2)) : tc('lubestk.optional', 'Optional')}
                   value={form.selling_price||''} onChange={e=>f('selling_price',e.target.value)}/>

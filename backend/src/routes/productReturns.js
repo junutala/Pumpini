@@ -5,6 +5,7 @@
 // touches the attendant / blind-drop path. Manager/owner only.
 const router = require('express').Router();
 const pool   = require('../db/pool');
+const pricing = require('../services/productPricing');
 const { authenticate } = require('../middleware/auth');
 const { requireStationAccess, requireStationVia } = require('../middleware/stationAccess');
 const { requirePerm } = require('../middleware/permissions');
@@ -175,13 +176,15 @@ router.post('/', authenticate, requireStationAccess({ required: true }), require
         await client.query('ROLLBACK');
         return res.status(400).json({ error: `Cannot return ${qty} of ${line.product_name} — only ${remaining} returnable against this invoice.` });
       }
-      // Reverse at the INVOICE price/rate (GST-correct)
-      const unit_price = parseFloat(line.unit_price);
-      const gst_rate   = parseFloat(line.gst_rate);
-      const taxable = +(qty * unit_price).toFixed(2);
-      const cgst    = +(taxable * gst_rate / 200).toFixed(2);
-      const sgst    = +(taxable * gst_rate / 200).toFixed(2);
-      const total   = +(taxable + cgst + sgst).toFixed(2);
+      // Refund THE SHARE OF WHAT WAS CHARGED on this line — its stored total, taxable
+      // and GST, pro-rata by quantity — never unit_price × qty × (1 + rate). Since
+      // 04-Oct-2026 the MRP is GST-inclusive and may carry a discount, so rebuilding
+      // from the rounded pre-GST unit_price would refund a price that was never
+      // charged. Taken cumulatively, so a line returned in pieces refunds exactly its
+      // total. Also exact for invoices raised before the change.
+      const r = pricing.refundLine(line, qty, line.already_returned);
+      const { unit_price, gst_rate } = r;
+      const taxable = r.taxable_amount, cgst = r.cgst_amount, sgst = r.sgst_amount, total = r.total_amount;
       subtotal += taxable; total_cgst += cgst; total_sgst += sgst; grand_total += total;
       lines.push({ invoice_item_id: line.id, product_id: line.product_id, product_name: line.product_name,
         hsn_code: line.hsn_code, unit: line.unit, quantity: qty, unit_price, gst_rate,
